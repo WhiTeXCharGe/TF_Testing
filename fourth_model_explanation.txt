@@ -1,0 +1,185 @@
+Fourth Model — Modules + Per-Day Workload (with hard deadlines)
+===============================================================
+
+Overview
+--------
+This model (implemented in `employee_scheduler_forth.py`) plans **person-days** inside **modules** with **sequential processes** and **strict task windows**:
+
+- Work is grouped by **module** `S1…Sn`.  
+- Each module contains **processes** `P1..P4`, and each process contains **tasks** `A..D` (e.g., `S1-P2-C`).  
+- Every task has an **inclusive working window**: from the module/process start (inherited) **to its end date**.  
+- Each task carries a **workload** (number of person-days that must be scheduled within its window).  
+- The solver assigns **who** (employee) and **when** (exact day) for each person-day.  
+- Processes inside the **same module** are **strictly ordered**: **all P1** must finish **before any P2** starts (etc.).  
+- Employees must have the matching **skill key** (`P?-?`) to be eligible.  
+- An employee cannot work in **two places on the same day** (hard rule).  
+- Optional **maximum_worker** cap adds a global per-employee, per-day limit (we keep the “no double booking” rule).
+
+This model is ideal when you want **per-day flexibility** (headcount can change day-to-day) and **hard deadlines** per task, while honoring module process order.
+
+Domain Model
+------------
+1) **DaySlot**  
+   `DaySlot(id: int, d: date)` — one calendar day in the horizon (0 = `start_day`).
+
+2) **Employee**  
+   `Employee(id: int, name: str, skills: Dict[str,int])` — skills are stored per **skill key** like `"P3-A": 5`.  
+   > In this model, having the skill (≥1) is **required** for assignment.
+
+3) **TaskWindow** *(problem fact used during loading)*  
+   Represents a task’s allowed window and its workload before expanding to entities:  
+   `TaskWindow(module, process_id, task_letter, start_day_id, end_day_id, workload)`  
+   - `module` = `"S1"`, `process_id` = `1..4`, `task_letter` = `"A".."D"`.  
+   - `start_day_id` comes from the module/process start.  
+   - `end_day_id` is the (clamped) **task end date** (deadline).  
+   - `workload` = total **person-days** required inside that window.
+
+4) **RequirementSlot** *(planning entity)*  
+   One **person-day** to schedule:  
+   ```
+   RequirementSlot(
+     id, module, process_id, task_letter,
+     start_day_id, end_day_id,
+     employee: Optional[Employee],  # WHO
+     day: Optional[DaySlot]         # WHEN
+   )
+   ```
+   We create **one RequirementSlot per person-day** required by the workload. The solver sets `employee` and `day`.
+
+5) **Schedule** *(planning solution)*  
+   `Schedule(days, employees, reqs, score)` — fixed inputs are `days`, `employees`; `reqs` are entities to assign.
+
+How YAML Becomes a Problem
+--------------------------
+YAML (4th model) focuses on **modules**:
+
+```yaml
+start_day: 2025-09-01
+horizon_days: 30
+maximum_worker: "NONE"   # or an integer cap per employee per day
+
+modules:
+  - code: S1
+    start_date: 2025-09-01         # optional; defaults to file start_day
+    processes:
+      - id: 1
+        end_date: 2025-09-05       # P1 must finish by this day (inclusive)
+        # (optional) start_date: …  # if given, overrides inherited module start for P1 only
+        tasks:
+          - code: S1-P1-A
+            end_date: 2025-09-05
+            workload: 10
+          - ...
+      - id: 2
+        end_date: 2025-09-09
+        tasks: ...
+  - code: S2
+    # start_date omitted => inherits global start_day
+    processes:
+      - id: 1
+        start_date: 2025-09-03      # allowed per-process start override
+        end_date: 2025-09-07
+        tasks: ...
+employees:
+  - name: AA
+    skills: { P1-A: 3, P2-B: 4, ... }
+```
+
+Loader logic:
+- **Module start** = `module.start_date` if present, else global `start_day`.  
+- **Process window**:  
+  - `p_start` = inherited module start, or `process.start_date` if provided.  
+  - `p_end` = `process.end_date` (required).  
+- **Task window**:  
+  - `t_start` = `p_start` (tasks inherit the process start).  
+  - `t_end`   = `min(task.end_date, p_end)` (never exceeds its process end).  
+- For each task we create `workload` **RequirementSlots**, each constrained to any day in `[t_start, t_end]`.  
+- Modules are independent in time (may overlap), but **within a module** processes are strictly ordered by constraints at solve time.
+
+Constraint Provider
+-------------------
+### Hard constraints (must be satisfied)
+1) **Employee must be assigned**  
+   No unassigned person-day.
+
+2) **Day must be assigned**  
+   Every person-day picks an actual calendar day.
+
+3) **Day within task window**  
+   The chosen day must lie in `[start_day_id, end_day_id]`. This **enforces deadlines** (and start).
+
+4) **Skill must exist**  
+   Assigned employee must have the required skill key `P{process}-{task}` with level ≥ 1.  
+   > This forbids assigning employees who don’t have the skill at all.
+
+5) **Per-employee, per-day double-booking forbidden**  
+   A person cannot be assigned to two different slots on the same day.  
+   > Your rule: “1 employee must not be assigned 2 places in the same day.”  
+   (`maximum_worker` is kept for future extension; today we enforce a hard cap of **1**.)
+
+6) **Process precedence inside each module**  
+   For the same module, any work unit of `P(k+1)` must be scheduled on a day **strictly after** a day of `P(k)`.  
+   > This guarantees: *finish P1 entirely before starting P2* (then P3, P4), **per module**.
+
+### Soft constraints (optimize after feasibility)
+1) **Finish ASAP (early-day preference)** — strong  
+   Penalizes later days more than earlier ones to pull work **as early as possible** within windows.
+
+2) **Tiny level centering around 3** — very gentle  
+   Adds a small penalty for extreme levels to avoid pathological team mixes, but **never blocks** packing more people when early capacity is available.  
+   > This intentionally **does not** create pressure to keep headcount tiny; filling up earlier days is preferred.
+
+What the Solver Decides
+-----------------------
+- For each **RequirementSlot** (person-day): pick an **eligible employee** (has skill) and a **valid day** in the task’s window.  
+- Obey module-internal process order, hard deadlines, and “one place per day” for each employee.  
+- Bias assignments earlier (finish fast). The tiny level nudge only breaks ties, it won’t stop front-loading.
+
+Why This Meets Your New Requirements
+------------------------------------
+- **Hard deadline always respected** by the window constraint.  
+- **No start-before-start** because each slot’s day must be ≥ start.  
+- **Per-day headcount can be large** if people are available (no artificial averaging).  
+- **Employees must match the task skill** (hard).  
+- **No two places in one day** per employee (hard).  
+- **Module process order** is enforced (hard).  
+- **Optional `maximum_worker`** is parsed; current constraints keep a hard daily cap of 1 per employee as requested. (If you later want `>1` tasks/day per person, we’ll extend the constraint to count up to that cap.)
+
+Export (Excel) — `export_csv_forth.py`
+--------------------------------------
+Exports a 2-sheet workbook:
+
+- **Sheet 1: “Tasks x Dates”**  
+  Rows = `Sx-Py-Z (workload W)`; Columns = horizon dates.  
+  Each cell shows **names** working that day; if `--show-skills=true` (default), each name is annotated with `"(P?-?:level)"`.  
+  - **Module start** column is **light blue**.  
+  - **Task end** (deadline) column is **red**.
+
+- **Sheet 2: “Employees x Dates”**  
+  Rows = employee names; Columns = dates.  
+  Each cell shows the **task code you worked** that day with the **skill label** `P?-?:level` (always shown).  
+  The **leftmost name column** also lists your **full skill map** (so you can review each person’s skill levels at a glance).
+
+Tuning & Notes
+--------------
+- If you truly want `maximum_worker > 1` (e.g., allow a person to cover **two tasks in the same day**), we’ll replace the current hard *“no double booking”* with a **counting constraint** that allows up to that cap.
+- If modules should all **start exactly together** without per-process overrides, simply remove `start_date` on processes; the loader inherits the module start automatically.
+- If a task’s `end_date` is past the process end, it is **clamped** to the process end so precedence remains valid.
+
+How to Run
+----------
+```bash
+# Solve
+python employee_scheduler_forth.py
+
+# Export (with skill labels in sheet 1)
+python export_csv_forth.py --config config_modules.yaml --out schedule_matrix.xlsx --show-skills=true
+```
+
+Summary
+-------
+- **Entity:** `RequirementSlot` = one person-day that chooses **who** and **which day**.  
+- **Windows:** per task (from module/process start to task end), ensure **deadline** and **start**.  
+- **Hard rules:** must assign employee & day, within window, employee has the skill, **no double booking per day**, and **module process precedence**.  
+- **Soft rules:** **finish ASAP**, minor level smoothing only.  
+- **Exports:** matrix by task (with module start / task end highlights) and matrix by employee (always showing skill labels).
