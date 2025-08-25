@@ -82,6 +82,7 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
       - Columns: dates across the horizon
       - Cells: comma-joined employee names (optionally include skill label P?-?:level)
       - Module start column (light blue), task end column (red)
+      - <<< NEW: Rightmost column shows per-process average skill; bottom row shows overall avg.
 
     Sheet 2: "Employees x Dates"
       - Rows: employee names
@@ -96,10 +97,14 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
     dates = [d.d for d in solution.days]  # list[date]
     date_to_col = {d: j for j, d in enumerate(dates, start=2)}  # for quick lookup
 
-        # Build (task_code, date) -> list of cell strings for Sheet 1
+    # Build (task_code, date) -> list of cell strings for Sheet 1
     # And (employee_name, date) -> task code (no level) for Sheet 2
     task_day_to_entries = defaultdict(list)
     emp_day_to_task: Dict[Tuple[str, datetime], str] = {}
+
+    # <<< NEW: accumulators for averages across assignments
+    process_levels = defaultdict(list)  # "P1" -> [3,2,4,...]
+    all_levels = []
 
     for r in solution.reqs:
         if r.employee is None or r.day is None:
@@ -112,13 +117,23 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
         if show_skills:
             sk = f"P{r.process_id}-{r.task_letter}"
             lvl = r.employee.skills.get(sk, "")
-            task_day_to_entries[(full_task_code, d)].append(f"{emp_name} ({sk}:{lvl})")
+            # <<< CHANGED: show only the level in parentheses (no "P?-?:" prefix)
+            task_day_to_entries[(full_task_code, d)].append(f"{emp_name} ({lvl})")
         else:
             task_day_to_entries[(full_task_code, d)].append(emp_name)
 
         # For Sheet 2 (always show task only, no level)
         emp_day_to_task[(emp_name, d)] = f"P{r.process_id}-{r.task_letter}"
 
+        # <<< NEW: gather numeric levels for averages (per-process + global)
+        try:
+            lvl_num = float(r.employee.skills.get(f"P{r.process_id}-{r.task_letter}", None))
+        except (TypeError, ValueError):
+            lvl_num = None
+        if lvl_num is not None:
+            process_key = f"P{r.process_id}"     # aggregate by process only
+            process_levels[process_key].append(lvl_num)
+            all_levels.append(lvl_num)
 
     # Order tasks by module, process, letter
     def task_sort_key(code: str):
@@ -154,6 +169,11 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
     ws1.column_dimensions["A"].width = LABEL_W
     ws1.freeze_panes = "B2"
 
+    # <<< NEW: rightmost “Avg skill (process)” column after the date columns
+    avg_col_idx = 1 + 1 + len(dates)  # A=1, dates start at col 2
+    ws1.cell(row=1, column=avg_col_idx, value="Avg skill (process)").font = bold
+    ws1.column_dimensions[get_column_letter(avg_col_idx)].width = 20
+
     for i, code in enumerate(all_task_codes, start=2):
         # Row label includes workload if known
         wl = task_workload.get(code, None)
@@ -177,7 +197,28 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
             if end_idx is not None and (d == (start_day + timedelta(days=end_idx))):
                 cell.fill = deadline_fill
 
-        # ---------------- Sheet 2: Employees x Dates ----------------
+        # <<< NEW: per-process average for this row (same process -> same avg)
+        proc_id = parts[1]  # "P3" from "Sx-P3-Z"
+        if process_levels.get(proc_id):
+            proc_avg_val = sum(process_levels[proc_id]) / len(process_levels[proc_id])
+            ws1.cell(row=i, column=avg_col_idx, value=round(proc_avg_val, 2))
+        else:
+            ws1.cell(row=i, column=avg_col_idx, value="")
+        ws1.cell(row=i, column=avg_col_idx).alignment = center
+
+    # <<< NEW: GRAND AVERAGE ROW (bottom of Sheet 1)
+    last_row = ws1.max_row + 1
+    ws1.cell(row=last_row, column=1, value="ALL TASKS AVG (skill)").font = bold
+    ws1.row_dimensions[last_row].height = ROW_H
+    # leave date cells blank; only fill the rightmost average column
+    if all_levels:
+        grand_avg = sum(all_levels) / len(all_levels)
+        ws1.cell(row=last_row, column=avg_col_idx, value=round(grand_avg, 2))
+    else:
+        ws1.cell(row=last_row, column=avg_col_idx, value="")
+    ws1.cell(row=last_row, column=avg_col_idx).alignment = center
+
+    # ---------------- Sheet 2: Employees x Dates ----------------
     ws2 = wb.create_sheet("Employees x Dates")
 
     # Headers: A=employee, B=skills, then dates from C...
@@ -223,7 +264,6 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
             text = emp_day_to_task.get((name, d), "")
             c = ws2.cell(row=i, column=j, value=text)
             c.alignment = center
-
 
     # Save
     wb.save(out_path)
