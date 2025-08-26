@@ -1,0 +1,219 @@
+start_day: '2025-09-01'
+horizon_days: 80
+
+business_days:
+  - Mon
+  - Tue
+  - Wed
+  - Thu
+  - Fri
+
+module_changeover_days:
+  S1: { S1: 0, S2: 1, S3: 1 }
+  S2: { S1: 2, S2: 0, S3: 1 }
+  S3: { S1: 2, S2: 2, S3: 0 }
+
+calendars:
+  company:
+    A:
+      unavailable: ['2025-09-11', '2025-09-12']
+    B:
+      unavailable: ['2025-09-16', '2025-09-17']
+    C:
+      unavailable: ['2025-09-22', '2025-09-23']
+  country:
+    A:
+      unavailable: ['2025-09-15', '2025-09-16']
+    B:
+      unavailable: ['2025-09-19', '2025-09-22']
+  module:
+    S1: { unavailable: [] }
+    S2: { unavailable: [] }
+    S3: { unavailable: [] }
+
+quantum:
+  per_day: 4
+  capacity_quanta_per_month: 88
+
+modules:
+  - code: S1
+    company: A
+    country: A
+    start_date: '2025-09-01'
+    processes:
+      - id: 1
+        end_date: '2025-09-12'
+        tasks:
+          - code: S1-P1-A
+            workload_days: 6
+          - code: S1-P1-B
+            workload_days: 5
+      - id: 2
+        end_date: '2025-09-26'
+        tasks:
+          - code: S1-P2-A
+            workload_days: 7
+          - code: S1-P2-B
+            workload_days: 4
+
+  - code: S2
+    company: B
+    country: B
+    start_date: '2025-09-03'
+    processes:
+      - id: 1
+        end_date: '2025-09-17'
+        tasks:
+          - code: S2-P1-A
+            workload_days: 5
+          - code: S2-P1-B
+            workload_days: 6
+      - id: 2
+        end_date: '2025-10-01'
+        tasks:
+          - code: S2-P2-A
+            workload_days: 4
+          - code: S2-P2-B
+            workload_days: 7
+
+  - code: S3
+    company: C
+    country: A
+    start_date: '2025-09-08'
+    processes:
+      - id: 1
+        end_date: '2025-09-22'
+        tasks:
+          - code: S3-P1-A
+            workload_days: 7
+          - code: S3-P1-B
+            workload_days: 4
+      - id: 2
+        end_date: '2025-10-06'
+        tasks:
+          - code: S3-P2-A
+            workload_days: 6
+          - code: S3-P2-B
+            workload_days: 5
+
+employees:
+  - name: AA
+    skills: { P1-A: 3, P2-A: 4 }
+    unavailable: ['2025-09-08']
+  - name: AB
+    skills: { P1-B: 2, P2-B: 4, P2-A: 3 }
+    unavailable: []
+  - name: AC
+    skills: { P1-A: 4, P2-A: 2, P1-B: 3 }
+    unavailable: []
+  - name: AD
+    skills: { P1-A: 2, P2-A: 5, P2-B: 2 }
+    unavailable: []
+  - name: AE
+    skills: { P1-B: 4, P2-B: 3 }
+    unavailable: ['2025-09-15']
+  - name: AF
+    skills: { P1-A: 5, P1-B: 2, P2-A: 3 }
+    unavailable: []
+  - name: AG
+    skills: { P2-A: 4, P2-B: 2 }
+    unavailable: []
+  - name: AH
+    skills: { P1-A: 3, P1-B: 4 }
+    unavailable: ['2025-09-11']
+  - name: AI
+    skills: { P2-A: 5, P1-A: 2, P2-B: 1 }
+    unavailable: []
+  - name: AJ
+    skills: { P1-B: 5, P2-B: 2, P1-A: 1 }
+    unavailable: []
+  - name: AK
+    skills: { P1-A: 4, P2-A: 3, P2-B: 2 }
+    unavailable: ['2025-09-16']
+  - name: AL
+    skills: { P1-B: 3, P2-B: 4 }
+    unavailable: []
+  - name: AM
+    skills: { P1-A: 2, P2-A: 4 }
+    unavailable: []
+  - name: AN
+    skills: { P1-A: 3, P1-B: 2, P2-B: 5 }
+    unavailable: []
+  - name: AO
+    skills: { P1-B: 4, P2-A: 2 }
+    unavailable: ['2025-09-12']
+  - name: AP
+    skills: { P1-A: 5, P2-B: 3 }
+    unavailable: []
+  - name: AQ
+    skills: { P1-B: 2, P2-A: 3, P2-B: 4 }
+    unavailable: []
+  - name: AR
+    skills: { P1-A: 3, P2-A: 2 }
+    unavailable: []
+  - name: AS
+    skills: { P1-B: 5, P2-B: 1, P1-A: 2 }
+    unavailable: []
+  - name: AT
+    skills: { P2-A: 4, P1-A: 1 }
+    unavailable: []
+  - name: AU
+    skills: { P1-A: 4, P1-B: 3 }
+    unavailable: []
+  - name: AV
+    skills: { P2-A: 2, P2-B: 5 }
+    unavailable: ['2025-09-09']
+  - name: AW
+    skills: { P1-B: 4, P2-A: 3 }
+    unavailable: []
+  - name: AX
+    skills: { P1-A: 2, P2-B: 4 }
+    unavailable: []
+  - name: AY
+    skills: { P2-A: 5, P1-B: 1, P1-A: 3 }
+    unavailable: []
+  - name: AZ
+    skills: { P1-A: 4, P2-A: 2 }
+    unavailable: []
+  - name: BA
+    skills: { P1-B: 3, P2-B: 4 }
+    unavailable: []
+  - name: BB
+    skills: { P2-A: 3, P1-A: 2, P1-B: 4 }
+    unavailable: []
+  - name: BC
+    skills: { P2-B: 5, P1-B: 2 }
+    unavailable: ['2025-09-16']
+  - name: BD
+    skills: { P1-A: 3, P2-A: 4 }
+    unavailable: []
+  - name: BE
+    skills: { P1-B: 3, P2-A: 2, P2-B: 4 }
+    unavailable: []
+  - name: BF
+    skills: { P1-A: 5, P2-B: 2 }
+    unavailable: []
+  - name: BG
+    skills: { P2-A: 4, P1-B: 2 }
+    unavailable: []
+  - name: BH
+    skills: { P1-B: 5, P1-A: 2 }
+    unavailable: []
+  - name: BI
+    skills: { P2-B: 3, P2-A: 2 }
+    unavailable: []
+  - name: BJ
+    skills: { P1-A: 4, P1-B: 1, P2-A: 3 }
+    unavailable: ['2025-09-15']
+  - name: BK
+    skills: { P2-B: 4, P1-B: 2 }
+    unavailable: []
+  - name: BL
+    skills: { P1-A: 2, P2-A: 5 }
+    unavailable: []
+  - name: BM
+    skills: { P1-B: 3, P2-B: 4 }
+    unavailable: []
+  - name: BN
+    skills: { P1-A: 3, P2-A: 2, P2-B: 4 }
+    unavailable: []
