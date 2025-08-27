@@ -1,0 +1,1666 @@
+start_day: '2025-09-01'
+horizon_days: 80
+
+business_days: [Mon, Tue, Wed, Thu, Fri]
+
+# country switch cooldown (J = home/Japan; work locales are A and B)
+country_changeover_days:
+  J: { J: 0, A: 1, B: 1 }
+  A: { J: 1, A: 0, B: 1 }
+  B: { J: 1, A: 1, B: 0 }
+
+visa_limits:
+  A: 7 
+  B: 10  
+  J: 0 
+
+# global staffing bounds per task per day
+staffing_per_task_per_day:
+  min: 2
+  max: 8
+
+calendars:
+  company:
+    A: { unavailable: ['2025-09-11', '2025-09-12'] }
+    B: { unavailable: ['2025-09-16'] }
+    C: { unavailable: [] }
+  country:
+    A: { unavailable: ['2025-09-15'] }
+    B: { unavailable: ['2025-09-19'] }
+  module:
+    S1: { unavailable: [] }
+    S2: { unavailable: [] }
+    S3: { unavailable: [] }
+    S4: { unavailable: [] }
+
+quantum:
+  per_day: 8
+  capacity_quanta_per_month: 88
+
+modules:
+  - code: S1
+    company: A
+    country: A
+    start_date: '2025-09-01'      # day 0
+    processes:
+      - id: 1
+        end_date: '2025-09-12'    # ~ day 11
+        tasks:
+          - code: S1-P1-A
+            workload_days: 42
+          - code: S1-P1-B
+            workload_days: 45
+      - id: 2
+        end_date: '2025-09-26'    # ~ day 25
+        tasks:
+          - code: S1-P2-A
+            workload_days: 47
+          - code: S1-P2-B
+            workload_days: 40
+      - id: 3
+        end_date: '2025-10-13'    # ~ day 42
+        tasks:
+          - code: S1-P3-A
+            workload_days: 44
+          - code: S1-P3-B
+            workload_days: 43
+      - id: 4
+        end_date: '2025-10-31'    # day 60 (required)
+        tasks:
+          - code: S1-P4-A
+            workload_days: 49
+          - code: S1-P4-B
+            workload_days: 41
+
+  - code: S2
+    company: B
+    country: B
+    start_date: '2025-09-08'      # ~ day 7
+    processes:
+      - id: 1
+        end_date: '2025-09-22'
+        tasks:
+          - code: S2-P1-A
+            workload_days: 40
+          - code: S2-P1-B
+            workload_days: 48
+      - id: 2
+        end_date: '2025-10-06'
+        tasks:
+          - code: S2-P2-A
+            workload_days: 44
+          - code: S2-P2-B
+            workload_days: 46
+      - id: 3
+        end_date: '2025-10-20'
+        tasks:
+          - code: S2-P3-A
+            workload_days: 42
+          - code: S2-P3-B
+            workload_days: 45
+      - id: 4
+        end_date: '2025-11-03'
+        tasks:
+          - code: S2-P4-A
+            workload_days: 50
+          - code: S2-P4-B
+            workload_days: 41
+
+  - code: S3
+    company: C
+    country: A
+    start_date: '2025-09-14'      # ~ day 13
+    processes:
+      - id: 1
+        end_date: '2025-09-26'
+        tasks:
+          - code: S3-P1-A
+            workload_days: 41
+          - code: S3-P1-B
+            workload_days: 45
+      - id: 2
+        end_date: '2025-10-10'
+        tasks:
+          - code: S3-P2-A
+            workload_days: 48
+          - code: S3-P2-B
+            workload_days: 42
+      - id: 3
+        end_date: '2025-10-24'
+        tasks:
+          - code: S3-P3-A
+            workload_days: 43
+          - code: S3-P3-B
+            workload_days: 44
+      - id: 4
+        end_date: '2025-11-07'
+        tasks:
+          - code: S3-P4-A
+            workload_days: 49
+          - code: S3-P4-B
+            workload_days: 40
+
+  - code: S4
+    company: A
+    country: B
+    start_date: '2025-09-21'      # day 20 (required)
+    processes:
+      - id: 1
+        end_date: '2025-10-03'
+        tasks:
+          - code: S4-P1-A
+            workload_days: 44
+          - code: S4-P1-B
+            workload_days: 40
+      - id: 2
+        end_date: '2025-10-17'
+        tasks:
+          - code: S4-P2-A
+            workload_days: 47
+          - code: S4-P2-B
+            workload_days: 45
+      - id: 3
+        end_date: '2025-10-31'
+        tasks:
+          - code: S4-P3-A
+            workload_days: 42
+          - code: S4-P3-B
+            workload_days: 46
+      - id: 4
+        end_date: '2025-11-14'
+        tasks:
+          - code: S4-P4-A
+            workload_days: 50
+          - code: S4-P4-B
+            workload_days: 41
+
+employees:
+  # About 70% without preferences/languages; sprinkle some unavailability & overtime.
+  - name: AA
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 3
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-08']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AB
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 3
+      P2-B: 2
+      P3-A: 4
+      P3-B: 1
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AC
+    group_color: green
+    prefer_country: 'B'
+    languages: ['Chinese']
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: AD
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 3
+      P2-A: 4
+      P2-B: 3
+      P3-A: 4
+      P3-B: 2
+    unavailable: ['2025-09-11']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AE
+    group_color: red
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 3
+      P2-A: 4
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+    unavailable: ['2025-09-15']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AF
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 3
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: AG
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 4
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AH
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 4
+      P2-A: 2
+      P2-B: 3
+      P3-A: 3
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-12']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AI
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 3
+      P2-A: 5
+      P2-B: 2
+      P3-A: 4
+      P3-B: 1
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AJ
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 3
+      P2-B: 4
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AK
+    group_color: green
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 2
+      P4-A: 4
+      P4-B: 2
+    unavailable: ['2025-09-16']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: AL
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 3
+      P2-B: 3
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AM
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AN
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 2
+      P2-B: 5
+      P3-A: 1
+      P3-B: 4
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AO
+    group_color: green
+    prefer_country: ''
+    languages: ['English']
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+    unavailable: ['2025-09-09']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AP
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: AQ
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 4
+      P2-B: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AR
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 3
+      P2-A: 2
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+    unavailable: ['2025-09-18']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AS
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 5
+      P2-B: 1
+      P3-A: 2
+      P3-B: 4
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AT
+    group_color: orange
+    prefer_country: 'B'
+    languages: []
+    skills:
+      P1-A: 1
+      P1-B: 3
+      P2-A: 4
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AU
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 4
+      P2-A: 2
+      P2-B: 3
+      P3-A: 3
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-19']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AV
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 3
+      P3-B: 1
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-09-10']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AW
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 4
+      P2-B: 2
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: AX
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: AY
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 2
+      P4-A: 3
+    unavailable: ['2025-09-24']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: AZ
+    group_color: blue
+    prefer_country: ''
+    languages: ['English']
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 1
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BA
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 4
+      P4-A: 1
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BB
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 3
+      P4-A: 3
+      P4-B: 1
+    unavailable: ['2025-09-11']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BC
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-16']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BD
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 1
+      P3-A: 3
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BE
+    group_color: green
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 4
+      P2-B: 2
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-09-22']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BF
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 2
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BG
+    group_color: red
+    prefer_country: ''
+    languages: ['Chinese']
+    skills:
+      P1-A: 2
+      P1-B: 3
+      P2-A: 4
+      P2-B: 4
+      P3-A: 3
+      P3-B: 1
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BH
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 3
+      P2-A: 2
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+    unavailable: ['2025-09-15']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BI
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 2
+      P2-A: 5
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BJ
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 2
+      P3-A: 4
+      P3-B: 1
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-09-25']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BK
+    group_color: red
+    prefer_country: 'B'
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 2
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 4
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BL
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 1
+      P3-B: 4
+      P4-A: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BM
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-30']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BN
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BO
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BP
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-23']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BQ
+    group_color: green
+    prefer_country: ''
+    languages: ['English']
+    skills:
+      P1-A: 2
+      P1-B: 3
+      P2-A: 5
+      P2-B: 2
+      P3-A: 3
+      P3-B: 1
+      P4-A: 2
+      P4-B: 4
+    unavailable: ['2025-09-10']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BR
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 2
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BS
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-29']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BT
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BU
+    group_color: green
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BV
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BW
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 2
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 1
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-10-02']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: BX
+    group_color: blue
+    prefer_country: ''
+    languages: ['Chinese']
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-17']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: BY
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 1
+      P2-A: 3
+      P2-B: 5
+      P3-A: 2
+      P3-B: 3
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: BZ
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 4
+      P3-B: 1
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-26']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CA
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CB
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 5
+      P2-B: 1
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-09-15']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CC
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CD
+    group_color: orange
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 1
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: ['2025-09-12']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CE
+    group_color: red
+    prefer_country: ''
+    languages: ['English', 'Chinese']
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 3
+      P3-A: 4
+      P3-B: 1
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-15']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CF
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 3
+      P2-B: 2
+      P3-A: 2
+      P3-B: 4
+      P4-A: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CG
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 2
+      P2-A: 5
+      P2-B: 4
+      P3-A: 3
+      P3-B: 1
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-19']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CH
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CI
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 1
+    unavailable: ['2025-10-01']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CJ
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 4
+      P2-B: 4
+      P3-A: 1
+      P3-B: 4
+      P4-A: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CK
+    group_color: green
+    prefer_country: 'B'
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 2
+      P4-A: 4
+      P4-B: 1
+    unavailable: ['2025-09-18']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CL
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 2
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-09-11']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CM
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CN
+    group_color: blue
+    prefer_country: ''
+    languages: ['English']
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CO
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 3
+      P2-A: 4
+      P2-B: 2
+      P3-A: 2
+      P3-B: 4
+      P4-A: 3
+      P4-B: 1
+    unavailable: ['2025-09-22']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CP
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 5
+      P2-A: 2
+      P2-B: 4
+      P3-A: 1
+      P3-B: 4
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CQ
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-10-03']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CR
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 4
+      P2-A: 2
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CS
+    group_color: green
+    prefer_country: 'A'
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 3
+      P2-B: 4
+      P3-A: 3
+      P3-B: 2
+      P4-A: 3
+      P4-B: 1
+    unavailable: ['2025-09-08']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CT
+    group_color: orange
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CU
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+    unavailable: ['2025-09-27']
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CV
+    group_color: blue
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 5
+      P2-A: 1
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-16']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CW
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 5
+      P1-B: 1
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: CX
+    group_color: orange
+    prefer_country: ''
+    languages: ['English']
+    skills:
+      P1-A: 2
+      P1-B: 3
+      P2-A: 4
+      P2-B: 4
+      P3-A: 2
+      P3-B: 4
+      P4-A: 1
+      P4-B: 2
+    unavailable: ['2025-09-17']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
+
+  - name: CY
+    group_color: red
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 3
+      P1-B: 2
+      P2-A: 5
+      P2-B: 2
+      P3-A: 3
+      P3-B: 1
+      P4-A: 3
+      P4-B: 2
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: CZ
+    group_color: blue
+    prefer_country: 'B'
+    languages: []
+    skills:
+      P1-A: 4
+      P1-B: 2
+      P2-A: 4
+      P2-B: 3
+      P3-A: 2
+      P3-B: 3
+      P4-A: 2
+      P4-B: 2
+    unavailable: ['2025-09-15']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 3
+
+  - name: DA
+    group_color: green
+    prefer_country: ''
+    languages: []
+    skills:
+      P1-A: 2
+      P1-B: 4
+      P2-A: 3
+      P2-B: 4
+      P3-A: 2
+      P3-B: 3
+      P4-A: 3
+      P4-B: 1
+    unavailable: []
+    can_work_weekends: false
+    can_ignore_calendars: ['company']
+    capacity_quanta_per_day: 8
+    overtime_quanta: 0
+
+  - name: DB
+    group_color: orange
+    prefer_country: ''
+    languages: ['Chinese']
+    skills:
+      P1-A: 5
+      P1-B: 2
+      P2-A: 4
+      P2-B: 2
+      P3-A: 3
+      P3-B: 2
+      P4-A: 2
+      P4-B: 3
+    unavailable: ['2025-10-04']
+    can_work_weekends: false
+    can_ignore_calendars: []
+    capacity_quanta_per_day: 8
+    overtime_quanta: 1
