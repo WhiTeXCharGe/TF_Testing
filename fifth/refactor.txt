@@ -1,0 +1,1018 @@
+==============================
+scheduler_v5/init.py
+
+# marks this folder as a Python package
+
+==============================
+scheduler_v5/config_state.py
+
+from typing import Dict, Set, Tuple, Optional
+
+# All of these are filled by loader.py from config_modules.yaml at runtime.
+
+# Working week (weekday ints Mon=0..Sun=6)
+BUSINESS_DAYS: Set[int] = set()
+
+# Multi-level calendars (day.id sets) – keys are names (company, country, module)
+COMPANY_UNAVAIL: Dict[str, Set[int]] = {}
+COUNTRY_UNAVAIL: Dict[str, Set[int]] = {}
+MODULE_UNAVAIL:  Dict[str, Set[int]] = {}
+
+# Module metadata
+MODULE_COMPANY: Dict[str, str] = {}         # S1 -> "A"
+MODULE_COUNTRY: Dict[str, str] = {}         # S1 -> "A"
+MODULE_CHANGEOVER: Dict[str, Dict[str, int]] = {}  # from -> {to: gapDays}
+
+# Quantum + global monthly cap (optional)
+QUANTA_PER_DAY: int = 0
+MONTHLY_CAP_QUANTA: Optional[int] = None
+
+# Day id -> (year, month) for reporting
+DAYID_YYYYMM: Dict[int, Tuple[int,int]] = {}
+
+==============================
+scheduler_v5/domain.py
+
+from __future__ import annotations
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Annotated, Optional, Dict, List, Set
+
+from timefold.solver.domain import (
+    planning_entity, planning_solution,
+    PlanningId, PlanningVariable,
+    PlanningEntityCollectionProperty, ProblemFactCollectionProperty,
+    PlanningScore, ValueRangeProvider
+)
+from timefold.solver.score import HardSoftScore
+
+@dataclass(frozen=True)
+class DaySlot:
+    id: int
+    d: date  # calendar date
+
+@dataclass(frozen=True)
+class Employee:
+    id: int
+    name: str
+    skills: Dict[str, int]                 # "P{proc}-{task}" -> 1..5
+    unavailable_day_ids: Set[int] = field(default_factory=set)
+
+@dataclass(frozen=True)
+class TaskWindow:
+    module: str
+    process_id: int
+    task_letter: str
+    start_day_id: int    # inclusive
+    end_day_id: int      # inclusive
+    workload: int        # person-days (v5-lite: 1 slot = 1 day)
+
+    def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
+    def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
+
+@planning_entity
+@dataclass
+class RequirementSlot:
+    id: Annotated[int, PlanningId]
+    module: str
+    process_id: int
+    task_letter: str
+    start_day_id: int
+    end_day_id: int
+    employee: Annotated[Optional[Employee], PlanningVariable] = field(default=None)
+    day:      Annotated[Optional[DaySlot],  PlanningVariable] = field(default=None)
+
+    def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
+    def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
+
+@planning_solution
+@dataclass
+class Schedule:
+    days:      Annotated[List[DaySlot], ProblemFactCollectionProperty, ValueRangeProvider]
+    employees: Annotated[List[Employee], ProblemFactCollectionProperty, ValueRangeProvider]
+    reqs:      Annotated[List[RequirementSlot], PlanningEntityCollectionProperty]
+    score:     Annotated[HardSoftScore, PlanningScore] = field(default=None)
+
+==============================
+scheduler_v5/constraints.py
+
+from typing import List
+from timefold.solver.score import HardSoftScore, ConstraintFactory, Constraint, Joiners, constraint_provider
+
+from .domain import RequirementSlot, Employee
+from . import config_state as C
+
+@constraint_provider
+def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
+    return [
+        # HARD
+        require_employee_assigned(cf),
+        require_day_assigned(cf),
+        day_within_window(cf),
+        skill_must_exist(cf),
+        employee_not_double_booked_same_day(cf),
+        process_precedence_within_module(cf),
+        employee_not_on_unavailable_day(cf),
+        no_weekend_work(cf),
+        module_company_country_unavailable(cf),
+        module_changeover_gap(cf),
+
+        # SOFT
+        finish_asap(cf),
+        gently_prefer_levels_near_3(cf),
+        prefer_continuity(cf),
+        balance_workload(cf),
+        prefer_senior_coverage(cf),   # re-added per your request
+    ]
+
+# ---------- HARD ----------
+
+def require_employee_assigned(cf: ConstraintFactory) -> Constraint:
+    return (cf.for_each(RequirementSlot)
+            .filter(lambda r: r.employee is None)
+            .penalize(HardSoftScore.ONE_HARD)
+            .as_constraint("Employee must be assigned"))
+
+def require_day_assigned(cf: ConstraintFactory) -> Constraint:
+    return (cf.for_each(RequirementSlot)
+            .filter(lambda r: r.day is None)
+            .penalize(HardSoftScore.ONE_HARD)
+            .as_constraint("Day must be assigned"))
+
+def day_within_window(cf: ConstraintFactory) -> Constraint:
+    def outside(r: RequirementSlot) -> bool:
+        if r.day is None:
+            return True
+        return not (r.start_day_id <= r.day.id <= r.end_day_id)
+    return (cf.for_each(RequirementSlot)
+            .filter(outside)
+            .penalize(HardSoftScore.ONE_HARD)
+            .as_constraint("Day outside task window"))
+
+def skill_must_exist(cf: ConstraintFactory) -> Constraint:
+    def lacks(r: RequirementSlot) -> bool:
+        if r.employee is None: return True
+        return r.employee.skills.get(r.pcode(), 0) < 1
+    return (cf.for_each(RequirementSlot)
+            .filter(lacks)
+            .penalize(HardSoftScore.ONE_HARD)
+            .as_constraint("Missing skill for task"))
+
+def employee_not_double_booked_same_day(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee),
+            Joiners.equal(lambda r: r.day.id if (r.day is not None) else -1)
+        )
+        .filter(lambda a, b:
+            (a.employee is not None) and (b.employee is not None) and
+            (a.day is not None) and (b.day is not None)
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Employee double-booked same day")
+    )
+
+def process_precedence_within_module(cf: ConstraintFactory) -> Constraint:
+    def violates(a: RequirementSlot, b: RequirementSlot) -> bool:
+        if a.day is None or b.day is None:
+            return True
+        return not (b.day.id > a.day.id)
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.module),
+            Joiners.less_than(lambda r: r.process_id)
+        )
+        .filter(violates)
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Module process precedence")
+    )
+
+def employee_not_on_unavailable_day(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(RequirementSlot)
+        .filter(lambda r:
+            (r.employee is not None) and
+            (r.day is not None) and
+            (r.day.id in r.employee.unavailable_day_ids)
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Employee unavailable day")
+    )
+
+def no_weekend_work(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(RequirementSlot)
+        .filter(lambda r:
+            (r.day is not None) and (r.day.d.weekday() not in C.BUSINESS_DAYS)
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("No weekend work")
+    )
+
+def module_company_country_unavailable(cf: ConstraintFactory) -> Constraint:
+    def closed(r: RequirementSlot) -> bool:
+        if r.day is None:
+            return True
+        did = r.day.id
+        m   = r.module
+
+        # module-level
+        s_mod = C.MODULE_UNAVAIL.get(m)
+        if (s_mod is not None) and (did in s_mod):
+            return True
+
+        # company-level
+        comp = C.MODULE_COMPANY.get(m)
+        if comp is not None:
+            s_comp = C.COMPANY_UNAVAIL.get(comp)
+            if (s_comp is not None) and (did in s_comp):
+                return True
+
+        # country-level
+        ctry = C.MODULE_COUNTRY.get(m)
+        if ctry is not None:
+            s_ctry = C.COUNTRY_UNAVAIL.get(ctry)
+            if (s_ctry is not None) and (did in s_ctry):
+                return True
+
+        return False
+    return (
+        cf.for_each(RequirementSlot)
+        .filter(closed)
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Closed by module/company/country calendar")
+    )
+
+def module_changeover_gap(cf: ConstraintFactory) -> Constraint:
+    def violates(a: RequirementSlot, b: RequirementSlot) -> bool:
+        if (a.employee is None) or (b.employee is None) or (a.day is None) or (b.day is None):
+            return True
+        if a.module == b.module:
+            return False
+        gap = C.MODULE_CHANGEOVER.get(a.module, {}).get(b.module, 0)
+        return not (b.day.id >= a.day.id + gap + 1)
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee),
+            Joiners.less_than(lambda r: r.day.id if (r.day is not None) else -10)
+        )
+        .filter(violates)
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Module changeover gap")
+    )
+
+# ---------- SOFT ----------
+
+def finish_asap(cf: ConstraintFactory) -> Constraint:
+    def day_cost(r: RequirementSlot) -> int:
+        return r.day.id if r.day is not None else 1000
+    return (
+        cf.for_each(RequirementSlot)
+        .penalize(HardSoftScore.ONE_SOFT, lambda r: 5 * day_cost(r))
+        .as_constraint("Finish ASAP")
+    )
+
+def gently_prefer_levels_near_3(cf: ConstraintFactory) -> Constraint:
+    def lvl_cost(r: RequirementSlot) -> int:
+        if r.employee is None: return 0
+        lvl = r.employee.skills.get(r.pcode(), 1)
+        return max(0, abs(lvl - 3) // 3)  # 0 or 1 only
+    return (
+        cf.for_each(RequirementSlot)
+        .penalize(HardSoftScore.ONE_SOFT, lvl_cost)
+        .as_constraint("Tiny level-centering")
+    )
+
+def prefer_continuity(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee),
+            Joiners.equal(lambda r: r.module),
+            Joiners.equal(lambda r: r.process_id),
+            Joiners.equal(lambda r: r.task_letter),
+            Joiners.less_than(lambda r: r.day.id if (r.day is not None) else -1)
+        )
+        .filter(lambda a, b:
+            (a.employee is not None) and (b.employee is not None) and
+            (a.day is not None) and (b.day is not None) and
+            (b.day.id == a.day.id + 1)
+        )
+        .reward(HardSoftScore.ONE_SOFT)
+        .as_constraint("Prefer continuity")
+    )
+
+def balance_workload(cf: ConstraintFactory) -> Constraint:
+    # Pairwise penalty across each employee's assignments – pushes towards balance.
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee)
+        )
+        .filter(lambda a, b: (a.employee is not None) and (b.employee is not None) and (a != b))
+        .penalize(HardSoftScore.ONE_SOFT)
+        .as_constraint("Balance workload across employees")
+    )
+
+def prefer_senior_coverage(cf: ConstraintFactory) -> Constraint:
+    def is_senior(emp: Employee, code: str) -> bool: return emp.skills.get(code, 0) >= 4
+    def is_junior(emp: Employee, code: str) -> bool: return 0 < emp.skills.get(code, 0) <= 2
+
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.module),
+            Joiners.equal(lambda r: r.process_id),
+            Joiners.equal(lambda r: r.task_letter),
+            Joiners.equal(lambda r: r.day.id if (r.day is not None) else -1)
+        )
+        .filter(lambda a, b:
+            (a.employee is not None) and (b.employee is not None) and
+            (a.day is not None) and (b.day is not None)
+        )
+        .filter(lambda a, b:
+            (is_senior(a.employee, a.pcode()) and is_junior(b.employee, b.pcode())) or
+            (is_senior(b.employee, b.pcode()) and is_junior(a.employee, a.pcode()))
+        )
+        .reward(HardSoftScore.ONE_SOFT)
+        .as_constraint("Prefer senior coverage when juniors present")
+    )
+
+
+==============================
+scheduler_v5/loader.py
+
+from __future__ import annotations
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import List, Set
+
+import yaml
+
+from .domain import DaySlot, Employee, TaskWindow, RequirementSlot
+from . import config_state as C
+
+@dataclass
+class ModuleSpec:
+    code: str
+    start_day_id: int
+
+def load_config_modules(path: str):
+    """
+    Loads config_modules.yaml and fills config_state.
+    Returns (start_day, days, windows, employees).
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    # Business days
+    wd_map = {"Mon":0,"Tue":1,"Wed":2,"Thu":3,"Fri":4,"Sat":5,"Sun":6}
+    C.BUSINESS_DAYS = set(wd_map[d] for d in cfg.get("business_days", ["Mon","Tue","Wed","Thu","Fri"]))
+
+    # Horizon & calendar index
+    start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
+    horizon_days = int(cfg.get("horizon_days", 30))
+    days: List[DaySlot] = []
+    C.DAYID_YYYYMM.clear()
+    for i in range(horizon_days):
+        d = start_day + timedelta(days=i)
+        days.append(DaySlot(i, d))
+        C.DAYID_YYYYMM[i] = (d.year, d.month)
+
+    def align_to_business(d: date) -> date:
+        while d.weekday() not in C.BUSINESS_DAYS:
+            d += timedelta(days=1)
+        return d
+
+    def day_to_idx(datestr: str) -> int:
+        d = datetime.strptime(str(datestr), "%Y-%m-%d").date()
+        d = align_to_business(d)
+        idx = (d - start_day).days
+        return max(0, min(horizon_days - 1, idx))
+
+    # Quantum config
+    q = cfg.get("quantum", {}) or {}
+    C.QUANTA_PER_DAY = int(q.get("per_day", 1))
+    cap = q.get("capacity_quanta_per_month", None)
+    C.MONTHLY_CAP_QUANTA = int(cap) if cap is not None else None
+
+    # Calendars
+    C.COMPANY_UNAVAIL.clear()
+    C.COUNTRY_UNAVAIL.clear()
+    C.MODULE_UNAVAIL.clear()
+
+    cal = cfg.get("calendars", {}) or {}
+    for comp, obj in (cal.get("company", {}) or {}).items():
+        s = set(day_to_idx(ds) for ds in (obj.get("unavailable", []) or []))
+        C.COMPANY_UNAVAIL[str(comp)] = s
+    for ctry, obj in (cal.get("country", {}) or {}).items():
+        s = set(day_to_idx(ds) for ds in (obj.get("unavailable", []) or []))
+        C.COUNTRY_UNAVAIL[str(ctry)] = s
+    for mod, obj in (cal.get("module", {}) or {}).items():
+        s = set(day_to_idx(ds) for ds in (obj.get("unavailable", []) or []))
+        C.MODULE_UNAVAIL[str(mod)] = s
+
+    # Module changeovers
+    C.MODULE_CHANGEOVER = {m: {n:int(v) for n,v in d.items()} for m,d in (cfg.get("module_changeover_days", {}) or {}).items()}
+
+    windows: List[TaskWindow] = []
+    C.MODULE_COMPANY.clear()
+    C.MODULE_COUNTRY.clear()
+
+    # Modules
+    for m in (cfg["modules"] or []):
+        mcode = str(m["code"]).strip()
+        C.MODULE_COMPANY[mcode] = str(m.get("company","")).strip()
+        C.MODULE_COUNTRY[mcode] = str(m.get("country","")).strip()
+
+        module_start_idx = day_to_idx(m.get("start_date", cfg["start_day"]))
+
+        for proc in m.get("processes", []):
+            pid = int(proc["id"])
+            p_end_idx = day_to_idx(proc["end_date"])
+            p_start_idx = module_start_idx
+            if "start_date" in proc and proc["start_date"]:
+                p_start_idx = max(p_start_idx, day_to_idx(proc["start_date"]))
+
+            for t in proc.get("tasks", []):
+                full_code = str(t["code"]).strip().upper()
+                parts = full_code.split("-")
+                if len(parts) != 3 or not parts[1].startswith("P"):
+                    raise ValueError(f"Bad task code '{full_code}' (expected 'Sx-Py-Z').")
+                letter = parts[2]
+
+                windows.append(TaskWindow(
+                    module=mcode,
+                    process_id=pid,
+                    task_letter=letter,
+                    start_day_id=p_start_idx,
+                    end_day_id=p_end_idx,
+                    workload=int(t["workload_days"])
+                ))
+
+    # Employees
+    employees: List[Employee] = []
+    eid = 1
+    for e in (cfg["employees"] or []):
+        name = str(e["name"])
+        skills = {str(k).strip().upper(): int(v) for k, v in (e.get("skills", {}) or {}).items()}
+        unavailable_ids: Set[int] = set()
+        for ds in (e.get("unavailable", []) or []):
+            try:
+                unavailable_ids.add(day_to_idx(str(ds)))
+            except Exception:
+                pass
+        employees.append(Employee(eid, name, skills, unavailable_ids))
+        eid += 1
+
+    return start_day, days, windows, employees
+
+def build_requirement_slots(windows: List[TaskWindow]) -> List[RequirementSlot]:
+    reqs: List[RequirementSlot] = []
+    rid = 1
+    for w in windows:
+        for _ in range(w.workload):
+            reqs.append(RequirementSlot(
+                id=rid,
+                module=w.module,
+                process_id=w.process_id,
+                task_letter=w.task_letter,
+                start_day_id=w.start_day_id,
+                end_day_id=w.end_day_id
+            ))
+            rid += 1
+    return reqs
+
+==============================
+scheduler_v5/solver.py
+
+from collections import defaultdict
+from typing import Tuple
+
+from timefold.solver import SolverFactory
+from timefold.solver.config import SolverConfig, TerminationConfig, ScoreDirectorFactoryConfig, Duration
+
+from .domain import Schedule, RequirementSlot
+from .constraints import define_constraints
+from .loader import load_config_modules, build_requirement_slots
+from . import config_state as C
+
+def explain_and_write(solution: Schedule, out_path: str = "score_breakdown.txt") -> None:
+    """Lightweight score breakdown + monthly cap check (report-only)."""
+    hard = defaultdict(int)
+    soft = defaultdict(int)
+
+    emp_day = defaultdict(list)   # (emp, day_id) -> [req ids]
+    emp_days = defaultdict(list)  # emp -> [day_id]
+
+    for r in solution.reqs:
+        if r.employee and r.day:
+            emp_day[(r.employee.name, r.day.id)].append(r.id)
+            emp_days[r.employee.name].append(r.day.id)
+
+            # weekend
+            if r.day.d.weekday() not in C.BUSINESS_DAYS:
+                hard["No weekend work"] += 1
+            # personal
+            if r.day.id in r.employee.unavailable_day_ids:
+                hard["Employee unavailable day"] += 1
+            # org calendars
+            m = r.module; did = r.day.id
+            comp = C.MODULE_COMPANY.get(m)
+            ctry = C.MODULE_COUNTRY.get(m)
+            if (m in C.MODULE_UNAVAIL) and (did in C.MODULE_UNAVAIL[m]):
+                hard["Closed by module calendar"] += 1
+            if comp and (comp in C.COMPANY_UNAVAIL) and (did in C.COMPANY_UNAVAIL[comp]):
+                hard["Closed by company calendar"] += 1
+            if ctry and (ctry in C.COUNTRY_UNAVAIL) and (did in C.COUNTRY_UNAVAIL[ctry]):
+                hard["Closed by country calendar"] += 1
+
+    for (emp, did), reqids in emp_day.items():
+        if len(reqids) > 1:
+            hard["Employee double-booked same day"] += (len(reqids) - 1)
+
+    total_pairs = 0
+    for emp, days_list in emp_days.items():
+        n = len(days_list)
+        total_pairs += n*(n-1)//2
+    soft["Balance workload across employees"] = total_pairs
+
+    lines = []
+    lines.append(f"SCORE BREAKDOWN (approx.)")
+    lines.append("Hard counts:")
+    for k,v in hard.items():
+        lines.append(f"  - {k}: {v}")
+    lines.append("Soft counts:")
+    for k,v in soft.items():
+        lines.append(f"  - {k}: {v}")
+
+    if C.MONTHLY_CAP_QUANTA is not None and C.QUANTA_PER_DAY > 0:
+        cap_days = C.MONTHLY_CAP_QUANTA // C.QUANTA_PER_DAY
+        per_emp_month = defaultdict(int)
+        for emp, days_list in emp_days.items():
+            for did in days_list:
+                y,m = C.DAYID_YYYYMM.get(did,(0,0))
+                per_emp_month[(emp,y,m)] += 1
+        over = []
+        for (emp,y,m), cnt in per_emp_month.items():
+            if cnt > cap_days:
+                over.append(f"  - {emp} {y}-{m:02d}: {cnt} days > cap {cap_days}")
+        lines.append("")
+        lines.append(f"Monthly cap report (global cap {C.MONTHLY_CAP_QUANTA} quanta; ≈ {cap_days} days):")
+        lines.extend(over if over else ["  (no overages)"])
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+def solve_from_config(cfg_path: str = "config_modules.yaml"):
+    start_day, days, windows, employees = load_config_modules(cfg_path)
+    reqs = build_requirement_slots(windows)
+
+    solver_config = SolverConfig(
+        solution_class=Schedule,
+        entity_class_list=[RequirementSlot],
+        score_director_factory_config=ScoreDirectorFactoryConfig(
+            constraint_provider_function=define_constraints
+        ),
+        termination_config=TerminationConfig(spent_limit=Duration(seconds=30))
+    )
+    solver = SolverFactory.create(solver_config).build_solver()
+    problem = Schedule(days=days, employees=employees, reqs=reqs)
+    solution: Schedule = solver.solve(problem)
+
+    explain_and_write(solution, out_path="score_breakdown.txt")
+    return solution, start_day
+
+==============================
+scheduler_v5/export_csv_fifth.py
+
+import os
+from argparse import ArgumentParser
+from collections import defaultdict
+from datetime import timedelta, datetime, date
+from typing import Dict, Tuple, List, Set
+
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Alignment, Font
+from openpyxl.utils import get_column_letter
+import yaml
+
+from .solver import solve_from_config  # <-- package-local import
+
+LIGHT_BLUE = "ADD8E6"   # module start highlight
+RED        = "FF9999"   # task end highlight
+PINK       = "FFC0CB"   # weekend / org-unavailable highlight
+PALE_RED   = "FFCCCC"   # personal unavailable (Sheet 2)
+
+def _parse_modules_config(config_path: str):
+    """
+    Parse config_modules.yaml (v5-lite) and reconstruct:
+      - start_day (date), horizon_days (int)
+      - business_days set (weekday ints: Mon=0..Sun=6)
+      - module metadata: company/country
+      - calendars: company/country/module => sets of CLOSED dates
+      - module start index
+      - per-task end index (inherits process end) and workload_days
+      - skill key mapping: "S1-P3-A" -> "P3-A"
+      - quantum_per_day (for Sheet 2 quanta calc)
+    Returns:
+      start_day              : date
+      horizon_days           : int
+      business_days          : Set[int]
+      module_company         : Dict[str, str]
+      module_country         : Dict[str, str]
+      company_unavail_dates  : Dict[str, Set[date]]
+      country_unavail_dates  : Dict[str, Set[date]]
+      module_unavail_dates   : Dict[str, Set[date]]
+      module_start_idx       : Dict[str, int]
+      task_end_idx           : Dict[str, int]
+      task_workload          : Dict[str, int]
+      skill_key_for_task     : Dict[str, str]
+      quantum_per_day        : int
+    """
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    # Dates / horizon
+    start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
+    horizon_days = int(cfg.get("horizon_days", 30))
+
+    # Business days
+    wd_map = {"Mon":0,"Tue":1,"Wed":2,"Thu":3,"Fri":4,"Sat":5,"Sun":6}
+    business_days: Set[int] = set(wd_map[d] for d in cfg.get("business_days", ["Mon","Tue","Wed","Thu","Fri"]))
+
+    def to_idx(datestr: str) -> int:
+        d = datetime.strptime(str(datestr), "%Y-%m-%d").date()
+        # Align to business-day boundary (if config used a weekend)
+        while d.weekday() not in business_days:
+            # move forward to next business day
+            d = d + timedelta(days=1)
+        return max(0, min(horizon_days - 1, (d - start_day).days))
+
+    def to_date_set(dates: List[str]) -> Set[date]:
+        s: Set[date] = set()
+        for ds in (dates or []):
+            d = datetime.strptime(str(ds), "%Y-%m-%d").date()
+            while d.weekday() not in business_days:
+                d = d + timedelta(days=1)
+            s.add(d)
+        return s
+
+    # Calendars
+    calendars = cfg.get("calendars", {}) or {}
+    company_unavail_dates: Dict[str, Set[date]] = {}
+    for comp, obj in (calendars.get("company", {}) or {}).items():
+        company_unavail_dates[str(comp)] = to_date_set(obj.get("unavailable", []))
+    country_unavail_dates: Dict[str, Set[date]] = {}
+    for ctry, obj in (calendars.get("country", {}) or {}).items():
+        country_unavail_dates[str(ctry)] = to_date_set(obj.get("unavailable", []))
+    module_unavail_dates: Dict[str, Set[date]] = {}
+    for mod, obj in (calendars.get("module", {}) or {}).items():
+        module_unavail_dates[str(mod)] = to_date_set(obj.get("unavailable", []))
+
+    # Module metadata
+    module_company: Dict[str, str] = {}
+    module_country: Dict[str, str] = {}
+
+    module_start_idx: Dict[str, int] = {}
+    task_end_idx: Dict[str, int] = {}
+    task_workload: Dict[str, int] = {}
+    skill_key_for_task: Dict[str, str] = {}
+
+    modules = cfg["modules"]
+    for m in modules:
+        mcode = str(m["code"]).strip()
+        module_company[mcode] = str(m.get("company", "")).strip()
+        module_country[mcode] = str(m.get("country", "")).strip()
+
+        m_start = to_idx(m.get("start_date", cfg["start_day"]))
+        module_start_idx[mcode] = m_start
+
+        for proc in m["processes"]:
+            pid = int(proc["id"])
+            # In v5, tasks inherit process end date
+            p_end = to_idx(proc["end_date"])
+
+            for t in proc["tasks"]:
+                full_code = str(t["code"]).strip().upper()  # e.g., "S1-P3-A"
+                parts = full_code.split("-")
+                if len(parts) != 3 or not parts[1].startswith("P"):
+                    raise ValueError(f"Bad task code '{full_code}' (expected 'Sx-Py-Z').")
+                skill_key = f"{parts[1]}-{parts[2]}"  # "P3-A"
+
+                # workload_days in v5
+                wl = int(t.get("workload_days", 0))
+                task_end_idx[full_code] = p_end
+                task_workload[full_code] = wl
+                skill_key_for_task[full_code] = skill_key
+
+    # Quantum per day (for Sheet 2 quanta calc)
+    quantum_per_day = int(((cfg.get("quantum") or {}).get("per_day") or 1))
+
+    return (start_day, horizon_days, business_days,
+            module_company, module_country,
+            company_unavail_dates, country_unavail_dates, module_unavail_dates,
+            module_start_idx, task_end_idx, task_workload, skill_key_for_task,
+            quantum_per_day)
+
+
+def write_excel(solution, start_day, config_path: str, out_path: str = "schedule_matrix.xlsx",
+                show_skills: bool = True):
+    """
+    Create an Excel with 2 sheets:
+
+    Sheet 1: "Tasks x Dates"
+      - Col A: module details "Sx | company X | country Y"
+      - Col B: task-only label "Py-Z"
+      - Columns C..: dates across the horizon
+      - Cells: "AA (3), AF (1) | avg=2.0"
+      - Module start column (light blue), task end column (red)
+      - Weekends and org-unavailable (module/company/country) = pink
+
+    Sheet 2: "Employees x Dates"
+      - Col A: employee
+      - Col B: skills summary
+      - Col C: personal unavailable dates (CSV)
+      - Columns D..: dates
+      - Cell red if employee is personally unavailable that day
+      - Row end: "Workdays", "Quanta" (sum). Bottom row: averages for those two.
+    """
+    # Parse config to reconstruct timing, calendars, workloads, meta
+    (cfg_start_day, horizon_days, business_days,
+     module_company, module_country,
+     company_unavail_dates, country_unavail_dates, module_unavail_dates,
+     module_start_idx, task_end_idx, task_workload, skill_key_for_task,
+     quantum_per_day) = _parse_modules_config(config_path)
+
+    # Dates from solution
+    dates = [d.d for d in solution.days]  # list[date]
+
+    # Build (task_code, date) -> list of "AA (3)" for Sheet 1
+    # And (employee_name, date) -> task code (no level) for Sheet 2
+    task_day_to_entries = defaultdict(list)
+    emp_day_to_task: Dict[Tuple[str, date], str] = {}
+
+    for r in solution.reqs:
+        if r.employee is None or r.day is None:
+            continue
+        full_task_code = f"{r.module}-P{r.process_id}-{r.task_letter}"  # e.g., S1-P3-A
+        d = r.day.d
+        emp_name = r.employee.name
+
+        # For Sheet 1 (optionally with skills)
+        if show_skills:
+            sk = f"P{r.process_id}-{r.task_letter}"
+            lvl = r.employee.skills.get(sk, "")
+            # show only level in parentheses (no "P?-?:" prefix)
+            task_day_to_entries[(full_task_code, d)].append(f"{emp_name} ({lvl})")
+        else:
+            task_day_to_entries[(full_task_code, d)].append(emp_name)
+
+        # For Sheet 2: full task code (Sx-Py-Z)
+        emp_day_to_task[(emp_name, d)] = f"{r.module}-P{r.process_id}-{r.task_letter}"
+
+    # Order tasks by module, process, letter
+    def task_sort_key(code: str):
+        # code = Sx-Py-Z
+        s, p, z = code.split("-")
+        return (int(s[1:]) if s[0] == "S" and s[1:].isdigit() else s, int(p[1:]), z)
+
+    all_task_codes = sorted(
+        set([t for (t, _) in task_day_to_entries.keys()] + list(task_end_idx.keys())),
+        key=task_sort_key
+    )
+
+    # Styles
+    fill_deadline = PatternFill(start_color=RED,  end_color=RED,  fill_type="solid")
+    fill_start    = PatternFill(start_color=LIGHT_BLUE, end_color=LIGHT_BLUE, fill_type="solid")
+    fill_pink     = PatternFill(start_color=PINK, end_color=PINK, fill_type="solid")
+    fill_pale_red = PatternFill(start_color=PALE_RED, end_color=PALE_RED, fill_type="solid")
+
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+    bold   = Font(bold=True)
+
+    # Workbook
+    wb = Workbook()
+
+    # ---------------- Sheet 1: Tasks x Dates ----------------
+    ws1 = wb.active
+    ws1.title = "Tasks x Dates"
+
+    LABEL1_W = 26  # module details
+    LABEL2_W = 12  # task label
+    DATE_W   = 24
+    ROW_H    = 36
+
+    ws1.cell(row=1, column=1, value="module | company | country").font = bold
+    ws1.cell(row=1, column=2, value="task").font = bold
+    for j, d in enumerate(dates, start=3):  # dates start at col 3
+        c = ws1.cell(row=1, column=j, value=d.strftime("%Y-%m-%d"))
+        c.font = bold
+        ws1.column_dimensions[get_column_letter(j)].width = DATE_W
+    ws1.column_dimensions["A"].width = LABEL1_W
+    ws1.column_dimensions["B"].width = LABEL2_W
+    ws1.freeze_panes = "C2"
+
+    for i, code in enumerate(all_task_codes, start=2):
+        # code = Sx-Py-Z
+        parts = code.split("-")
+        mcode, ppart, letter = parts[0], parts[1], parts[2]
+        # Row labels
+        detail = f"{mcode} | company {module_company.get(mcode,'')} | country {module_country.get(mcode,'')}"
+        ws1.cell(row=i, column=1, value=detail).font = bold
+        ws1.cell(row=i, column=1).alignment = left
+
+        ws1.cell(row=i, column=2, value=f"{ppart}-{letter}").font = bold
+        ws1.row_dimensions[i].height = ROW_H
+
+        # start/end highlights
+        start_idx = module_start_idx.get(mcode, None)
+        end_idx = task_end_idx.get(code, None)
+
+        for j, d in enumerate(dates, start=3):
+            # weekend/org-unavailable background (pink)
+            is_weekend = (d.weekday() not in business_days)
+            org_closed = (
+                (d in (module_unavail_dates.get(mcode, set()))) or
+                (d in (company_unavail_dates.get(module_company.get(mcode,""), set()))) or
+                (d in (country_unavail_dates.get(module_country.get(mcode,""), set())))
+            )
+
+            # cell contents
+            entries = task_day_to_entries.get((code, d), [])
+            # compute avg skill in this cell
+            avg_str = ""
+            if entries:
+                levels = []
+                for s in entries:
+                    # s like "AA (3)"
+                    if "(" in s and s.endswith(")"):
+                        try:
+                            lvl = int(s.split("(")[-1][:-1])
+                            levels.append(lvl)
+                        except Exception:
+                            pass
+                if levels:
+                    avg_val = round(sum(levels) / len(levels), 2)
+                    avg_str = f" | avg={avg_val}"
+            text = ", ".join(sorted(entries)) + (avg_str if avg_str else "")
+            cell = ws1.cell(row=i, column=j, value=text)
+            cell.alignment = center
+
+            # background for weekend/org-unavailable
+            if is_weekend or org_closed:
+                cell.fill = fill_pink
+
+            # start/end overlays (draw after base fill)
+            if start_idx is not None and (d == (start_day + timedelta(days=start_idx))):
+                cell.fill = fill_start
+            if end_idx is not None and (d == (start_day + timedelta(days=end_idx))):
+                cell.fill = fill_deadline
+
+    # ---------------- Sheet 2: Employees x Dates ----------------
+    ws2 = wb.create_sheet("Employees x Dates")
+
+    # Headers: A=employee, B=skills, C=unavailable dates, then dates from D...
+    ws2.cell(row=1, column=1, value="employee").font = bold
+    ws2.cell(row=1, column=2, value="skills").font = bold
+    ws2.cell(row=1, column=3, value="unavailable").font = bold
+    for j, d in enumerate(dates, start=4):
+        c = ws2.cell(row=1, column=j, value=d.strftime("%Y-%m-%d"))
+        c.font = bold
+        ws2.column_dimensions[get_column_letter(j)].width = 20
+
+    ws2.column_dimensions["A"].width = 16
+    ws2.column_dimensions["B"].width = 48
+    ws2.column_dimensions["C"].width = 28
+    ws2.freeze_panes = "D2"
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+    # Pre-compute skills and personal unavailable per employee
+    skills_by_employee: Dict[str, str] = {}
+    personal_unavail: Dict[str, Set[date]] = {}
+
+    for e in solution.employees:
+        # Skills summary string (sorted P then letter)
+        def _sort_key(k: str):
+            try:
+                p, t = k.split("-")
+                return (int(p[1:]), t)
+            except Exception:
+                return (999, k)
+        items = sorted(e.skills.items(), key=lambda kv: _sort_key(kv[0]))
+        skills_by_employee[e.name] = ", ".join(f"{k}:{v}" for k, v in items)
+
+        # Collect unavailable as dates from day ids present in solution.days
+        did_to_date = {i: d for i, d in enumerate(dates)}
+        udates = set()
+        if hasattr(e, "unavailable_day_ids"):
+            for did in e.unavailable_day_ids:
+                if did in did_to_date:
+                    udates.add(did_to_date[did])
+        personal_unavail[e.name] = udates
+
+    # stable order of employees by name
+    employees_sorted = sorted([e.name for e in solution.employees])
+
+    # Track per-employee counts
+    workday_counts: Dict[str, int] = defaultdict(int)
+    quanta_counts: Dict[str, int] = defaultdict(int)
+
+    for i, name in enumerate(employees_sorted, start=2):
+        ws2.row_dimensions[i].height = 36  # uniform height
+
+        # Column A: name
+        ws2.cell(row=i, column=1, value=name).font = bold
+        ws2.cell(row=i, column=1).alignment = left
+
+        # Column B: skills summary
+        ws2.cell(row=i, column=2, value=skills_by_employee.get(name, "")).alignment = left
+
+        # Column C: personal unavailable dates (CSV)
+        unav_csv = ", ".join(sorted([d.strftime("%Y-%m-%d") for d in personal_unavail.get(name, set())]))
+        ws2.cell(row=i, column=3, value=unav_csv).alignment = left
+
+        # From column D onward: full task code (Sx-Py-Z)
+        for j, d in enumerate(dates, start=4):
+            text = emp_day_to_task.get((name, d), "")
+            c = ws2.cell(row=i, column=j, value=text)
+            c.alignment = center
+            # highlight personal unavailable day
+            if d in personal_unavail.get(name, set()):
+                c.fill = fill_pale_red
+            # count workdays/quanta if assigned
+            if text:
+                workday_counts[name] += 1
+                quanta_counts[name] += quantum_per_day
+
+    # Append Workdays / Quanta columns at the end
+    workdays_col = len(dates) + 4
+    quanta_col   = len(dates) + 5
+    ws2.cell(row=1, column=workdays_col, value="Workdays").font = bold
+    ws2.cell(row=1, column=quanta_col,   value="Quanta").font   = bold
+    ws2.column_dimensions[get_column_letter(workdays_col)].width = 12
+    ws2.column_dimensions[get_column_letter(quanta_col)].width   = 12
+
+    # Fill totals
+    for i, name in enumerate(employees_sorted, start=2):
+        ws2.cell(row=i, column=workdays_col, value=workday_counts.get(name, 0)).alignment = center
+        ws2.cell(row=i, column=quanta_col,   value=quanta_counts.get(name, 0)).alignment   = center
+
+    # AVERAGE row at the bottom
+    avg_row = ws2.max_row + 1
+    ws2.cell(row=avg_row, column=1, value="AVERAGE").font = bold
+    if employees_sorted:
+        avg_work = round(sum(workday_counts.values()) / len(employees_sorted), 2)
+        avg_quan = round(sum(quanta_counts.values()) / len(employees_sorted), 2)
+    else:
+        avg_work = 0
+        avg_quan = 0
+    ws2.cell(row=avg_row, column=workdays_col, value=avg_work).alignment = center
+    ws2.cell(row=avg_row, column=quanta_col,   value=avg_quan).alignment = center
+
+    # Save
+    wb.save(out_path)
+    print(f"Wrote Excel: {os.path.abspath(out_path)}")
+
+
+def main():
+    ap = ArgumentParser(description="Export v5 schedule to Excel (2 sheets)")
+    ap.add_argument("--config", default="config_modules.yaml", help="Path to modules YAML")
+    ap.add_argument("--out", default="schedule_matrix.xlsx", help="Output .xlsx path")
+    ap.add_argument("--show-skills", default="true", choices=["true","false"], help="Include skill labels")
+    args = ap.parse_args()
+
+    show_skills = (args.show_skills.lower() == "true")
+
+    solution, start_day = solve_from_config(args.config)
+    print(f"Best score: {solution.score}")
+
+    write_excel(solution, start_day, config_path=args.config, out_path=args.out, show_skills=show_skills)
+
+
+if __name__ == "__main__":
+    main()
+
+==============================
+scheduler_v5/main.py (optional)
+
+from .solver import solve_from_config
+
+def main():
+    solution, start_day = solve_from_config("config_modules.yaml")
+    print(f"Best score: {solution.score}")
+    print("Wrote score_breakdown.txt")
+
+if __name__ == "__main__":
+    main()
+
+==============================
+python -m scheduler_v5.main
+
+python -m scheduler_v5.export_csv_fifth --config config_modules.yaml --out schedule_matrix.xlsx
+
