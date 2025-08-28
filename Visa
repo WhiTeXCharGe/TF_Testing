@@ -1,0 +1,236 @@
+===============================================================================
+Title: Country/Visa HARD Constraints — Full Change Log (copy-ready)
+===============================================================================
+
+This document lists all changes required to add three HARD constraints to your
+Timefold scheduler:
+
+  H1) Country changeover gap (A↔B) between consecutive assignments of one employee  
+  H2) Visa continuous stay cap per country (span counts weekends/holidays)  
+  H3) Visa A↔J travel/reset stub (placeholder hook for future)
+
+It also provides the exact YAML additions, Python globals, config loader code,
+constraint functions, registration in define_constraints, and brief reasoning.
+
+===============================================================================
+1) YAML — ADD THESE NEW FIELDS (top-level; alongside your existing keys)
+===============================================================================
+
+# --- Visa limits: per-country continuous stay cap (calendar span inclusive) ---
+visa_limits:
+  countries:
+    A: 20         # employee may have at most a 20-day calendar span in A
+    B: 30         # employee may have at most a 30-day calendar span in B
+  # Optional: if >0, a gap of X *unscheduled calendar days in that country*
+  # breaks a stay (not enforced yet; reserved for future advanced implementation).
+  presence_gap_break_days: 0
+
+# --- Country changeover: travel/setup gap when switching between countries ---
+country_changeover_days:
+  A:
+    A: 0
+    B: 1
+  B:
+    A: 1
+    B: 0
+
+# (Optional) If you later want explicit “return to J” gaps, reserve this block:
+visa_travel_gap:
+  A_to_J: 1   # days after leaving A before considered back in J (not scheduled)
+  J_to_A: 1   # days needed before first day in A again
+  B_to_J: 1
+  J_to_B: 1
+
+Notes:
+- H2 (visa span) matches your requirement that weekends/holidays COUNT toward
+  the country limit. The span is earliest-assignment to latest-assignment in the
+  same country (inclusive). This is “strict” and simple to enforce pairwise.
+- If you later want “small gaps break the stay”, we’ll implement presence-gap
+  logic or a shadow variable. The YAML key `presence_gap_break_days` is future use.
+
+===============================================================================
+2) PYTHON GLOBALS — ADD NEAR YOUR OTHER GLOBALS
+   (Place with _BUSINESS_DAYS, _MODULE_COUNTRY, etc.)
+===============================================================================
+
+# ===== New globals for country/visa logic =====
+_COUNTRY_CHANGEOVER: Dict[str, Dict[str, int]] = {}   # e.g. {'A': {'A':0,'B':1}, ...}
+_VISA_MAX_DAYS_BY_COUNTRY: Dict[str, int] = {}        # e.g. {'A':20,'B':30}
+_VISA_PRESENCE_GAP_BREAK_DAYS: int = 0                # 0 = strict span mode
+
+===============================================================================
+3) CONFIG LOADER — ADD PARSE LOGIC INSIDE load_config_modules(...)
+   (Right after you parse calendars and module/company/country maps)
+===============================================================================
+
+    # --- Country changeover (A<->B) ---
+    global _COUNTRY_CHANGEOVER
+    _COUNTRY_CHANGEOVER = {}
+    for from_c, inner in (cfg.get("country_changeover_days", {}) or {}).items():
+        _COUNTRY_CHANGEOVER[from_c] = {to_c: int(days) for to_c, days in (inner or {}).items()}
+
+    # --- Visa limits per country (continuous days cap) ---
+    global _VISA_MAX_DAYS_BY_COUNTRY, _VISA_PRESENCE_GAP_BREAK_DAYS
+    _VISA_MAX_DAYS_BY_COUNTRY = {}
+    visa_cfg = cfg.get("visa_limits", {}) or {}
+    for ctry, max_days in (visa_cfg.get("countries", {}) or {}).items():
+        _VISA_MAX_DAYS_BY_COUNTRY[str(ctry)] = int(max_days)
+    _VISA_PRESENCE_GAP_BREAK_DAYS = int(visa_cfg.get("presence_gap_break_days", 0))
+
+Notes:
+- No changes needed to employees or modules for these features. We derive country
+  from your `_MODULE_COUNTRY[module_code]` map already built in the loader.
+
+===============================================================================
+4) CONSTRAINT REGISTRATION — UPDATE define_constraints(...)
+   (Add under your HARD constraints section)
+===============================================================================
+
+@constraint_provider
+def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
+    return [
+        # HARD (existing)
+        require_employee_assigned(cf),
+        require_day_assigned(cf),
+        day_within_window(cf),
+        skill_must_exist(cf),
+        employee_not_double_booked_same_day(cf),
+        process_precedence_within_module(cf),
+        employee_not_on_unavailable_day(cf),
+        no_weekend_work(cf),
+        module_company_country_unavailable(cf),
+
+        # HARD (NEW)
+        country_changeover_gap(cf),          # H1
+        visa_continuous_stay_cap(cf),        # H2
+        visa_year_counting_note_stub(cf),    # H3 placeholder
+
+        # SOFT (existing)
+        finish_asap(cf),
+        gently_prefer_levels_near_3(cf),
+        prefer_continuity(cf),
+        balance_workload(cf),
+    ]
+
+===============================================================================
+5) CONSTRAINT FUNCTIONS — ADD THESE (below your other constraint functions)
+===============================================================================
+
+# ---------------------------------------------------------------------------
+# H1) Country changeover gap (A↔B)
+# Require b.day.id >= a.day.id + gap + 1 when employee switches countries.
+# ---------------------------------------------------------------------------
+def country_changeover_gap(cf: ConstraintFactory) -> Constraint:
+    def violates(a: RequirementSlot, b: RequirementSlot) -> bool:
+        # a.day < b.day enforced by less_than joiner
+        if a.employee is None or b.employee is None or a.day is None or b.day is None:
+            return False  # let other constraints handle nulls
+        c_from = _MODULE_COUNTRY.get(a.module)
+        c_to   = _MODULE_COUNTRY.get(b.module)
+        if c_from is None or c_to is None:
+            return False
+        gap_req = _COUNTRY_CHANGEOVER.get(c_from, {}).get(c_to, 0)
+        if gap_req <= 0:
+            return False
+        # Need at least `gap_req` empty calendar days between a and b:
+        # b.day.id >= a.day.id + gap_req + 1
+        return not (b.day.id >= a.day.id + gap_req + 1)
+
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee),
+            Joiners.less_than(lambda r: r.day.id if r.day is not None else -10)
+        )
+        .filter(violates)
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Country changeover gap")
+    )
+
+# ---------------------------------------------------------------------------
+# H2) Visa continuous stay cap per country (strict span mode)
+# Span counts *all* days (weekends/holidays included) between earliest and latest
+# assignment in the same country for the same employee.
+# If span > country cap, penalize.
+# ---------------------------------------------------------------------------
+def visa_continuous_stay_cap(cf: ConstraintFactory) -> Constraint:
+    def violates(a: RequirementSlot, b: RequirementSlot) -> bool:
+        if a.employee is None or b.employee is None or a.day is None or b.day is None:
+            return False
+        c_a = _MODULE_COUNTRY.get(a.module)
+        c_b = _MODULE_COUNTRY.get(b.module)
+        if c_a is None or c_b is None or c_a != c_b:
+            return False
+        cap = _VISA_MAX_DAYS_BY_COUNTRY.get(c_a, None)
+        if cap is None or cap <= 0:
+            return False
+        # a.day < b.day due to the less_than joiner:
+        span = (b.day.id - a.day.id + 1)
+        return span > cap
+
+    return (
+        cf.for_each_unique_pair(
+            RequirementSlot,
+            Joiners.equal(lambda r: r.employee),
+            Joiners.equal(lambda r: _MODULE_COUNTRY.get(r.module, None)),
+            Joiners.less_than(lambda r: r.day.id if r.day is not None else -10)
+        )
+        .filter(violates)
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Visa continuous-stay cap by country")
+    )
+
+# ---------------------------------------------------------------------------
+# H3) Visa A↔J travel/reset stub (placeholder)
+# This does nothing now; it’s a hook for future logic when we add a shadow
+# state (A/B/J) or explicit “unscheduled reset” rules.
+# ---------------------------------------------------------------------------
+def visa_year_counting_note_stub(cf: ConstraintFactory) -> Constraint:
+    return (cf.for_each(RequirementSlot)
+            .penalize(HardSoftScore.ZERO)
+            .as_constraint("Visa A<->J travel reset (stub)"))
+
+===============================================================================
+6) BEHAVIOR NOTES / LIMITATIONS
+===============================================================================
+
+- “Weekends/holidays count toward visa days”:
+  H2 uses calendar span (earliest to latest assignment) as the stay length. This
+  automatically includes weekends/holidays—even if you don’t schedule anyone on
+  weekends (because the ‘stay’ assumes the worker remains in-country).
+
+- Breaking a “stay” with gaps:
+  To treat large gaps as a reset (e.g., presence_gap_break_days > 0), we must
+  identify contiguous blocks of presence in a country. The current pairwise
+  check enforces a safe upper bound (span must not exceed cap). If you later
+  need precise block logic, we’ll add a shadow variable or a custom incremental
+  score calculator.
+
+- A↔J (home) travel/reset and gaps:
+  The placeholder `visa_year_counting_note_stub` is registered so the score
+  engine and explain tooling keep a stable rule name. When we design your
+  “return to J” semantics, we’ll replace the stub with a real constraint.
+
+- Performance:
+  All 3 rules are pairwise stream constraints. They scale with the number of
+  requirement slots; usually fine for your sizes, but if you push to very large
+  horizons/workloads, consider a grouping/shadow approach for H2.
+
+===============================================================================
+7) OPTIONAL: Score breakdown labeling
+===============================================================================
+
+If you keep your `explain_and_write(...)` text report, you can increment counts
+for:
+  - "Country changeover gap"
+  - "Visa continuous-stay cap by country"
+  - "Visa A<->J travel reset (stub)"
+
+e.g. when iterating over assignments, derive country via `_MODULE_COUNTRY[r.module]`
+and recompute pairwise checks similarly to the constraints (or reuse the same
+helpers). This is optional—constraints already affect the solver score.
+
+===============================================================================
+END
+===============================================================================
+
