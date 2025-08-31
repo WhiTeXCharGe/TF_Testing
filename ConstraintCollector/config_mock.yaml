@@ -1,0 +1,64 @@
+
+planning:
+  start_date: 2025-09-01
+  days: 28
+  weekend_work: false
+
+staffing_limits:
+  min_per_task_per_day: 2
+  max_per_task_per_day: 5
+
+countries:
+  A:
+    visa_stay_limit: 4
+    stay_gap_days: 3
+    annual_limit: 12
+    annual_break_days: 4
+  B:
+    visa_stay_limit: 5
+    stay_gap_days: 3
+    annual_limit: 15
+    annual_break_days: 4
+
+country_changeover_days:
+  A: { A: 0, B: 1 }          
+  B: { A: 1, B: 0 }
+
+
+modules:
+  - id: M1
+    name: "Mock Module"
+    processes:
+      - id: P1
+        name: "Mock Process"
+        tasks:
+          - id: T1
+            name: "Task 1"
+            country: A
+            workload: 24 
+          - id: T2
+            name: "Task 2"
+            country: B
+            workload: 22
+          - id: T3
+            name: "Task 3"
+            country: A
+            workload: 25
+
+# Lightweight employee list (≈15): AA .. AO
+employees:
+  - "AA"
+  - "AB"
+  - "AC"
+  - "AD"
+  - "AE"
+  - "AF"
+  - "AG"
+  - "AH"
+  - "AI"
+  - "AJ"
+  - "AK"
+  - "AL"
+  - "AM"
+  - "AN"
+  - "AO"
