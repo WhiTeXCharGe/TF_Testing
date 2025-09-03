@@ -1,0 +1,476 @@
+# =========================
+# Scheduling config (hours)
+# =========================
+start_day: '2025-09-01'
+horizon_days: 30
+business_days: [Mon, Tue, Wed, Thu, Fri]
+
+quantum:
+  per_day: 8   # 8 hours/day baseline; overtime sits on top of this
+
+# (Optional) staffing cap if you want to keep it on — can remove if not needed now
+staffing_per_task_per_day:
+  min: 2
+  max: 8
+
+calendars:
+  company: {}
+  country: {}
+  module: {}
+
+# =========================
+# Modules / Processes / Tasks
+# - Each module has a single start_date.
+# - All processes in a module inherit that start, but have different end_date (in order).
+# - Task workloads are expressed in HOURS (multiples of 8).
+# =========================
+modules:
+  - code: S1
+    company: A
+    country: A
+    start_date: '2025-09-01'
+    processes:
+      - id: 1
+        end_date: '2025-09-10'
+        tasks:
+          - code: S1-P1-A
+            workload_hours: 64
+          - code: S1-P1-B
+            workload_hours: 59
+          - code: S1-P1-C
+            workload_hours: 69
+          - code: S1-P1-D
+            workload_hours: 53
+      - id: 2
+        end_date: '2025-09-20'
+        tasks:
+          - code: S1-P2-A
+            workload_hours: 80
+          - code: S1-P2-B
+            workload_hours: 75
+          - code: S1-P2-C
+            workload_hours: 64
+          - code: S1-P2-D
+            workload_hours: 85
+      - id: 3
+        end_date: '2025-09-30'
+        tasks:
+          - code: S1-P3-A
+            workload_hours: 91
+          - code: S1-P3-B
+            workload_hours: 80
+          - code: S1-P3-C
+            workload_hours: 69
+          - code: S1-P3-D
+            workload_hours: 85
+      - id: 4
+        end_date: '2025-09-30'
+        tasks:
+          - code: S1-P4-A
+            workload_hours: 96
+          - code: S1-P4-B
+            workload_hours: 85
+          - code: S1-P4-C
+            workload_hours: 101
+          - code: S1-P4-D
+            workload_hours: 75
+
+  - code: S2
+    company: B
+    country: B
+    start_date: '2025-09-04'
+    processes:
+      - id: 1
+        end_date: '2025-09-13'
+        tasks:
+          - code: S2-P1-A
+            workload_hours: 69
+          - code: S2-P1-B
+            workload_hours: 64
+          - code: S2-P1-C
+            workload_hours: 59
+          - code: S2-P1-D
+            workload_hours: 75
+      - id: 2
+        end_date: '2025-09-23'
+        tasks:
+          - code: S2-P2-A
+            workload_hours: 85
+          - code: S2-P2-B
+            workload_hours: 80
+          - code: S2-P2-C
+            workload_hours: 64
+          - code: S2-P2-D
+            workload_hours: 91
+      - id: 3
+        end_date: '2025-09-30'
+        tasks:
+          - code: S2-P3-A
+            workload_hours: 80
+          - code: S2-P3-B
+            workload_hours: 69
+          - code: S2-P3-C
+            workload_hours: 96
+          - code: S2-P3-D
+            workload_hours: 75
+      - id: 4
+        end_date: '2025-09-30'
+        tasks:
+          - code: S2-P4-A
+            workload_hours: 91
+          - code: S2-P4-B
+            workload_hours: 80
+          - code: S2-P4-C
+            workload_hours: 85
+          - code: S2-P4-D
+            workload_hours: 64
+
+  - code: S3
+    company: C
+    country: A
+    start_date: '2025-09-08'
+    processes:
+      - id: 1
+        end_date: '2025-09-17'
+        tasks:
+          - code: S3-P1-A
+            workload_hours: 75
+          - code: S3-P1-B
+            workload_hours: 69
+          - code: S3-P1-C
+            workload_hours: 64
+          - code: S3-P1-D
+            workload_hours: 80
+      - id: 2
+        end_date: '2025-09-27'
+        tasks:
+          - code: S3-P2-A
+            workload_hours: 85
+          - code: S3-P2-B
+            workload_hours: 96
+          - code: S3-P2-C
+            workload_hours: 75
+          - code: S3-P2-D
+            workload_hours: 80
+      - id: 3
+        end_date: '2025-09-30'
+        tasks:
+          - code: S3-P3-A
+            workload_hours: 91
+          - code: S3-P3-B
+            workload_hours: 80
+          - code: S3-P3-C
+            workload_hours: 85
+          - code: S3-P3-D
+            workload_hours: 69
+      - id: 4
+        end_date: '2025-09-30'
+        tasks:
+          - code: S3-P4-A
+            workload_hours: 80
+          - code: S3-P4-B
+            workload_hours: 75
+          - code: S3-P4-C
+            workload_hours: 96
+          - code: S3-P4-D
+            workload_hours: 64
+
+  - code: S4
+    company: A
+    country: B
+    start_date: '2025-09-11'
+    processes:
+      - id: 1
+        end_date: '2025-09-20'
+        tasks:
+          - code: S4-P1-A
+            workload_hours: 64
+          - code: S4-P1-B
+            workload_hours: 80
+          - code: S4-P1-C
+            workload_hours: 69
+          - code: S4-P1-D
+            workload_hours: 85
+      - id: 2
+        end_date: '2025-09-30'
+        tasks:
+          - code: S4-P2-A
+            workload_hours: 75
+          - code: S4-P2-B
+            workload_hours: 64
+          - code: S4-P2-C
+            workload_hours: 80
+          - code: S4-P2-D
+            workload_hours: 91
+      - id: 3
+        end_date: '2025-09-30'
+        tasks:
+          - code: S4-P3-A
+            workload_hours: 96
+          - code: S4-P3-B
+            workload_hours: 69
+          - code: S4-P3-C
+            workload_hours: 80
+          - code: S4-P3-D
+            workload_hours: 85
+      - id: 4
+        end_date: '2025-09-30'
+        tasks:
+          - code: S4-P4-A
+            workload_hours: 85
+          - code: S4-P4-B
+            workload_hours: 75
+          - code: S4-P4-C
+            workload_hours: 91
+          - code: S4-P4-D
+            workload_hours: 80
+
+# =========================
+# Employees (60 total)
+# - Names: AA .. CH
+# - Each has 4–6 skills among P1-A .. P4-D with level 1..5
+# - No personal unavailability here
+# - No country/visa in this version
+# - capacity_hours_per_day = 8; overtime_hours_per_day = 0..6 (rarer at higher values)
+# =========================
+employees:
+  - name: AA
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-A: 3, P1-B: 2, P2-A: 4, P2-C: 2, P3-A: 3 }
+  - name: AB
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-C: 4, P1-D: 2, P2-B: 3, P2-D: 3, P3-B: 2 }
+  - name: AC
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-A: 2, P2-A: 3, P2-C: 4, P3-A: 3, P4-A: 2 }
+  - name: AD
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P1-B: 3, P1-D: 2, P2-B: 4, P3-B: 3, P4-B: 2 }
+  - name: AE
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-C: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
+  - name: AF
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-A: 4, P2-A: 3, P3-A: 3, P3-C: 2, P4-A: 2 }
+  - name: AG
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-B: 3, P2-B: 2, P3-B: 4, P4-B: 2 }
+  - name: AH
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4 }
+  - name: AI
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-A: 2, P1-C: 3, P2-A: 4, P2-C: 2, P3-A: 3 }
+  - name: AJ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-B: 2, P2-B: 3, P3-B: 3, P4-B: 4 }
+  - name: AK
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P1-C: 3, P1-D: 2, P2-D: 3, P3-D: 3, P4-D: 2 }
+  - name: AL
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P2-A: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
+  - name: AM
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-A: 3, P2-A: 4, P3-A: 2, P4-A: 3 }
+  - name: AN
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3 }
+  - name: AO
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-C: 4, P2-C: 3, P3-C: 2, P4-C: 3 }
+  - name: AP
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 3
+    skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4, P3-B: 2 }
+  - name: AQ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-A: 4, P2-B: 2, P3-A: 3, P3-B: 3 }
+  - name: AR
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P2-C: 3, P2-D: 3, P3-C: 4, P3-D: 2 }
+  - name: AS
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-A: 3, P3-C: 2, P4-A: 4, P4-C: 3 }
+  - name: AT
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P3-B: 4, P3-D: 2, P4-B: 3, P4-D: 3 }
+  - name: AU
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-A: 3, P1-B: 2, P2-A: 4, P4-A: 2 }
+  - name: AV
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-C: 2, P2-C: 4, P3-C: 3, P4-C: 2 }
+  - name: AW
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-D: 3, P2-D: 4, P3-D: 2, P4-D: 3 }
+  - name: AX
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 2 }
+  - name: AY
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P2-D: 3, P3-D: 3, P4-D: 2, P1-D: 4 }
+  - name: AZ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
+  - name: BA
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P3-A: 4, P4-A: 3, P2-A: 2, P1-A: 3 }
+  - name: BB
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-B: 3, P4-B: 4, P2-B: 2, P1-B: 2 }
+  - name: BC
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-C: 3, P4-C: 4, P2-C: 2, P1-C: 3 }
+  - name: BD
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P3-D: 4, P4-D: 3, P2-D: 2, P1-D: 2 }
+  - name: BE
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-A: 4, P2-A: 3, P3-A: 2, P4-A: 3, P2-C: 2 }
+  - name: BF
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3, P3-D: 2 }
+  - name: BG
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-C: 3, P2-C: 2, P3-C: 4, P4-C: 3 }
+  - name: BH
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-D: 4, P2-D: 3, P3-D: 2, P4-D: 3 }
+  - name: BI
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P2-A: 4, P3-A: 3, P4-A: 2, P1-A: 3 }
+  - name: BJ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 3 }
+  - name: BK
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 3
+    skills: { P2-C: 3, P3-C: 4, P4-C: 2, P1-C: 2 }
+  - name: BL
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-D: 4, P3-D: 2, P4-D: 3, P1-D: 3 }
+  - name: BM
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-A: 3, P4-A: 4, P1-A: 2, P2-A: 3 }
+  - name: BN
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3 }
+  - name: BO
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-C: 2, P4-C: 4, P1-C: 3, P2-C: 3 }
+  - name: BP
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P3-D: 3, P4-D: 4, P1-D: 2, P2-D: 3 }
+  - name: BQ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P4-A: 4, P1-A: 3, P2-A: 2, P3-A: 3 }
+  - name: BR
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P4-B: 3, P1-B: 2, P2-B: 4, P3-B: 3 }
+  - name: BS
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P4-C: 3, P1-C: 4, P2-C: 2, P3-C: 3 }
+  - name: BT
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P4-D: 3, P1-D: 4, P2-D: 2, P3-D: 3 }
+  - name: BU
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P1-A: 3, P2-A: 4, P3-C: 2, P4-C: 3 }
+  - name: BV
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-B: 3, P2-B: 3, P3-D: 2, P4-D: 4 }
+  - name: BW
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P1-C: 4, P2-C: 3, P3-A: 2, P4-A: 3 }
+  - name: BX
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P1-D: 3, P2-D: 4, P3-B: 2, P4-B: 3 }
+  - name: BY
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-A: 3, P3-A: 4, P4-A: 2, P1-A: 3 }
+  - name: BZ
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 3
+    skills: { P2-B: 3, P3-B: 3, P4-B: 2, P1-B: 4 }
+  - name: CA
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
+  - name: CB
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P2-D: 3, P3-D: 4, P4-D: 2, P1-D: 3 }
+  - name: CC
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-A: 4, P4-A: 3, P1-A: 2, P2-A: 3, P3-C: 2 }
+  - name: CD
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 2
+    skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3, P3-D: 2 }
+  - name: CE
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-C: 3, P4-C: 4, P1-C: 3, P2-C: 2 }
+  - name: CF
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P3-D: 3, P4-D: 3, P1-D: 4, P2-D: 2 }
+  - name: CG
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 1
+    skills: { P4-A: 3, P1-A: 4, P2-A: 2, P3-A: 3 }
+  - name: CH
+    capacity_hours_per_day: 8
+    overtime_hours_per_day: 0
+    skills: { P4-B: 3, P1-B: 3, P2-B: 2, P3-B: 4 }
