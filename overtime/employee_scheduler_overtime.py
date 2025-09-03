@@ -108,7 +108,7 @@ def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
         skill_must_exist(cf),
         employee_daily_capacity_hard(cf),   # <= base + overtime
         process_precedence_within_module(cf),
-
+        one_task_per_employee_per_day(cf),
         # (Optional) HARD: distinct headcount per task/day min/max — uncomment if you want it enforced here
         # staffing_minmax_heads(cf),
 
@@ -239,6 +239,30 @@ def staffing_minmax_heads(cf: ConstraintFactory) -> Constraint:
         .as_constraint("Daily staffing min/max (distinct heads)")
     )
 
+def one_task_per_employee_per_day(cf: ConstraintFactory) -> Constraint:
+    """
+    HARD: An employee may only work on one task per day (any number of hours).
+    If the same (employee, day) has hours on 2 different tasks, penalize.
+    Implemented with unique pairs to avoid groupBy overload issues.
+    """
+    return (
+        cf.for_each_unique_pair(
+            RequirementHour,
+            # same employee, same day
+            Joiners.equal(lambda a: a.employee, lambda b: b.employee),
+            Joiners.equal(lambda a: a.day,      lambda b: b.day),
+            # avoid symmetric duplicates
+            Joiners.less_than(lambda a: a.id,   lambda b: b.id)
+        )
+        .filter(lambda a, b:
+            a.employee is not None and b.employee is not None and
+            a.day is not None and b.day is not None and
+            # different task (module, process, letter)
+            (a.module != b.module or a.process_id != b.process_id or a.task_letter != b.task_letter)
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("One task per employee per day (HARD)")
+    )
 
 # ---- SOFT ----
 

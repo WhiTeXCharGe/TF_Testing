@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.utils import get_column_letter
 
-from employee_scheduler_overtime_2 import solve_from_config  # or your module path
+from employee_scheduler_overtime_2 import solve_from_config
 
 LIGHT_BLUE = "ADD8E6"   # module start highlight
 RED        = "FF9999"   # task end highlight
@@ -22,6 +22,7 @@ def _parse_modules_config(config_path: str):
     start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
     horizon_days = int(cfg.get("horizon_days", 30))
 
+    # Index helpers
     def to_idx(datestr: str) -> int:
         d = datetime.strptime(str(datestr), "%Y-%m-%d").date()
         return max(0, min(horizon_days - 1, (d - start_day).days))
@@ -34,6 +35,7 @@ def _parse_modules_config(config_path: str):
         m_start = to_idx(m.get("start_date", cfg["start_day"]))
         module_start_idx[mcode] = m_start
         for proc in m["processes"]:
+            pid = int(proc["id"])
             p_end = to_idx(proc["end_date"])
             for t in proc["tasks"]:
                 full_code = str(t["code"]).strip().upper()
@@ -44,7 +46,6 @@ def _parse_modules_config(config_path: str):
 
 def write_excel(solution, start_day, config_path: str, out_path: str = "schedule_matrix_overtime.xlsx"):
     dates = [d.d for d in solution.days]  # list[date]
-
     # Sheet 1 aggregation: (task_code, date, employee) -> total hours
     tde_hours = defaultdict(int)
     # Sheet 2 aggregation: (employee, date, task_code) -> total hours
@@ -101,16 +102,20 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
         ws1.cell(row=i, column=1, value=mcode).font = bold
         ws1.cell(row=i, column=2, value=f"{ppart}-{letter}").font = bold
 
+        # start/end highlights
         start_idx = module_start_idx.get(mcode, None)
         end_idx = task_end_idx.get(code, None)
 
         for j, d in enumerate(dates, start=3):
             # build "AA(3,8H) | AB(2,6H)"
             entries = []
+            # aggregate per employee for this task/date
             per_emp = {emp: h for (tcode, day, emp), h in tde_hours.items() if tcode == code and day == d}
             for emp, h in sorted(per_emp.items()):
-                # find skill level on P?-?
+                # find level
+                # lookup by scanning solution.employees
                 lvl = ""
+                # find employee object
                 for e in solution.employees:
                     if e.name == emp:
                         lvl = e.skills.get(f"{ppart}-{letter}", "")
@@ -129,35 +134,29 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
     ws2 = wb.create_sheet("Employees x Dates")
     ws2.cell(row=1, column=1, value="employee").font = bold
     ws2.cell(row=1, column=2, value="skills").font = bold
-    ws2.cell(row=1, column=3, value="required_hours").font = bold   # NEW: min_block_hours
-    ws2.cell(row=1, column=4, value="capacity").font = bold         # base + OT
+    ws2.cell(row=1, column=3, value="capacity").font = bold
 
-    # dates now start at column 5 (E)
-    for j, d in enumerate(dates, start=5):
+    for j, d in enumerate(dates, start=4):
         c = ws2.cell(row=1, column=j, value=d.strftime("%Y-%m-%d"))
         c.font = bold
         ws2.column_dimensions[get_column_letter(j)].width = 30
 
     ws2.column_dimensions["A"].width = 16
     ws2.column_dimensions["B"].width = 48
-    ws2.column_dimensions["C"].width = 16
-    ws2.column_dimensions["D"].width = 12
-    ws2.freeze_panes = "E2"
+    ws2.column_dimensions["C"].width = 12
+    ws2.freeze_panes = "D2"
 
+    # Sort employees by name
     employees_sorted = sorted(solution.employees, key=lambda e: e.name)
 
+    # Build quick lookup for skills string
     def skills_text(e) -> str:
-        # Pretty-print skills; expects keys like "P1-A"
-        def _sort_key(kv):
-            k, _ = kv
-            try:
-                p, t = k.split("-")
-                return (int(p[1:]), t)
-            except Exception:
-                return (999, k)
-        return ", ".join(f"{k}:{v}" for k, v in sorted(e.skills.items(), key=_sort_key))
+        parts = []
+        for k, v in sorted(e.skills.items(), key=lambda kv: (kv[0][1:].split('-')[0] if kv[0].startswith('P') else kv[0], kv[0])):
+            parts.append(f"{k}:{v}")
+        return ", ".join(parts)
 
-    # totals per employee
+    # totals
     workday_counts = defaultdict(int)
     workhour_counts = defaultdict(int)
 
@@ -167,14 +166,11 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
         ws2.cell(row=i, column=1).alignment = left
 
         ws2.cell(row=i, column=2, value=skills_text(e)).alignment = left
-        # required (min block) and capacity
-        req_h = int(getattr(e, "min_block_hours", 8))
-        cap_h = int(e.capacity_hours_per_day) + int(e.overtime_hours_per_day)
-        ws2.cell(row=i, column=3, value=req_h).alignment = center
-        ws2.cell(row=i, column=4, value=cap_h).alignment = center
+        cap = int(e.capacity_hours_per_day) + int(e.overtime_hours_per_day)
+        ws2.cell(row=i, column=3, value=cap).alignment = center
 
-        # dates start at col 5
-        for j, d in enumerate(dates, start=5):
+        for j, d in enumerate(dates, start=4):
+            # concatenate tasks with hours for this employee/day
             tasks_here = [(t, hrs) for (emp, day, t), hrs in edt_hours.items() if emp == e.name and day == d]
             tasks_here.sort(key=lambda kv: kv[0])
             if tasks_here:
@@ -186,9 +182,9 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
                 text = ""
             ws2.cell(row=i, column=j, value=text).alignment = center
 
-    # Totals columns (at the far right, after dates)
-    workdays_col = len(dates) + 5
-    workhours_col = len(dates) + 6
+    # Totals columns
+    workdays_col = len(dates) + 4
+    workhours_col = len(dates) + 5
     ws2.cell(row=1, column=workdays_col, value="Workdays").font = bold
     ws2.cell(row=1, column=workhours_col, value="WorkHours").font = bold
     ws2.column_dimensions[get_column_letter(workdays_col)].width = 12
@@ -197,13 +193,6 @@ def write_excel(solution, start_day, config_path: str, out_path: str = "schedule
     for i, e in enumerate(employees_sorted, start=2):
         ws2.cell(row=i, column=workdays_col, value=workday_counts[e.name]).alignment = center
         ws2.cell(row=i, column=workhours_col, value=workhour_counts[e.name]).alignment = center
-
-    # Grand total of used work hours (bottom row, under WorkHours)
-    total_row = len(employees_sorted) + 2
-    total_used_hours = sum(workhour_counts.values())
-    ws2.cell(row=total_row, column=1, value="TOTAL").font = bold
-    ws2.cell(row=total_row, column=workhours_col, value=total_used_hours).font = bold
-    ws2.cell(row=total_row, column=workhours_col).alignment = center
 
     wb.save(out_path)
     print(f"Wrote Excel: {os.path.abspath(out_path)}")
