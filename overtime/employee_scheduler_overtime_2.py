@@ -1,10 +1,9 @@
-# employee_scheduler_overtime_option_b.py
-from __future__ import annotations
+# employee_scheduler_overtime_2.py
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Annotated, Optional, Dict, List, Tuple, Set
-import yaml
+from typing import Annotated, Optional, Dict, List, Tuple
 import time
+import yaml
 from collections import defaultdict
 
 from timefold.solver.domain import (
@@ -15,9 +14,12 @@ from timefold.solver.domain import (
 )
 from timefold.solver import SolverFactory
 from timefold.solver.config import SolverConfig, TerminationConfig, ScoreDirectorFactoryConfig, Duration
-from timefold.solver.score import HardSoftScore, ConstraintFactory, Constraint, Joiners, constraint_provider, ConstraintCollectors
+from timefold.solver.score import (
+    HardSoftScore, ConstraintFactory, Constraint, Joiners,
+    constraint_provider, ConstraintCollectors
+)
 
-# -------------------- Domain --------------------
+# ======================= Domain =======================
 
 @dataclass(frozen=True)
 class DaySlot:
@@ -31,7 +33,7 @@ class Employee:
     skills: Dict[str, int]
     capacity_hours_per_day: int = 8
     overtime_hours_per_day: int = 0
-    min_block_hours: int = 8   # minimum hours if they work that day
+    min_block_hours: int = 0  # 0 disables
 
 @dataclass(frozen=True)
 class TaskWindow:
@@ -40,246 +42,351 @@ class TaskWindow:
     task_letter: str
     start_day_id: int
     end_day_id: int
-    workload_hours: int
+    workload_units: int  # 8h target per unit
 
     def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
     def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
 
 @planning_entity
 @dataclass
-class Assignment:
+class CoreUnit:
+    """One 6-hour base block that must be scheduled within the task window."""
     id: Annotated[int, PlanningId]
     module: str
     process_id: int
     task_letter: str
-    day: DaySlot
+    start_day_id: int
+    end_day_id: int
 
     employee: Annotated[Optional[Employee], PlanningVariable] = None
-    # IMPORTANT: reference the value range provider "hours_range"
-    hours: Annotated[int, PlanningVariable(value_range_provider_refs=["hours_range"])] = 0
+    day:      Annotated[Optional[DaySlot],  PlanningVariable] = None
 
+    def hours(self) -> int: return 6
+    def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
+    def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
+
+@planning_entity
+@dataclass
+class AddonHour:
+    """One 1-hour token that floats to balance cores to the 8h average."""
+    id: Annotated[int, PlanningId]
+    module: str
+    process_id: int
+    task_letter: str
+    start_day_id: int
+    end_day_id: int
+
+    employee: Annotated[Optional[Employee], PlanningVariable] = None
+    day:      Annotated[Optional[DaySlot],  PlanningVariable] = None
+
+    def hours(self) -> int: return 1
     def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
     def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
 
 @planning_solution
 @dataclass
 class Schedule:
-    days:       Annotated[List[DaySlot],  ProblemFactCollectionProperty, ValueRangeProvider]
-    employees:  Annotated[List[Employee], ProblemFactCollectionProperty, ValueRangeProvider]
-    hours_range: Annotated[List[int], ProblemFactCollectionProperty, ValueRangeProvider(id="hours_range")]
-    assigns:    Annotated[List[Assignment], PlanningEntityCollectionProperty]
-    score:      Annotated[HardSoftScore,  PlanningScore] = field(default=None)
+    days:      Annotated[List[DaySlot],  ProblemFactCollectionProperty, ValueRangeProvider]
+    employees: Annotated[List[Employee], ProblemFactCollectionProperty, ValueRangeProvider]
 
-# -------------------- Globals --------------------
+    cores:   Annotated[List[CoreUnit],   PlanningEntityCollectionProperty]
+    addons:  Annotated[List[AddonHour],  PlanningEntityCollectionProperty]
+
+    score:   Annotated[HardSoftScore,    PlanningScore] = field(default=None)
+
+# ======================= Globals =======================
+
+_STAFF_MIN_PER_DAY: Optional[int] = None
+_STAFF_MAX_PER_DAY: Optional[int] = None
 _DAYID_YYYYMM: Dict[int, Tuple[int, int]] = {}
-_STAFF_MAX_PER_DAY: int = 8
-_MAX_HOURS_PER_DAY: int = 14  # 8 base + up to 6 OT
-# workload lookup: (module, process_id, task_letter) -> workload_hours
-_TASK_WORKLOAD: Dict[Tuple[str, int, str], int] = {}
+_TARGET_HOURS_PER_EMP: float = 0.0
 
-# -------------------- Constraints --------------------
+# ======================= Constraints =======================
+
 @constraint_provider
 def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
-    return [
+    cons = [
         # HARD
-        valid_if_hours(cf),
-        employee_daily_cap(cf),
-        min_block_if_touched_hard(cf),
-        one_task_per_employee_day(cf),
-        process_precedence(cf),
-        task_underfill_hard(cf),
+        require_employee_day_and_skill_core(cf),
+        require_employee_day_and_skill_add(cf),
+        day_within_window_core(cf),
+        day_within_window_add(cf),
+        employee_daily_cap_hard(cf),
+        one_task_per_employee_per_day_hard(cf),
+        staffing_minmax_heads_hard(cf),
 
         # SOFT
-        task_overfill_soft(cf),
         avoid_overtime_soft(cf),
+        fill_to_capacity_soft(cf),
         finish_asap_soft(cf),
-        prefer_skill_soft(cf),
         continuity_soft(cf),
-        minimize_empdays_soft(cf),
-    ]
 
-def valid_if_hours(cf: ConstraintFactory) -> Constraint:
-    """If hours > 0 → must have employee and eligible skill (>=1)."""
-    return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.hours > 0 and (a.employee is None or a.employee.skills.get(a.pcode(), 0) < 1))
-        .penalize(HardSoftScore.ONE_HARD)
-        .as_constraint("Assignment valid only if employee+skill")
+        # addons stick to existing core on same task/day/employee (reduce extra heads)
+        stick_addons_to_core_soft(cf),
+
+        # balance total hours across employees
+        balance_total_hours_soft(cf),
+    ]
+    return cons
+
+# --- helpers to iterate both types uniformly ---
+def _all_units_stream(cf: ConstraintFactory):
+    # join CoreUnit and AddonHour via "if exists then include" trick:
+    return cf.for_each(CoreUnit).join(
+        cf.for_each(AddonHour),  # dummy join to enable reuse? We'll just write 2 streams where needed.
     )
 
-def employee_daily_cap(cf: ConstraintFactory) -> Constraint:
-    """Per (employee, day): sum(hours) ≤ base + OT (HARD)."""
+def require_employee_day_and_skill_core(cf: ConstraintFactory) -> Constraint:
     return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .group_by(lambda a: (a.employee, a.day.id),
-                  ConstraintCollectors.sum(lambda a: a.hours))
-        .filter(lambda key, total: total > key[0].capacity_hours_per_day + key[0].overtime_hours_per_day)
-        .penalize(HardSoftScore.ONE_HARD,
-                  lambda key, total: total - (key[0].capacity_hours_per_day + key[0].overtime_hours_per_day))
+        cf.for_each(CoreUnit)
+        .filter(lambda u:
+            u.employee is None or u.day is None or
+            u.employee.skills.get(u.pcode(), 0) < 1
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Core must have employee+day+eligible skill")
+    )
+
+def require_employee_day_and_skill_add(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(AddonHour)
+        .filter(lambda u:
+            u.employee is None or u.day is None or
+            u.employee.skills.get(u.pcode(), 0) < 1
+        )
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Addon must have employee+day+eligible skill")
+    )
+
+def day_within_window_core(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.day is None or not (u.start_day_id <= u.day.id <= u.end_day_id))
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Core day outside window")
+    )
+
+def day_within_window_add(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(AddonHour)
+        .filter(lambda u: u.day is None or not (u.start_day_id <= u.day.id <= u.end_day_id))
+        .penalize(HardSoftScore.ONE_HARD)
+        .as_constraint("Addon day outside window")
+    )
+
+def employee_daily_cap_hard(cf: ConstraintFactory) -> Constraint:
+    # Sum(core.hours + addons.hours) per (employee, day) <= base + overtime
+    return (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours()))
+        .join(
+            cf.for_each(AddonHour)
+            .filter(lambda a: a.employee is not None and a.day is not None),
+            Joiners.equal(lambda k, total: k[0], lambda a: a.employee),
+            Joiners.equal(lambda k, total: k[1], lambda a: a.day.id),
+            ConstraintCollectors.sum(lambda a: a.hours())
+        )
+        .penalize(
+            HardSoftScore.ONE_HARD,
+            lambda key_total_core, addon_sum:
+                max(0, (key_total_core[1] + addon_sum) - (key_total_core[0][0].capacity_hours_per_day + key_total_core[0][0].overtime_hours_per_day))
+        )
         .as_constraint("Employee daily cap (HARD)")
     )
 
-def min_block_if_touched_hard(cf: ConstraintFactory) -> Constraint:
-    """If an (employee, day) is used, enforce sum(hours) ≥ min_block_hours (default 8)."""
-    def min_block(emp: Employee) -> int:
-        return max(0, int(getattr(emp, "min_block_hours", 8)))
-    return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .group_by(lambda a: (a.employee, a.day.id),
-                  ConstraintCollectors.sum(lambda a: a.hours))
-        .filter(lambda key, total: 0 < total < min_block(key[0]))
-        .penalize(HardSoftScore.ONE_HARD, lambda key, total: min_block(key[0]) - total)
-        .as_constraint("Min 8h block if assigned (HARD)")
+def one_task_per_employee_per_day_hard(cf: ConstraintFactory) -> Constraint:
+    # Count distinct tasks per (employee, day) across BOTH cores and addons
+    core_task = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.to_list(lambda u: u.tcode()))
     )
-
-def one_task_per_employee_day(cf: ConstraintFactory) -> Constraint:
-    """
-    HARD: For each (employee, day), they may work on at most ONE task code.
-    """
+    add_task = (
+        cf.for_each(AddonHour)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.to_list(lambda u: u.tcode()))
+    )
     return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .group_by(
-            lambda a: (a.employee, a.day.id),
-            ConstraintCollectors.count_distinct(lambda a: a.tcode())
+        core_task.join(add_task,
+            Joiners.equal(lambda k1, list1: k1, lambda k2, list2: k2),
+            ConstraintCollectors.to_list(lambda k2, list2: list2))
+        .penalize(
+            HardSoftScore.ONE_HARD,
+            lambda k_core_list, add_list_list:
+                max(0, len(set((k_core_list[1] or []) + sum(add_list_list, []))) - 1)
         )
-        .filter(lambda key, distinct_tasks: distinct_tasks > 1)
-        .penalize(HardSoftScore.ONE_HARD, lambda key, distinct_tasks: distinct_tasks - 1)
         .as_constraint("One task per employee per day (HARD)")
     )
 
-
-def process_precedence(cf: ConstraintFactory) -> Constraint:
-    """
-    HARD: For the same module, any work on process p+1 must be strictly AFTER all work on p.
-    Penalize if there exists an assignment A on p+1 and B on p such that A.day.id <= B.day.id.
-    """
+def staffing_minmax_heads_hard(cf: ConstraintFactory) -> Constraint:
+    # Heads on a task-day = distinct employees who did ANY core/addon there
+    core_heads = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.module, u.process_id, u.task_letter, u.day.id),
+                  ConstraintCollectors.to_set(lambda u: u.employee))
+    )
+    addon_heads = (
+        cf.for_each(AddonHour)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.module, u.process_id, u.task_letter, u.day.id),
+                  ConstraintCollectors.to_set(lambda u: u.employee))
+    )
     return (
-        cf.for_each(Assignment)  # A: candidate on p+1
-        .filter(lambda a: a.hours > 0)
-        .if_exists(
-            Assignment,  # B: candidate on p
-            # same module
-            Joiners.equal(lambda a: a.module, lambda b: b.module),
-            # consecutive processes: A.process = B.process + 1
-            Joiners.equal(lambda a: a.process_id, lambda b: b.process_id + 1),
-            # out-of-order in time: A.day <= B.day  (must be strictly after)
-            Joiners.less_than_or_equal(lambda a: a.day.id, lambda b: b.day.id),
-            # ONLY JOINERS allowed here → use filtering joiner to require B has hours
-            Joiners.filtering(lambda a, b: b.hours > 0),
+        core_heads.join(addon_heads,
+                        Joiners.equal(lambda k1, s1: k1, lambda k2, s2: k2),
+                        ConstraintCollectors.to_set(lambda k2, s2: next(iter(s2), None)))
+        .filter(lambda key_set_core, set_add:
+            (_STAFF_MIN_PER_DAY is not None and len(set(key_set_core[1] | set_add)) < _STAFF_MIN_PER_DAY) or
+            (_STAFF_MAX_PER_DAY is not None and len(set(key_set_core[1] | set_add)) > _STAFF_MAX_PER_DAY)
         )
-        .penalize(HardSoftScore.ONE_HARD)
-        .as_constraint("Process precedence (p+1 strictly after p)")
-    )
-
-def task_underfill_hard(cf: ConstraintFactory) -> Constraint:
-    """For each task, penalize missing hours (HARD)."""
-    def missing(key, total) -> int:
-        need = _TASK_WORKLOAD.get((key[0], key[1], key[2]), 0)
-        return max(0, need - (total or 0))
-    return (
-        cf.for_each(Assignment)
-        .group_by(lambda a: (a.module, a.process_id, a.task_letter),
-                  ConstraintCollectors.sum(lambda a: a.hours))
-        .filter(lambda key, total: missing(key, total) > 0)
-        .penalize(HardSoftScore.ONE_HARD, lambda key, total: missing(key, total))
-        .as_constraint("Task underfill (HARD)")
-    )
-
-def task_overfill_soft(cf: ConstraintFactory) -> Constraint:
-    """Allow overfill but penalize extra hours (SOFT)."""
-    def extra(key, total) -> int:
-        need = _TASK_WORKLOAD.get((key[0], key[1], key[2]), 0)
-        x = (total or 0) - need
-        return x if x > 0 else 0
-    return (
-        cf.for_each(Assignment)
-        .group_by(lambda a: (a.module, a.process_id, a.task_letter),
-                  ConstraintCollectors.sum(lambda a: a.hours))
-        .filter(lambda key, total: extra(key, total) > 0)
-        .penalize(HardSoftScore.ONE_SOFT, lambda key, total: extra(key, total))
-        .as_constraint("Task overfill (SOFT)")
+        .penalize(
+            HardSoftScore.ONE_HARD,
+            lambda key_set_core, set_add:
+                ((_STAFF_MIN_PER_DAY - len(set(key_set_core[1] | set_add)))
+                    if (_STAFF_MIN_PER_DAY is not None and len(set(key_set_core[1] | set_add)) < _STAFF_MIN_PER_DAY) else 0) +
+                ((len(set(key_set_core[1] | set_add)) - _STAFF_MAX_PER_DAY)
+                    if (_STAFF_MAX_PER_DAY is not None and len(set(key_set_core[1] | set_add)) > _STAFF_MAX_PER_DAY) else 0)
+        )
+        .as_constraint("Staffing min/max heads per task-day (HARD)")
     )
 
 def avoid_overtime_soft(cf: ConstraintFactory) -> Constraint:
-    """Penalty for hours above base per employee-day (SOFT)."""
+    # Softly discourage going over base capacity (not counting OT allowance)
+    core_sum = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours()))
+    )
     return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .group_by(lambda a: (a.employee, a.day.id),
-                  ConstraintCollectors.sum(lambda a: a.hours))
-        .filter(lambda key, total: total > key[0].capacity_hours_per_day)
-        .penalize(HardSoftScore.ONE_SOFT, lambda key, total: total - key[0].capacity_hours_per_day)
+        core_sum.join(
+            cf.for_each(AddonHour)
+            .filter(lambda a: a.employee is not None and a.day is not None)
+            .group_by(lambda a: (a.employee, a.day.id), ConstraintCollectors.sum(lambda a: a.hours())),
+            Joiners.equal(lambda k1, v1: k1, lambda k2, v2: k2)
+        )
+        .filter(lambda k_core_total, k_add_total:
+            (k_core_total[1] + k_add_total[1]) > k_core_total[0][0].capacity_hours_per_day
+        )
+        .penalize(
+            HardSoftScore.ONE_SOFT,
+            lambda k_core_total, k_add_total:
+                (k_core_total[1] + k_add_total[1]) - k_core_total[0][0].capacity_hours_per_day
+        )
         .as_constraint("Avoid overtime (SOFT)")
     )
 
-def finish_asap_soft(cf: ConstraintFactory) -> Constraint:
-    """Penalize later days, scaled by hours (SOFT)."""
+def fill_to_capacity_soft(cf: ConstraintFactory) -> Constraint:
+    core_sum = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None and u.day is not None)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours()))
+    )
+    add_sum = (
+        cf.for_each(AddonHour)
+        .filter(lambda a: a.employee is not None and a.day is not None)
+        .group_by(lambda a: (a.employee, a.day.id), ConstraintCollectors.sum(lambda a: a.hours()))
+    )
     return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.hours > 0 and a.day is not None)
-        .penalize(HardSoftScore.ONE_SOFT, lambda a: a.day.id * a.hours)
+        core_sum.join(add_sum, Joiners.equal(lambda k1, v1: k1, lambda k2, v2: k2))
+        .penalize(
+            HardSoftScore.ONE_SOFT,
+            lambda k_core_total, k_add_total:
+                abs((k_core_total[1] + k_add_total[1]) - k_core_total[0][0].capacity_hours_per_day)
+        )
+        .as_constraint("Fill toward base capacity per day (SOFT)")
+    )
+
+def finish_asap_soft(cf: ConstraintFactory) -> Constraint:
+    # Prefer earlier days for both entities
+    c1 = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.day is not None)
+        .penalize(HardSoftScore.ONE_SOFT, lambda u: u.day.id * u.hours())
+    )
+    c2 = (
+        cf.for_each(AddonHour)
+        .filter(lambda u: u.day is not None)
+        .penalize(HardSoftScore.ONE_SOFT, lambda u: u.day.id * u.hours())
+    )
+    # Trick to return a single constraint: join them and penalize additively
+    return (
+        c1.join(c2, Joiners.less_than(lambda _: 0, lambda __: 1))
+        .penalize(HardSoftScore.ONE_SOFT, lambda *_: 0)
         .as_constraint("Finish ASAP (SOFT)")
     )
 
-def prefer_skill_soft(cf: ConstraintFactory) -> Constraint:
-    """Small reward: higher skill × hours (SOFT)."""
-    return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .reward(HardSoftScore.ONE_SOFT, lambda a: a.employee.skills.get(a.pcode(), 1) * a.hours)
-        .as_constraint("Prefer higher skill (SOFT)")
-    )
-
 def continuity_soft(cf: ConstraintFactory) -> Constraint:
-    """Reward same employee continuing same task on consecutive days (SOFT)."""
     return (
         cf.for_each_unique_pair(
-            Assignment,
-            Joiners.equal(lambda a: a.employee),
-            Joiners.equal(lambda a: a.tcode()),
-            Joiners.less_than(lambda a: a.day.id)
+            CoreUnit,
+            Joiners.equal(lambda u: u.employee),
+            Joiners.equal(lambda u: u.tcode()),
+            Joiners.less_than(lambda u: u.day.id if u.day is not None else -1)
         )
         .filter(lambda a, b:
             a.employee is not None and b.employee is not None and
-            a.hours > 0 and b.hours > 0 and
             a.day is not None and b.day is not None and
             b.day.id == a.day.id + 1
         )
         .reward(HardSoftScore.ONE_SOFT)
-        .as_constraint("Continuity (SOFT)")
+        .as_constraint("Continuity on cores (SOFT)")
     )
 
-def minimize_empdays_soft(cf: ConstraintFactory) -> Constraint:
-    """Small penalty per used (employee, day) to reduce heads (SOFT)."""
+def stick_addons_to_core_soft(cf: ConstraintFactory) -> Constraint:
+    # Reward when an addon is assigned to same (emp, day, task) where that emp already has a core.
     return (
-        cf.for_each(Assignment)
-        .filter(lambda a: a.employee is not None and a.hours > 0)
-        .group_by(lambda a: (a.employee, a.day.id), ConstraintCollectors.count())
-        .penalize(HardSoftScore.ONE_SOFT, lambda key, cnt: 1)
-        .as_constraint("Minimize employee-days used (SOFT)")
+        cf.for_each(AddonHour)
+        .filter(lambda a: a.employee is not None and a.day is not None)
+        .join(
+            cf.for_each(CoreUnit),
+            Joiners.equal(lambda a: a.employee,      lambda c: c.employee),
+            Joiners.equal(lambda a: a.day.id,        lambda c: c.day.id if c.day is not None else -1),
+            Joiners.equal(lambda a: a.tcode(),       lambda c: c.tcode())
+        )
+        .reward(HardSoftScore.ONE_SOFT)
+        .as_constraint("Stick addons to an existing core (SOFT)")
     )
 
-# -------------------- YAML loading --------------------
+def balance_total_hours_soft(cf: ConstraintFactory) -> Constraint:
+    core_sum = (
+        cf.for_each(CoreUnit)
+        .filter(lambda u: u.employee is not None)
+        .group_by(lambda u: u.employee, ConstraintCollectors.sum(lambda u: u.hours()))
+    )
+    add_sum = (
+        cf.for_each(AddonHour)
+        .filter(lambda u: u.employee is not None)
+        .group_by(lambda u: u.employee, ConstraintCollectors.sum(lambda u: u.hours()))
+    )
+    return (
+        core_sum.join(add_sum, Joiners.equal(lambda e, h: e, lambda e2, h2: e2))
+        .penalize(HardSoftScore.ONE_SOFT,
+                  lambda emp_total_core, emp_total_add: int(abs((emp_total_core[1] + emp_total_add[1]) - _TARGET_HOURS_PER_EMP)))
+        .as_constraint("Balance total hours across employees (SOFT)")
+    )
+
+# ======================= YAML & builders =======================
+
 def load_config_modules(path: str):
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
+    global _STAFF_MIN_PER_DAY, _STAFF_MAX_PER_DAY
+    staff_cfg = cfg.get("staffing_per_task_per_day", {}) or {}
+    _STAFF_MIN_PER_DAY = staff_cfg.get("min", None)
+    _STAFF_MAX_PER_DAY = staff_cfg.get("max", None)
+    if _STAFF_MIN_PER_DAY is not None: _STAFF_MIN_PER_DAY = int(_STAFF_MIN_PER_DAY)
+    if _STAFF_MAX_PER_DAY is not None: _STAFF_MAX_PER_DAY = int(_STAFF_MAX_PER_DAY)
+
     start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
     horizon_days = int(cfg.get("horizon_days", 30))
-
     days: List[DaySlot] = []
     for i in range(horizon_days):
         d = start_day + timedelta(days=i)
         days.append(DaySlot(i, d))
         _DAYID_YYYYMM[i] = (d.year, d.month)
-
-    # staffing caps -> how many assignment slots we pre-create per task-day
-    global _STAFF_MAX_PER_DAY
-    staff_cfg = cfg.get("staffing_per_task_per_day", {}) or {}
-    _STAFF_MAX_PER_DAY = int(staff_cfg.get("max", 8))
 
     windows: List[TaskWindow] = []
     for m in cfg["modules"]:
@@ -289,17 +396,15 @@ def load_config_modules(path: str):
             pid = int(proc["id"])
             p_end_idx = (datetime.strptime(str(proc["end_date"]), "%Y-%m-%d").date() - start_day).days
             for t in proc["tasks"]:
-                full_code = str(t["code"]).strip().upper()  # e.g., "S1-P2-A"
-                parts = full_code.split("-")
-                letter = parts[2]
-                wh = int(t.get("workload_hours", 0))
+                full_code = str(t["code"]).strip().upper()
+                letter = full_code.split("-")[2]
+                units = int(t.get("workload_units", 0))
                 windows.append(TaskWindow(
                     module=mcode, process_id=pid, task_letter=letter,
                     start_day_id=m_start_idx, end_day_id=p_end_idx,
-                    workload_hours=wh
+                    workload_units=units
                 ))
 
-    # employees
     employees: List[Employee] = []
     eid = 1
     for e in cfg["employees"]:
@@ -307,7 +412,7 @@ def load_config_modules(path: str):
         skills = {str(k).strip().upper(): int(v) for k, v in (e.get("skills", {}) or {}).items()}
         base = int(e.get("capacity_hours_per_day", 8))
         ot = int(e.get("overtime_hours_per_day", 0))
-        minb = int(e.get("min_block_hours", 8))
+        minb = int(e.get("min_block_hours", 0))
         employees.append(Employee(
             id=eid, name=name, skills=skills,
             capacity_hours_per_day=base, overtime_hours_per_day=ot,
@@ -317,41 +422,58 @@ def load_config_modules(path: str):
 
     return start_day, days, windows, employees
 
-# -------------------- Assignment builder --------------------
-def build_assignments(windows: List[TaskWindow], days: List[DaySlot]) -> List[Assignment]:
-    """Pre-create up to _STAFF_MAX_PER_DAY assignment slots per (task, day) in its window."""
-    assigns: List[Assignment] = []
+def build_entities(windows: List[TaskWindow]) -> Tuple[List[CoreUnit], List[AddonHour]]:
+    cores: List[CoreUnit] = []
+    addons: List[AddonHour] = []
+    cid = 1
     aid = 1
     for w in windows:
-        for d in days:
-            if w.start_day_id <= d.id <= w.end_day_id:
-                for _ in range(_STAFF_MAX_PER_DAY):
-                    assigns.append(Assignment(
-                        id=aid, module=w.module, process_id=w.process_id, task_letter=w.task_letter, day=d
-                    ))
-                    aid += 1
-    return assigns
+        # 1 core (6h) per workload unit
+        for _ in range(max(0, w.workload_units)):
+            cores.append(CoreUnit(
+                id=cid, module=w.module, process_id=w.process_id, task_letter=w.task_letter,
+                start_day_id=w.start_day_id, end_day_id=w.end_day_id
+            ))
+            cid += 1
+        # 2 addons (1h) per workload unit -> averages a unit to 8h
+        for _ in range(max(0, 2 * w.workload_units)):
+            addons.append(AddonHour(
+                id=aid, module=w.module, process_id=w.process_id, task_letter=w.task_letter,
+                start_day_id=w.start_day_id, end_day_id=w.end_day_id
+            ))
+            aid += 1
+    return cores, addons
 
-# -------------------- Reporting --------------------
-def explain(solution: Schedule, start_day: date):
+# ======================= Reporting =======================
+
+def explain(solution: Schedule, start_day: date) -> None:
     emp_day_hours = defaultdict(int)
-    for a in solution.assigns:
-        if a.employee and a.hours > 0:
-            emp_day_hours[(a.employee.name, a.day.id)] += a.hours
-    print("Top loads:")
+    for u in solution.cores:
+        if u.employee and u.day:
+            emp_day_hours[(u.employee.name, u.day.id)] += u.hours()
+    for u in solution.addons:
+        if u.employee and u.day:
+            emp_day_hours[(u.employee.name, u.day.id)] += u.hours()
+    print("Top employee-day loads:")
     for (emp, did), h in sorted(emp_day_hours.items(), key=lambda kv: -kv[1])[:20]:
-        print(f" {emp} @ {(start_day + timedelta(days=did)).isoformat()}: {h}h")
+        print(f"  {emp} @ {(start_day + timedelta(days=did)).isoformat()}: {h}h")
 
-# -------------------- Solver --------------------
-def _build_solver(best_limit: str | None = None, spent_minutes: int | None = None, unimproved_seconds: int | None = None):
+# ======================= Solver =======================
+
+def _build_solver(best_limit: str | None = None,
+                  spent_minutes: int | None = None,
+                  unimproved_seconds: int | None = None):
     term_kwargs = {}
-    if best_limit:        term_kwargs["best_score_limit"] = best_limit
-    if spent_minutes:     term_kwargs["spent_limit"] = Duration(minutes=spent_minutes)
-    if unimproved_seconds:term_kwargs["unimproved_spent_limit"] = Duration(seconds=unimproved_seconds)
+    if best_limit is not None:
+        term_kwargs["best_score_limit"] = best_limit
+    if spent_minutes is not None:
+        term_kwargs["spent_limit"] = Duration(minutes=spent_minutes)
+    if unimproved_seconds is not None:
+        term_kwargs["unimproved_spent_limit"] = Duration(seconds=unimproved_seconds)
 
     cfg = SolverConfig(
         solution_class=Schedule,
-        entity_class_list=[Assignment],
+        entity_class_list=[CoreUnit, AddonHour],
         score_director_factory_config=ScoreDirectorFactoryConfig(
             constraint_provider_function=define_constraints
         ),
@@ -360,31 +482,34 @@ def _build_solver(best_limit: str | None = None, spent_minutes: int | None = Non
     return SolverFactory.create(cfg).build_solver()
 
 def solve_from_config(cfg_path="config_modules.yaml"):
-    global _TASK_WORKLOAD
+    global _TARGET_HOURS_PER_EMP
 
     start_day, days, windows, employees = load_config_modules(cfg_path)
 
-    # workload map for constraints
-    _TASK_WORKLOAD = {(w.module, w.process_id, w.task_letter): int(w.workload_hours) for w in windows}
+    # total required hours = 8 * sum(workload_units)
+    total_required_hours = sum(w.workload_units for w in windows) * 8
+    _TARGET_HOURS_PER_EMP = total_required_hours / max(1, len(employees))
 
-    assigns = build_assignments(windows, days)
-    hours_range = list(range(_MAX_HOURS_PER_DAY + 1))  # 0..14 inclusive
+    cores, addons = build_entities(windows)
 
-    problem = Schedule(days=days, employees=employees, hours_range=hours_range, assigns=assigns)
+    problem = Schedule(
+        days=days,
+        employees=employees,
+        cores=cores,
+        addons=addons,
+    )
 
-    # PASS 1 — stop when feasible (0 hard)
     t0 = time.time()
-    solver1 = _build_solver(best_limit="0hard/*soft", spent_minutes=2)
+    solver1 = _build_solver(best_limit="0hard/*soft", spent_minutes=5)
     feasible: Schedule = solver1.solve(problem)
     t1 = time.time()
     print(f"[Pass 1] feasible={feasible.score}  time={t1 - t0:.2f}s")
 
-    # PASS 2 — polish soft
-    solver2 = _build_solver(spent_minutes=5, unimproved_seconds=60)
+    solver2 = _build_solver(spent_minutes=5, unimproved_seconds=30)
     t2 = time.time()
     final: Schedule = solver2.solve(feasible)
     t3 = time.time()
-    print(f"[Pass 2] best={final.score}  time={t3 - t2:.2f}s (total {t3 - t0:.2f}s)")
+    print(f"[Pass 2] best={final.score}  time={t3 - t2:.2f}s  (total {t3 - t0:.2f}s)")
 
     explain(final, start_day)
     return final, start_day

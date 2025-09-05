@@ -7,6 +7,7 @@ business_days: [Mon, Tue, Wed, Thu, Fri]
 
 quantum:
   per_day: 8   # 8 hours/day baseline; overtime sits on top of this
+  unit_hours: 8
 
 # (Optional) staffing cap if you want to keep it on — can remove if not needed now
 staffing_per_task_per_day:
@@ -31,49 +32,49 @@ modules:
     start_date: '2025-09-01'
     processes:
       - id: 1
-        end_date: '2025-09-10'
+        end_date: '2025-09-5'
         tasks:
           - code: S1-P1-A
-            workload_hours: 64
+            workload_units: 9
           - code: S1-P1-B
-            workload_hours: 59
+            workload_units: 9
           - code: S1-P1-C
-            workload_hours: 69
+            workload_units: 10
           - code: S1-P1-D
-            workload_hours: 53
+            workload_units: 8
       - id: 2
-        end_date: '2025-09-20'
+        end_date: '2025-09-10'
         tasks:
           - code: S1-P2-A
-            workload_hours: 80
+            workload_units: 10
           - code: S1-P2-B
-            workload_hours: 75
+            workload_units: 9
           - code: S1-P2-C
-            workload_hours: 64
+            workload_units: 8
           - code: S1-P2-D
-            workload_hours: 85
+            workload_units: 11
       - id: 3
-        end_date: '2025-09-30'
+        end_date: '2025-09-15'
         tasks:
           - code: S1-P3-A
-            workload_hours: 91
+            workload_units: 11
           - code: S1-P3-B
-            workload_hours: 80
+            workload_units: 10
           - code: S1-P3-C
-            workload_hours: 69
+            workload_units: 8
           - code: S1-P3-D
-            workload_hours: 85
+            workload_units: 10
       - id: 4
-        end_date: '2025-09-30'
+        end_date: '2025-09-20'
         tasks:
           - code: S1-P4-A
-            workload_hours: 96
+            workload_units: 9
           - code: S1-P4-B
-            workload_hours: 85
+            workload_units: 9
           - code: S1-P4-C
-            workload_hours: 101
+            workload_units: 10
           - code: S1-P4-D
-            workload_hours: 75
+            workload_units: 8
 
   - code: S2
     company: B
@@ -81,49 +82,49 @@ modules:
     start_date: '2025-09-04'
     processes:
       - id: 1
-        end_date: '2025-09-13'
+        end_date: '2025-09-9'
         tasks:
           - code: S2-P1-A
-            workload_hours: 69
+            workload_units: 9
           - code: S2-P1-B
-            workload_hours: 64
+            workload_units: 10
           - code: S2-P1-C
-            workload_hours: 59
+            workload_units: 8
           - code: S2-P1-D
-            workload_hours: 75
+            workload_units: 11
       - id: 2
-        end_date: '2025-09-23'
+        end_date: '2025-09-14'
         tasks:
           - code: S2-P2-A
-            workload_hours: 85
+            workload_units: 11
           - code: S2-P2-B
-            workload_hours: 80
+            workload_units: 9
           - code: S2-P2-C
-            workload_hours: 64
+            workload_units: 10
           - code: S2-P2-D
-            workload_hours: 91
+            workload_units: 12
       - id: 3
-        end_date: '2025-09-30'
+        end_date: '2025-09-19'
         tasks:
           - code: S2-P3-A
-            workload_hours: 80
+            workload_units: 10
           - code: S2-P3-B
-            workload_hours: 69
+            workload_units: 9
           - code: S2-P3-C
-            workload_hours: 96
+            workload_units: 12
           - code: S2-P3-D
-            workload_hours: 75
+            workload_units: 8
       - id: 4
-        end_date: '2025-09-30'
+        end_date: '2025-09-24'
         tasks:
           - code: S2-P4-A
-            workload_hours: 91
+            workload_units: 10
           - code: S2-P4-B
-            workload_hours: 80
+            workload_units: 11
           - code: S2-P4-C
-            workload_hours: 85
+            workload_units: 11
           - code: S2-P4-D
-            workload_hours: 64
+            workload_units: 8
 
   - code: S3
     company: C
@@ -131,49 +132,49 @@ modules:
     start_date: '2025-09-08'
     processes:
       - id: 1
-        end_date: '2025-09-17'
+        end_date: '2025-09-13'
         tasks:
           - code: S3-P1-A
-            workload_hours: 75
+            workload_units: 9
           - code: S3-P1-B
-            workload_hours: 69
+            workload_units: 8
           - code: S3-P1-C
-            workload_hours: 64
+            workload_units: 8
           - code: S3-P1-D
-            workload_hours: 80
+            workload_units: 10
       - id: 2
-        end_date: '2025-09-27'
+        end_date: '2025-09-18'
         tasks:
           - code: S3-P2-A
-            workload_hours: 85
+            workload_units: 11
           - code: S3-P2-B
-            workload_hours: 96
+            workload_units: 12
           - code: S3-P2-C
-            workload_hours: 75
+            workload_units: 9
           - code: S3-P2-D
-            workload_hours: 80
+            workload_units: 9
       - id: 3
-        end_date: '2025-09-30'
+        end_date: '2025-09-23'
         tasks:
           - code: S3-P3-A
-            workload_hours: 91
+            workload_units: 11
           - code: S3-P3-B
-            workload_hours: 80
+            workload_units: 10
           - code: S3-P3-C
-            workload_hours: 85
+            workload_units: 11
           - code: S3-P3-D
-            workload_hours: 69
+            workload_units: 9
       - id: 4
-        end_date: '2025-09-30'
+        end_date: '2025-09-28'
         tasks:
           - code: S3-P4-A
-            workload_hours: 80
+            workload_units: 10
           - code: S3-P4-B
-            workload_hours: 75
+            workload_units: 9
           - code: S3-P4-C
-            workload_hours: 96
+            workload_units: 12
           - code: S3-P4-D
-            workload_hours: 64
+            workload_units: 8
 
   - code: S4
     company: A
@@ -181,49 +182,49 @@ modules:
     start_date: '2025-09-11'
     processes:
       - id: 1
-        end_date: '2025-09-20'
+        end_date: '2025-09-16'
         tasks:
           - code: S4-P1-A
-            workload_hours: 64
+            workload_units: 8
           - code: S4-P1-B
-            workload_hours: 80
+            workload_units: 10
           - code: S4-P1-C
-            workload_hours: 69
+            workload_units: 11
           - code: S4-P1-D
-            workload_hours: 85
+            workload_units: 11
       - id: 2
-        end_date: '2025-09-30'
+        end_date: '2025-09-21'
         tasks:
           - code: S4-P2-A
-            workload_hours: 75
+            workload_units: 9
           - code: S4-P2-B
-            workload_hours: 64
+            workload_units: 8
           - code: S4-P2-C
-            workload_hours: 80
+            workload_units: 10
           - code: S4-P2-D
-            workload_hours: 91
+            workload_units: 11
       - id: 3
-        end_date: '2025-09-30'
+        end_date: '2025-09-26'
         tasks:
           - code: S4-P3-A
-            workload_hours: 96
+            workload_units: 12
           - code: S4-P3-B
-            workload_hours: 69
+            workload_units: 9
           - code: S4-P3-C
-            workload_hours: 80
+            workload_units: 10
           - code: S4-P3-D
-            workload_hours: 85
+            workload_units: 11
       - id: 4
         end_date: '2025-09-30'
         tasks:
           - code: S4-P4-A
-            workload_hours: 85
+            workload_units: 11
           - code: S4-P4-B
-            workload_hours: 75
+            workload_units: 9
           - code: S4-P4-C
-            workload_hours: 91
+            workload_units: 12
           - code: S4-P4-D
-            workload_hours: 80
+            workload_units: 10
 
 # =========================
 # Employees (60 total)
