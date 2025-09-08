@@ -1,5 +1,4 @@
 # employee_scheduler_overtime_2.py
-from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Annotated, Optional, Dict, List, Tuple
@@ -28,24 +27,27 @@ class DaySlot:
     d: date
 
 @dataclass(frozen=True)
+class HourSlot:
+    id: int
+    h: int  # number of hours this unit contributes
+
+@dataclass(frozen=True)
 class Employee:
     id: int
     name: str
-    # key "P{1-4}-{A-D}" -> level 1..5 (>=1 eligible)
     skills: Dict[str, int]
     capacity_hours_per_day: int = 8
     overtime_hours_per_day: int = 0
-    # Set >0 to enforce a minimum block if the employee works that day (disabled by default).
-    min_block_hours: int = 0
+    min_block_hours: int = 0  # 0 disables
 
 @dataclass(frozen=True)
 class TaskWindow:
     module: str
     process_id: int
     task_letter: str
-    start_day_id: int   # inclusive
-    end_day_id: int     # inclusive
-    workload_units: int # how many units (each baseline = quantum.unit_hours)
+    start_day_id: int
+    end_day_id: int
+    workload_units: int  # each unit targets 8 hours on average
 
     def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
     def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
@@ -54,8 +56,8 @@ class TaskWindow:
 @dataclass
 class RequirementUnit:
     """
-    One workload UNIT; solver decides (employee, day, hours).
-    'hours' is variable; total across a task must equal units*unit_hours.
+    ONE workload unit. Solver chooses (employee, day, hourSlot).
+    Sum(hours) across a task == workload_units * _UNIT_BASE (8 by default).
     """
     id: Annotated[int, PlanningId]
     module: str
@@ -66,8 +68,10 @@ class RequirementUnit:
 
     employee: Annotated[Optional[Employee], PlanningVariable] = None
     day:      Annotated[Optional[DaySlot],  PlanningVariable] = None
-    hours:    Annotated[int, PlanningVariable(value_range_provider_refs=["hours_range"])] = 0
+    hourslot: Annotated[Optional[HourSlot], PlanningVariable(value_range_provider_refs=["hourslots"])] = None
 
+    def hours(self) -> int:
+        return 0 if self.hourslot is None else int(self.hourslot.h)
     def pcode(self) -> str: return f"P{self.process_id}-{self.task_letter}"
     def tcode(self) -> str: return f"{self.module}-P{self.process_id}-{self.task_letter}"
 
@@ -75,31 +79,25 @@ class RequirementUnit:
 @dataclass
 class Schedule:
     # Problem facts + value ranges
-    days:      Annotated[List[DaySlot],  ProblemFactCollectionProperty, ValueRangeProvider]
-    employees: Annotated[List[Employee], ProblemFactCollectionProperty, ValueRangeProvider]
+    days:       Annotated[List[DaySlot],   ProblemFactCollectionProperty, ValueRangeProvider]
+    employees:  Annotated[List[Employee],  ProblemFactCollectionProperty, ValueRangeProvider]
+    hourslots:  Annotated[List[HourSlot],  ProblemFactCollectionProperty, ValueRangeProvider]
 
     # Planning entities
-    units:     Annotated[List[RequirementUnit], PlanningEntityCollectionProperty]
-    hours_lower: int = 6
-    hours_upper: int = 12
+    units:      Annotated[List[RequirementUnit], PlanningEntityCollectionProperty]
 
     # Score
-    score:     Annotated[HardSoftScore,  PlanningScore] = field(default=None)
-
-    # ---- Value range provider for RequirementUnit.hours ----
-    @ValueRangeProvider("hours_range")
-    def hours_range(self) -> List[int]:
-        return list(range(self.hours_lower, self.hours_upper + 1))
+    score:      Annotated[HardSoftScore,   PlanningScore] = field(default=None)
 
 # ======================= Globals =======================
 
-_UNIT_HOURS: int = 8  # from YAML quantum.unit_hours
+_UNIT_BASE: int = 8  # baseline hours per unit (do NOT change YAML)
 _STAFF_MIN_PER_DAY: Optional[int] = None
 _STAFF_MAX_PER_DAY: Optional[int] = None
-# target workload IN HOURS per (module, process, task)
-_TASK_WORKLOAD_HOURS: Dict[Tuple[str, int, str], int] = {}
 _DAYID_YYYYMM: Dict[int, Tuple[int, int]] = {}
 _TARGET_HOURS_PER_EMP: float = 0.0
+_MAX_HOURS_PER_UNIT: int = 14  # allow up to 14h per unit (8 + 6 OT)
+_MIN_HOURS_PER_UNIT: int = 0   # allow 0 so other units can compensate
 
 # ======================= Constraints =======================
 
@@ -118,7 +116,6 @@ def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
         avoid_overtime_soft(cf),
         finish_asap_soft(cf),
         continuity_soft(cf),
-        fill_to_capacity_soft(cf),
         balance_total_hours_soft(cf),
     ]
 
@@ -126,29 +123,27 @@ def require_employee_day_and_skill(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(RequirementUnit)
         .filter(lambda u:
-            u.hours > 0 and (
-                u.employee is None or
-                u.day is None or
-                u.employee.skills.get(u.pcode(), 0) < 1
-            )
+            u.employee is None or u.day is None or u.hours() <= 0 or
+            u.employee.skills.get(u.pcode(), 0) < 1
         )
         .penalize(HardSoftScore.ONE_HARD)
-        .as_constraint("Unit must have employee+day+eligible skill when hours>0")
+        .as_constraint("Unit must have employee+day+eligible skill+hours>0")
     )
 
 def day_within_window(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.hours > 0 and (u.day is None or not (u.start_day_id <= u.day.id <= u.end_day_id)))
+        .filter(lambda u: u.hours() > 0 and (u.day is None or not (u.start_day_id <= u.day.id <= u.end_day_id)))
         .penalize(HardSoftScore.ONE_HARD)
         .as_constraint("Unit day outside window")
     )
 
 def employee_daily_cap_hard(cf: ConstraintFactory) -> Constraint:
+    # Sum(hours) per (employee, day) <= base + overtime
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.day is not None and u.hours > 0)
-        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours))
+        .filter(lambda u: u.employee is not None and u.day is not None and u.hours() > 0)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours()))
         .filter(lambda key, total: total > key[0].capacity_hours_per_day + key[0].overtime_hours_per_day)
         .penalize(HardSoftScore.ONE_HARD,
                   lambda key, total: total - (key[0].capacity_hours_per_day + key[0].overtime_hours_per_day))
@@ -156,9 +151,10 @@ def employee_daily_cap_hard(cf: ConstraintFactory) -> Constraint:
     )
 
 def one_task_per_employee_per_day_hard(cf: ConstraintFactory) -> Constraint:
+    # At most 1 task per employee/day
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.day is not None and u.hours > 0)
+        .filter(lambda u: u.employee is not None and u.day is not None and u.hours() > 0)
         .group_by(
             lambda u: (u.employee, u.day.id),
             ConstraintCollectors.count_distinct(lambda u: u.tcode())
@@ -170,13 +166,15 @@ def one_task_per_employee_per_day_hard(cf: ConstraintFactory) -> Constraint:
 
 def staffing_minmax_heads_hard(cf: ConstraintFactory) -> Constraint:
     if _STAFF_MIN_PER_DAY is None and _STAFF_MAX_PER_DAY is None:
-        return (cf.for_each(RequirementUnit)
-                .filter(lambda _: False)
-                .penalize(HardSoftScore.ONE_HARD)
-                .as_constraint("Staffing min/max (disabled)"))
+        return (
+            cf.for_each(RequirementUnit)
+            .filter(lambda _: False)
+            .penalize(HardSoftScore.ONE_HARD)
+            .as_constraint("Staffing min/max (disabled)")
+        )
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.day is not None and u.hours > 0)
+        .filter(lambda u: u.employee is not None and u.day is not None and u.hours() > 0)
         .group_by(
             lambda u: (u.module, u.process_id, u.task_letter, u.day.id),
             ConstraintCollectors.count_distinct(lambda u: u.employee)
@@ -195,24 +193,23 @@ def staffing_minmax_heads_hard(cf: ConstraintFactory) -> Constraint:
     )
 
 def task_hours_exact_hard(cf: ConstraintFactory) -> Constraint:
-    """Sum(hours) == workload_units * unit_hours for each task code."""
-    def diff(task_key, total) -> int:
-        need = _TASK_WORKLOAD_HOURS.get(task_key, 0)
-        return abs(need - (total or 0))
+    """Sum(hours) must equal workload_units * _UNIT_BASE for each task."""
+    def need(task_key) -> int:  # task_key = (module, pid, letter)
+        return _TASK_REQUIRED_HOURS.get(task_key, 0)
     return (
         cf.for_each(RequirementUnit)
         .group_by(lambda u: (u.module, u.process_id, u.task_letter),
-                  ConstraintCollectors.sum(lambda u: u.hours))
-        .filter(lambda key, total: diff(key, total) > 0)
-        .penalize(HardSoftScore.ONE_HARD, lambda key, total: diff(key, total))
+                  ConstraintCollectors.sum(lambda u: u.hours()))
+        .filter(lambda key, total: abs(need(key) - (total or 0)) > 0)
+        .penalize(HardSoftScore.ONE_HARD, lambda key, total: abs(need(key) - (total or 0)))
         .as_constraint("Task hours equality (HARD)")
     )
 
 def avoid_overtime_soft(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.day is not None and u.hours > 0)
-        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours))
+        .filter(lambda u: u.employee is not None and u.day is not None and u.hours() > 0)
+        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours()))
         .filter(lambda key, total: total > key[0].capacity_hours_per_day)
         .penalize(HardSoftScore.ONE_SOFT, lambda key, total: total - key[0].capacity_hours_per_day)
         .as_constraint("Avoid overtime (SOFT)")
@@ -221,8 +218,8 @@ def avoid_overtime_soft(cf: ConstraintFactory) -> Constraint:
 def finish_asap_soft(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.day is not None and u.hours > 0)
-        .penalize(HardSoftScore.ONE_SOFT, lambda u: u.day.id * u.hours)
+        .filter(lambda u: u.day is not None and u.hours() > 0)
+        .penalize(HardSoftScore.ONE_SOFT, lambda u: u.day.id * u.hours())
         .as_constraint("Finish ASAP (SOFT)")
     )
 
@@ -237,28 +234,18 @@ def continuity_soft(cf: ConstraintFactory) -> Constraint:
         .filter(lambda a, b:
             a.employee is not None and b.employee is not None and
             a.day is not None and b.day is not None and
-            a.hours > 0 and b.hours > 0 and
+            a.hours() > 0 and b.hours() > 0 and
             b.day.id == a.day.id + 1
         )
         .reward(HardSoftScore.ONE_SOFT)
         .as_constraint("Continuity (SOFT)")
     )
 
-def fill_to_capacity_soft(cf: ConstraintFactory) -> Constraint:
-    """Pull each emp-day toward base capacity (8 unless employee has different base)."""
-    return (
-        cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.day is not None and u.hours > 0)
-        .group_by(lambda u: (u.employee, u.day.id), ConstraintCollectors.sum(lambda u: u.hours))
-        .penalize(HardSoftScore.ONE_SOFT, lambda key, total: abs(total - key[0].capacity_hours_per_day))
-        .as_constraint("Fill toward base capacity per day (SOFT)")
-    )
-
 def balance_total_hours_soft(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(RequirementUnit)
-        .filter(lambda u: u.employee is not None and u.hours > 0)
-        .group_by(lambda u: u.employee, ConstraintCollectors.sum(lambda u: u.hours))
+        .filter(lambda u: u.employee is not None and u.hours() > 0)
+        .group_by(lambda u: u.employee, ConstraintCollectors.sum(lambda u: u.hours()))
         .penalize(HardSoftScore.ONE_SOFT,
                   lambda emp, total: int(abs(total - _TARGET_HOURS_PER_EMP)))
         .as_constraint("Balance total hours across employees (SOFT)")
@@ -266,21 +253,26 @@ def balance_total_hours_soft(cf: ConstraintFactory) -> Constraint:
 
 # ======================= YAML & builders =======================
 
+_TASK_REQUIRED_HOURS: Dict[Tuple[str, int, str], int] = {}
+
 def load_config_modules(path: str):
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    # globals
-    global _UNIT_HOURS, _STAFF_MIN_PER_DAY, _STAFF_MAX_PER_DAY
-    q = cfg.get("quantum", {}) or {}
-    _UNIT_HOURS = int(q.get("unit_hours", 8))
-
+    # staffing heads min/max
+    global _STAFF_MIN_PER_DAY, _STAFF_MAX_PER_DAY
     staff_cfg = cfg.get("staffing_per_task_per_day", {}) or {}
     _STAFF_MIN_PER_DAY = staff_cfg.get("min", None)
     _STAFF_MAX_PER_DAY = staff_cfg.get("max", None)
     if _STAFF_MIN_PER_DAY is not None: _STAFF_MIN_PER_DAY = int(_STAFF_MIN_PER_DAY)
     if _STAFF_MAX_PER_DAY is not None: _STAFF_MAX_PER_DAY = int(_STAFF_MAX_PER_DAY)
 
+    # baseline per-day (keep default 8 if not present)
+    global _UNIT_BASE
+    q = cfg.get("quantum", {}) or {}
+    _UNIT_BASE = int(q.get("per_day", 8))
+
+    # days horizon
     start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
     horizon_days = int(cfg.get("horizon_days", 30))
     days: List[DaySlot] = []
@@ -289,7 +281,7 @@ def load_config_modules(path: str):
         days.append(DaySlot(i, d))
         _DAYID_YYYYMM[i] = (d.year, d.month)
 
-    # task windows (use workload_units from YAML)
+    # task windows
     windows: List[TaskWindow] = []
     for m in cfg["modules"]:
         mcode = str(m["code"]).strip()
@@ -298,9 +290,9 @@ def load_config_modules(path: str):
             pid = int(proc["id"])
             p_end_idx = (datetime.strptime(str(proc["end_date"]), "%Y-%m-%d").date() - start_day).days
             for t in proc["tasks"]:
-                full_code = str(t["code"]).strip().upper()
+                full_code = str(t["code"]).strip().upper()  # e.g., "S1-P2-A"
                 letter = full_code.split("-")[2]
-                units = int(t.get("workload_units"))
+                units = int(t.get("workload_units", 0))
                 windows.append(TaskWindow(
                     module=mcode, process_id=pid, task_letter=letter,
                     start_day_id=m_start_idx, end_day_id=p_end_idx,
@@ -325,11 +317,8 @@ def load_config_modules(path: str):
 
     return start_day, days, windows, employees
 
-def build_units(windows: List[TaskWindow]) -> List[RequirementUnit]:
-    """
-    Create EXACTLY workload_units entities per task window.
-    Each unit contributes a variable 'hours' chosen from hours_range.
-    """
+def build_units_and_hourslots(windows: List[TaskWindow]) -> Tuple[List[RequirementUnit], List[HourSlot]]:
+    # Entities: exactly workload_units per task
     units: List[RequirementUnit] = []
     uid = 1
     for w in windows:
@@ -343,15 +332,23 @@ def build_units(windows: List[TaskWindow]) -> List[RequirementUnit]:
                 end_day_id=w.end_day_id
             ))
             uid += 1
-    return units
+
+    # Single global hourslot range: MIN..MAX inclusive
+    hourslots: List[HourSlot] = []
+    hid = 0
+    for h in range(_MIN_HOURS_PER_UNIT, _MAX_HOURS_PER_UNIT + 1):
+        hourslots.append(HourSlot(id=hid, h=h))
+        hid += 1
+
+    return units, hourslots
 
 # ======================= Reporting =======================
 
 def explain(solution: Schedule, start_day: date) -> None:
     emp_day_hours = defaultdict(int)
     for u in solution.units:
-        if u.employee and u.day and u.hours > 0:
-            emp_day_hours[(u.employee.name, u.day.id)] += u.hours
+        if u.employee and u.day and u.hours() > 0:
+            emp_day_hours[(u.employee.name, u.day.id)] += u.hours()
     print("Top employee-day loads:")
     for (emp, did), h in sorted(emp_day_hours.items(), key=lambda kv: -kv[1])[:20]:
         print(f"  {emp} @ {(start_day + timedelta(days=did)).isoformat()}: {h}h")
@@ -380,32 +377,28 @@ def _build_solver(best_limit: str | None = None,
     return SolverFactory.create(cfg).build_solver()
 
 def solve_from_config(cfg_path="config_modules.yaml"):
-    global _TASK_WORKLOAD_HOURS, _TARGET_HOURS_PER_EMP
+    global _TARGET_HOURS_PER_EMP, _TASK_REQUIRED_HOURS
 
     start_day, days, windows, employees = load_config_modules(cfg_path)
 
-    # needed hours per task = units * _UNIT_HOURS (from YAML)
-    _TASK_WORKLOAD_HOURS = {
-        (w.module, w.process_id, w.task_letter): int(w.workload_units * _UNIT_HOURS)
+    # required hours per task = workload_units * _UNIT_BASE
+    _TASK_REQUIRED_HOURS = {
+        (w.module, w.process_id, w.task_letter): int(w.workload_units * _UNIT_BASE)
         for w in windows
     }
 
-    total_required_hours = sum(_TASK_WORKLOAD_HOURS.values())
+    total_required_hours = sum(_TASK_REQUIRED_HOURS.values())
     _TARGET_HOURS_PER_EMP = total_required_hours / max(1, len(employees))
 
-    # entities: EXACTLY workload_units per task
-    units = build_units(windows)
+    units, hourslots = build_units_and_hourslots(windows)
 
-    # Build problem (allowed hours range lives on the solution method)
     problem = Schedule(
         days=days,
         employees=employees,
+        hourslots=hourslots,
         units=units,
-        hours_lower=6,
-        hours_upper=14 
     )
 
-    # Two-pass solve
     t0 = time.time()
     solver1 = _build_solver(best_limit="0hard/*soft", spent_minutes=5)
     feasible: Schedule = solver1.solve(problem)

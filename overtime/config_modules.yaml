@@ -6,10 +6,9 @@ horizon_days: 30
 business_days: [Mon, Tue, Wed, Thu, Fri]
 
 quantum:
-  per_day: 8   # 8 hours/day baseline; overtime sits on top of this
+  per_day: 8 
   unit_hours: 8
-
-# (Optional) staffing cap if you want to keep it on — can remove if not needed now
+  
 staffing_per_task_per_day:
   min: 2
   max: 8
@@ -237,15 +236,15 @@ modules:
 employees:
   - name: AA
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-A: 3, P1-B: 2, P2-A: 4, P2-C: 2, P3-A: 3 }
   - name: AB
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-C: 4, P1-D: 2, P2-B: 3, P2-D: 3, P3-B: 2 }
   - name: AC
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-A: 2, P2-A: 3, P2-C: 4, P3-A: 3, P4-A: 2 }
   - name: AD
     capacity_hours_per_day: 8
@@ -253,27 +252,27 @@ employees:
     skills: { P1-B: 3, P1-D: 2, P2-B: 4, P3-B: 3, P4-B: 2 }
   - name: AE
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-C: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
   - name: AF
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-A: 4, P2-A: 3, P3-A: 3, P3-C: 2, P4-A: 2 }
   - name: AG
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 2, P3-B: 4, P4-B: 2 }
   - name: AH
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4 }
   - name: AI
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-A: 2, P1-C: 3, P2-A: 4, P2-C: 2, P3-A: 3 }
   - name: AJ
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-B: 2, P2-B: 3, P3-B: 3, P4-B: 4 }
   - name: AK
     capacity_hours_per_day: 8
@@ -281,19 +280,19 @@ employees:
     skills: { P1-C: 3, P1-D: 2, P2-D: 3, P3-D: 3, P4-D: 2 }
   - name: AL
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P2-A: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
   - name: AM
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-A: 3, P2-A: 4, P3-A: 2, P4-A: 3 }
   - name: AN
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3 }
   - name: AO
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-C: 4, P2-C: 3, P3-C: 2, P4-C: 3 }
   - name: AP
     capacity_hours_per_day: 8
@@ -301,15 +300,15 @@ employees:
     skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4, P3-B: 2 }
   - name: AQ
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-A: 4, P2-B: 2, P3-A: 3, P3-B: 3 }
   - name: AR
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P2-C: 3, P2-D: 3, P3-C: 4, P3-D: 2 }
   - name: AS
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-A: 3, P3-C: 2, P4-A: 4, P4-C: 3 }
   - name: AT
     capacity_hours_per_day: 8
@@ -317,19 +316,19 @@ employees:
     skills: { P3-B: 4, P3-D: 2, P4-B: 3, P4-D: 3 }
   - name: AU
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-A: 3, P1-B: 2, P2-A: 4, P4-A: 2 }
   - name: AV
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-C: 2, P2-C: 4, P3-C: 3, P4-C: 2 }
   - name: AW
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 4, P3-D: 2, P4-D: 3 }
   - name: AX
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 2 }
   - name: AY
     capacity_hours_per_day: 8
@@ -337,27 +336,27 @@ employees:
     skills: { P2-D: 3, P3-D: 3, P4-D: 2, P1-D: 4 }
   - name: AZ
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
   - name: BA
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P3-A: 4, P4-A: 3, P2-A: 2, P1-A: 3 }
   - name: BB
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-B: 3, P4-B: 4, P2-B: 2, P1-B: 2 }
   - name: BC
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-C: 3, P4-C: 4, P2-C: 2, P1-C: 3 }
   - name: BD
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P3-D: 4, P4-D: 3, P2-D: 2, P1-D: 2 }
   - name: BE
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-A: 4, P2-A: 3, P3-A: 2, P4-A: 3, P2-C: 2 }
   - name: BF
     capacity_hours_per_day: 8
@@ -365,19 +364,19 @@ employees:
     skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3, P3-D: 2 }
   - name: BG
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-C: 3, P2-C: 2, P3-C: 4, P4-C: 3 }
   - name: BH
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-D: 4, P2-D: 3, P3-D: 2, P4-D: 3 }
   - name: BI
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P2-A: 4, P3-A: 3, P4-A: 2, P1-A: 3 }
   - name: BJ
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 3 }
   - name: BK
     capacity_hours_per_day: 8
@@ -385,19 +384,19 @@ employees:
     skills: { P2-C: 3, P3-C: 4, P4-C: 2, P1-C: 2 }
   - name: BL
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-D: 4, P3-D: 2, P4-D: 3, P1-D: 3 }
   - name: BM
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-A: 3, P4-A: 4, P1-A: 2, P2-A: 3 }
   - name: BN
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3 }
   - name: BO
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-C: 2, P4-C: 4, P1-C: 3, P2-C: 3 }
   - name: BP
     capacity_hours_per_day: 8
@@ -405,19 +404,19 @@ employees:
     skills: { P3-D: 3, P4-D: 4, P1-D: 2, P2-D: 3 }
   - name: BQ
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P4-A: 4, P1-A: 3, P2-A: 2, P3-A: 3 }
   - name: BR
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P4-B: 3, P1-B: 2, P2-B: 4, P3-B: 3 }
   - name: BS
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P4-C: 3, P1-C: 4, P2-C: 2, P3-C: 3 }
   - name: BT
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P4-D: 3, P1-D: 4, P2-D: 2, P3-D: 3 }
   - name: BU
     capacity_hours_per_day: 8
@@ -425,19 +424,19 @@ employees:
     skills: { P1-A: 3, P2-A: 4, P3-C: 2, P4-C: 3 }
   - name: BV
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 3, P3-D: 2, P4-D: 4 }
   - name: BW
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P1-C: 4, P2-C: 3, P3-A: 2, P4-A: 3 }
   - name: BX
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 4, P3-B: 2, P4-B: 3 }
   - name: BY
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-A: 3, P3-A: 4, P4-A: 2, P1-A: 3 }
   - name: BZ
     capacity_hours_per_day: 8
@@ -445,15 +444,15 @@ employees:
     skills: { P2-B: 3, P3-B: 3, P4-B: 2, P1-B: 4 }
   - name: CA
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
   - name: CB
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P2-D: 3, P3-D: 4, P4-D: 2, P1-D: 3 }
   - name: CC
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-A: 4, P4-A: 3, P1-A: 2, P2-A: 3, P3-C: 2 }
   - name: CD
     capacity_hours_per_day: 8
@@ -461,17 +460,17 @@ employees:
     skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3, P3-D: 2 }
   - name: CE
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-C: 3, P4-C: 4, P1-C: 3, P2-C: 2 }
   - name: CF
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P3-D: 3, P4-D: 3, P1-D: 4, P2-D: 2 }
   - name: CG
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 1
+    overtime_hours_per_day: 3
     skills: { P4-A: 3, P1-A: 4, P2-A: 2, P3-A: 3 }
   - name: CH
     capacity_hours_per_day: 8
-    overtime_hours_per_day: 0
+    overtime_hours_per_day: 4
     skills: { P4-B: 3, P1-B: 3, P2-B: 2, P3-B: 4 }
