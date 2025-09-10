@@ -222,16 +222,16 @@ modules:
         tasks:
           - code: S4-P1-A
             unit_hours: 8
-            workload_units: 4
+            workload_units: 5
           - code: S4-P1-B
             unit_hours: 8
-            workload_units: 4
+            workload_units: 5
           - code: S4-P1-C
             unit_hours: 8
-            workload_units: 4
+            workload_units: 5
           - code: S4-P1-D
             unit_hours: 8
-            workload_units: 4
+            workload_units: 5
       - id: 2
         end_date: '2025-09-21'
         tasks:

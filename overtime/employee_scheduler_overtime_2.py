@@ -125,9 +125,11 @@ def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
         staffing_minmax_heads_hard(cf),
         task_hours_equality_hard(cf),
 
+        snap_into_window_soft(cf),
         avoid_overtime_soft(cf),
         finish_earlier_soft(cf),
         balance_total_hours_soft(cf),
+        
     ]
 
 def _is_unassigned(emp: Employee) -> bool:
@@ -163,37 +165,49 @@ def enforce_hours_domain_per_task(cf: ConstraintFactory) -> Constraint:
 def process_precedence_within_module(cf: ConstraintFactory) -> Constraint:
     """
     For each module, any hour on process p+1 must be on a later day than any hour on p.
-    No Joiners.less_than; normalize (a,b) so pa <= pb and only check consecutive.
+    Implemented as a Uni↔Uni join (no Bi↔Bi), no less_than joiner.
+    We join tokens of consecutive processes in the same module and
+    penalize if the day of (p+1) is not strictly greater than the day of p.
     """
-    def violates(a: UnitToken, b: UnitToken) -> bool:
-        if a.day is None or b.day is None:
-            return False
-        if a.module != b.module:
-            return False
-        # normalize by process id
-        if a.process_id > b.process_id:
-            a, b = b, a
-        if b.process_id != a.process_id + 1:
-            return False
-        return not (b.day.id > a.day.id)  # violation if not strictly later
     return (
-        cf.for_each_unique_pair(UnitToken, Joiners.equal(lambda x: x.module, lambda y: y.module))
-        .filter(violates)
+        cf.for_each(UnitToken)
+        .filter(lambda a: a.day is not None and a.day.id >= 0)
+        .join(
+            cf.for_each(UnitToken).filter(lambda b: b.day is not None and b.day.id >= 0),
+            # same module
+            Joiners.equal(lambda a: a.module, lambda b: b.module),
+            # consecutive processes: b.process_id == a.process_id + 1
+            Joiners.equal(lambda a: a.process_id + 1, lambda b: b.process_id)
+        )
+        # Violation if next process day is NOT strictly later
+        .filter(lambda a, b: not (b.day.id > a.day.id))
         .penalize(HardSoftScore.ONE_HARD)
         .as_constraint("process-precedence-per-module")
     )
 
+
+
 def within_window(cf: ConstraintFactory) -> Constraint:
+    """
+    Keep tokens inside [start_day_id, end_day_id].
+    Penalize by distance from the window *and* by hours,
+    so earlier/outside tokens get pulled into their windows faster.
+    """
+    def distance_penalty(u: UnitToken) -> int:
+        # Strong guidance when not placed yet:
+        if (u.day is None) or (u.day.id < 0):
+            return 100 * max(1, u.hours)
+        if u.day.id < u.start_day_id:
+            return (u.start_day_id - u.day.id) * max(1, u.hours)
+        if u.day.id > u.end_day_id:
+            return (u.day.id - u.end_day_id) * max(1, u.hours)
+        return 0
+
     return (
         cf.for_each(UnitToken)
-        .filter(lambda u:
-            (u.day is None) or
-            (u.day.id < 0) or
-            (u.day.id < u.start_day_id) or
-            (u.day.id > u.end_day_id)
-        )
-        .penalize(HardSoftScore.ONE_HARD)
-        .as_constraint("within-window")
+        .filter(lambda u: distance_penalty(u) > 0)
+        .penalize(HardSoftScore.ONE_HARD, lambda u: distance_penalty(u))
+        .as_constraint("within-window-distance-weighted")
     )
 
 def daily_capacity_hard(cf: ConstraintFactory) -> Constraint:
@@ -270,6 +284,22 @@ def task_hours_equality_hard(cf: ConstraintFactory) -> Constraint:
         .filter(lambda key, total_h: total_h != required_hours(key))
         .penalize(HardSoftScore.ONE_HARD, lambda key, total_h: abs(total_h - required_hours(key)))
         .as_constraint("task-total-hours-equality")
+    )
+
+def snap_into_window_soft(cf: ConstraintFactory) -> Constraint:
+    """
+    If a token sits before its window start, softly penalize by distance
+    so the solver doesn’t camp just in front of the window.
+    """
+    WEIGHT = 500
+    return (
+        cf.for_each(UnitToken)
+        .filter(lambda u: u.day is not None and u.day.id >= 0 and u.day.id < u.start_day_id)
+        .penalize(
+            HardSoftScore.ONE_SOFT,
+            lambda u: WEIGHT * (u.start_day_id - u.day.id) * max(1, u.hours)
+        )
+        .as_constraint("snap-into-window-soft")
     )
 
 def avoid_overtime_soft(cf: ConstraintFactory) -> Constraint:
@@ -440,7 +470,7 @@ def solve_from_config(cfg_path: str = "config_modules.yaml"):
     t0 = time.time()
 
     # Pass 1: stop when feasible OR time limit
-    solver1 = _build_solver(best_limit="0hard/*soft", spent_minutes=25)
+    solver1 = _build_solver(best_limit="0hard/*soft", spent_minutes=10)
     after_pass1: Schedule = solver1.solve(problem)
     t1 = time.time()
     print(f"[Pass 1] score={after_pass1.score}  time={t1 - t0:.2f}s")
@@ -451,15 +481,77 @@ def solve_from_config(cfg_path: str = "config_modules.yaml"):
     t2 = time.time()
     print(f"[Pass 2] score={final.score}  time={t2 - t1:.2f}s  (total {t2 - t0:.2f}s)")
 
-    # Sanity: top employee-day loads (ignoring dummy)
-    by_emp_day = defaultdict(int)
-    for u in final.tokens:
-        if not _is_unassigned(u.employee) and u.day.id >= 0:
-            by_emp_day[(u.employee.name, u.day.id)] += int(u.hours)
-    for (emp, did), h in sorted(by_emp_day.items(), key=lambda kv: -kv[1])[:10]:
-        print(f"  {emp} @ day#{did}: {h}h")
+    # # Sanity: top employee-day loads (ignoring dummy)
+    # by_emp_day = defaultdict(int)
+    # ------- Hard-violation audit (debug prints) -------
+    violations = []
 
-    return final, start_day
+    # within-window
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0:
+            continue
+        if not (u.start_day_id <= u.day.id <= u.end_day_id):
+            violations.append(("WINDOW", u.tcode(), u.day.id, (u.start_day_id, u.end_day_id)))
+
+    # hours-domain-per-task
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0:
+            continue
+        if (u.unit_hours == 4 and u.hours != 4) or (u.unit_hours == 8 and u.hours not in _ALLOWED_HOURS_8U):
+            violations.append(("HOURS_DOMAIN", u.tcode(), u.hours, u.unit_hours))
+
+    # daily-cap-12h
+    from collections import defaultdict
+    by_emp_day_sum = defaultdict(int)
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0:
+            continue
+        by_emp_day_sum[(u.employee.name, u.day.id)] += int(u.hours)
+    for (emp, did), total in by_emp_day_sum.items():
+        if total > _DAILY_CAP:
+            violations.append(("DAILY_CAP", emp, did, total))
+
+    # one-factory-per-emp-day
+    by_emp_day_factories = defaultdict(set)
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0:
+            continue
+        by_emp_day_factories[(u.employee.name, u.day.id)].add(u.factory)
+    for (emp, did), facs in by_emp_day_factories.items():
+        if len(facs) > 1:
+            violations.append(("FACTORY_MIX", emp, did, sorted(facs)))
+
+    # staffing min/max
+    heads = defaultdict(set)  # (module, p, letter, day) -> {employees}
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0 or (u.hours or 0) <= 0:
+            continue
+        heads[(u.module, u.process_id, u.task_letter, u.day.id)].add(u.employee.name)
+    for key, people in heads.items():
+        count = len(people)
+        if (_STAFF_MIN_PER_DAY is not None and count < _STAFF_MIN_PER_DAY) or \
+        (_STAFF_MAX_PER_DAY is not None and count > _STAFF_MAX_PER_DAY):
+            violations.append(("STAFFING", key, count))
+
+    # task-total-hours-equality
+    hours_by_task = defaultdict(int)
+    required = _TASK_REQUIRED_HOURS
+    for u in final.tokens:
+        if u.employee.id == 0 or u.day.id < 0:
+            continue
+        hours_by_task[(u.module, u.process_id, u.task_letter)] += int(u.hours)
+    for key, total in hours_by_task.items():
+        req = required.get(key, 0)
+        if total != req:
+            violations.append(("TASK_HOURS", key, total, req))
+
+    print("=== HARD VIOLATIONS (first 20) ===")
+    for v in violations[:20]:
+        print(v)
+    print(f"TOTAL HARD VIOLATIONS FOUND: {len(violations)}")
+    # ------------------------------------
+
+    return final, start_day 
 
 def main():
     solve_from_config("config_modules.yaml")
