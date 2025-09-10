@@ -3,20 +3,13 @@
 # =========================
 start_day: '2025-09-01'
 horizon_days: 30
-business_days: [Mon, Tue, Wed, Thu, Fri]
 
 quantum:
-  per_day: 8 
-  unit_hours: 8
-  
+  token_hours_options: [4, 8, 10, 12]
+
 staffing_per_task_per_day:
   min: 2
   max: 8
-
-calendars:
-  company: {}
-  country: {}
-  module: {}
 
 # =========================
 # Modules / Processes / Tasks
@@ -26,451 +19,428 @@ calendars:
 # =========================
 modules:
   - code: S1
-    company: A
-    country: A
+    factory: A
     start_date: '2025-09-01'
     processes:
       - id: 1
         end_date: '2025-09-5'
         tasks:
           - code: S1-P1-A
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P1-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P1-C
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P1-D
+            unit_hours: 8
             workload_units: 8
       - id: 2
         end_date: '2025-09-10'
         tasks:
           - code: S1-P2-A
-            workload_units: 10
+            unit_hours: 4
+            workload_units: 8
           - code: S1-P2-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P2-C
+            unit_hours: 8
             workload_units: 8
           - code: S1-P2-D
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
       - id: 3
         end_date: '2025-09-15'
         tasks:
           - code: S1-P3-A
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P3-B
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P3-C
+            unit_hours: 8
             workload_units: 8
           - code: S1-P3-D
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
       - id: 4
         end_date: '2025-09-20'
         tasks:
           - code: S1-P4-A
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P4-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P4-C
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S1-P4-D
+            unit_hours: 8
             workload_units: 8
 
   - code: S2
-    company: B
-    country: B
+    factory: B
     start_date: '2025-09-04'
     processes:
       - id: 1
         end_date: '2025-09-9'
         tasks:
           - code: S2-P1-A
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P1-B
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P1-C
+            unit_hours: 8
             workload_units: 8
           - code: S2-P1-D
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
       - id: 2
         end_date: '2025-09-14'
         tasks:
           - code: S2-P2-A
-            workload_units: 11
+            unit_hours: 4
+            workload_units: 8
           - code: S2-P2-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P2-C
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P2-D
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
       - id: 3
         end_date: '2025-09-19'
         tasks:
           - code: S2-P3-A
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P3-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P3-C
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P3-D
+            unit_hours: 8
             workload_units: 8
       - id: 4
         end_date: '2025-09-24'
         tasks:
           - code: S2-P4-A
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P4-B
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P4-C
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S2-P4-D
+            unit_hours: 4
             workload_units: 8
 
   - code: S3
-    company: C
-    country: A
+    factory: A
     start_date: '2025-09-08'
     processes:
       - id: 1
         end_date: '2025-09-13'
         tasks:
           - code: S3-P1-A
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P1-B
+            unit_hours: 8
             workload_units: 8
           - code: S3-P1-C
+            unit_hours: 8
             workload_units: 8
           - code: S3-P1-D
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
       - id: 2
         end_date: '2025-09-18'
         tasks:
           - code: S3-P2-A
-            workload_units: 11
+            unit_hours: 4
+            workload_units: 8
           - code: S3-P2-B
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P2-C
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P2-D
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
       - id: 3
         end_date: '2025-09-23'
         tasks:
           - code: S3-P3-A
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P3-B
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P3-C
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P3-D
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
       - id: 4
         end_date: '2025-09-28'
         tasks:
           - code: S3-P4-A
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P4-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P4-C
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
           - code: S3-P4-D
+            unit_hours: 4
             workload_units: 8
 
   - code: S4
-    company: A
-    country: B
+    factory: B
     start_date: '2025-09-11'
     processes:
       - id: 1
         end_date: '2025-09-16'
         tasks:
           - code: S4-P1-A
-            workload_units: 8
+            unit_hours: 8
+            workload_units: 4
           - code: S4-P1-B
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 4
           - code: S4-P1-C
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 4
           - code: S4-P1-D
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 4
       - id: 2
         end_date: '2025-09-21'
         tasks:
           - code: S4-P2-A
-            workload_units: 9
+            unit_hours: 4
+            workload_units: 6
           - code: S4-P2-B
-            workload_units: 8
+            unit_hours: 8
+            workload_units: 6
           - code: S4-P2-C
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 6
           - code: S4-P2-D
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 6
       - id: 3
         end_date: '2025-09-26'
         tasks:
           - code: S4-P3-A
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P3-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P3-C
-            workload_units: 10
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P3-D
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
       - id: 4
         end_date: '2025-09-30'
         tasks:
           - code: S4-P4-A
-            workload_units: 11
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P4-B
-            workload_units: 9
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P4-C
-            workload_units: 12
+            unit_hours: 8
+            workload_units: 8
           - code: S4-P4-D
-            workload_units: 10
+            unit_hours: 4
+            workload_units: 8
 
 # =========================
 # Employees (60 total)
 # - Names: AA .. CH
 # - Each has 4–6 skills among P1-A .. P4-D with level 1..5
-# - No personal unavailability here
-# - No country/visa in this version
-# - capacity_hours_per_day = 8; overtime_hours_per_day = 0..6 (rarer at higher values)
 # =========================
 employees:
   - name: AA
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-A: 3, P1-B: 2, P2-A: 4, P2-C: 2, P3-A: 3 }
   - name: AB
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-C: 4, P1-D: 2, P2-B: 3, P2-D: 3, P3-B: 2 }
   - name: AC
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-A: 2, P2-A: 3, P2-C: 4, P3-A: 3, P4-A: 2 }
   - name: AD
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P1-B: 3, P1-D: 2, P2-B: 4, P3-B: 3, P4-B: 2 }
   - name: AE
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-C: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
   - name: AF
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-A: 4, P2-A: 3, P3-A: 3, P3-C: 2, P4-A: 2 }
   - name: AG
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 2, P3-B: 4, P4-B: 2 }
   - name: AH
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4 }
   - name: AI
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-A: 2, P1-C: 3, P2-A: 4, P2-C: 2, P3-A: 3 }
   - name: AJ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-B: 2, P2-B: 3, P3-B: 3, P4-B: 4 }
   - name: AK
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P1-C: 3, P1-D: 2, P2-D: 3, P3-D: 3, P4-D: 2 }
   - name: AL
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-A: 3, P2-C: 4, P3-C: 2, P4-C: 3 }
   - name: AM
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-A: 3, P2-A: 4, P3-A: 2, P4-A: 3 }
   - name: AN
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3 }
   - name: AO
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-C: 4, P2-C: 3, P3-C: 2, P4-C: 3 }
   - name: AP
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-D: 3, P2-D: 3, P3-D: 2, P4-D: 4, P3-B: 2 }
   - name: AQ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-A: 4, P2-B: 2, P3-A: 3, P3-B: 3 }
   - name: AR
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-C: 3, P2-D: 3, P3-C: 4, P3-D: 2 }
   - name: AS
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-A: 3, P3-C: 2, P4-A: 4, P4-C: 3 }
   - name: AT
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P3-B: 4, P3-D: 2, P4-B: 3, P4-D: 3 }
   - name: AU
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-A: 3, P1-B: 2, P2-A: 4, P4-A: 2 }
   - name: AV
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-C: 2, P2-C: 4, P3-C: 3, P4-C: 2 }
   - name: AW
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 4, P3-D: 2, P4-D: 3 }
   - name: AX
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 2 }
   - name: AY
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P2-D: 3, P3-D: 3, P4-D: 2, P1-D: 4 }
   - name: AZ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
   - name: BA
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P3-A: 4, P4-A: 3, P2-A: 2, P1-A: 3 }
   - name: BB
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-B: 3, P4-B: 4, P2-B: 2, P1-B: 2 }
   - name: BC
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-C: 3, P4-C: 4, P2-C: 2, P1-C: 3 }
   - name: BD
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P3-D: 4, P4-D: 3, P2-D: 2, P1-D: 2 }
   - name: BE
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-A: 4, P2-A: 3, P3-A: 2, P4-A: 3, P2-C: 2 }
   - name: BF
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3, P3-D: 2 }
   - name: BG
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-C: 3, P2-C: 2, P3-C: 4, P4-C: 3 }
   - name: BH
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-D: 4, P2-D: 3, P3-D: 2, P4-D: 3 }
   - name: BI
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-A: 4, P3-A: 3, P4-A: 2, P1-A: 3 }
   - name: BJ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-B: 3, P3-B: 2, P4-B: 4, P1-B: 3 }
   - name: BK
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-C: 3, P3-C: 4, P4-C: 2, P1-C: 2 }
   - name: BL
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-D: 4, P3-D: 2, P4-D: 3, P1-D: 3 }
   - name: BM
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-A: 3, P4-A: 4, P1-A: 2, P2-A: 3 }
   - name: BN
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3 }
   - name: BO
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-C: 2, P4-C: 4, P1-C: 3, P2-C: 3 }
   - name: BP
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P3-D: 3, P4-D: 4, P1-D: 2, P2-D: 3 }
   - name: BQ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P4-A: 4, P1-A: 3, P2-A: 2, P3-A: 3 }
   - name: BR
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P4-B: 3, P1-B: 2, P2-B: 4, P3-B: 3 }
   - name: BS
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P4-C: 3, P1-C: 4, P2-C: 2, P3-C: 3 }
   - name: BT
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P4-D: 3, P1-D: 4, P2-D: 2, P3-D: 3 }
   - name: BU
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P1-A: 3, P2-A: 4, P3-C: 2, P4-C: 3 }
   - name: BV
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-B: 3, P2-B: 3, P3-D: 2, P4-D: 4 }
   - name: BW
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P1-C: 4, P2-C: 3, P3-A: 2, P4-A: 3 }
   - name: BX
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P1-D: 3, P2-D: 4, P3-B: 2, P4-B: 3 }
   - name: BY
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-A: 3, P3-A: 4, P4-A: 2, P1-A: 3 }
   - name: BZ
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-B: 3, P3-B: 3, P4-B: 2, P1-B: 4 }
   - name: CA
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P2-C: 4, P3-C: 2, P4-C: 3, P1-C: 3 }
   - name: CB
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P2-D: 3, P3-D: 4, P4-D: 2, P1-D: 3 }
   - name: CC
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-A: 4, P4-A: 3, P1-A: 2, P2-A: 3, P3-C: 2 }
   - name: CD
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 2
     skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3, P3-D: 2 }
   - name: CE
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-C: 3, P4-C: 4, P1-C: 3, P2-C: 2 }
   - name: CF
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P3-D: 3, P4-D: 3, P1-D: 4, P2-D: 2 }
   - name: CG
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 3
     skills: { P4-A: 3, P1-A: 4, P2-A: 2, P3-A: 3 }
   - name: CH
-    capacity_hours_per_day: 8
-    overtime_hours_per_day: 4
     skills: { P4-B: 3, P1-B: 3, P2-B: 2, P3-B: 4 }
+  - name: CI
+    skills: { P1-A: 3, P2-A: 2, P3-A: 4, P4-A: 3 }
+  - name: CJ
+    skills: { P1-B: 3, P2-B: 4, P3-B: 2, P4-B: 3 }
+  - name: CK
+    skills: { P1-C: 4, P2-C: 3, P3-C: 2, P4-C: 3 }
+  - name: CL
+    skills: { P1-D: 3, P2-D: 3, P3-D: 4, P4-D: 2 }
+  - name: CM
+    skills: { P1-A: 2, P1-C: 3, P2-A: 4, P3-C: 2, P4-A: 3 }
+  - name: CN
+    skills: { P1-B: 4, P2-B: 2, P3-D: 3, P4-B: 3 }
+  - name: CO
+    skills: { P1-C: 2, P2-C: 4, P3-A: 3, P4-C: 3 }
+  - name: CP
+    skills: { P1-D: 2, P2-D: 4, P3-B: 3, P4-D: 3 }
+  - name: CQ
+    skills: { P2-A: 3, P3-A: 4, P4-A: 2, P1-A: 3 }
+  - name: CR
+    skills: { P2-B: 3, P3-B: 3, P4-B: 4, P1-B: 2 }
+  - name: CS
+    skills: { P2-C: 3, P3-C: 4, P4-C: 2, P1-C: 3 }
+  - name: CT
+    skills: { P2-D: 4, P3-D: 2, P4-D: 3, P1-D: 3 }
+  - name: CU
+    skills: { P3-A: 3, P4-A: 4, P1-A: 2, P2-A: 3 }
+  - name: CV
+    skills: { P3-B: 4, P4-B: 3, P1-B: 2, P2-B: 3 }
+  - name: CW
+    skills: { P3-C: 2, P4-C: 4, P1-C: 3, P2-C: 3 }
+  - name: CX
+    skills: { P3-D: 3, P4-D: 4, P1-D: 2, P2-D: 3 }
+  - name: CY
+    skills: { P1-A: 4, P2-C: 2, P3-A: 3, P4-C: 3 }
+  - name: CZ
+    skills: { P1-B: 3, P2-D: 2, P3-B: 4, P4-D: 3 }
+  - name: DA
+    skills: { P1-C: 3, P2-A: 3, P3-C: 4, P4-A: 2, P2-C: 2 }
+  - name: DB
+    skills: { P1-D: 4, P2-B: 3, P3-D: 2, P4-B: 3, P2-D: 2 }

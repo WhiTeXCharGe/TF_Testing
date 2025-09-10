@@ -22,7 +22,6 @@ def _parse_modules_config(config_path: str):
 
     start_day = datetime.strptime(str(cfg["start_day"]), "%Y-%m-%d").date()
     horizon_days = int(cfg.get("horizon_days", 30))
-    unit_hours = int(((cfg.get("quantum") or {}).get("unit_hours") or 8))
 
     def to_idx(datestr: str) -> int:
         d = datetime.strptime(str(datestr), "%Y-%m-%d").date()
@@ -30,9 +29,11 @@ def _parse_modules_config(config_path: str):
 
     module_start_idx: Dict[str, int] = {}
     task_end_idx: Dict[str, int] = {}
+    module_factory: Dict[str, str] = {}
 
     for m in cfg["modules"]:
         mcode = str(m["code"]).strip()
+        module_factory[mcode] = str(m.get("factory", "")).strip()
         m_start = to_idx(m.get("start_date", cfg["start_day"]))
         module_start_idx[mcode] = m_start
         for proc in m["processes"]:
@@ -41,16 +42,9 @@ def _parse_modules_config(config_path: str):
                 full_code = str(t["code"]).strip().upper()  # e.g., S1-P2-A
                 task_end_idx[full_code] = p_end
 
-    return start_day, horizon_days, unit_hours, module_start_idx, task_end_idx
+    return start_day, horizon_days, module_start_idx, task_end_idx, module_factory
 
 def _aggregate_from_tokens(solution, start_day):
-    """
-    Build aggregations from solution.tokens (each token = 1h).
-    Skip dummy employee (id==0) and dummy day (id<0).
-    Returns:
-      tde_hours: (task_code, date, employee) -> hours
-      edt_hours: (employee, date, task_code) -> hours
-    """
     tde_hours = defaultdict(int)
     edt_hours = defaultdict(int)
 
@@ -67,12 +61,9 @@ def _aggregate_from_tokens(solution, start_day):
 def write_excel(solution, start_day, config_path: str,
                 out_path: str = "schedule_matrix_overtime_units.xlsx",
                 show_skills: bool = True):
-    cfg_start_day, horizon_days, unit_hours, module_start_idx, task_end_idx = _parse_modules_config(config_path)
+    cfg_start_day, horizon_days, module_start_idx, task_end_idx, module_factory = _parse_modules_config(config_path)
 
-    # Build date headers directly from config (avoids the dummy -1 day in solution.days)
     dates = [cfg_start_day + timedelta(days=i) for i in range(horizon_days)]
-
-    # Aggregations from tokens
     tde_hours, edt_hours = _aggregate_from_tokens(solution, cfg_start_day)
 
     wb = Workbook()
@@ -87,20 +78,20 @@ def write_excel(solution, start_day, config_path: str,
     ws1.title = "Tasks x Dates"
 
     ws1.cell(row=1, column=1, value="module").font = bold
-    ws1.cell(row=1, column=2, value="task").font = bold
-    for j, d in enumerate(dates, start=3):
+    ws1.cell(row=1, column=2, value="factory").font = bold
+    ws1.cell(row=1, column=3, value="task").font = bold
+    for j, d in enumerate(dates, start=4):
         c = ws1.cell(row=1, column=j, value=d.strftime("%Y-%m-%d"))
         c.font = bold
         ws1.column_dimensions[get_column_letter(j)].width = 28
     ws1.column_dimensions["A"].width = 10
-    ws1.column_dimensions["B"].width = 14
-    ws1.freeze_panes = "C2"
+    ws1.column_dimensions["B"].width = 10
+    ws1.column_dimensions["C"].width = 14
+    ws1.freeze_panes = "D2"
 
-    # Collect all task codes so deadlines appear even if empty
     all_task_codes = sorted(set([k[0] for k in tde_hours.keys()] + list(task_end_idx.keys())))
 
     def task_sort_key(code: str):
-        # code = "Sx-Py-Z"
         try:
             s, p, z = code.split("-")
             sN = int(s[1:]) if s.startswith("S") else 999
@@ -114,20 +105,19 @@ def write_excel(solution, start_day, config_path: str,
     for i, code in enumerate(all_task_codes, start=2):
         mcode, ppart, letter = code.split("-")
         ws1.cell(row=i, column=1, value=mcode).font = bold
-        ws1.cell(row=i, column=2, value=f"{ppart}-{letter}").font = bold
+        ws1.cell(row=i, column=2, value=module_factory.get(mcode, "")).font = bold
+        ws1.cell(row=i, column=3, value=f"{ppart}-{letter}").font = bold
 
         start_idx = module_start_idx.get(mcode, None)
         end_idx   = task_end_idx.get(code, None)
 
-        for j, d in enumerate(dates, start=3):
-            # Per-employee entries "AA(3,8H) | AB(2,6H)"
+        for j, d in enumerate(dates, start=4):
             per_emp = {emp: h for (tcode, day, emp), h in tde_hours.items()
                        if tcode == code and day == d}
             entries: List[str] = []
             for emp, hrs in sorted(per_emp.items()):
                 lvl = ""
                 if show_skills:
-                    # skill key format "P?-<letter>"
                     for e in solution.employees:
                         if e.name == emp:
                             lvl = e.skills.get(f"{ppart}-{letter}", "")
@@ -141,22 +131,24 @@ def write_excel(solution, start_day, config_path: str,
                 c.fill = fill_start
             if end_idx is not None and d == (cfg_start_day + timedelta(days=end_idx)):
                 c.fill = fill_deadline
+                
+    ws1.row_dimensions[1].height = 24   # header row
+    for r in range(2, ws1.max_row + 1): # all task rows
+        ws1.row_dimensions[r].height = 36
 
     # -------------- Sheet 2: Employees x Dates --------------
     ws2 = wb.create_sheet("Employees x Dates")
     ws2.cell(row=1, column=1, value="employee").font = bold
     ws2.cell(row=1, column=2, value="skills").font = bold
-    ws2.cell(row=1, column=3, value="capacity").font = bold
 
-    for j, d in enumerate(dates, start=4):
+    for j, d in enumerate(dates, start=3):
         c = ws2.cell(row=1, column=j, value=d.strftime("%Y-%m-%d"))
         c.font = bold
         ws2.column_dimensions[get_column_letter(j)].width = 32
 
     ws2.column_dimensions["A"].width = 16
     ws2.column_dimensions["B"].width = 48
-    ws2.column_dimensions["C"].width = 12
-    ws2.freeze_panes = "D2"
+    ws2.freeze_panes = "C2"
 
     def skills_text(e) -> str:
         def skey(k: str):
@@ -175,15 +167,11 @@ def write_excel(solution, start_day, config_path: str,
 
     for i, e in enumerate(employees_sorted, start=2):
         ws2.row_dimensions[i].height = 36
-
         ws2.cell(row=i, column=1, value=e.name).font = bold
         ws2.cell(row=i, column=1).alignment = left
         ws2.cell(row=i, column=2, value=skills_text(e)).alignment = left
 
-        cap = int(e.capacity_hours_per_day) + int(e.overtime_hours_per_day)
-        ws2.cell(row=i, column=3, value=cap).alignment = center
-
-        for j, d in enumerate(dates, start=4):
+        for j, d in enumerate(dates, start=3):
             tasks_here = [(t, hrs) for (emp, day, t), hrs in edt_hours.items()
                           if emp == e.name and day == d]
             tasks_here.sort(key=lambda kv: kv[0])
@@ -197,9 +185,8 @@ def write_excel(solution, start_day, config_path: str,
                 text = ""
             ws2.cell(row=i, column=j, value=text).alignment = center
 
-    # Totals at the end
-    workdays_col  = len(dates) + 4
-    workhours_col = len(dates) + 5
+    workdays_col  = len(dates) + 3
+    workhours_col = len(dates) + 4
     ws2.cell(row=1, column=workdays_col,  value="Workdays").font  = bold
     ws2.cell(row=1, column=workhours_col, value="WorkHours").font = bold
     ws2.column_dimensions[get_column_letter(workdays_col)].width  = 12
@@ -219,7 +206,6 @@ def write_csvs(solution, start_day,
 
     tde_hours, edt_hours = _aggregate_from_tokens(solution, cfg_start_day)
 
-    # ---- tasks_by_date.csv ----
     with open(tasks_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["task_code", "date", "employee", "hours"])
@@ -227,7 +213,6 @@ def write_csvs(solution, start_day,
             w.writerow([code, d.isoformat(), emp, hrs])
     print(f"Wrote CSV: {os.path.abspath(tasks_csv)}")
 
-    # ---- employees_by_date.csv ----
     with open(employees_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["employee", "date", "task_code", "hours"])
@@ -236,7 +221,7 @@ def write_csvs(solution, start_day,
     print(f"Wrote CSV: {os.path.abspath(employees_csv)}")
 
 def main():
-    ap = ArgumentParser(description="Export overtime schedule (tokens=1h) to Excel/CSV")
+    ap = ArgumentParser(description="Export overtime schedule to Excel/CSV")
     ap.add_argument("--config", default="config_modules.yaml", help="Path to modules YAML")
     ap.add_argument("--xlsx",   default="schedule_matrix_overtime_units.xlsx", help="Output .xlsx")
     ap.add_argument("--tasks_csv", default="tasks_by_date.csv", help="Tasks CSV path")
