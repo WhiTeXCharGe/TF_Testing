@@ -1,0 +1,213 @@
+---
+schedule:
+  planrange:
+    start_date: 2025/09/01
+    end_date: 2025/10/31
+
+  workflow_task_list:
+    - id: e1
+      name: SU3200 2371A
+      workflow: workflow
+      fab: f1
+      phase_task_list:
+        - id: e1p1
+          name: Module Setup
+          phase: p1
+          start_date: 2025/09/01
+          end_date: 2025/09/20
+          operation_task_list:
+          - id: e1p1o1
+            name: Mech
+            operation: p1o1
+            workload_days: 20
+          - id: e1p1o2
+            name: Elec
+            operation: p1o2
+            workload_days: 15
+          - id: e1p1o3
+            name: Chem
+            operation: p1o3
+            workload_days: 20
+        - id: e1p2
+          name: Hardware Setup
+          phase: p2
+          start_date: 2025/09/01
+          end_date: 2025/10/10
+          operation_task_list:
+          - id: e1p2o1
+            name: Mech
+            operation: p2o1
+            workload_days: 18
+          - id: e1p2o2
+            name: Elec
+            operation: p2o2
+            workload_days: 25
+          - id: e1p2o3
+            name: Spec
+            operation: p2o3
+            workload_days: 3
+        - id: e1p3
+          name: Function Setup
+          phase: p3
+          start_date: 2025/09/01
+          end_date: 2025/10/15
+          operation_task_list:
+          - id: e1p3o1
+            name: Mech
+            operation: p3o1
+            workload_days: 25
+          - id: e1p3o2
+            name: Elec
+            operation: p3o2
+            workload_days: 20
+          - id: e1p3o3
+            name: Spec
+            operation: p3o3
+            workload_days: 2
+        - id: e1p4
+          name: Acceptance Inspection
+          phase: p4
+          start_date: 2025/09/01
+          end_date: 2025/10/25
+          operation_task_list:
+          - id: e1p4o1
+            name: Mech
+            operation: p4o1
+            workload_days: 10
+          - id: e1p4o2
+            name: Elec
+            operation: p4o2
+            workload_days: 10
+          - id: e1p4o3
+            name: Process
+            operation: p4o3
+            workload_days: 20
+
+    - id: e2
+      name: SU3200 2413A
+      workflow: workflow
+      fab: f1
+      phase_task_list:
+        - id: e2p1
+          name: Module Setup
+          phase: p1
+          start_date: 2025/09/05
+          end_date: 2025/09/30
+          operation_task_list:
+          - id: e2p1o1
+            name: Mech
+            operation: p1o1
+            workload_days: 20
+          - id: e2p1o2
+            name: Elec
+            operation: p1o2
+            workload_days: 15
+          - id: e2p1o3
+            name: Chem
+            operation: p1o3
+            workload_days: 20
+        - id: e2p2
+          name: Hardware Setup
+          phase: p2
+          start_date: 2025/09/05
+          end_date: 2025/10/05
+          operation_task_list:
+          - id: e2p2o1
+            name: Mech
+            operation: p2o1
+            workload_days: 18
+          - id: e2p2o2
+            name: Elec
+            operation: p2o2
+            workload_days: 25
+          - id: e2p2o3
+            name: Spec
+            operation: p2o3
+            workload_days: 3
+        - id: e2p3
+          name: Function Setup
+          phase: p3
+          start_date: 2025/09/05
+          end_date: 2025/10/20
+          operation_task_list:
+          - id: e2p3o1
+            name: Mech
+            operation: p3o1
+            workload_days: 30
+          - id: e2p3o2
+            name: Elec
+            operation: p3o2
+            workload_days: 20
+          - id: e2p3o3
+            name: Spec
+            operation: p3o3
+            workload_days: 2
+        - id: e2p4
+          name: Acceptance Inspection
+          phase: p4
+          start_date: 2025/09/05
+          end_date: 2025/10/31
+          operation_task_list:
+          - id: e2p4o1
+            name: Mech
+            operation: p4o1
+            workload_days: 18
+          - id: e2p4o2
+            name: Elec
+            operation: p4o2
+            workload_days: 18
+          - id: e2p4o3
+            name: Process
+            operation: p4o3
+            workload_days: 25
+
+  assignment_list:
+    - worker: w1
+      operation_task: e1p1o1
+      start_date: 2025/09/02
+      end_date: 2025/09/05
+      work_date_lsit:
+        - date: 2025/09/02
+          hour: 8
+        - date: 2025/09/03
+          hour: 8
+        - date: 2025/09/04
+          hour: 10
+        - date: 2025/09/05
+          hour: 8
+      plan_flexibility: Flexible
+    - worker: w1
+      operation_task: e1p1o1
+      start_date: 2025/09/11
+      end_date: 2025/09/14
+      work_date_lsit:
+        - date: 2025/09/11
+          hour: 8
+        - date: 2025/09/12
+          hour: 8
+        - date: 2025/09/13
+          hour: 10
+        - date: 2025/09/14
+          hour: 8
+      plan_flexibility: Flexible
+    - worker: w2
+      operation_task: e1p1o1
+      start_date: 2025/09/01
+      end_date: 2025/09/09
+      work_date_lsit:
+        - date: 2025/09/01
+          hour: 8
+        - date: 2025/09/02
+          hour: 8
+        - date: 2025/09/03
+          hour: 10
+        - date: 2025/09/04
+          hour: 8
+        - date: 2025/09/05
+          hour: 8
+        - date: 2025/09/08
+          hour: 8
+        - date: 2025/09/09
+          hour: 12
+      plan_flexibility: Flexible
+      

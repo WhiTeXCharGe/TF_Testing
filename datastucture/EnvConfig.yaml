@@ -1,0 +1,299 @@
+---
+environment:
+  workflow_list:
+    - id: workflow
+      name: Equitment Setup
+      phase_list:
+      - id: p1
+        name: Module Setup
+        operation_list:
+          - id: p1o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p1o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p1o3
+            name: Chem
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+      - id: p2
+        name: Hardware Setup
+        operation_list:
+          - id: p2o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p2o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p2o3
+            name: Chem
+            work_hours: [4]
+            min_worker_num: 1
+            max_worker_num: 1
+      - id: p3
+        name: Function Setup
+        operation_list:
+          - id: p3o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p3o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p3o3
+            name: Spec
+            work_hours: [4]
+            min_worker_num: 1
+            max_worker_num: 1
+      - id: p4
+        name: Acceptance Setup
+        operation_list:
+          - id: p4o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p4o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+          - id: p4o3
+            name: Process
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 5
+  
+  fab_list:
+    - id: f1
+      name: AAA Fab1
+      region: r1
+      customer_company: c1
+      unavailable_dates: []
+    - id: f2
+      name: AAA Fab1
+      region: r2
+      customer_company: c1
+      unavailable_dates: []
+    - id: f3
+      name: BBB Fab1
+      region: r1
+      customer_company: c2
+      unavailable_dates: []
+
+  region_list:
+    - id: r1  
+      name: U.S. East
+      max_stay_on: 7
+      max_annual_stay: 20
+      stay_off_interval: 3
+      unavailable_dates: []
+    - id: r2
+      name: Taiwan
+      max_stay_on: 7
+      max_annual_stay: 20
+      stay_off_interval: 3
+      unavailable_dates: []
+
+  customer_company_list:
+    - id: c1
+      name: AAA
+      unavailable_dates: []
+    - id: c2
+      name: BBB
+      unavailable_dates: []
+
+  worker_company_list:
+    - id: c3
+      name: XXX
+      annual_overtime_limit: 360
+      monthly_overtime_limit: 45
+      unavailable_dates: []
+    - id: c4
+      name: YYY
+      annual_overtime_limit: 360
+      monthly_overtime_limit: 45
+      unavailable_dates: []
+
+  transite_day_map:
+  - from: r1
+    to: r2
+    days: 2
+  - from: r2
+    to: r1
+    days: 3
+
+  worker_list:
+  - id: w1
+    name: AA
+    worker_company: c3
+    is_manager: false
+    skill_map: {p1o1: 3, p1o2: 2, p1o3: 4, p2o1: 3, p2o2: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w2
+    name: AB
+    worker_company: c4
+    is_manager: true
+    skill_map: {p1o2: 4, p1o3: 3, p2o1: 2, p2o2: 3, p2o3: 4}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w3
+    name: AC
+    worker_company: c3
+    is_manager: false
+    skill_map: {p1o3: 3, p2o1: 2, p2o2: 4, p2o3: 2, p3o1: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w4
+    name: AD
+    worker_company: c4
+    is_manager: false
+    skill_map: {p2o1: 2, p2o2: 4, p2o3: 3, p3o1: 3, p3o2: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w5
+    name: AE
+    worker_company: c3
+    is_manager: false
+    skill_map: {p2o2: 4, p2o3: 3, p3o1: 2, p3o2: 3, p3o3: 4}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w6
+    name: AF
+    worker_company: c4
+    is_manager: false
+    skill_map: {p2o3: 3, p3o1: 2, p3o2: 4, p3o3: 3, p4o1: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w7
+    name: AG
+    worker_company: c3
+    is_manager: false
+    skill_map: {p3o1: 2, p3o2: 3, p3o3: 4, p4o1: 2, p4o2: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w8
+    name: AH
+    worker_company: c4
+    is_manager: true
+    skill_map: {p3o2: 4, p3o3: 3, p4o1: 2, p4o2: 4, p4o3: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w9
+    name: AI
+    worker_company: c3
+    is_manager: false
+    skill_map: {p3o3: 3, p4o1: 4, p4o2: 2, p4o3: 3, p1o1: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w10
+    name: AJ
+    worker_company: c4
+    is_manager: false
+    skill_map: {p4o1: 2, p4o2: 3, p4o3: 4, p1o1: 3, p1o2: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w11
+    name: AK
+    worker_company: c3
+    is_manager: false
+    skill_map: {p4o2: 3, p4o3: 2, p1o1: 3, p1o2: 4}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w12
+    name: AL
+    worker_company: c4
+    is_manager: false
+    skill_map: {p4o3: 2, p1o1: 3, p1o2: 4, p1o3: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w13
+    name: AM
+    worker_company: c3
+    is_manager: false
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 2, p2o1: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w14
+    name: AN
+    worker_company: c4
+    is_manager: false
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 2, p2o2: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w15
+    name: AO
+    worker_company: c3
+    is_manager: false
+    skill_map: {p1o3: 2, p2o1: 3, p2o2: 4, p2o3: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w16
+    name: AP
+    worker_company: c4
+    is_manager: false
+    skill_map: {p2o1: 3, p2o2: 2, p2o3: 3, p3o1: 4}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w17
+    name: AQ
+    worker_company: c3
+    is_manager: true
+    skill_map: {p2o2: 4, p2o3: 3, p3o1: 2, p3o2: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w18
+    name: AR
+    worker_company: c4
+    is_manager: false
+    skill_map: {p2o3: 3, p3o1: 4, p3o2: 3, p3o3: 2}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w19
+    name: AS
+    worker_company: c3
+    is_manager: false
+    skill_map: {p3o1: 2, p3o2: 3, p3o3: 4, p4o1: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+
+  - id: w20
+    name: AT
+    worker_company: c4
+    is_manager: false
+    skill_map: {p3o2: 3, p3o3: 2, p4o1: 4, p4o2: 3}
+    fab_suitability_map: []
+    unavailable_dates: []
+

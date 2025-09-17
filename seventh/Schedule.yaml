@@ -1,0 +1,1850 @@
+schedule:
+  planrange:
+    start_date: 2025/09/01
+    end_date: 2025/10/31
+  workflow_task_list:
+  - id: e1
+    name: SU3200 2371A
+    workflow: workflow
+    fab: f1
+    phase_task_list:
+    - id: e1p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/01
+      end_date: 2025/09/20
+      operation_task_list:
+      - id: e1p1o1
+        name: Mech
+        operation: p1o1
+        workload_days: 20
+      - id: e1p1o2
+        name: Elec
+        operation: p1o2
+        workload_days: 15
+      - id: e1p1o3
+        name: Chem
+        operation: p1o3
+        workload_days: 20
+    - id: e1p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/01
+      end_date: 2025/10/10
+      operation_task_list:
+      - id: e1p2o1
+        name: Mech
+        operation: p2o1
+        workload_days: 18
+      - id: e1p2o2
+        name: Elec
+        operation: p2o2
+        workload_days: 25
+      - id: e1p2o3
+        name: Spec
+        operation: p2o3
+        workload_days: 3
+    - id: e1p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/01
+      end_date: 2025/10/15
+      operation_task_list:
+      - id: e1p3o1
+        name: Mech
+        operation: p3o1
+        workload_days: 25
+      - id: e1p3o2
+        name: Elec
+        operation: p3o2
+        workload_days: 20
+      - id: e1p3o3
+        name: Spec
+        operation: p3o3
+        workload_days: 2
+    - id: e1p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/01
+      end_date: 2025/10/25
+      operation_task_list:
+      - id: e1p4o1
+        name: Mech
+        operation: p4o1
+        workload_days: 10
+      - id: e1p4o2
+        name: Elec
+        operation: p4o2
+        workload_days: 10
+      - id: e1p4o3
+        name: Process
+        operation: p4o3
+        workload_days: 20
+  - id: e2
+    name: SU3200 2413A
+    workflow: workflow
+    fab: f1
+    phase_task_list:
+    - id: e2p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/05
+      end_date: 2025/09/30
+      operation_task_list:
+      - id: e2p1o1
+        name: Mech
+        operation: p1o1
+        workload_days: 20
+      - id: e2p1o2
+        name: Elec
+        operation: p1o2
+        workload_days: 15
+      - id: e2p1o3
+        name: Chem
+        operation: p1o3
+        workload_days: 20
+    - id: e2p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/05
+      end_date: 2025/10/05
+      operation_task_list:
+      - id: e2p2o1
+        name: Mech
+        operation: p2o1
+        workload_days: 18
+      - id: e2p2o2
+        name: Elec
+        operation: p2o2
+        workload_days: 25
+      - id: e2p2o3
+        name: Spec
+        operation: p2o3
+        workload_days: 3
+    - id: e2p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/05
+      end_date: 2025/10/31
+      operation_task_list:
+      - id: e2p3o1
+        name: Mech
+        operation: p3o1
+        workload_days: 30
+      - id: e2p3o2
+        name: Elec
+        operation: p3o2
+        workload_days: 20
+      - id: e2p3o3
+        name: Spec
+        operation: p3o3
+        workload_days: 2
+    - id: e2p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/05
+      end_date: 2025/10/25
+      operation_task_list:
+      - id: e2p4o1
+        name: Mech
+        operation: p4o1
+        workload_days: 18
+      - id: e2p4o2
+        name: Elec
+        operation: p4o2
+        workload_days: 18
+      - id: e2p4o3
+        name: Process
+        operation: p4o3
+        workload_days: 25
+  assignment_list:
+  - worker: w13
+    operation_task: e1p1o1
+    start_date: 2025/09/01
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p1o1
+    start_date: 2025/09/03
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e1p1o1
+    start_date: 2025/09/02
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/02
+      hour: 12
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e1p1o1
+    start_date: 2025/09/01
+    end_date: 2025/09/02
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 10
+    - date: 2025/09/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e1p1o1
+    start_date: 2025/09/01
+    end_date: 2025/09/03
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    - date: 2025/09/03
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e1p1o2
+    start_date: 2025/09/01
+    end_date: 2025/09/03
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    - date: 2025/09/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p1o2
+    start_date: 2025/09/01
+    end_date: 2025/09/02
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p1o2
+    start_date: 2025/09/01
+    end_date: 2025/09/01
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p1o2
+    start_date: 2025/09/03
+    end_date: 2025/09/03
+    work_date_lsit:
+    - date: 2025/09/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e1p1o2
+    start_date: 2025/09/01
+    end_date: 2025/09/02
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e1p1o2
+    start_date: 2025/09/01
+    end_date: 2025/09/01
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e1p1o3
+    start_date: 2025/09/03
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e1p1o3
+    start_date: 2025/09/01
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 10
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e1p1o3
+    start_date: 2025/09/01
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/01
+      hour: 12
+    - date: 2025/09/02
+      hour: 12
+    - date: 2025/09/03
+      hour: 12
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e1p1o3
+    start_date: 2025/09/03
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/03
+      hour: 10
+    - date: 2025/09/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p1o3
+    start_date: 2025/09/02
+    end_date: 2025/09/02
+    work_date_lsit:
+    - date: 2025/09/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p1o3
+    start_date: 2025/09/04
+    end_date: 2025/09/04
+    work_date_lsit:
+    - date: 2025/09/04
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p2o1
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p2o1
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e1p2o1
+    start_date: 2025/09/07
+    end_date: 2025/09/07
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e1p2o1
+    start_date: 2025/09/05
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e1p2o1
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e1p2o1
+    start_date: 2025/09/07
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p2o1
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e1p2o1
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e1p2o2
+    start_date: 2025/09/05
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e1p2o2
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e1p2o2
+    start_date: 2025/09/09
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e1p2o2
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e1p2o2
+    start_date: 2025/09/05
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e1p2o2
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e1p2o2
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e1p2o2
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p2o2
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p2o2
+    start_date: 2025/09/07
+    end_date: 2025/09/07
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p2o2
+    start_date: 2025/09/09
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e1p2o3
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e1p3o1
+    start_date: 2025/09/11
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e1p3o1
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e1p3o1
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e1p3o1
+    start_date: 2025/09/11
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 10
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e1p3o1
+    start_date: 2025/09/11
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e1p3o1
+    start_date: 2025/09/13
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e1p3o1
+    start_date: 2025/09/12
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e1p3o1
+    start_date: 2025/09/12
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p3o1
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e1p3o1
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e1p3o2
+    start_date: 2025/09/12
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e1p3o2
+    start_date: 2025/09/11
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 10
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e1p3o2
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p3o2
+    start_date: 2025/09/11
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e1p3o2
+    start_date: 2025/09/12
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e1p3o2
+    start_date: 2025/09/11
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 10
+    - date: 2025/09/13
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e1p3o2
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e1p3o2
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e1p3o3
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o1
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o1
+    start_date: 2025/09/18
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/18
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e1p4o1
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e1p4o1
+    start_date: 2025/09/18
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/18
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p4o1
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e1p4o1
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e1p4o1
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o2
+    start_date: 2025/10/02
+    end_date: 2025/10/02
+    work_date_lsit:
+    - date: 2025/10/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e1p4o2
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e1p4o2
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e1p4o2
+    start_date: 2025/10/02
+    end_date: 2025/10/02
+    work_date_lsit:
+    - date: 2025/10/02
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e1p4o2
+    start_date: 2025/09/16
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e1p4o2
+    start_date: 2025/09/17
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e1p4o3
+    start_date: 2025/09/19
+    end_date: 2025/09/19
+    work_date_lsit:
+    - date: 2025/09/19
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e1p4o3
+    start_date: 2025/09/30
+    end_date: 2025/09/30
+    work_date_lsit:
+    - date: 2025/09/30
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p4o3
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p4o3
+    start_date: 2025/09/19
+    end_date: 2025/09/20
+    work_date_lsit:
+    - date: 2025/09/19
+      hour: 12
+    - date: 2025/09/20
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p4o3
+    start_date: 2025/09/30
+    end_date: 2025/09/30
+    work_date_lsit:
+    - date: 2025/09/30
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e1p4o3
+    start_date: 2025/10/03
+    end_date: 2025/10/03
+    work_date_lsit:
+    - date: 2025/10/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o3
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o3
+    start_date: 2025/09/20
+    end_date: 2025/09/20
+    work_date_lsit:
+    - date: 2025/09/20
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o3
+    start_date: 2025/10/03
+    end_date: 2025/10/03
+    work_date_lsit:
+    - date: 2025/10/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e1p4o3
+    start_date: 2025/10/19
+    end_date: 2025/10/19
+    work_date_lsit:
+    - date: 2025/10/19
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e1p4o3
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e1p4o3
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e1p4o3
+    start_date: 2025/10/19
+    end_date: 2025/10/19
+    work_date_lsit:
+    - date: 2025/10/19
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e2p1o1
+    start_date: 2025/09/09
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 12
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e2p1o1
+    start_date: 2025/09/05
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 8
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e2p1o1
+    start_date: 2025/09/05
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e2p1o1
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 8
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p1o1
+    start_date: 2025/09/05
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p1o1
+    start_date: 2025/09/09
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p1o1
+    start_date: 2025/09/07
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e2p1o2
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e2p1o2
+    start_date: 2025/09/08
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/08
+      hour: 12
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e2p1o2
+    start_date: 2025/09/05
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    - date: 2025/09/06
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p1o2
+    start_date: 2025/09/09
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e2p1o2
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p1o2
+    start_date: 2025/09/08
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p1o2
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p1o2
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e2p1o3
+    start_date: 2025/09/05
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 10
+    - date: 2025/09/06
+      hour: 10
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e2p1o3
+    start_date: 2025/09/07
+    end_date: 2025/09/08
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    - date: 2025/09/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p1o3
+    start_date: 2025/09/06
+    end_date: 2025/09/06
+    work_date_lsit:
+    - date: 2025/09/06
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p1o3
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p1o3
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p1o3
+    start_date: 2025/09/10
+    end_date: 2025/09/10
+    work_date_lsit:
+    - date: 2025/09/10
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p1o3
+    start_date: 2025/09/05
+    end_date: 2025/09/05
+    work_date_lsit:
+    - date: 2025/09/05
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p1o3
+    start_date: 2025/09/09
+    end_date: 2025/09/09
+    work_date_lsit:
+    - date: 2025/09/09
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e2p1o3
+    start_date: 2025/09/07
+    end_date: 2025/09/07
+    work_date_lsit:
+    - date: 2025/09/07
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p2o1
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w13
+    operation_task: e2p2o1
+    start_date: 2025/09/13
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p2o1
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p2o1
+    start_date: 2025/09/13
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p2o1
+    start_date: 2025/09/13
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e2p2o1
+    start_date: 2025/09/13
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e2p2o1
+    start_date: 2025/09/14
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e2p2o1
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e2p2o1
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e2p2o2
+    start_date: 2025/09/11
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e2p2o2
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p2o2
+    start_date: 2025/09/11
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e2p2o2
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e2p2o2
+    start_date: 2025/09/13
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e2p2o2
+    start_date: 2025/09/13
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 10
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e2p2o2
+    start_date: 2025/09/13
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w14
+    operation_task: e2p2o2
+    start_date: 2025/09/12
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 12
+    - date: 2025/09/13
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p2o2
+    start_date: 2025/09/14
+    end_date: 2025/09/14
+    work_date_lsit:
+    - date: 2025/09/14
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e2p2o2
+    start_date: 2025/09/11
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 12
+    - date: 2025/09/12
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e2p2o2
+    start_date: 2025/09/15
+    end_date: 2025/09/15
+    work_date_lsit:
+    - date: 2025/09/15
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e2p2o3
+    start_date: 2025/09/13
+    end_date: 2025/09/13
+    work_date_lsit:
+    - date: 2025/09/13
+      hour: 4
+    plan_flexibility: Flexible
+  - worker: w15
+    operation_task: e2p2o3
+    start_date: 2025/09/12
+    end_date: 2025/09/12
+    work_date_lsit:
+    - date: 2025/09/12
+      hour: 4
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e2p2o3
+    start_date: 2025/09/11
+    end_date: 2025/09/11
+    work_date_lsit:
+    - date: 2025/09/11
+      hour: 4
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p3o1
+    start_date: 2025/09/16
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p3o1
+    start_date: 2025/09/20
+    end_date: 2025/09/20
+    work_date_lsit:
+    - date: 2025/09/20
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e2p3o1
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e2p3o1
+    start_date: 2025/09/20
+    end_date: 2025/09/20
+    work_date_lsit:
+    - date: 2025/09/20
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e2p3o1
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p3o1
+    start_date: 2025/09/17
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p3o1
+    start_date: 2025/09/19
+    end_date: 2025/09/19
+    work_date_lsit:
+    - date: 2025/09/19
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e2p3o1
+    start_date: 2025/09/16
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e2p3o1
+    start_date: 2025/09/21
+    end_date: 2025/09/21
+    work_date_lsit:
+    - date: 2025/09/21
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p3o1
+    start_date: 2025/09/18
+    end_date: 2025/09/19
+    work_date_lsit:
+    - date: 2025/09/18
+      hour: 12
+    - date: 2025/09/19
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e2p3o1
+    start_date: 2025/09/16
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    - date: 2025/09/17
+      hour: 12
+    - date: 2025/09/18
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w16
+    operation_task: e2p3o1
+    start_date: 2025/09/21
+    end_date: 2025/09/21
+    work_date_lsit:
+    - date: 2025/09/21
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e2p3o1
+    start_date: 2025/09/18
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/18
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e2p3o1
+    start_date: 2025/09/17
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/17
+      hour: 12
+    - date: 2025/09/18
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p3o2
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p3o2
+    start_date: 2025/09/20
+    end_date: 2025/09/21
+    work_date_lsit:
+    - date: 2025/09/20
+      hour: 12
+    - date: 2025/09/21
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w4
+    operation_task: e2p3o2
+    start_date: 2025/09/16
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    - date: 2025/09/17
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e2p3o2
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w18
+    operation_task: e2p3o2
+    start_date: 2025/09/19
+    end_date: 2025/09/21
+    work_date_lsit:
+    - date: 2025/09/19
+      hour: 12
+    - date: 2025/09/20
+      hour: 12
+    - date: 2025/09/21
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w5
+    operation_task: e2p3o2
+    start_date: 2025/09/17
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/17
+      hour: 12
+    - date: 2025/09/18
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w17
+    operation_task: e2p3o2
+    start_date: 2025/09/18
+    end_date: 2025/09/18
+    work_date_lsit:
+    - date: 2025/09/18
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p3o2
+    start_date: 2025/09/19
+    end_date: 2025/09/19
+    work_date_lsit:
+    - date: 2025/09/19
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p3o2
+    start_date: 2025/09/16
+    end_date: 2025/09/16
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p3o3
+    start_date: 2025/09/16
+    end_date: 2025/09/17
+    work_date_lsit:
+    - date: 2025/09/16
+      hour: 4
+    - date: 2025/09/17
+      hour: 4
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p4o1
+    start_date: 2025/09/24
+    end_date: 2025/09/24
+    work_date_lsit:
+    - date: 2025/09/24
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p4o1
+    start_date: 2025/10/04
+    end_date: 2025/10/04
+    work_date_lsit:
+    - date: 2025/10/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w6
+    operation_task: e2p4o1
+    start_date: 2025/10/15
+    end_date: 2025/10/15
+    work_date_lsit:
+    - date: 2025/10/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p4o1
+    start_date: 2025/10/15
+    end_date: 2025/10/15
+    work_date_lsit:
+    - date: 2025/10/15
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p4o1
+    start_date: 2025/09/23
+    end_date: 2025/09/24
+    work_date_lsit:
+    - date: 2025/09/23
+      hour: 12
+    - date: 2025/09/24
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p4o1
+    start_date: 2025/09/27
+    end_date: 2025/09/27
+    work_date_lsit:
+    - date: 2025/09/27
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w19
+    operation_task: e2p4o1
+    start_date: 2025/10/08
+    end_date: 2025/10/08
+    work_date_lsit:
+    - date: 2025/10/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o1
+    start_date: 2025/09/23
+    end_date: 2025/09/23
+    work_date_lsit:
+    - date: 2025/09/23
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o1
+    start_date: 2025/09/27
+    end_date: 2025/09/27
+    work_date_lsit:
+    - date: 2025/09/27
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o1
+    start_date: 2025/10/04
+    end_date: 2025/10/04
+    work_date_lsit:
+    - date: 2025/10/04
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e2p4o1
+    start_date: 2025/10/08
+    end_date: 2025/10/08
+    work_date_lsit:
+    - date: 2025/10/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o2
+    start_date: 2025/09/22
+    end_date: 2025/09/22
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o2
+    start_date: 2025/09/24
+    end_date: 2025/09/24
+    work_date_lsit:
+    - date: 2025/09/24
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o2
+    start_date: 2025/09/26
+    end_date: 2025/09/26
+    work_date_lsit:
+    - date: 2025/09/26
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o2
+    start_date: 2025/10/08
+    end_date: 2025/10/08
+    work_date_lsit:
+    - date: 2025/10/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w20
+    operation_task: e2p4o2
+    start_date: 2025/10/11
+    end_date: 2025/10/11
+    work_date_lsit:
+    - date: 2025/10/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p4o2
+    start_date: 2025/09/22
+    end_date: 2025/09/22
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p4o2
+    start_date: 2025/09/22
+    end_date: 2025/09/22
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p4o2
+    start_date: 2025/09/24
+    end_date: 2025/09/24
+    work_date_lsit:
+    - date: 2025/09/24
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p4o2
+    start_date: 2025/10/08
+    end_date: 2025/10/08
+    work_date_lsit:
+    - date: 2025/10/08
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w7
+    operation_task: e2p4o2
+    start_date: 2025/10/11
+    end_date: 2025/10/11
+    work_date_lsit:
+    - date: 2025/10/11
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e2p4o2
+    start_date: 2025/09/22
+    end_date: 2025/09/22
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e2p4o2
+    start_date: 2025/09/26
+    end_date: 2025/09/26
+    work_date_lsit:
+    - date: 2025/09/26
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e2p4o3
+    start_date: 2025/09/25
+    end_date: 2025/09/25
+    work_date_lsit:
+    - date: 2025/09/25
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e2p4o3
+    start_date: 2025/10/03
+    end_date: 2025/10/03
+    work_date_lsit:
+    - date: 2025/10/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w9
+    operation_task: e2p4o3
+    start_date: 2025/10/22
+    end_date: 2025/10/22
+    work_date_lsit:
+    - date: 2025/10/22
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p4o3
+    start_date: 2025/09/23
+    end_date: 2025/09/23
+    work_date_lsit:
+    - date: 2025/09/23
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p4o3
+    start_date: 2025/09/25
+    end_date: 2025/09/25
+    work_date_lsit:
+    - date: 2025/09/25
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w11
+    operation_task: e2p4o3
+    start_date: 2025/10/21
+    end_date: 2025/10/21
+    work_date_lsit:
+    - date: 2025/10/21
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e2p4o3
+    start_date: 2025/09/22
+    end_date: 2025/09/23
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    - date: 2025/09/23
+      hour: 10
+    plan_flexibility: Flexible
+  - worker: w10
+    operation_task: e2p4o3
+    start_date: 2025/10/21
+    end_date: 2025/10/21
+    work_date_lsit:
+    - date: 2025/10/21
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e2p4o3
+    start_date: 2025/09/22
+    end_date: 2025/09/23
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    - date: 2025/09/23
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e2p4o3
+    start_date: 2025/09/27
+    end_date: 2025/09/27
+    work_date_lsit:
+    - date: 2025/09/27
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w12
+    operation_task: e2p4o3
+    start_date: 2025/10/03
+    end_date: 2025/10/03
+    work_date_lsit:
+    - date: 2025/10/03
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e2p4o3
+    start_date: 2025/09/22
+    end_date: 2025/09/23
+    work_date_lsit:
+    - date: 2025/09/22
+      hour: 12
+    - date: 2025/09/23
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e2p4o3
+    start_date: 2025/09/27
+    end_date: 2025/09/27
+    work_date_lsit:
+    - date: 2025/09/27
+      hour: 12
+    plan_flexibility: Flexible
+  - worker: w8
+    operation_task: e2p4o3
+    start_date: 2025/10/22
+    end_date: 2025/10/22
+    work_date_lsit:
+    - date: 2025/10/22
+      hour: 12
+    plan_flexibility: Flexible
