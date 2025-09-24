@@ -104,16 +104,34 @@ def load_schedule(path):
 
     # Normalize assignments and expand per-day rows
     assignments = []
+    # --- also capture per-assignment blocks for utilization ---
+    assignment_blocks = []
     for a in asg_raw:
         wd_key = "work_date_lsit" if "work_date_lsit" in a else "work_date_list"
+        work_dates = []
         for ditem in a.get(wd_key, []):
+            d = _d(ditem["date"])
+            h = int(ditem["hour"])
             assignments.append({
                 "worker": a["worker"],
                 "operation_task": a["operation_task"],  # e.g. e1p3o2
-                "date": _d(ditem["date"]),
-                "hours": int(ditem["hour"]),
+                "date": d,
+                "hours": h,
             })
-    return plan_start, plan_end, modules, assignments
+            work_dates.append(d)
+        # prefer explicit start/end; fallback to min/max of work_dates
+        sd = a.get("start_date")
+        ed = a.get("end_date")
+        start_date = _d(sd) if sd else (min(work_dates) if work_dates else None)
+        end_date   = _d(ed) if ed else (max(work_dates) if work_dates else None)
+        assignment_blocks.append({
+            "worker": a["worker"],
+            "operation_task": a["operation_task"],
+            "start_date": start_date,
+            "end_date": end_date,
+            "work_dates": sorted(set(work_dates)),
+        })
+    return plan_start, plan_end, modules, assignments, assignment_blocks
 
 # ---------------------------- AGGREGATIONS -----------------------------
 def build_maps(env, modules, assignments):
@@ -237,6 +255,7 @@ def build_maps(env, modules, assignments):
         "day_op_heads": day_op_heads,
         "per_cell_assigns_task": per_cell_assigns_task,
         "per_cell_assigns_emp": per_cell_assigns_emp,
+        "worker_name": worker_name,
     }
 
 # ----------------------- REQUIRED HOURS (task/module) ------------------
@@ -577,7 +596,7 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
     cell.fill = fill_skill; cell.alignment = center
 
 # ----------------------- DASHBOARD (unchanged layout) ------------------
-def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, req_module):
+def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, assignment_blocks, req_module):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
@@ -676,30 +695,63 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
                 if isinstance(req,(int,float)) and isinstance(asg,(int,float)) and asg < req:
                     c.fill = fill_under
 
+    # ---------------- Assignment Utilization (name/task/start/end/%days worked) ----------------
+    util_start = start_row + 2 + len(prog_rows) + 2
+    ws.cell(row=util_start, column=1, value="Assignment Utilization").font = bold
+    util_hdr = ["employee", "task", "start_date", "end_date", "utilization%"]
+    for j, h in enumerate(util_hdr, start=1):
+        ws.cell(row=util_start+1, column=j, value=h).font = bold
+
+    worker_name = maps["worker_name"]
+    util_rows = []
+    for blk in assignment_blocks:
+        wid   = blk["worker"]
+        name  = worker_name.get(wid, wid)
+        task  = blk["operation_task"]
+        sd    = blk["start_date"]
+        ed    = blk["end_date"]
+        work_dates = set(blk.get("work_dates", []))
+        if not (sd and ed):
+            pct = 100.0 if work_dates else 0.0
+        else:
+            planned_days = (ed - sd).days + 1
+            worked_days  = len({d for d in work_dates if sd <= d <= ed})
+            pct = (worked_days / planned_days * 100.0) if planned_days > 0 else 0.0
+        util_rows.append((name, task,
+                          sd.isoformat() if sd else "",
+                          ed.isoformat() if ed else "",
+                          f"{pct:.1f}%"))
+    util_rows.sort(key=lambda r: (r[0] or "", r[1] or ""))  # sort by employee then task
+
+    for i, row in enumerate(util_rows, start=util_start+2):
+        for j, v in enumerate(row, start=1):
+            ws.cell(row=i, column=j, value=v)
+
     # Overtime & capacity tables
+    b0 = util_start + 2 + len(util_rows) + 2
+    ws.cell(row=b0, column=1, value="Overtime & capacity").font = bold
+    ws.cell(row=b0+1, column=1, value="employee").font = bold
+    ws.cell(row=b0+1, column=2, value="total_ot_hours").font = bold
+
     ot_by_emp = Counter()
     for (wname, d), h in per_emp_day.items():
         if h > OT_THRESHOLD:
             ot_by_emp[wname] += (h - OT_THRESHOLD)
     ot_table = sorted(ot_by_emp.items(), key=lambda kv: kv[1], reverse=True)
 
-    # Daily totals across plan
-    day_rows = []
-    d = plan_start
-    while d <= plan_end:
-        day_rows.append((d.strftime("%m/%d"), maps["per_day_total"].get(d, 0)))
-        d += timedelta(days=1)
-
-    b0 = start_row + 2 + len(prog_rows) + 2
-    ws.cell(row=b0, column=1, value="Overtime & capacity").font = bold
-    ws.cell(row=b0+1, column=1, value="employee").font = bold
-    ws.cell(row=b0+1, column=2, value="total_ot_hours").font = bold
     for i, (name, hrs) in enumerate(ot_table, start=b0+2):
         ws.cell(row=i, column=1, value=name)
         ws.cell(row=i, column=2, value=int(hrs))
 
     ws.cell(row=b0+1, column=5, value="date").font = bold
     ws.cell(row=b0+1, column=6, value="total_hours").font = bold
+
+    day_rows = []
+    d = plan_start
+    while d <= plan_end:
+        day_rows.append((d.strftime("%m/%d"), maps["per_day_total"].get(d, 0)))
+        d += timedelta(days=1)
+
     for i, (dd, hrs) in enumerate(day_rows, start=b0+2):
         ws.cell(row=i, column=5, value=dd)
         ws.cell(row=i, column=6, value=int(hrs))
@@ -830,7 +882,7 @@ def main():
     ap.add_argument("--out",      default="schedule_export.xlsx")
     args = ap.parse_args()
 
-    plan_start, plan_end, modules, assignments = load_schedule(args.schedule)
+    plan_start, plan_end, modules, assignments, assignment_blocks = load_schedule(args.schedule)
     env  = load_env(args.env)
     maps = build_maps(env, modules, assignments)
 
@@ -846,7 +898,7 @@ def main():
     # ===== SHEET 2 =====
     write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios)
     # ===== SHEET 3 =====
-    write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, req_module)
+    write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, assignment_blocks, req_module)
     # ===== SHEET 4 =====
     write_sheet_breaches(wb, vios)
 
