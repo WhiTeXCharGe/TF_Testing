@@ -1,0 +1,577 @@
+# employee_schedule.py
+# Reads EnvConfig.yaml + Schedule.yaml, builds the problem entirely from them,
+# Pass 1 builds fixed crew blocks (days × hours × heads) per task window (and enforces intra-module phase order),
+# Pass 2 uses Timefold to assign employees to those fixed seats (one var per seat, not per day),
+# prints hard-violation audits, and OVERWRITES Schedule.yaml with assignment_list.
+
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from typing import Annotated, Dict, List, Optional, Tuple
+import yaml
+from collections import defaultdict
+import math
+import time
+
+from timefold.solver.domain import (
+    planning_entity, planning_solution,
+    PlanningId, PlanningVariable,
+    PlanningEntityCollectionProperty, ProblemFactCollectionProperty,
+    PlanningScore, ValueRangeProvider
+)
+from timefold.solver import SolverFactory
+from timefold.solver.config import SolverConfig, TerminationConfig, ScoreDirectorFactoryConfig, Duration
+from timefold.solver.score import (
+    HardMediumSoftScore,
+    ConstraintFactory, Constraint, Joiners,
+    constraint_provider, ConstraintCollectors
+)
+
+from export_schedule import overwrite_schedule_with_assignments
+
+# -------------------- Domain (facts) --------------------
+
+@dataclass(frozen=True)
+class DaySlot:
+    id: int
+    d: date
+
+@dataclass(frozen=True)
+class Employee:
+    id: int           # internal numeric id for solver
+    wid: str          # "w#": used for writing back
+    name: str
+    skills: Dict[str, int]
+
+@dataclass(frozen=True)
+class TaskWindow:
+    module: str
+    factory: str
+    phase_id: str
+    phase_num: int
+    op_id: str
+    start_day_id: int       # inclusive
+    end_day_id: int         # inclusive
+    allowed: List[int]      # allowed hours for this op
+    min_heads: int
+    max_heads: int
+    workload_days: int      # from Schedule.yaml
+
+# -------------------- Pass 1: crew blocks --------------------
+
+@dataclass(frozen=True)
+class CrewBlock:
+    module: str
+    factory: str
+    phase_id: str
+    phase_num: int
+    op_id: str
+    start_day_id: int
+    days: int               # consecutive days
+    hours: int              # fixed hours/day (prefer 8)
+    heads: int              # number of seats
+
+def _pick_hours(allowed: List[int]) -> int:
+    # avoid overtime > finish fast: prefer 8 if allowed, else smallest allowed
+    if 8 in (allowed or []):
+        return 8
+    return min(allowed) if allowed else 8
+
+def _plan_block_for_window(w: TaskWindow, req_hours: int, earliest_start: int) -> Optional[CrewBlock]:
+    """
+    Choose hours, heads, and days so that:
+      - hours in allowed (prefer 8 else smallest)
+      - min_heads <= heads <= max_heads
+      - start_day_id = max(window.start, earliest_start)
+      - days <= window_len from that start
+      - heads*hours*days >= req_hours (allow overfill but DO NOT extend days)
+      - minimize days first, then |hours-8|, then smaller hours, then smaller heads, then overfill
+    """
+    allowed = sorted(set(int(h) for h in (w.allowed or [8])))
+    if not allowed:
+        allowed = [8]
+    pref_hours = _pick_hours(allowed)
+
+    start = max(w.start_day_id, int(earliest_start))
+    window_len = max(0, w.end_day_id - start + 1)
+    if window_len <= 0:
+        return None
+
+    best = None  # (days, hours, heads, overfill)
+    key_best = None
+
+    for hrs in sorted(allowed):  # small to large; 8 near front if present
+        for heads in range(max(1, w.min_heads), max(1, w.max_heads) + 1):
+            denom = heads * hrs
+            if denom <= 0:
+                continue
+            days_needed = math.ceil(req_hours / float(denom))
+            if days_needed <= 0 or days_needed > window_len:
+                continue
+            overfill = heads * hrs * days_needed - req_hours
+            cand = (days_needed, hrs, heads, overfill)
+            tie = (
+                cand[0],                    # minimize days
+                abs(cand[1] - pref_hours),  # hours close to 8
+                cand[1],                    # then smaller hours
+                cand[2],                    # then smaller heads
+                cand[3],                    # then smaller overfill
+            )
+            if (best is None) or (tie < key_best):
+                best = cand
+                key_best = tie
+
+    if best is None:
+        # fallback: fit inside window with max heads, smallest hours
+        hrs = min(allowed)
+        heads = max(1, w.max_heads)
+        days = max(1, window_len)
+    else:
+        days, hrs, heads, _ = best
+
+    return CrewBlock(
+        module=w.module, factory=w.factory,
+        phase_id=w.phase_id, phase_num=w.phase_num,
+        op_id=w.op_id,
+        start_day_id=start,
+        days=days, hours=hrs, heads=heads
+    )
+
+# -------------------- Planning entity = one seat for whole block --------------------
+
+@planning_entity
+@dataclass
+class CrewSeat:
+    """
+    One fixed seat for the whole block; Timefold assigns exactly one employee to it.
+    There is no per-day planning variable, so swapping across days is impossible.
+    """
+    id: Annotated[int, PlanningId]
+
+    # Facts (fixed)
+    module: str
+    factory: str
+    phase_id: str
+    phase_num: int
+    op_id: str
+    start_day_id: int
+    days: int
+    hours: int
+    seat_index: int
+    seat_key: str          # unique key like "e1|p1o1|s0002|d12"
+
+    # Planning variable
+    employee: Annotated[Employee, PlanningVariable]
+
+@dataclass(frozen=True)
+class SeatDay:
+    """Problem fact representing (seat, specific day) workload."""
+    seat_key: str
+    day: DaySlot
+    hours: int
+    factory: str
+
+@planning_solution
+@dataclass
+class Schedule:
+    # value ranges
+    days: Annotated[List[DaySlot], ProblemFactCollectionProperty, ValueRangeProvider]
+    employees: Annotated[List[Employee], ProblemFactCollectionProperty, ValueRangeProvider]
+
+    # problem facts
+    seat_days: Annotated[List[SeatDay], ProblemFactCollectionProperty]
+
+    # planning entities
+    seats: Annotated[List[CrewSeat], PlanningEntityCollectionProperty]
+
+    score: Annotated[HardMediumSoftScore, PlanningScore] = field(default=None)
+
+# -------------------- Globals --------------------
+
+_DAILY_CAP: int = 12
+_TARGET_HOURS_PER_EMP: float = 0.0
+
+# -------------------- Constraints --------------------
+
+def _is_unassigned(emp: Optional[Employee]) -> bool:
+    return (emp is None) or (emp.id == 0)
+
+def _skill_level(emp: Optional[Employee], op_id: str) -> int:
+    if emp is None:
+        return 0
+    skills = emp.skills
+    if skills is None:
+        return 0
+    v = skills.get(op_id)
+    if v is None:
+        return 0
+    try:
+        return int(v)
+    except Exception:
+        return 0
+
+def require_assignment_and_skill(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(CrewSeat)
+          .filter(lambda s: _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1)
+          .penalize(HardMediumSoftScore.ONE_HARD)
+          .as_constraint("assigned+eligible-skill")
+    )
+
+def one_factory_per_emp_day_hard(cf: ConstraintFactory) -> Constraint:
+    # SeatDay -> CrewSeat(seat_key) -> employee
+    return (
+        cf.for_each(SeatDay)
+          .join(cf.for_each(CrewSeat), Joiners.equal(lambda sd: sd.seat_key, lambda cs: cs.seat_key))
+          .filter(lambda sd, cs: not _is_unassigned(cs.employee))
+          .group_by(lambda sd, cs: (cs.employee.id, sd.day.id),
+                    ConstraintCollectors.count_distinct(lambda sd, cs: sd.factory))
+          .filter(lambda key, fac_cnt: fac_cnt > 1)
+          .penalize(HardMediumSoftScore.ONE_HARD, lambda key, fac_cnt: fac_cnt - 1)
+          .as_constraint("one-factory-per-emp-day")
+    )
+
+def daily_capacity_12h_hard(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(SeatDay)
+          .join(cf.for_each(CrewSeat), Joiners.equal(lambda sd: sd.seat_key, lambda cs: cs.seat_key))
+          .filter(lambda sd, cs: not _is_unassigned(cs.employee))
+          .group_by(lambda sd, cs: (cs.employee.id, sd.day.id),
+                    ConstraintCollectors.sum(lambda sd, cs: int(sd.hours)))
+          .filter(lambda key, tot: tot > _DAILY_CAP)
+          .penalize(HardMediumSoftScore.ONE_HARD, lambda key, tot: tot - _DAILY_CAP)
+          .as_constraint("daily-cap-12h")
+    )
+
+def avoid_overtime_over8_soft(cf: ConstraintFactory) -> Constraint:
+    BASE = 8
+    return (
+        cf.for_each(SeatDay)
+          .join(cf.for_each(CrewSeat), Joiners.equal(lambda sd: sd.seat_key, lambda cs: cs.seat_key))
+          .filter(lambda sd, cs: not _is_unassigned(cs.employee))
+          .group_by(lambda sd, cs: (cs.employee.id, sd.day.id),
+                    ConstraintCollectors.sum(lambda sd, cs: int(sd.hours)))
+          .filter(lambda key, tot: tot > BASE)
+          .penalize(HardMediumSoftScore.ONE_SOFT, lambda key, tot: tot - BASE)
+          .as_constraint("avoid-overtime-over-8-soft")
+    )
+
+def balance_total_hours_soft(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(SeatDay)
+          .join(cf.for_each(CrewSeat), Joiners.equal(lambda sd: sd.seat_key, lambda cs: cs.seat_key))
+          .filter(lambda sd, cs: not _is_unassigned(cs.employee))
+          .group_by(lambda sd, cs: cs.employee.id,
+                    ConstraintCollectors.sum(lambda sd, cs: int(sd.hours)))
+          .penalize(HardMediumSoftScore.ONE_SOFT,
+                    lambda emp_id, tot: int(abs(int(tot) - int(_TARGET_HOURS_PER_EMP))))
+          .as_constraint("balance-total-hours-soft")
+    )
+
+@constraint_provider
+def define_constraints(cf: ConstraintFactory) -> List[Constraint]:
+    return [
+        require_assignment_and_skill(cf),
+        one_factory_per_emp_day_hard(cf),
+        daily_capacity_12h_hard(cf),
+        avoid_overtime_over8_soft(cf),
+        balance_total_hours_soft(cf),
+    ]
+
+# -------------------- YAML parsers --------------------
+
+def _phase_num_from_id(pid: str) -> int:
+    try:
+        return int(str(pid).strip().lower().replace("p", ""))
+    except Exception:
+        return 0
+
+def _parse_env(env_path: str):
+    with open(env_path, "r", encoding="utf-8") as f:
+        env = yaml.safe_load(f)["environment"]
+
+    opdef: Dict[str, Dict] = {}
+    for ph in env["workflow_list"][0]["phase_list"]:
+        for op in ph["operation_list"]:
+            op_id = op["id"]
+            hrs = list(op.get("work_hours", []) or [])
+            if not hrs:
+                hrs = [8]
+            opdef[op_id] = {
+                "phase_id": ph["id"],
+                "phase_num": _phase_num_from_id(ph["id"]),
+                "allowed": list(sorted(hrs)),
+                "min": int(op.get("min_worker_num", 1)),
+                "max": int(op.get("max_worker_num", 999999)),
+            }
+
+    # employees
+    employees: List[Employee] = [Employee(id=0, wid="__UNASSIGNED__", name="__UNASSIGNED__", skills={})]
+    eid = 1
+    for w in env["worker_list"]:
+        wid = str(w.get("id"))
+        name = w.get("name")
+        skills = dict(w.get("skill_map") or {})
+        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills))
+        eid += 1
+
+    return opdef, employees
+
+def _parse_schedule(env_opdef: Dict[str, Dict], sched_path: str):
+    with open(sched_path, "r", encoding="utf-8") as f:
+        s = yaml.safe_load(f)["schedule"]
+
+    start_date = datetime.strptime(s["plan_range"]["start_date"], "%Y/%m/%d").date()
+    end_date   = datetime.strptime(s["plan_range"]["end_date"], "%Y/%m/%d").date()
+    horizon_days = (end_date - start_date).days + 1
+
+    days: List[DaySlot] = [DaySlot(i, start_date + timedelta(days=i)) for i in range(horizon_days)]
+
+    windows: List[TaskWindow] = []
+    required_hours: Dict[Tuple[str, str], int] = {}  # (module, op_id) -> baseline hours
+
+    for wf in s["workflow_task_list"]:
+        module = wf["id"]
+        fab = wf.get("fab")
+        for ph_task in wf["phase_task_list"]:
+            phase_id = ph_task["phase"]
+            phase_num = _phase_num_from_id(phase_id)
+            p_start = datetime.strptime(ph_task["start_date"], "%Y/%m/%d").date()
+            p_end   = datetime.strptime(ph_task["end_date"], "%Y/%m/%d").date()
+            start_id = (p_start - start_date).days
+            end_id   = (p_end   - start_date).days
+
+            for ot in ph_task["operation_task_list"]:
+                op_id = ot["operation"]
+                workload_days = int(ot["workload_days"])
+
+                ocfg = env_opdef.get(op_id)
+                if ocfg is None:
+                    raise ValueError(f"operation {op_id} not present in EnvConfig.workflow_list")
+                allowed = ocfg["allowed"]
+                min_h = ocfg["min"]; max_h = ocfg["max"]
+
+                baseline = 4 if (list(allowed) == [4]) else 8
+                req_hours = workload_days * baseline
+                required_hours[(module, op_id)] = required_hours.get((module, op_id), 0) + req_hours
+
+                windows.append(TaskWindow(
+                    module=module, factory=fab, phase_id=phase_id, phase_num=phase_num,
+                    op_id=op_id, start_day_id=start_id, end_day_id=end_id,
+                    allowed=list(allowed), min_heads=min_h, max_heads=max_h,
+                    workload_days=workload_days
+                ))
+
+    return start_date, days, windows, required_hours
+
+# -------------------- Build blocks -> seats + seat-days (Pass 1 expansion) --------------------
+
+def _build_blocks_with_phase_order(
+    windows: List[TaskWindow],
+    required_hours: Dict[Tuple[str, str], int]
+) -> List[CrewBlock]:
+    """
+    For each module:
+      - run all phase k operations in parallel (respecting each window),
+      - then start phase k+1 only after ALL blocks from phase k finish.
+    """
+    # remaining required hours per (module, op)
+    remaining = dict(required_hours)
+
+    # group windows per module, then by phase
+    by_module: Dict[str, Dict[int, List[TaskWindow]]] = defaultdict(lambda: defaultdict(list))
+    for w in windows:
+        by_module[w.module][w.phase_num].append(w)
+
+    blocks: List[CrewBlock] = []
+
+    for module, by_phase in by_module.items():
+        # sort windows within each phase by start
+        for p in by_phase:
+            by_phase[p].sort(key=lambda w: (w.start_day_id, w.end_day_id))
+
+        # the day the *current* phase is allowed to start (after previous phase ends)
+        ready_day = 0
+
+        # walk phases in order: p1, p2, p3, ...
+        for phase_num in sorted(by_phase.keys()):
+            phase_windows = by_phase[phase_num]
+            phase_max_end = -1  # track when this phase actually finishes
+
+            # build blocks for every op in this phase independently
+            for w in phase_windows:
+                key = (w.module, w.op_id)
+                rem = int(remaining.get(key, 0))
+                if rem <= 0:
+                    continue
+
+                # earliest start respects: previous phase end + this window's start
+                earliest = max(ready_day, w.start_day_id)
+
+                block = _plan_block_for_window(w, rem, earliest)
+                if block is None:
+                    continue
+
+                blocks.append(block)
+
+                produced = block.days * block.hours * block.heads
+                remaining[key] = rem - min(rem, produced)
+
+                block_end = block.start_day_id + block.days - 1
+                if block_end > phase_max_end:
+                    phase_max_end = block_end
+
+            # next phase can start the day after all blocks in this phase end
+            if phase_max_end >= 0:
+                ready_day = phase_max_end + 1
+
+    return blocks
+
+
+def _expand_blocks_to_seats_and_days(blocks: List[CrewBlock], days: List[DaySlot]):
+    seats: List[CrewSeat] = []
+    seat_days: List[SeatDay] = []
+    sid = 1
+    day_by_id = {d.id: d for d in days}
+
+    for b in blocks:
+        for sidx in range(b.heads):
+            seat_key = f"{b.module}|{b.op_id}|s{str(sidx).zfill(4)}|d{b.start_day_id}"
+            seats.append(CrewSeat(
+                id=sid,
+                module=b.module, factory=b.factory,
+                phase_id=b.phase_id, phase_num=b.phase_num,
+                op_id=b.op_id,
+                start_day_id=b.start_day_id,
+                days=b.days, hours=b.hours,
+                seat_index=sidx,
+                seat_key=seat_key,
+                employee=Employee(0, "__UNASSIGNED__", "__UNASSIGNED__", {})
+            ))
+            sid += 1
+            for off in range(b.days):
+                did = b.start_day_id + off
+                if did in day_by_id:
+                    seat_days.append(SeatDay(
+                        seat_key=seat_key,
+                        day=day_by_id[did],
+                        hours=b.hours,
+                        factory=b.factory
+                    ))
+    return seats, seat_days
+
+# -------------------- Auditing (preview) --------------------
+
+def _audit_hard(schedule: Schedule) -> List[Tuple]:
+    viols: List[Tuple] = []
+
+    # 12h cap and factory mix
+    by_emp_day_sum = defaultdict(int)
+    by_emp_day_fabs = defaultdict(set)
+
+    # map seat_key -> employee (for quick lookups)
+    emp_by_seat: Dict[str, Employee] = {}
+    for s in schedule.seats:
+        emp_by_seat[s.seat_key] = s.employee
+
+    for sd in schedule.seat_days:
+        emp = emp_by_seat.get(sd.seat_key)
+        if _is_unassigned(emp):
+            continue
+        by_emp_day_sum[(emp.name, sd.day.id)] += int(sd.hours)
+        by_emp_day_fabs[(emp.name, sd.day.id)].add(sd.factory)
+
+    for (emp, did), total in by_emp_day_sum.items():
+        if total > _DAILY_CAP:
+            viols.append(("DAILY_CAP", emp, did, total))
+    for (emp, did), facs in by_emp_day_fabs.items():
+        if len(facs) > 1:
+            viols.append(("FACTORY_MIX", emp, did, sorted(facs)))
+
+    # skill + unassigned
+    for seat in schedule.seats:
+        if _is_unassigned(seat.employee):
+            viols.append(("UNASSIGNED_SEAT", seat.module, seat.op_id, seat.start_day_id, seat.days))
+        elif _skill_level(seat.employee, seat.op_id) < 1:
+            viols.append(("SKILL", seat.employee.name, seat.op_id, seat.start_day_id))
+
+    return viols
+
+def _print_audit(tag: str, schedule: Schedule, elapsed_s: float | None = None):
+    viols = _audit_hard(schedule)
+    timing = f" | time: {elapsed_s:.2f}s" if elapsed_s is not None else ""
+    print(f"\n=== {tag}: HARD VIOLATIONS ({len(viols)}){timing} ===")
+    for v in viols[:20]:
+        print(v)
+    if len(viols) > 20:
+        print(f"... ({len(viols) - 20} more)")
+
+# -------------------- Build & 2-pass Solve --------------------
+
+def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedule.yaml"):
+    global _TARGET_HOURS_PER_EMP
+
+    env_opdef, employees = _parse_env(env_path)
+    start_day, days, windows, required_hours = _parse_schedule(env_opdef, sched_path)
+
+    real_emp_count = max(1, len(employees) - 1)   # exclude dummy idx 0
+    total_required_hours = sum(required_hours.values())
+    _TARGET_HOURS_PER_EMP = total_required_hours / real_emp_count
+
+    # -------- Pass 1: blocks with phase order, then expand to seats+days --------
+    blocks = _build_blocks_with_phase_order(windows, required_hours)
+    seats, seat_days = _expand_blocks_to_seats_and_days(blocks, days)
+
+    base_problem = Schedule(
+        days=days,
+        employees=employees,
+        seat_days=seat_days,
+        seats=seats
+    )
+
+    # -------- Pass 2: assign employees --------
+    t0 = time.time()
+    solver1 = _build_solver(best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=45)
+    p1s = time.time()
+    after1: Schedule = solver1.solve(base_problem)
+    p1e = time.time()
+    _print_audit("PASS 1 (feasible)", after1, elapsed_s=(p1e - p1s))
+
+    solver2 = _build_solver(spent_minutes=1, unimproved_seconds=45)
+    p2s = time.time()
+    final: Schedule = solver2.solve(after1)
+    p2e = time.time()
+    _print_audit("PASS 2 (polish)", final, elapsed_s=(p2e - p2s))
+
+    print(f"\nTOTAL solving time: {p2e - t0:.2f}s "
+          f"(P1 {p1e - p1s:.2f}s, P2 {p2e - p2s:.2f}s)")
+
+    return final, start_day
+
+def _build_solver(best_limit: str | None = None,
+                  spent_minutes: int | None = None,
+                  unimproved_seconds: int | None = None):
+    term_kwargs = {}
+    if best_limit is not None:
+        term_kwargs["best_score_limit"] = best_limit
+    if spent_minutes is not None:
+        term_kwargs["spent_limit"] = Duration(minutes=spent_minutes)
+    if unimproved_seconds is not None:
+        term_kwargs["unimproved_spent_limit"] = Duration(seconds=unimproved_seconds)
+
+    cfg = SolverConfig(
+        solution_class=Schedule,
+        entity_class_list=[CrewSeat],
+        score_director_factory_config=ScoreDirectorFactoryConfig(
+            constraint_provider_function=define_constraints
+        ),
+        termination_config=TerminationConfig(**term_kwargs)
+    )
+    return SolverFactory.create(cfg).build_solver()
+
+def main():
+    final, start_day = solve_from_yaml("EnvConfig.yaml", "Schedule.yaml")
+    # export_schedule expects per-day assignments; it can reconstruct from seat_days + seats.
+    overwrite_schedule_with_assignments(final, start_day, "Schedule.yaml")
+
+if __name__ == "__main__":
+    main()
