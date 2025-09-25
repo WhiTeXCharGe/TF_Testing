@@ -1,0 +1,151 @@
+TWO-STEP EMPLOYEE SCHEDULING (TXT SUMMARY)
+
+1. PURPOSE
+
+* Produce stable “crews” that stay together on a task across consecutive days.
+* Obey process order across phases (p1 → p2 → p3 → p4) per module; operations inside the same phase may run in parallel.
+* Prefer 8-hour shifts (avoid overtime) while still finishing as fast as possible.
+* Respect per-operation min/max headcount and allowed hours from EnvConfig.
+* Respect daily 12h hard limit and “one factory per employee per day”.
+
+2. INPUTS
+
+* EnvConfig.yaml
+  • workflow\_list → phase\_list → operation\_list:
+
+  * id (e.g., p1o1)
+  * work\_hours (e.g., \[8,10,12]) → allowed hours choices
+  * min\_worker\_num, max\_worker\_num
+    • worker\_list (id, name, skill\_map{op\_id: level})
+* Schedule.yaml
+  • plan\_range (start\_date, end\_date)
+  • workflow\_task\_list (one per module):
+
+  * id (module), fab (factory)
+  * phase\_task\_list:
+
+    * phase (p1..p4), start\_date, end\_date
+    * operation\_task\_list: {operation: p#o#, workload\_days}
+
+3. OUTPUT
+
+* Schedule.yaml → assignment\_list:
+
+  * worker (wid)
+  * operation\_task (e.g., e1p1o1)
+  * start\_date, end\_date
+  * work\_date\_list: \[{date: YYYY/MM/DD, hour: H}]
+  * plan\_flexibility: "Flexible"
+
+4. OVERVIEW OF THE 2 PASSES
+   Pass 1 (Planning): Build fixed “crew blocks” → expand into “crew seats”.
+   Pass 2 (Solving): Assign employees to crew seats with Timefold.
+
+5. PASS 1 — CREW BLOCK PLANNING
+   Terminology
+
+* TaskWindow: (module, factory, phase\_id/num, op\_id, start\_day\_id, end\_day\_id, allowed hours, min/max heads, workload\_days).
+* Required hours per (module, op\_id): workload\_days × baseline where baseline = 8 unless the only allowed value is 4 (then 4).
+
+Block selection rules (per TaskWindow)
+
+* Hours: choose from allowed; prefer 8 if available, else the smallest allowed.
+* Heads: between min\_worker\_num and max\_worker\_num.
+* Days: consecutive; may not extend past the window’s end.
+* Output capacity: heads × hours × days must cover remaining required hours for that task; slight overfill is allowed but days may not be extended to avoid overfill.
+* Objective (tie-breakers): minimize days → keep hours close to 8 (prefer smaller) → minimize heads → minimize overfill.
+
+Phase order enforcement (per module)
+
+* Windows are grouped by phase\_num.
+* For phase k:
+  • Build blocks for all its operations (in parallel) with earliest\_start = max(window\.start, end\_of\_previous\_phase + 1).
+  • Compute phase\_k\_end = max(end of all blocks in phase k).
+* Phase k+1 can only start at phase\_k\_end + 1.
+* Inside the same phase, operations are independent (can overlap).
+
+Block → seat expansion
+
+* Each block (module, op\_id, start\_day, days, hours, heads) becomes:
+  • CrewSeat: one seat per head (seat\_index 0..heads-1) covering the whole block span.
+  • SeatDay facts: for each day in \[start\_day, start\_day+days-1], create (seat\_key, day, hours, factory).
+* Critical design: one CrewSeat = one employee for the entire block (no per-day var), so swapping is impossible by construction.
+
+Example block (conceptual)
+
+* Block: e1 p1o1, start 09/01, days 5, hours 8, heads 4 → Seats S0..S3, each with SeatDays on 09/01–09/05, 8h/day.
+
+6. PASS 2 — EMPLOYEE ASSIGNMENT (TIMEFOLD)
+   Planning model
+
+* Planning entity: CrewSeat (single planning variable: employee).
+* Problem facts:
+  • DaySlot list (horizon)
+  • Employees (with skills)
+  • SeatDay list (derived workload per seat per day)
+* Value ranges: employees (includes dummy id=0 for “unassigned” seed only; solver must assign real employees).
+
+Constraints
+HARD
+
+* Assigned + eligible skill:
+  • Each CrewSeat must be assigned; employee must have skill level ≥ 1 for seat.op\_id.
+* One factory per employee per day:
+  • For each (employee, day), the set of factories across all SeatDays must have size ≤ 1.
+* Daily capacity 12h:
+  • For each (employee, day), sum(SeatDay.hours) ≤ 12.
+
+SOFT (priorities reflect “avoid overtime > finish fast > fairness”)
+
+* Avoid overtime over 8h:
+  • For each (employee, day), penalize total\_hours − 8 if total\_hours > 8.
+* Balance total hours across people:
+  • Penalize |employee\_total\_hours − (total\_required\_hours / #employees)|.
+
+What guarantees “no swapping”
+
+* Only one employee variable per CrewSeat (not per day).
+* A seat spans all days of the block; thus the same employee is used on every day of that seat.
+
+7. EXPORT (writer)
+
+* Iterate all CrewSeats and reconstruct day rows from SeatDays:
+  • For each seat with assigned employee:
+
+  * Group SeatDays by (module, op\_id, employee) and fold consecutive dates into ranges.
+  * Emit one assignment per consecutive run with work\_date\_list entries (date + hours).
+* Format matches the existing Schedule.yaml structure (no Excel logic is changed).
+
+8. TUNING / KNOBS
+
+* Hours preference: prefer 8 if allowed; otherwise smallest allowed.
+* Min/max heads come from EnvConfig.
+* Daily hard cap: 12h (configurable).
+* Soft overtime threshold: 8h (configurable).
+* Phase ordering strictly enforced in Pass 1; ops within a phase can overlap.
+
+9. BEHAVIORAL SUMMARY
+
+* p1 operations for a module can run concurrently within their windows; p2 waits until all p1 blocks finish; etc.
+* Crew composition per task is stable over the entire block (no mid-block changes).
+* If a task’s required hours aren’t divisible by hours×heads, slight overfill is accepted (days are not extended).
+* Employees never mix factories within a day; overtime is discouraged and capped.
+
+10. COMMON EDGE CASES
+
+* If a window cannot fit any (hours, heads, days) combination after honoring phase order, the block is skipped (leads to unassigned seats; shows up in audit as UNASSIGNED\_SEAT).
+* If multiple blocks in the same factory fall on the same day for an employee, the 12h hard cap and 8h soft penalty apply.
+* If allowed hours = \[4] only, baseline is 4; otherwise baseline 8.
+
+11. AUDIT OUTPUT (console)
+
+* DAILY\_CAP violations (if any)
+* FACTORY\_MIX violations (if any)
+* UNASSIGNED\_SEAT and SKILL warnings (if any)
+* Total solving time and per-pass times
+
+12. WHY THIS DESIGN
+
+* Separating planning (Pass 1) from assignment (Pass 2) makes phase order, block size, and stability deterministic and transparent.
+* Planning entities are minimal (one variable per seat), improving stability and preventing day-to-day swapping.
+* Constraints are simple and readable; Excel export remains unchanged.
