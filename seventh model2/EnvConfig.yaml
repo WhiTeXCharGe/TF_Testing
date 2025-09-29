@@ -1,0 +1,1053 @@
+---
+environment:
+  workflow_list:
+    - id: workflow
+      name: Equitment Setup
+      phase_list:
+      - id: p1
+        name: Module Setup
+        operation_list:
+          - id: p1o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p1o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p1o3
+            name: Chem
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+      - id: p2
+        name: Hardware Setup
+        operation_list:
+          - id: p2o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p2o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p2o3
+            name: Chem
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+      - id: p3
+        name: Function Setup
+        operation_list:
+          - id: p3o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p3o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p3o3
+            name: Chem
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+      - id: p4
+        name: Acceptance Setup
+        operation_list:
+          - id: p4o1
+            name: Mech
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p4o2
+            name: Elec
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+          - id: p4o3
+            name: Chem
+            work_hours: [8, 10, 12]
+            min_worker_num: 2
+            max_worker_num: 8
+  
+  fab_list:
+    - id: f1
+      name: AAA Fab1
+      region: r1
+      customer_company: c1
+      unavailable_dates: []
+    - id: f2
+      name: AAA Fab2
+      region: r2
+      customer_company: c1
+      unavailable_dates: []
+    - id: f3
+      name: AAA Fab3
+      region: r1
+      customer_company: c1
+      unavailable_dates: []
+
+  region_list:
+    - id: r1  
+      name: Japan
+      max_stay_on: 7
+      max_annual_stay: 20
+      stay_off_interval: 3
+      unavailable_dates: []
+    - id: r2
+      name: Taiwan
+      max_stay_on: 7
+      max_annual_stay: 20
+      stay_off_interval: 3
+      unavailable_dates: []
+
+  customer_company_list:
+    - id: c1
+      name: AAA
+      unavailable_dates: []
+
+  worker_company_list:
+    - id: c2
+      name: XXX
+      annual_overtime_limit: 360
+      monthly_overtime_limit: 45
+      unavailable_dates: []
+
+  transite_day_map:
+  - from: r1
+    to: r2
+    days: 2
+  - from: r2
+    to: r1
+    days: 3
+
+  worker_list:
+  - id: w1
+    name: AA
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 2
+      p2o1: 3
+      p3o1: 4
+      p4o1: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w2
+    name: AB
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 3
+      p2o2: 4
+      p3o2: 5
+      p4o2: 1
+      p1o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w3
+    name: AC
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 4
+      p2o3: 5
+      p3o3: 1
+      p4o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w4
+    name: AD
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 5
+      p3o1: 1
+      p4o1: 2
+      p1o1: 3
+      p2o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w5
+    name: AE
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 1
+      p3o2: 2
+      p4o2: 3
+      p1o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w6
+    name: AF
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 2
+      p3o3: 3
+      p4o3: 4
+      p1o3: 5
+      p3o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w7
+    name: AG
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 3
+      p4o1: 4
+      p1o1: 5
+      p2o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w8
+    name: AH
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 4
+      p4o2: 5
+      p1o2: 1
+      p2o2: 2
+      p3o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w9
+    name: AI
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 5
+      p4o3: 1
+      p1o3: 2
+      p2o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w10
+    name: AJ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 1
+      p1o1: 2
+      p2o1: 3
+      p3o1: 4
+      p4o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w11
+    name: AK
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 2
+      p1o2: 3
+      p2o2: 4
+      p3o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w12
+    name: AL
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 3
+      p1o3: 4
+      p2o3: 5
+      p3o3: 1
+      p1o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w13
+    name: AM
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 4
+      p2o1: 5
+      p3o1: 1
+      p4o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w14
+    name: AN
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 5
+      p2o2: 1
+      p3o2: 2
+      p4o2: 3
+      p1o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w15
+    name: AO
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 1
+      p2o3: 2
+      p3o3: 3
+      p4o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w16
+    name: AP
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 2
+      p3o1: 3
+      p4o1: 4
+      p1o1: 5
+      p2o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w17
+    name: AQ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 3
+      p3o2: 4
+      p4o2: 5
+      p1o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w18
+    name: AR
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 4
+      p3o3: 5
+      p4o3: 1
+      p1o3: 2
+      p3o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w19
+    name: AS
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 5
+      p4o1: 1
+      p1o1: 2
+      p2o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w20
+    name: AT
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 1
+      p4o2: 2
+      p1o2: 3
+      p2o2: 4
+      p3o3: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w21
+    name: AU
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 2
+      p4o3: 3
+      p1o3: 4
+      p2o3: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w22
+    name: AV
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 3
+      p1o1: 4
+      p2o1: 5
+      p3o1: 1
+      p4o2: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w23
+    name: AW
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 4
+      p1o2: 5
+      p2o2: 1
+      p3o2: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w24
+    name: AX
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 5
+      p1o3: 1
+      p2o3: 2
+      p3o3: 3
+      p1o1: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w25
+    name: AY
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 1
+      p2o1: 2
+      p3o1: 3
+      p4o1: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w26
+    name: AZ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 2
+      p2o2: 3
+      p3o2: 4
+      p4o2: 5
+      p1o3: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w27
+    name: BA
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 3
+      p2o3: 4
+      p3o3: 5
+      p4o3: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w28
+    name: BB
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 4
+      p3o1: 5
+      p4o1: 1
+      p1o1: 2
+      p2o2: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w29
+    name: BC
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 5
+      p3o2: 1
+      p4o2: 2
+      p1o2: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w30
+    name: BD
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 1
+      p3o3: 2
+      p4o3: 3
+      p1o3: 4
+      p3o1: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w31
+    name: BE
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 2
+      p4o1: 3
+      p1o1: 4
+      p2o1: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w32
+    name: BF
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 3
+      p4o2: 4
+      p1o2: 5
+      p2o2: 1
+      p3o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w33
+    name: BG
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 4
+      p4o3: 5
+      p1o3: 1
+      p2o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w34
+    name: BH
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 5
+      p1o1: 1
+      p2o1: 2
+      p3o1: 3
+      p4o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w35
+    name: BI
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 1
+      p1o2: 2
+      p2o2: 3
+      p3o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w36
+    name: BJ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 2
+      p1o3: 3
+      p2o3: 4
+      p3o3: 5
+      p1o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w37
+    name: BK
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 3
+      p2o1: 4
+      p3o1: 5
+      p4o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w38
+    name: BL
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 4
+      p2o2: 5
+      p3o2: 1
+      p4o2: 2
+      p1o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w39
+    name: BM
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 5
+      p2o3: 1
+      p3o3: 2
+      p4o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w40
+    name: BN
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 1
+      p3o1: 2
+      p4o1: 3
+      p1o1: 4
+      p2o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w41
+    name: BO
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 2
+      p3o2: 3
+      p4o2: 4
+      p1o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w42
+    name: BP
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 3
+      p3o3: 4
+      p4o3: 5
+      p1o3: 1
+      p3o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w43
+    name: BQ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 4
+      p4o1: 5
+      p1o1: 1
+      p2o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w44
+    name: BR
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 5
+      p4o2: 1
+      p1o2: 2
+      p2o2: 3
+      p3o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w45
+    name: BS
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 1
+      p4o3: 2
+      p1o3: 3
+      p2o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w46
+    name: BT
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 2
+      p1o1: 3
+      p2o1: 4
+      p3o1: 5
+      p4o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w47
+    name: BU
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 3
+      p1o2: 4
+      p2o2: 5
+      p3o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w48
+    name: BV
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 4
+      p1o3: 5
+      p2o3: 1
+      p3o3: 2
+      p1o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w49
+    name: BW
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 5
+      p2o1: 1
+      p3o1: 2
+      p4o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w50
+    name: BX
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 1
+      p2o2: 2
+      p3o2: 3
+      p4o2: 4
+      p1o3: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w51
+    name: BY
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 2
+      p2o3: 3
+      p3o3: 4
+      p4o3: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w52
+    name: BZ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 3
+      p3o1: 4
+      p4o1: 5
+      p1o1: 1
+      p2o2: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w53
+    name: CA
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 4
+      p3o2: 5
+      p4o2: 1
+      p1o2: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w54
+    name: CB
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 5
+      p3o3: 1
+      p4o3: 2
+      p1o3: 3
+      p3o1: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w55
+    name: CC
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 1
+      p4o1: 2
+      p1o1: 3
+      p2o1: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w56
+    name: CD
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 2
+      p4o2: 3
+      p1o2: 4
+      p2o2: 5
+      p3o3: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w57
+    name: CE
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 3
+      p4o3: 4
+      p1o3: 5
+      p2o3: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w58
+    name: CF
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 4
+      p1o1: 5
+      p2o1: 1
+      p3o1: 2
+      p4o2: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w59
+    name: CG
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 5
+      p1o2: 1
+      p2o2: 2
+      p3o2: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w60
+    name: CH
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 1
+      p1o3: 2
+      p2o3: 3
+      p3o3: 4
+      p1o1: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w61
+    name: CI
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 2
+      p2o1: 3
+      p3o1: 4
+      p4o1: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w62
+    name: CJ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 3
+      p2o2: 4
+      p3o2: 5
+      p4o2: 1
+      p1o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w63
+    name: CK
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 4
+      p2o3: 5
+      p3o3: 1
+      p4o3: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w64
+    name: CL
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 5
+      p3o1: 1
+      p4o1: 2
+      p1o1: 3
+      p2o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w65
+    name: CM
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 1
+      p3o2: 2
+      p4o2: 3
+      p1o2: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w66
+    name: CN
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 2
+      p3o3: 3
+      p4o3: 4
+      p1o3: 5
+      p3o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w67
+    name: CO
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 3
+      p4o1: 4
+      p1o1: 5
+      p2o1: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w68
+    name: CP
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 4
+      p4o2: 5
+      p1o2: 1
+      p2o2: 2
+      p3o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w69
+    name: CQ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o3: 5
+      p4o3: 1
+      p1o3: 2
+      p2o3: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w70
+    name: CR
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o1: 1
+      p1o1: 2
+      p2o1: 3
+      p3o1: 4
+      p4o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w71
+    name: CS
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o2: 2
+      p1o2: 3
+      p2o2: 4
+      p3o2: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w72
+    name: CT
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p4o3: 3
+      p1o3: 4
+      p2o3: 5
+      p3o3: 1
+      p1o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w73
+    name: CU
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o1: 4
+      p2o1: 5
+      p3o1: 1
+      p4o1: 2
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w74
+    name: CV
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o2: 5
+      p2o2: 1
+      p3o2: 2
+      p4o2: 3
+      p1o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w75
+    name: CW
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p1o3: 1
+      p2o3: 2
+      p3o3: 3
+      p4o3: 4
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w76
+    name: CX
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o1: 2
+      p3o1: 3
+      p4o1: 4
+      p1o1: 5
+      p2o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w77
+    name: CY
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o2: 3
+      p3o2: 4
+      p4o2: 5
+      p1o2: 1
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w78
+    name: CZ
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p2o3: 4
+      p3o3: 5
+      p4o3: 1
+      p1o3: 2
+      p3o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w79
+    name: DA
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o1: 5
+      p4o1: 1
+      p1o1: 2
+      p2o1: 3
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w80
+    name: DB
+    worker_company: c2
+    is_manager: false
+    skill_map:
+      p3o2: 1
+      p4o2: 2
+      p1o2: 3
+      p2o2: 4
+      p3o3: 5
+    fab_suitability_map: []
+    unavailable_dates: []
+
+
