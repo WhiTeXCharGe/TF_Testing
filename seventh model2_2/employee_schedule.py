@@ -1,7 +1,15 @@
+# employee_schedule.py
+# Pass 1 (Timefold): choose crew blocks inside each window:
+#   (start_day, heads ∈ [min,max], days); HOURS ARE AUTO-DERIVED per op from EnvConfig.
+#   - allow overfill (produced >= required), but forbid underfill
+#   - cap overfill to at most one extra day (<= heads*hours)
+#   - soft priority: |hours-8| (highest), then smaller hours, then smaller heads, then fewer days, then earlier start
+# Pass 2 (TRIVIAL): deterministically assign employee by seat_index (1->id1/AA, 2->id2/AB, ...)
+# Writes results back through export_schedule.overwrite_schedule_with_assignments.
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Annotated, Dict, List, Optional, Tuple
-from collections import defaultdict
 import yaml
 import time
 
@@ -16,7 +24,7 @@ from timefold.solver.config import SolverConfig, TerminationConfig, ScoreDirecto
 from timefold.solver.score import (
     HardMediumSoftScore,
     ConstraintFactory, Constraint, Joiners,
-    constraint_provider, ConstraintCollectors
+    constraint_provider
 )
 
 from export_schedule import overwrite_schedule_with_assignments
@@ -45,7 +53,7 @@ class TaskWindow:
     op_id: str
     start_day_id: int       # inclusive
     end_day_id: int         # inclusive
-    allowed: List[int]      # allowed hours for this op (kept, but not used while hours fixed to 8)
+    allowed: List[int]      # allowed hours for this op
     min_heads: int
     max_heads: int
     workload_days: int      # from Schedule.yaml
@@ -58,10 +66,10 @@ class TaskWindow:
 class BlockDecision:
     """
     One decision for a single operation window:
-      choose (start_day, hours, heads, days).
+      choose (start_day, heads, days); hours are derived from 'allowed'.
     Hard rules:
       - within window
-      - hours == 8  (temporarily fixed; previous 'in-allowed' check is disabled)
+      - hours in allowed (derived)
       - heads in [min,max]
       - phase order across module
       - produced = heads*hours*days >= required_hours (no underfill)
@@ -78,25 +86,38 @@ class BlockDecision:
     window_start: int
     window_end: int
     required_hours: int
-    allowed: List[int]      # kept for future; not used when hours fixed
+    allowed: List[int]      # e.g. [8, 10, 12]
     min_heads: int
     max_heads: int
 
-    # Planning variables (simple numeric ranges; validity is enforced by constraints)
-    start_day: Annotated[int, PlanningVariable]   # day index
-    hours:     Annotated[int, PlanningVariable]   # FIXED to 8 via value range + constraint
-    heads:     Annotated[int, PlanningVariable]   # 1..global_max
-    days:      Annotated[int, PlanningVariable]   # 1..max_window_len
+    # Planning variables (hours removed!)
+    start_day: Annotated[int, PlanningVariable(value_range_provider_refs=["vr_day_ids"])]
+    heads:     Annotated[int, PlanningVariable(value_range_provider_refs=["vr_head_options"])]
+    days:      Annotated[int, PlanningVariable(value_range_provider_refs=["vr_day_count_options"])]
+
+    # Optional: seed/logging only (not used by constraints)
+    seed_hours: int = 8
 
 
 @planning_solution
 @dataclass
 class Pass1Plan:
     # value ranges for planning variables
-    day_ids: Annotated[List[int], ProblemFactCollectionProperty, ValueRangeProvider]
-    head_options: Annotated[List[int], ProblemFactCollectionProperty, ValueRangeProvider]
-    day_count_options: Annotated[List[int], ProblemFactCollectionProperty, ValueRangeProvider]
-    hours_options: Annotated[List[int], ProblemFactCollectionProperty, ValueRangeProvider]  # will be [8]
+    day_ids: Annotated[
+        List[int],
+        ProblemFactCollectionProperty,
+        ValueRangeProvider(id="vr_day_ids")
+    ]
+    head_options: Annotated[
+        List[int],
+        ProblemFactCollectionProperty,
+        ValueRangeProvider(id="vr_head_options")
+    ]
+    day_count_options: Annotated[
+        List[int],
+        ProblemFactCollectionProperty,
+        ValueRangeProvider(id="vr_day_count_options")
+    ]
 
     # entities
     blocks: Annotated[List[BlockDecision], PlanningEntityCollectionProperty]
@@ -182,12 +203,12 @@ def _parse_env(env_path: str):
         for op in ph["operation_list"]:
             op_id = op["id"]
             hrs = list(op.get("work_hours", []) or [])
-            if not hrs:
+            if len(hrs) == 0:
                 hrs = [8]
             opdef[op_id] = {
                 "phase_id": ph["id"],
                 "phase_num": _phase_num_from_id(ph["id"]),
-                "allowed": list(sorted(hrs)),  # kept, but we fix hours to 8 for now
+                "allowed": list(sorted(int(x) for x in hrs)),
                 "min": int(op.get("min_worker_num", 1)),
                 "max": int(op.get("max_worker_num", 999999)),
             }
@@ -253,22 +274,66 @@ def _parse_schedule(env_opdef: Dict[str, Dict], sched_path: str):
     return start_date, days, windows, required_hours
 
 
-# ---------- SAFE HELPERS ----------
-def _safe_allowed_list(b) -> List[int]:
-    al = b.allowed
+# ---------- HOURS helpers (centralized; avoid list truthiness in JPy) ----------
+
+def _allowed_list_from_block(b: BlockDecision) -> List[int]:
+    """Return a non-empty list of allowed hours without using list truthiness."""
+    al = getattr(b, "allowed", None)
     if al is None:
         return [8]
     return [int(x) for x in al] if len(al) > 0 else [8]
 
-def _hours_in_allowed(b) -> bool:
-    try:
-        h = int(b.hours)
-    except Exception:
-        return False
-    return h in _safe_allowed_list(b)
+def _safe_allowed_list(b: BlockDecision) -> List[int]:
+    return _allowed_list_from_block(b)
+
+def _auto_hours(b: BlockDecision) -> int:
+    """
+    Deterministically choose hours from b.allowed based on current heads & days:
+      - pick the smallest h in allowed such that heads*h*days >= required_hours
+      - and (heads*h*days - required_hours) <= heads*h  (overfill ≤ one extra day)
+    If none satisfy both, pick the least-bad:
+      1) minimize missing hours if produced < required
+      2) else minimize (overfill - heads*h)
+    Ties: prefer |h-8| small, then smaller h.
+    """
+    allowed = sorted(_allowed_list_from_block(b))   # SAFE
+    H = max(1, int(b.heads) if b.heads is not None else 1)
+    D = max(1, int(b.days)  if b.days  is not None else 1)
+    R = int(b.required_hours)
+
+    feasible = []
+    for h in allowed:
+        prod = H * h * D
+        over = prod - R
+        if prod >= R and over <= H * h:
+            feasible.append((h, prod, over))
+
+    if len(feasible) > 0:
+        feasible.sort(key=lambda t: (abs(t[0] - 8), t[0]))  # prefer near-8 then smaller
+        return feasible[0][0]
+
+    best_h = allowed[0]
+    best_key = None
+    for h in allowed:
+        prod = H * h * D
+        if prod < R:
+            deficit = R - prod
+            key = (0, deficit, abs(h - 8), h)
+        else:
+            over = prod - R
+            extra = max(0, over - H * h)
+            key = (1, extra, abs(h - 8), h)
+        if (best_key is None) or (key < best_key):
+            best_h = h
+            best_key = key
+    return best_h
+
+def _produced(b: BlockDecision) -> int:
+    return int(b.heads) * _auto_hours(b) * int(b.days)
 
 
 # ---------- PASS 1 CONSTRAINTS ----------
+
 def p1_within_window(cf: ConstraintFactory) -> Constraint:
     def within_window(b: BlockDecision) -> bool:
         if (b.days is None) or (b.start_day is None):
@@ -287,13 +352,25 @@ def p1_within_window(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p1-within-window")
     )
 
-# NOTE: We FIX hours==8 for now, so we replace the "in-allowed" rule:
-def p1_hours_equals_8(cf: ConstraintFactory) -> Constraint:
+def p1_days_not_exceed_window_len(cf: ConstraintFactory) -> Constraint:
+    # Additional hard guardrail to shrink the search space:
+    # force days <= (window_end - window_start + 1) for EACH block.
     return (
         cf.for_each(BlockDecision)
-          .filter(lambda b: int(b.hours) != 8)
-          .penalize(HardMediumSoftScore.ONE_HARD, lambda b: abs(int(b.hours) - 8))
-          .as_constraint("p1-hours-equals-8")
+          .filter(lambda b: int(b.days) > (int(b.window_end) - int(b.window_start) + 1))
+          .penalize(
+              HardMediumSoftScore.ONE_HARD,
+              lambda b: int(b.days) - (int(b.window_end) - int(b.window_start) + 1)
+          )
+          .as_constraint("p1-days-within-window-length")
+    )
+
+def p1_hours_value_in_allowed(cf: ConstraintFactory) -> Constraint:
+    return (
+        cf.for_each(BlockDecision)
+          .filter(lambda b: _auto_hours(b) not in _safe_allowed_list(b))
+          .penalize(HardMediumSoftScore.ONE_HARD)
+          .as_constraint("p1-hours-in-allowed")
     )
 
 def p1_heads_in_minmax(cf: ConstraintFactory) -> Constraint:
@@ -305,25 +382,23 @@ def p1_heads_in_minmax(cf: ConstraintFactory) -> Constraint:
     )
 
 def p1_no_underfill(cf: ConstraintFactory) -> Constraint:
-    # produced < required -> hard penalty by missing hours
     return (
         cf.for_each(BlockDecision)
-          .filter(lambda b: (int(b.heads) * int(b.hours) * int(b.days)) < int(b.required_hours))
+          .filter(lambda b: _produced(b) < int(b.required_hours))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
-              lambda b: int(b.required_hours) - int(b.heads) * int(b.hours) * int(b.days)
+              lambda b: int(b.required_hours) - _produced(b)
           )
           .as_constraint("p1-no-underfill")
     )
 
 def p1_overfill_at_most_one_day(cf: ConstraintFactory) -> Constraint:
-    # produced - required <= heads*hours ; else hard-penalize the excess beyond one extra day
     return (
         cf.for_each(BlockDecision)
-          .filter(lambda b: (int(b.heads) * int(b.hours) * int(b.days) - int(b.required_hours)) > (int(b.heads) * int(b.hours)))
+          .filter(lambda b: (_produced(b) - int(b.required_hours)) > (int(b.heads) * _auto_hours(b)))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
-              lambda b: (int(b.heads)*int(b.hours)*int(b.days) - int(b.required_hours)) - (int(b.heads)*int(b.hours))
+              lambda b: (_produced(b) - int(b.required_hours)) - (int(b.heads) * _auto_hours(b))
           )
           .as_constraint("p1-overfill-at-most-one-day")
     )
@@ -355,14 +430,14 @@ EARLIER_START_W     = 1     # then earlier start (lowest)
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(BlockDecision)
-          .penalize(HardMediumSoftScore.ONE_SOFT, lambda b: PREF_HOURS_WEIGHT * abs(int(b.hours) - 8))
+          .penalize(HardMediumSoftScore.ONE_SOFT, lambda b: PREF_HOURS_WEIGHT * abs(_auto_hours(b) - 8))
           .as_constraint("p1-soft-prefer-hours-near-8")
     )
 
 def p1_soft_prefer_smaller_hours(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(BlockDecision)
-          .penalize(HardMediumSoftScore.ONE_SOFT, lambda b: SMALLER_HOURS_W * int(b.hours))
+          .penalize(HardMediumSoftScore.ONE_SOFT, lambda b: SMALLER_HOURS_W * _auto_hours(b))
           .as_constraint("p1-soft-prefer-smaller-hours")
     )
 
@@ -391,8 +466,8 @@ def p1_soft_prefer_earlier_start(cf: ConstraintFactory) -> Constraint:
 def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
     return [
         p1_within_window(cf),
-        # p1_hours_value_in_allowed(cf),  # <-- disabled while we fix hours to 8
-        p1_hours_equals_8(cf),
+        p1_days_not_exceed_window_len(cf),  # NEW: shrink days to window length per block
+        p1_hours_value_in_allowed(cf),
         p1_heads_in_minmax(cf),
         p1_no_underfill(cf),
         p1_overfill_at_most_one_day(cf),
@@ -416,7 +491,7 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
     day_by_id = {d.id: d for d in days}
 
     for b in blocks:
-        hours = int(b.hours)    # will be 8
+        hours = _auto_hours(b)
         start = int(b.start_day)
         dcount = int(b.days)
         for sidx in range(int(b.heads)):
@@ -430,7 +505,7 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
                 days=dcount, hours=hours,
                 seat_index=sidx,
                 seat_key=seat_key,
-                employee=Employee(0, "__UNASSIGNED__", "__UNASSIGNED__", {})  # fill in Pass 2
+                employee=Employee(0, "__UNASSIGNED__", "__UNASSIGNED__", {})
             ))
             sid += 1
             for off in range(dcount):
@@ -450,27 +525,26 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
 def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
                            required_hours: Dict[Tuple[str, str], int]) -> List[BlockDecision]:
     max_heads_global = max((w.max_heads for w in windows), default=1)
+    min_heads_global = min((w.min_heads for w in windows), default=1)
     max_window_len = max((w.end_day_id - w.start_day_id + 1 for w in windows), default=1)
 
-    head_options = list(range(1, max_heads_global + 1))
+    head_options = list(range(min_heads_global, max_heads_global + 1))
     day_ids = list(range(0, len(day_slots)))
-    day_count_options = list(range(1, max_window_len + 1))
-    # union of all allowed hour values across ops (kept, but we fix hours to 8)
-    # all_allowed = sorted({int(h) for w in windows for h in (w.allowed or [8])})
-    hours_fixed = [8]  # FIX hours to 8 for this iteration
+    day_count_options = list(range(1, max_window_len + 1))  # global range; per-block capped by hard constraint
 
     blocks: List[BlockDecision] = []
     bid = 1
     for w in windows:
         baseline = 4 if list(w.allowed) == [4] else 8
         req = w.workload_days * baseline
-        # seed_hours = int((w.allowed or [baseline])[0])
-        seed_hours = 8  # FIX seed at 8
+
+        # SAFE seed (no list truthiness)
+        seed_hours = int(w.allowed[0]) if len(w.allowed) > 0 else baseline
         min_heads = max(w.min_heads, 1)
         max_days = w.end_day_id - w.start_day_id + 1
-        # naive seed within window
+
         safe_den = max(1, seed_hours * min_heads)
-        seed_days = max(1, min(req // safe_den if req % safe_den == 0 else (req // safe_den + 1), max_days))
+        seed_days = max(1, min((req + safe_den - 1) // safe_den, max_days))  # ceil-div
 
         blocks.append(BlockDecision(
             id=bid,
@@ -479,12 +553,12 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
             op_id=w.op_id,
             window_start=w.start_day_id, window_end=w.end_day_id,
             required_hours=req,
-            allowed=list(w.allowed),  # kept (unused for now)
+            allowed=list(w.allowed),
             min_heads=w.min_heads, max_heads=w.max_heads,
             start_day=w.start_day_id,
-            hours=seed_hours,     # value (not index) -> fixed to 8
             heads=min_heads,
-            days=seed_days
+            days=seed_days,
+            seed_hours=seed_hours
         ))
         bid += 1
 
@@ -492,7 +566,6 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
         day_ids=day_ids,
         head_options=head_options,
         day_count_options=day_count_options,
-        hours_options=hours_fixed,  # only 8 is allowed by the value range
         blocks=blocks
     )
 
@@ -504,7 +577,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
         ),
         termination_config=TerminationConfig(
             best_score_limit="0hard/*medium/*soft",
-            spent_limit=Duration(minutes=2),
+            spent_limit=Duration(minutes=1),
             unimproved_spent_limit=Duration(seconds=60),
         )
     )
@@ -530,22 +603,20 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
     total_required_hours = sum(required_hours.values())
     _TARGET_HOURS_PER_EMP = total_required_hours / real_emp_count
 
-    # ---- Pass 1 (Timefold, hours fixed to 8) ----
+    # ---- Pass 1 (Timefold) ----
     t0 = time.time()
     decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
 
     # ---- Expand to seats + seat_days ----
     seats, seat_days = _expand_blocks_to_seats_and_days(decided_blocks, day_slots)
 
-    # ---- Pass 2 (TRIVIAL): round-robin assign real employees by seat_index ----
-    real_emps = [e for e in employees if e.id != 0]
-    if not real_emps:
-        real_emps = [employees[0]]  # only dummy exists
+    # ---- Pass 2 (TRIVIAL): deterministic assignment by seat_index -> id (1,2,3,...) ----
+    emp_by_id = {e.id: e for e in employees}
+    fallback_emp = employees[1] if len(employees) > 1 else employees[0]
 
     for s in seats:
-        # seat_index 0 -> real_emps[0] (id1 / "AA"), seat_index 1 -> real_emps[1], ...
-        idx = s.seat_index % len(real_emps)
-        s.employee = real_emps[idx]
+        target_id = s.seat_index + 1  # seat_index is 0-based; map to id 1,2,3,...
+        s.employee = emp_by_id.get(target_id, fallback_emp)
 
     t1 = time.time()
     print(f"TOTAL building time (P1+expand+assign): {t1 - t0:.2f}s")
