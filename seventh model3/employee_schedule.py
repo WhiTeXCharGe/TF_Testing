@@ -3,15 +3,16 @@
 #   (start_day, heads ∈ [min,max], days); HOURS ARE AUTO-DERIVED per op from EnvConfig.
 #   - allow overfill (produced >= required), but forbid underfill
 #   - cap overfill to at most one extra day (<= heads*hours)
-#   - daily head capacity per op_id (can't exceed #qualified employees)
+#   - daily head capacity per op_id (can't exceed #qualified employees, adjustable by feedback)
 #   - soft priority: |hours-8| (highest), then smaller hours, then smaller heads, then fewer days, then earlier start
 # Pass 2 (Timefold): assign one employee per seat (skill-eligible, daily cap 12h, one factory/day, soft balance)
+# Feedback loop: If Pass 2 hard score < 0, reduce per-op daily concurrency capacity and re-run Pass 1.
 # Writes results back through export_schedule.overwrite_schedule_with_assignments.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Annotated, Dict, List, Optional, Tuple
-from collections import defaultdict
+from collections import defaultdict, Counter
 import yaml
 import time
 
@@ -73,7 +74,7 @@ class BlockDecision:
       - within window
       - hours in allowed (derived)
       - heads in [min,max]
-      - daily head capacity by op_id cannot be exceeded
+      - daily head capacity by op_id cannot be exceeded (adjustable by feedback)
       - phase order across module
       - produced = heads*hours*days >= required_hours (no underfill)
       - produced - required_hours <= heads*hours (overfill ≤ one extra day)
@@ -188,10 +189,13 @@ class Pass2Plan:
 _DAILY_CAP: int = 12
 _TARGET_HOURS_PER_EMP: float = 0.0
 
-# capacity of qualified workers per op_id (computed from employees' skills)
+# Base capacity of qualified workers per op_id (computed from employees' skills)
+_BASE_OP_CAPACITY_BY_OP: Dict[str, int] = {}
+# Iteratively adjusted capacity used by Pass 1 (feedback applies here)
 _OP_CAPACITY_BY_OP: Dict[str, int] = {}
 
 def _capacity_for_op(op_id: str) -> int:
+    # Pass 1 constraint reads this live; set/adjust before solving Pass 1
     return _OP_CAPACITY_BY_OP.get(op_id, 999_999)
 
 
@@ -306,10 +310,9 @@ def _parse_schedule(env_opdef: Dict[str, Dict], sched_path: str):
     return start_date, days, windows, required_hours
 
 
-# ---------- HOURS helpers (centralized; avoid list truthiness in JPy) ----------
+# ---------- HOURS helpers ----------
 
 def _allowed_list_from_block(b: BlockDecision) -> List[int]:
-    """Return a non-empty list of allowed hours without using list truthiness."""
     al = getattr(b, "allowed", None)
     if al is None:
         return [8]
@@ -320,15 +323,11 @@ def _safe_allowed_list(b: BlockDecision) -> List[int]:
 
 def _auto_hours(b: BlockDecision) -> int:
     """
-    Deterministically choose hours from b.allowed based on current heads & days:
-      - pick the smallest h in allowed such that heads*h*days >= required_hours
-      - and (heads*h*days - required_hours) <= heads*h  (overfill ≤ one extra day)
-    If none satisfy both, pick the least-bad:
-      1) minimize missing hours if produced < required
-      2) else minimize (overfill - heads*h)
-    Ties: prefer |h-8| small, then smaller h.
+    Choose hours from allowed based on heads & days:
+      - smallest h such that heads*h*days >= required_hours and overfill <= heads*h
+      - otherwise least-bad (min deficit or min extra beyond one day), tie-break |h-8| then smaller h.
     """
-    allowed = sorted(_allowed_list_from_block(b))   # SAFE
+    allowed = sorted(_allowed_list_from_block(b))
     H = max(1, int(b.heads) if b.heads is not None else 1)
     D = max(1, int(b.days)  if b.days  is not None else 1)
     R = int(b.required_hours)
@@ -339,9 +338,8 @@ def _auto_hours(b: BlockDecision) -> int:
         over = prod - R
         if prod >= R and over <= H * h:
             feasible.append((h, prod, over))
-
     if len(feasible) > 0:
-        feasible.sort(key=lambda t: (abs(t[0] - 8), t[0]))  # prefer near-8 then smaller
+        feasible.sort(key=lambda t: (abs(t[0] - 8), t[0]))
         return feasible[0][0]
 
     best_h = allowed[0]
@@ -454,7 +452,7 @@ def p1_phase_order(cf: ConstraintFactory) -> Constraint:
 def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
     """
     For each day and each op_id, the sum of heads of all blocks active on that day
-    must not exceed the number of qualified employees for that op.
+    must not exceed the (adjusted) number of qualified employees for that op.
     """
     return (
         cf.for_each(DaySlot)
@@ -689,7 +687,6 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
         baseline = 4 if list(w.allowed) == [4] else 8
         req = w.workload_days * baseline
 
-        # SAFE seed (no list truthiness)
         seed_hours = int(w.allowed[0]) if len(w.allowed) > 0 else baseline
         min_heads = max(w.min_heads, 1)
         max_days = w.end_day_id - w.start_day_id + 1
@@ -730,17 +727,14 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
     return solved.blocks
 
 
-# -------------------- Driver --------------------
+# -------------------- Feedback helpers --------------------
 
-def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedule.yaml"):
-    global _TARGET_HOURS_PER_EMP, _OP_CAPACITY_BY_OP
+FEEDBACK_STEP = 1  # reduce per-op capacity by this many heads when Pass 2 fails
 
-    env_opdef, employees = _parse_env(env_path)
-
-    # Build op-level capacity from employee skills (how many are qualified for each op)
+def _compute_base_op_capacity_from_skills(env_opdef: Dict[str, Dict], employees: List[Employee]) -> Dict[str, int]:
     cap: Dict[str, int] = {op_id: 0 for op_id in env_opdef.keys()}
     for e in employees:
-        if e.id == 0:  # skip the __UNASSIGNED__ placeholder
+        if e.id == 0:
             continue
         skills = e.skills or {}
         for op_id in cap.keys():
@@ -749,40 +743,116 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
                     cap[op_id] += 1
             except Exception:
                 pass
-    _OP_CAPACITY_BY_OP = cap
+    return cap
 
+def _evaluate_pass2_and_feedback(final_p2: Pass2Plan) -> Tuple[bool, Dict[str, int]]:
+    """
+    Inspect Pass 2 result.
+    Returns:
+      hard_ok: True if no obvious hard violations (proxy check).
+      feedback: op_id -> reduce capacity by N (integer).
+    Proxy checks:
+      - any unassigned or under-skilled seats => reduce capacity for those ops
+      - (optional) if severe overload per-employee detected, reduce ops seen that day
+    """
+    # If there are seats with unassigned or ineligible employees, that's a hard violation in our model.
+    bad_ops = Counter()
+    for s in final_p2.seats:
+        if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1:
+            bad_ops[s.op_id] += 1
+
+    hard_ok = (len(bad_ops) == 0)
+
+    feedback: Dict[str, int] = {}
+    if not hard_ok:
+        for op_id, cnt in bad_ops.items():
+            feedback[op_id] = FEEDBACK_STEP  # shave one head of concurrency for this op
+
+    return hard_ok, feedback
+
+def _apply_feedback_to_capacity(base_cap: Dict[str, int],
+                                current_cap: Dict[str, int],
+                                feedback: Dict[str, int]) -> Dict[str, int]:
+    new_cap = dict(current_cap)
+    for op_id, reduce_by in feedback.items():
+        target = max(1, min(base_cap.get(op_id, 1), current_cap.get(op_id, 1)) - int(reduce_by))
+        new_cap[op_id] = target
+    return new_cap
+
+
+# -------------------- Driver (with feedback loop) --------------------
+
+def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedule.yaml",
+                    max_feedback_loops: int = 3):
+    global _TARGET_HOURS_PER_EMP, _BASE_OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_OP
+
+    env_opdef, employees = _parse_env(env_path)
     start_day, day_slots, windows, required_hours = _parse_schedule(env_opdef, sched_path)
 
-    # for Pass 2 balancing soft
+    # Soft balancing target for Pass 2
     real_emp_count = max(1, len(employees) - 1)
     total_required_hours = sum(required_hours.values())
     _TARGET_HOURS_PER_EMP = total_required_hours / real_emp_count
 
-    # ---- Pass 1 ----
+    # Base op capacity (qualified employees per op); start Pass 1 with this.
+    _BASE_OP_CAPACITY_BY_OP = _compute_base_op_capacity_from_skills(env_opdef, employees)
+    _OP_CAPACITY_BY_OP = dict(_BASE_OP_CAPACITY_BY_OP)
+
     t0 = time.time()
-    decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
+    loop = 0
+    last_final_p2 = None
 
-    # ---- Expand to seats + seat_days ----
-    seats, seat_days = _expand_blocks_to_seats_and_days(decided_blocks, day_slots)
+    while True:
+        loop += 1
+        print(f"\n=== ITERATION {loop} | capacities: {_OP_CAPACITY_BY_OP} ===")
 
-    # ---- Pass 2 problem ----
-    plan2 = Pass2Plan(
-        days=day_slots,
-        employees=employees,   # includes id=0 placeholder; hard constraint prevents leaving unassigned
-        seat_days=seat_days,
-        seats=seats
-    )
+        # ---- Pass 1 ----
+        decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
 
-    # ---- Solve Pass 2 ----
-    solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
-    p2s = time.time()
-    final: Pass2Plan = solver2.solve(plan2)
-    p2e = time.time()
-    print(f"PASS 2 done in {p2e - p2s:.2f}s | score={final.score}")
-    print(f"TOTAL solving time: {p2e - t0:.2f}s")
+        # ---- Expand to seats + seat_days ----
+        seats, seat_days = _expand_blocks_to_seats_and_days(decided_blocks, day_slots)
 
-    return final, start_day
+        # ---- Pass 2 problem ----
+        plan2 = Pass2Plan(
+            days=day_slots,
+            employees=employees,   # includes id=0 placeholder; hard constraint prevents leaving unassigned
+            seat_days=seat_days,
+            seats=seats
+        )
+
+        # ---- Solve Pass 2 ----
+        solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
+                                best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
+        p2s = time.time()
+        final_p2: Pass2Plan = solver2.solve(plan2)
+        p2e = time.time()
+        last_final_p2 = final_p2
+        print(f"PASS 2 done in {p2e - p2s:.2f}s | score={final_p2.score}")
+
+        # ---- Check Pass 2 outcome and decide on feedback ----
+        hard_ok, feedback = _evaluate_pass2_and_feedback(final_p2)
+        if hard_ok:
+            print(f"PASS 2 hard=0 — stop after {loop} iteration(s).")
+            break
+
+        if loop >= max_feedback_loops:
+            print(f"PASS 2 still has hard violations; reached max_feedback_loops={max_feedback_loops}.")
+            break
+
+        # Apply feedback: reduce per-op concurrency capacity to create more slack.
+        new_caps = _apply_feedback_to_capacity(_BASE_OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_OP, feedback)
+        if new_caps == _OP_CAPACITY_BY_OP:
+            # Nothing changed (already at minimum) — no point looping further.
+            print("Feedback could not tighten capacities any further — stopping.")
+            break
+        _OP_CAPACITY_BY_OP = new_caps
+
+    t1 = time.time()
+    print(f"TOTAL solving time: {t1 - t0:.2f}s")
+
+    # Export whatever we ended with (best available result).
+    final_to_export = last_final_p2
+    return final_to_export, start_day
 
 
 def main():
