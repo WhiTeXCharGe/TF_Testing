@@ -24,7 +24,7 @@ from timefold.solver.config import SolverConfig, TerminationConfig, ScoreDirecto
 from timefold.solver.score import (
     HardMediumSoftScore,
     ConstraintFactory, Constraint, Joiners,
-    constraint_provider
+    constraint_provider, ConstraintCollectors 
 )
 
 from export_schedule import overwrite_schedule_with_assignments
@@ -119,6 +119,11 @@ class Pass1Plan:
         ValueRangeProvider(id="vr_day_count_options")
     ]
 
+    day_slots: Annotated[
+        List[DaySlot],
+        ProblemFactCollectionProperty
+    ]
+
     # entities
     blocks: Annotated[List[BlockDecision], PlanningEntityCollectionProperty]
 
@@ -161,6 +166,13 @@ class CrewSeat:
 
 _DAILY_CAP: int = 12
 _TARGET_HOURS_PER_EMP: float = 0.0
+
+# capacity of qualified workers per op_id (computed from employees' skills)
+_OP_CAPACITY_BY_OP: Dict[str, int] = {}
+
+def _capacity_for_op(op_id: str) -> int:
+    # default = huge, but we'll fill the real value from employees
+    return _OP_CAPACITY_BY_OP.get(op_id, 999_999)
 
 
 # -------------------- Utility --------------------
@@ -420,12 +432,67 @@ def p1_phase_order(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p1-phase-order")
     )
 
+def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
+    """
+    For each day and each op_id, the sum of heads of all blocks active on that day
+    must not exceed the number of qualified employees for that op.
+    """
+    # For each day slot, join with blocks active on that day
+    return (
+        cf.for_each(DaySlot)
+          .join(
+              cf.for_each(BlockDecision),
+              # Join on "block active on this day"
+              Joiners.filtering(lambda d, b:
+                  (int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
+              )
+          )
+          # group by (day_id, op_id) and sum heads
+          .group_by(
+              lambda d, b: (int(d.id), b.op_id),
+              ConstraintCollectors.sum(lambda d, b: int(b.heads))
+          )
+          # if demand > capacity(op), penalize the overflow as HARD
+          .filter(lambda key, total_heads: total_heads > _capacity_for_op(key[1]))
+          .penalize(
+              HardMediumSoftScore.ONE_HARD,
+              lambda key, total_heads: total_heads - _capacity_for_op(key[1])
+          )
+          .as_constraint("p1-daily-head-capacity-by-op")
+    )
+
 # Soft priorities (bigger multipliers = higher priority)
 PREF_HOURS_WEIGHT   = 1000  # |hours-8| is highest priority
 SMALLER_HOURS_W     = 100   # prefer smaller hours (after closeness to 8)
 SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
+STACK_PAIR_WEIGHT   = 2
+
+def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
+    """
+    Medium penalty that discourages stacking many blocks of the same op_id on the same day.
+    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
+    """
+    return (
+        cf.for_each(DaySlot)
+          .join(
+              cf.for_each(BlockDecision),
+              # block active on this day
+              Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
+          )
+          .group_by(
+              lambda d, b: (int(d.id), b.op_id),
+              ConstraintCollectors.count_bi()  # <-- snake_case collector for Bi streams
+          )
+          .filter(lambda key, cnt: int(cnt) > 1)
+          .penalize(
+              HardMediumSoftScore.ONE_MEDIUM,
+              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
+              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+          )
+          .as_constraint("p1-med-penalize-stack-by-op")
+    )
 
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
@@ -466,13 +533,16 @@ def p1_soft_prefer_earlier_start(cf: ConstraintFactory) -> Constraint:
 def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
     return [
         p1_within_window(cf),
-        p1_days_not_exceed_window_len(cf),  # NEW: shrink days to window length per block
+        p1_days_not_exceed_window_len(cf),
         p1_hours_value_in_allowed(cf),
         p1_heads_in_minmax(cf),
         p1_no_underfill(cf),
         p1_overfill_at_most_one_day(cf),
         p1_phase_order(cf),
+        p1_daily_head_capacity(cf),
 
+        #medium
+        p1_med_penalize_stack_by_op(cf),
         # Soft priority order:
         p1_soft_prefer_hours_near_8(cf),
         p1_soft_prefer_smaller_hours(cf),
@@ -566,6 +636,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
         day_ids=day_ids,
         head_options=head_options,
         day_count_options=day_count_options,
+        day_slots=day_slots,
         blocks=blocks
     )
 
@@ -596,6 +667,21 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
     global _TARGET_HOURS_PER_EMP
 
     env_opdef, employees = _parse_env(env_path)
+    cap: Dict[str, int] = {}
+    # collect all operations we know about (from env)
+    known_ops = list(env_opdef.keys())
+    for op_id in known_ops:
+        cap[op_id] = 0
+    # count employees with a nonzero skill for each op_id
+    for e in employees:
+        if e.id == 0:  # skip the __UNASSIGNED__ placeholder
+            continue
+        skills = e.skills or {}
+        for op_id in known_ops:
+            if int(skills.get(op_id, 0) or 0) > 0:
+                cap[op_id] += 1
+    _OP_CAPACITY_BY_OP = cap
+
     start_day, day_slots, windows, required_hours = _parse_schedule(env_opdef, sched_path)
 
     # for potential balancing calc (not used in this trivial Pass 2)

@@ -365,7 +365,6 @@ def _produced(b: BlockDecision) -> int:
 
 
 # ---------- PASS 1 CONSTRAINTS ----------
-
 def p1_within_window(cf: ConstraintFactory) -> Constraint:
     def within_window(b: BlockDecision) -> bool:
         if (b.days is None) or (b.start_day is None):
@@ -385,6 +384,7 @@ def p1_within_window(cf: ConstraintFactory) -> Constraint:
     )
 
 def p1_days_not_exceed_window_len(cf: ConstraintFactory) -> Constraint:
+    # Additional hard guardrail to shrink the search space:
     # force days <= (window_end - window_start + 1) for EACH block.
     return (
         cf.for_each(BlockDecision)
@@ -456,18 +456,22 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
     For each day and each op_id, the sum of heads of all blocks active on that day
     must not exceed the number of qualified employees for that op.
     """
+    # For each day slot, join with blocks active on that day
     return (
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
+              # Join on "block active on this day"
               Joiners.filtering(lambda d, b:
                   (int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
               )
           )
+          # group by (day_id, op_id) and sum heads
           .group_by(
               lambda d, b: (int(d.id), b.op_id),
               ConstraintCollectors.sum(lambda d, b: int(b.heads))
           )
+          # if demand > capacity(op), penalize the overflow as HARD
           .filter(lambda key, total_heads: total_heads > _capacity_for_op(key[1]))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
@@ -476,12 +480,38 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p1-daily-head-capacity-by-op")
     )
 
-# Soft priorities
+# Soft priorities (bigger multipliers = higher priority)
 PREF_HOURS_WEIGHT   = 1000  # |hours-8| is highest priority
 SMALLER_HOURS_W     = 100   # prefer smaller hours (after closeness to 8)
 SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
+STACK_PAIR_WEIGHT   = 2
+def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
+    """
+    Medium penalty that discourages stacking many blocks of the same op_id on the same day.
+    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
+    This is convex in n and matches the example: n=3 -> 3 pairs -> 3*2 = 6 penalty.
+    """
+    return (
+        cf.for_each(DaySlot)
+          .join(
+              cf.for_each(BlockDecision),
+              # block active on this day
+              Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
+          )
+          .group_by(
+              lambda d, b: (int(d.id), b.op_id),
+              ConstraintCollectors.count()
+          )
+          .filter(lambda key, cnt: cnt > 1)
+          .penalize(
+              HardMediumSoftScore.ONE_MEDIUM,
+              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
+              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+          )
+          .as_constraint("p1-med-penalize-stack-by-op")
+    )
 
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
@@ -529,8 +559,10 @@ def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p1_overfill_at_most_one_day(cf),
         p1_phase_order(cf),
         p1_daily_head_capacity(cf),
-
-        # Softs
+        
+        #medium
+        p1_med_penalize_stack_by_op(cf),
+        # Soft priority order:
         p1_soft_prefer_hours_near_8(cf),
         p1_soft_prefer_smaller_hours(cf),
         p1_soft_minimize_heads(cf),
@@ -722,7 +754,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
     )
 
     solver1 = _build_solver(Pass1Plan, [BlockDecision], pass1_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
+                            best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
     t1s = time.time()
     solved: Pass1Plan = solver1.solve(pass1)
     t1e = time.time()
@@ -775,7 +807,7 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
 
     # ---- Solve Pass 2 ----
     solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
+                            best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
     p2s = time.time()
     final: Pass2Plan = solver2.solve(plan2)
     p2e = time.time()

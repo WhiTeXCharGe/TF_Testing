@@ -400,6 +400,72 @@ def detect_violations(env, modules, assignments, maps):
         "tbl_minmax": tbl_minmax,
     }
 
+# ------------------------------- Skill build -----------------------------
+def build_skill_distribution(env):
+    """
+    Returns (rows, levels) where:
+      - rows: list of (op_id, total, [count_at_level for level in levels])
+      - levels: sorted list of skill levels present in the data (e.g. [1,2,3,4,5])
+    """
+    workers = env["workers"]
+    op_meta = env["op_meta"]
+
+    # Collect all op_ids from env (across workflows and phases)
+    all_ops = set()
+    for wf_id, phases in op_meta.items():
+        for ph_id, ops in phases.items():
+            for op_id in ops.keys():
+                all_ops.add(op_id)
+
+    # Discover which levels actually appear (fallback to 1..5 if none found)
+    level_set = set()
+    for w in workers.values():
+        smap = w.get("skill_map", {}) or {}
+        for lvl in smap.values():
+            try:
+                iv = int(lvl)
+                if iv > 0:
+                    level_set.add(iv)
+            except Exception:
+                pass
+    if not level_set:
+        level_set = {1, 2, 3, 4, 5}
+    levels = sorted(level_set)
+
+    # Count employees per op_id per exact level (only >0)
+    from collections import Counter, defaultdict
+    counts = defaultdict(Counter)  # op_id -> Counter(level -> count)
+
+    for w in workers.values():
+        smap = w.get("skill_map", {}) or {}
+        for op_id, lvl in smap.items():
+            if op_id not in all_ops:
+                continue
+            try:
+                iv = int(lvl)
+                if iv > 0:
+                    counts[op_id][iv] += 1
+            except Exception:
+                continue
+
+    # Nice sorting: by phase number then op number if op_id looks like 'p#o#'
+    def op_sort_key(op_id: str):
+        try:
+            p_part, o_part = op_id.split("o", 1)
+            p_num = int(p_part.replace("p", "")) if p_part.startswith("p") else 999
+            o_num = int(o_part)
+            return (p_num, o_num, op_id)
+        except Exception:
+            return (999, 999, op_id)
+
+    rows = []
+    for op_id in sorted(all_ops, key=op_sort_key):
+        lvl_counts = [counts[op_id].get(l, 0) for l in levels]
+        total = sum(lvl_counts)
+        rows.append((op_id, total, lvl_counts))
+
+    return rows, levels
+
 # ------------------------------- WRITERS -------------------------------
 def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task):
     bold = Font(bold=True)
@@ -850,6 +916,39 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
         chart4.set_categories(cats)
         chart4.height = 12; chart4.width = 24
         ws.add_chart(chart4, anchor_tot20)
+
+    # ===== Skill distribution table (by op_id x level) =====
+    skill_rows, levels = build_skill_distribution(env)
+
+    if skill_rows:
+        insert_row = ws.max_row + 3
+        ws.cell(row=insert_row, column=1, value="Employee skill distribution").font = bold
+        insert_row += 1
+
+        # headers: skill | total | levels...
+        headers = ["skill", "total"] + [str(l) for l in levels]
+        for j, h in enumerate(headers, start=1):
+            ws.cell(row=insert_row, column=j, value=h).font = bold
+        insert_row += 1
+
+        # rows
+        for (op_id, total, lvl_counts) in skill_rows:
+            ws.cell(row=insert_row, column=1, value=op_id)
+            ws.cell(row=insert_row, column=2, value=int(total))
+            for idx, c in enumerate(lvl_counts, start=3):
+                ws.cell(row=insert_row, column=idx, value=int(c))
+            insert_row += 1
+
+        # a tiny total row at bottom (sum per column)
+        ws.cell(row=insert_row, column=1, value="TOTAL").font = bold
+        ws.cell(row=insert_row, column=2, value=sum(r[1] for r in skill_rows)).font = bold
+        for idx, l in enumerate(levels, start=3):
+            ws.cell(
+                row=insert_row,
+                column=idx,
+                value=sum(r[2][idx-3] for r in skill_rows)
+            ).font = bold
+
 
 def write_sheet_breaches(wb, vios):
     bold = Font(bold=True)

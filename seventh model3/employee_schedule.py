@@ -480,7 +480,32 @@ SMALLER_HOURS_W     = 100   # prefer smaller hours (after closeness to 8)
 SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
-
+STACK_PAIR_WEIGHT   = 2
+def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
+    """
+    Medium penalty that discourages stacking many blocks of the same op_id on the same day.
+    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
+    This is convex in n and matches the example: n=3 -> 3 pairs -> 3*2 = 6 penalty.
+    """
+    return (
+        cf.for_each(DaySlot)
+          .join(
+              cf.for_each(BlockDecision),
+              # block active on this day
+              Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
+          )
+          .group_by(
+              lambda d, b: (int(d.id), b.op_id),
+              ConstraintCollectors.count()
+          )
+          .filter(lambda key, cnt: cnt > 1)
+          .penalize(
+              HardMediumSoftScore.ONE_MEDIUM,
+              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
+              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+          )
+          .as_constraint("p1-med-penalize-stack-by-op")
+    )
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(BlockDecision)
@@ -528,6 +553,8 @@ def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p1_phase_order(cf),
         p1_daily_head_capacity(cf),
 
+        #medium
+        p1_med_penalize_stack_by_op(cf),
         # Softs
         p1_soft_prefer_hours_near_8(cf),
         p1_soft_prefer_smaller_hours(cf),
