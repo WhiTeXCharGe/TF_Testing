@@ -3,10 +3,11 @@
 #   (start_day, heads ∈ [min,max], days); HOURS ARE AUTO-DERIVED per op from EnvConfig.
 #   - allow overfill (produced >= required), but forbid underfill
 #   - cap overfill to at most one extra day (<= heads*hours)
-#   - daily head capacity per op_id (can't exceed #qualified employees, adjustable by feedback)
+#   - daily head capacity per op_id (can't exceed #qualified employees, adjustable by feedback; day-specific allowed)
 #   - soft priority: |hours-8| (highest), then smaller hours, then smaller heads, then fewer days, then earlier start
 # Pass 2 (Timefold): assign one employee per seat (skill-eligible, daily cap 12h, one factory/day, soft balance)
-# Feedback loop: If Pass 2 hard score < 0, reduce per-op daily concurrency capacity and re-run Pass 1.
+# Feedback loop: If Pass 2 hard score < 0, reduce per-op / per-(day,op) concurrency capacity and re-run Pass 1.
+# Includes backtrack guard if an iteration worsens hard violations.
 # Writes results back through export_schedule.overwrite_schedule_with_assignments.
 
 from dataclasses import dataclass, field
@@ -74,7 +75,7 @@ class BlockDecision:
       - within window
       - hours in allowed (derived)
       - heads in [min,max]
-      - daily head capacity by op_id cannot be exceeded (adjustable by feedback)
+      - daily head capacity by op_id (day-specific override), adjustable by feedback
       - phase order across module
       - produced = heads*hours*days >= required_hours (no underfill)
       - produced - required_hours <= heads*hours (overfill ≤ one extra day)
@@ -193,10 +194,16 @@ _TARGET_HOURS_PER_EMP: float = 0.0
 _BASE_OP_CAPACITY_BY_OP: Dict[str, int] = {}
 # Iteratively adjusted capacity used by Pass 1 (feedback applies here)
 _OP_CAPACITY_BY_OP: Dict[str, int] = {}
+# NEW: day-specific capacity overrides; fallback to _OP_CAPACITY_BY_OP if not present
+_OP_CAPACITY_BY_DAY_OP: Dict[Tuple[int, str], int] = {}
 
 def _capacity_for_op(op_id: str) -> int:
-    # Pass 1 constraint reads this live; set/adjust before solving Pass 1
+    # Kept for compatibility; used as fallback
     return _OP_CAPACITY_BY_OP.get(op_id, 999_999)
+
+def _capacity_for_day_op(day_id: int, op_id: str) -> int:
+    # Day-aware capacity: if a per-(day,op) cap exists, use it; else use global op cap
+    return _OP_CAPACITY_BY_DAY_OP.get((int(day_id), op_id), _OP_CAPACITY_BY_OP.get(op_id, 999_999))
 
 
 # -------------------- Utility --------------------
@@ -453,6 +460,7 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
     """
     For each day and each op_id, the sum of heads of all blocks active on that day
     must not exceed the (adjusted) number of qualified employees for that op.
+    Uses day-specific cap when present, otherwise falls back to global op cap.
     """
     return (
         cf.for_each(DaySlot)
@@ -462,17 +470,20 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
                   (int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
               )
           )
+          # Use TWO key functions (day_id, op_id) and a Bi "sum of 1" collector.
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
+              lambda d, b: int(d.id),
+              lambda d, b: b.op_id,
               ConstraintCollectors.sum(lambda d, b: int(b.heads))
           )
-          .filter(lambda key, total_heads: total_heads > _capacity_for_op(key[1]))
+          .filter(lambda day_id, op_id, total_heads: total_heads > _capacity_for_day_op(day_id, op_id))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
-              lambda key, total_heads: total_heads - _capacity_for_op(key[1])
+              lambda day_id, op_id, total_heads: total_heads - _capacity_for_day_op(day_id, op_id)
           )
           .as_constraint("p1-daily-head-capacity-by-op")
     )
+
 
 # Soft priorities
 PREF_HOURS_WEIGHT   = 1000  # |hours-8| is highest priority
@@ -481,31 +492,32 @@ SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
 STACK_PAIR_WEIGHT   = 2
+
 def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
     """
     Medium penalty that discourages stacking many blocks of the same op_id on the same day.
-    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
-    This is convex in n and matches the example: n=3 -> 3 pairs -> 3*2 = 6 penalty.
+    For each (day, op_id), let n = # of blocks active that day. Penalize C(n,2) * STACK_PAIR_WEIGHT.
     """
     return (
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
-              # block active on this day
               Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
+          # TWO key functions and a Bi "sum of 1" to emulate count.
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
-              ConstraintCollectors.count()
+              lambda d, b: int(d.id),
+              lambda d, b: b.op_id,
+              ConstraintCollectors.sum(lambda d, b: 1)
           )
-          .filter(lambda key, cnt: cnt > 1)
+          .filter(lambda day_id, op_id, n: n > 1)
           .penalize(
               HardMediumSoftScore.ONE_MEDIUM,
-              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
-              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+              lambda day_id, op_id, n: STACK_PAIR_WEIGHT * (int(n) * (int(n) - 1) // 2)
           )
           .as_constraint("p1-med-penalize-stack-by-op")
     )
+
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(BlockDecision)
@@ -553,7 +565,7 @@ def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p1_phase_order(cf),
         p1_daily_head_capacity(cf),
 
-        #medium
+        # medium
         p1_med_penalize_stack_by_op(cf),
         # Softs
         p1_soft_prefer_hours_near_8(cf),
@@ -674,9 +686,9 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
 # -------------------- Solvers --------------------
 
 def _build_solver(solution_cls, entity_cls_list, constraint_fn,
-                  best_limit: str | None = None,
-                  spent_minutes: int | None = None,
-                  unimproved_seconds: int | None = None):
+                  best_limit: Optional[str] = None,
+                  spent_minutes: Optional[int] = None,
+                  unimproved_seconds: Optional[int] = None):
     term_kwargs = {}
     if best_limit is not None:
         term_kwargs["best_score_limit"] = best_limit
@@ -746,7 +758,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
     )
 
     solver1 = _build_solver(Pass1Plan, [BlockDecision], pass1_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
+                            best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
     t1s = time.time()
     solved: Pass1Plan = solver1.solve(pass1)
     t1e = time.time()
@@ -756,7 +768,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
 
 # -------------------- Feedback helpers --------------------
 
-FEEDBACK_STEP = 1  # reduce per-op capacity by this many heads when Pass 2 fails
+FEEDBACK_STEP = 1  # reduce capacity by this many heads when Pass 2 fails
 
 def _compute_base_op_capacity_from_skills(env_opdef: Dict[str, Dict], employees: List[Employee]) -> Dict[str, int]:
     cap: Dict[str, int] = {op_id: 0 for op_id in env_opdef.keys()}
@@ -780,9 +792,7 @@ def _evaluate_pass2_and_feedback(final_p2: Pass2Plan) -> Tuple[bool, Dict[str, i
       feedback: op_id -> reduce capacity by N (integer).
     Proxy checks:
       - any unassigned or under-skilled seats => reduce capacity for those ops
-      - (optional) if severe overload per-employee detected, reduce ops seen that day
     """
-    # If there are seats with unassigned or ineligible employees, that's a hard violation in our model.
     bad_ops = Counter()
     for s in final_p2.seats:
         if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1:
@@ -792,10 +802,22 @@ def _evaluate_pass2_and_feedback(final_p2: Pass2Plan) -> Tuple[bool, Dict[str, i
 
     feedback: Dict[str, int] = {}
     if not hard_ok:
-        for op_id, cnt in bad_ops.items():
+        for op_id, _cnt in bad_ops.items():
             feedback[op_id] = FEEDBACK_STEP  # shave one head of concurrency for this op
 
     return hard_ok, feedback
+
+def _collect_bad_day_ops(final_p2: Pass2Plan) -> Counter:
+    """Count (day_id, op_id) where seats are unassigned/under-skilled."""
+    bad = Counter()
+    seat_by_key = {s.seat_key: s for s in final_p2.seats}
+    for sd in final_p2.seat_days:
+        s = seat_by_key.get(sd.seat_key)
+        if s is None:
+            continue
+        if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1:
+            bad[(int(sd.day.id), s.op_id)] += 1
+    return bad
 
 def _apply_feedback_to_capacity(base_cap: Dict[str, int],
                                 current_cap: Dict[str, int],
@@ -806,12 +828,28 @@ def _apply_feedback_to_capacity(base_cap: Dict[str, int],
         new_cap[op_id] = target
     return new_cap
 
+def _apply_feedback_day_op(base_op_cap: Dict[str, int],
+                           current_op_cap: Dict[str, int],
+                           current_dayop_cap: Dict[Tuple[int, str], int],
+                           dayop_feedback: Dict[Tuple[int, str], int]) -> Dict[Tuple[int, str], int]:
+    """
+    Reduce capacity only on specific (day, op) keys, but never below 1 and never below what
+    the current global op cap would allow (and never below base either).
+    """
+    new_map = dict(current_dayop_cap)
+    for (day_id, op_id), reduce_by in dayop_feedback.items():
+        base = max(1, base_op_cap.get(op_id, 1))
+        glob = max(1, current_op_cap.get(op_id, 1))
+        cur  = max(1, new_map.get((day_id, op_id), glob))
+        new_map[(int(day_id), op_id)] = max(1, min(base, cur) - int(reduce_by))
+    return new_map
+
 
 # -------------------- Driver (with feedback loop) --------------------
 
 def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedule.yaml",
                     max_feedback_loops: int = 3):
-    global _TARGET_HOURS_PER_EMP, _BASE_OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_OP
+    global _TARGET_HOURS_PER_EMP, _BASE_OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_DAY_OP
 
     env_opdef, employees = _parse_env(env_path)
     start_day, day_slots, windows, required_hours = _parse_schedule(env_opdef, sched_path)
@@ -824,14 +862,23 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
     # Base op capacity (qualified employees per op); start Pass 1 with this.
     _BASE_OP_CAPACITY_BY_OP = _compute_base_op_capacity_from_skills(env_opdef, employees)
     _OP_CAPACITY_BY_OP = dict(_BASE_OP_CAPACITY_BY_OP)
+    _OP_CAPACITY_BY_DAY_OP = {}  # clear day-specific overrides at start
 
     t0 = time.time()
     loop = 0
-    last_final_p2 = None
+    last_final_p2: Optional[Pass2Plan] = None
+
+    # best-so-far trackers (by fewest hard violations)
+    best_hard: Optional[int] = None
+    best_caps_global: Dict[str, int] = dict(_OP_CAPACITY_BY_OP)
+    best_caps_dayop: Dict[Tuple[int, str], int] = dict(_OP_CAPACITY_BY_DAY_OP)
+
+    def _hard_violations_count(p2: Pass2Plan) -> int:
+        return sum(1 for s in p2.seats if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1)
 
     while True:
         loop += 1
-        print(f"\n=== ITERATION {loop} | capacities: {_OP_CAPACITY_BY_OP} ===")
+        print(f"\n=== ITERATION {loop} | global caps: {_OP_CAPACITY_BY_OP} | day-op caps: {len(_OP_CAPACITY_BY_DAY_OP)} entries ===")
 
         # ---- Pass 1 ----
         decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
@@ -849,30 +896,65 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
 
         # ---- Solve Pass 2 ----
         solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
-                                best_limit="0hard/*medium/*soft", spent_minutes=40, unimproved_seconds=60)
+                                best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
         p2s = time.time()
         final_p2: Pass2Plan = solver2.solve(plan2)
         p2e = time.time()
         last_final_p2 = final_p2
         print(f"PASS 2 done in {p2e - p2s:.2f}s | score={final_p2.score}")
 
+        cur_hard = _hard_violations_count(final_p2)
+        print(f"PASS 2 hard violations (proxy count) = {cur_hard}")
+
+        # init or update best-so-far
+        if best_hard is None or cur_hard < best_hard:
+            best_hard = cur_hard
+            best_caps_global = dict(_OP_CAPACITY_BY_OP)
+            best_caps_dayop  = dict(_OP_CAPACITY_BY_DAY_OP)
+
         # ---- Check Pass 2 outcome and decide on feedback ----
-        hard_ok, feedback = _evaluate_pass2_and_feedback(final_p2)
+        hard_ok, op_feedback = _evaluate_pass2_and_feedback(final_p2)
+        bad_day_ops = _collect_bad_day_ops(final_p2)  # {(day_id, op_id): count}
+
         if hard_ok:
             print(f"PASS 2 hard=0 — stop after {loop} iteration(s).")
             break
 
         if loop >= max_feedback_loops:
             print(f"PASS 2 still has hard violations; reached max_feedback_loops={max_feedback_loops}.")
+            # revert to best-known capacities if current is worse
+            if best_hard is not None and cur_hard > best_hard:
+                _OP_CAPACITY_BY_OP = best_caps_global
+                _OP_CAPACITY_BY_DAY_OP = best_caps_dayop
             break
 
-        # Apply feedback: reduce per-op concurrency capacity to create more slack.
-        new_caps = _apply_feedback_to_capacity(_BASE_OP_CAPACITY_BY_OP, _OP_CAPACITY_BY_OP, feedback)
-        if new_caps == _OP_CAPACITY_BY_OP:
-            # Nothing changed (already at minimum) — no point looping further.
+        # ---- Apply feedback (targeted first; global fallback) ----
+        # Optionally reduce only the most problematic half of (day,op) pairs:
+        # items = sorted(bad_day_ops.items(), key=lambda kv: kv[1], reverse=True)
+        # half = max(1, len(items)//2)
+        # dayop_feedback = {k: 1 for (k,_cnt) in items[:half]}
+        dayop_feedback = {k: 1 for k in bad_day_ops.keys()}
+
+        new_dayop_caps = _apply_feedback_day_op(_BASE_OP_CAPACITY_BY_OP,
+                                                _OP_CAPACITY_BY_OP,
+                                                _OP_CAPACITY_BY_DAY_OP,
+                                                dayop_feedback)
+
+        new_global_caps = _apply_feedback_to_capacity(_BASE_OP_CAPACITY_BY_OP,
+                                                     _OP_CAPACITY_BY_OP,
+                                                     op_feedback) if op_feedback else _OP_CAPACITY_BY_OP
+
+        if (new_global_caps == _OP_CAPACITY_BY_OP) and (new_dayop_caps == _OP_CAPACITY_BY_DAY_OP):
             print("Feedback could not tighten capacities any further — stopping.")
+            # Restore best-known if current is worse.
+            if best_hard is not None and cur_hard > best_hard:
+                _OP_CAPACITY_BY_OP = best_caps_global
+                _OP_CAPACITY_BY_DAY_OP = best_caps_dayop
             break
-        _OP_CAPACITY_BY_OP = new_caps
+
+        # Commit new capacities and continue
+        _OP_CAPACITY_BY_OP = new_global_caps
+        _OP_CAPACITY_BY_DAY_OP = new_dayop_caps
 
     t1 = time.time()
     print(f"TOTAL solving time: {t1 - t0:.2f}s")

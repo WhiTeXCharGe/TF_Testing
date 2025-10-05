@@ -27,6 +27,7 @@ from timefold.solver.score import (
     constraint_provider, ConstraintCollectors 
 )
 
+
 from export_schedule import overwrite_schedule_with_assignments
 
 
@@ -436,27 +437,24 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
     """
     For each day and each op_id, the sum of heads of all blocks active on that day
     must not exceed the number of qualified employees for that op.
+    (Uses 2 keys in group_by to match Timefold overloads cleanly.)
     """
-    # For each day slot, join with blocks active on that day
     return (
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
-              # Join on "block active on this day"
-              Joiners.filtering(lambda d, b:
-                  (int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
-              )
+              Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
-          # group by (day_id, op_id) and sum heads
+          # group by day_id, op_id; sum heads
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
+              lambda d, b: int(d.id),
+              lambda d, b: b.op_id,
               ConstraintCollectors.sum(lambda d, b: int(b.heads))
           )
-          # if demand > capacity(op), penalize the overflow as HARD
-          .filter(lambda key, total_heads: total_heads > _capacity_for_op(key[1]))
+          .filter(lambda day_id, op_id, total_heads: total_heads > _capacity_for_op(op_id))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
-              lambda key, total_heads: total_heads - _capacity_for_op(key[1])
+              lambda day_id, op_id, total_heads: total_heads - _capacity_for_op(op_id)
           )
           .as_constraint("p1-daily-head-capacity-by-op")
     )
@@ -468,31 +466,65 @@ SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
 STACK_PAIR_WEIGHT   = 2
+PHASE_GAP_W = 200   # tune: higher = stronger push to start next phase ASAP
 
 def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
     """
     Medium penalty that discourages stacking many blocks of the same op_id on the same day.
-    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
+    Penalize C(n, 2) * STACK_PAIR_WEIGHT where n is #blocks for (day, op).
     """
     return (
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
-              # block active on this day
               Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
-              ConstraintCollectors.count_bi()  # <-- snake_case collector for Bi streams
+              lambda d, b: int(d.id),
+              lambda d, b: b.op_id,
+              ConstraintCollectors.sum(lambda d, b: 1)  # emulate count safely
           )
-          .filter(lambda key, cnt: int(cnt) > 1)
+          .filter(lambda day_id, op_id, n: int(n) > 1)
           .penalize(
               HardMediumSoftScore.ONE_MEDIUM,
-              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
-              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+              lambda day_id, op_id, n: STACK_PAIR_WEIGHT * (int(n) * (int(n) - 1) // 2)
           )
           .as_constraint("p1-med-penalize-stack-by-op")
     )
+
+def p1_soft_minimize_phase_gap(cf: ConstraintFactory) -> Constraint:
+    """
+    For each module and consecutive phases (k -> k+1):
+      Let E = max end day across all blocks in phase k
+      Let S = min start day across all blocks in phase k+1
+      Penalize max(0, S - (E + 1)) * PHASE_GAP_W
+    This encourages the next phase to start immediately after the previous phase finishes.
+    """
+    # Join prev-phase blocks with next-phase blocks within the same module
+    return (
+        cf.for_each(BlockDecision)
+          .join(
+              cf.for_each(BlockDecision),
+              Joiners.equal(lambda a: a.module,         lambda b: b.module),
+              Joiners.equal(lambda a: int(a.phase_num) + 1, lambda b: int(b.phase_num))
+          )
+          # Group by (module, prev_phase_num) and collect max end over prev, min start over next
+          .group_by(
+              lambda a, b: a.module,
+              lambda a, b: int(a.phase_num),
+              ConstraintCollectors.max(lambda a, b: int(a.start_day) + int(a.days) - 1),  # max end prev
+              ConstraintCollectors.min(lambda a, b: int(b.start_day))                      # min start next
+          )
+          # If minStartNext > maxEndPrev + 1, we have idle gap days
+          .filter(lambda module, pnum, max_end_prev, min_start_next: int(min_start_next) > int(max_end_prev) + 1)
+          .penalize(
+              HardMediumSoftScore.ONE_SOFT,
+              lambda module, pnum, max_end_prev, min_start_next: PHASE_GAP_W * (int(min_start_next) - (int(max_end_prev) + 1))
+          )
+          .as_constraint("p1-soft-minimize-phase-gap")
+    )
+
+
 
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
     return (
@@ -543,6 +575,7 @@ def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
 
         #medium
         p1_med_penalize_stack_by_op(cf),
+        p1_soft_minimize_phase_gap(cf),
         # Soft priority order:
         p1_soft_prefer_hours_near_8(cf),
         p1_soft_prefer_smaller_hours(cf),
