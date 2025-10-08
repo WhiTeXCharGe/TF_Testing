@@ -1,0 +1,75 @@
+メモ: なぜ Timefold Python 1.24.0b では Local Search／Tabu とカスタム Move Selector が使えないのか
+まとめ
+
+Pass1 に Local Search（LS）＋Tabu やカスタム Move Selector を有効化しようとしましたが、Python 版（v1.24.0b）の SolverConfig は フェーズ設定（phase_list / phase_config_list）や moveSelectorConfig、acceptorConfig（Tabu）、foragerConfig といったネスト設定を 受け付けません。
+Java エンジン側にはこれらの機能が存在しますが、Python バインディングに設定用の API が未公開というのが原因です。
+
+何を試し、どう壊れたか（証拠）
+
+Python からフェーズ＆Tabu を渡そうとして以下のように設定しました：
+
+cfg = SolverConfig(
+    solution_class=Pass1Plan,
+    entity_class_list=[BlockDecision],
+    score_director_factory_config=ScoreDirectorFactoryConfig(
+        constraint_provider_function=pass1_constraints
+    ),
+    phase_list=[  # または phase_config_list でも試行
+        {"phaseType": "CONSTRUCTION_HEURISTIC", "constructionHeuristicType": "FIRST_FIT"},
+        {"phaseType": "LOCAL_SEARCH", "moveSelectorConfig": {...}, "acceptorConfig": {...}}
+    ],
+    termination_config=TerminationConfig(...)
+)
+
+
+実行時エラー（実際のメッセージ）：
+
+TypeError: SolverConfig.__init__() got an unexpected keyword argument 'phase_list'
+
+
+（phase_config_list に変えても同様に「unexpected keyword argument」になります。）
+→ 現行の Python 1.24.0b では、これらの引数自体が未対応であることが分かります。
+
+これらの機能は何か（背景）
+
+デフォルトのフェーズ構成：一般に Timefold/OptaPlanner 系では、スコア計算 → Construction Heuristic (CH) → Local Search (LS) という流れを構成ファイル（Java/XML/他）で調整できます。
+
+Local Search の詳細：change/swap/pillar/union などの Move Selector を組み合わせ、さらに Acceptor（Tabu、Late Acceptance、焼きなまし等）や Forager（候補の受け入れ方）を設定します。
+
+Tabu Search の起源：Glover によって提案されたヒューリスティクスで、最近訪れた解・値を「タブー」として再訪を防ぎ、局所最適からの脱出を助けます。
+
+要点：エンジン機能としては存在しますが、Python 1.24.0b の SolverConfig からは指定できないため、Python 単体では LS/Tabu/Move Selector を明示的に切り替えることができません。
+
+“動かない理由の図解（スクリーンショット相当のログ）”
+
+レポートには次のスタックトレースをそのまま貼れば十分です：
+
+Traceback (most recent call last):
+  File "...\\employee_schedule.py", line 801, in <module>
+    main()
+  File "...\\employee_schedule.py", line 796, in main
+    final, start_day = solve_from_yaml("EnvConfig.yaml", "Schedule.yaml")
+  File "...\\employee_schedule.py", line 769, in solve_from_yaml
+    decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
+  File "...\\employee_schedule.py", line 676, in _build_pass1_and_solve
+    cfg = SolverConfig(
+TypeError: SolverConfig.__init__() got an unexpected keyword argument 'phase_list'
+
+
+（phase_config_list を使っても同様のエラーになります。）
+
+いま Python 1.24.0b でできること
+
+SolverConfig の 基本フィールド（solution_class、entity_class_list、score_director_factory_config、termination_config）は利用可能。
+
+つまり 制約モデルで誘導し、CH の解をできるだけ LS なしでも良い形に寄せる、というアプローチが現実的です。
+
+実務向けの当面の回避策
+
+制約で挙動を誘導する（今回すでに対応済み）
+
+次工程の早期開始ペナルティ（位相ギャップの最小化）：前工程の最大終了日の翌日から次工程が始まるようにソフト制約でプッシュ。
+
+日次オペレーション別の頭数上限制約 と 同一日の同一オペ積み上げ抑制（中ペナルティ）：Pass2 で未割当が出やすい“密集”を抑える。
+
+将来：Java/XML 側（Timefold Platform/Java バインディング）を使える環境であれば、Local Search＋Tabu や Move Selector を構成ファイルで有効化する。
