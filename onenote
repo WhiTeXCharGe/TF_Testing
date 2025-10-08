@@ -1,75 +1,95 @@
-メモ: なぜ Timefold Python 1.24.0b では Local Search／Tabu とカスタム Move Selector が使えないのか
-まとめ
+メモ：Timefold Python 1.24.0b で “フェーズ／アルゴリズム設定” が通らない件（CH/LS/Move/Tabu等ぜんぶ）
+要点（1行）
 
-Pass1 に Local Search（LS）＋Tabu やカスタム Move Selector を有効化しようとしましたが、Python 版（v1.24.0b）の SolverConfig は フェーズ設定（phase_list / phase_config_list）や moveSelectorConfig、acceptorConfig（Tabu）、foragerConfig といったネスト設定を 受け付けません。
-Java エンジン側にはこれらの機能が存在しますが、Python バインディングに設定用の API が未公開というのが原因です。
+Construction Heuristic の種類指定、Local Search、Tabu/LateAcceptance/SA、Move Selector（change/swap/pillar/union/cartesian）や Forager など――“フェーズ関連の設定” は Python 1.24.0b の SolverConfig で受け付けられません。
+→ どれを渡しても TypeError（unexpected keyword …） になり、内部デフォルトしか使えません。
 
-何を試し、どう壊れたか（証拠）
-
-Python からフェーズ＆Tabu を渡そうとして以下のように設定しました：
-
+何を試してダメだったか（代表例と実ログ）
+1) フェーズ配列そのものが未対応
 cfg = SolverConfig(
-    solution_class=Pass1Plan,
-    entity_class_list=[BlockDecision],
-    score_director_factory_config=ScoreDirectorFactoryConfig(
-        constraint_provider_function=pass1_constraints
-    ),
-    phase_list=[  # または phase_config_list でも試行
-        {"phaseType": "CONSTRUCTION_HEURISTIC", "constructionHeuristicType": "FIRST_FIT"},
-        {"phaseType": "LOCAL_SEARCH", "moveSelectorConfig": {...}, "acceptorConfig": {...}}
+    ...,
+    phase_list=[  # ← これを渡すだけで失敗
+        {"phaseType": "CONSTRUCTION_HEURISTIC",
+         "constructionHeuristicType": "FIRST_FIT"},
+        {"phaseType": "LOCAL_SEARCH", "moveSelectorConfig": {...}}
     ],
-    termination_config=TerminationConfig(...)
 )
 
 
-実行時エラー（実際のメッセージ）：
+実行時エラー
 
 TypeError: SolverConfig.__init__() got an unexpected keyword argument 'phase_list'
 
 
-（phase_config_list に変えても同様に「unexpected keyword argument」になります。）
-→ 現行の Python 1.24.0b では、これらの引数自体が未対応であることが分かります。
+phase_config_list でも同様に失敗（“unexpected keyword …”）。
 
-これらの機能は何か（背景）
+2) Construction Heuristic の種類指定（FIRST_FIT_DECREASING 等）
 
-デフォルトのフェーズ構成：一般に Timefold/OptaPlanner 系では、スコア計算 → Construction Heuristic (CH) → Local Search (LS) という流れを構成ファイル（Java/XML/他）で調整できます。
+CH を変えるために constructionHeuristicType を上のように渡しても、結局 フェーズ配列が受け取られないため設定不能。
 
-Local Search の詳細：change/swap/pillar/union などの Move Selector を組み合わせ、さらに Acceptor（Tabu、Late Acceptance、焼きなまし等）や Forager（候補の受け入れ方）を設定します。
+3) Local Search 一式（Move/Acceptor/Forager）
 
-Tabu Search の起源：Glover によって提案されたヒューリスティクスで、最近訪れた解・値を「タブー」として再訪を防ぎ、局所最適からの脱出を助けます。
+moveSelectorConfig 全般（changeMoveSelectorConfig / swapMoveSelectorConfig / pillar... / unionMoveSelectorConfig / cartesianProductMoveSelectorConfig など）
 
-要点：エンジン機能としては存在しますが、Python 1.24.0b の SolverConfig からは指定できないため、Python 単体では LS/Tabu/Move Selector を明示的に切り替えることができません。
+acceptorConfig（Tabu / LateAcceptance / SimulatedAnnealing）
 
-“動かない理由の図解（スクリーンショット相当のログ）”
+foragerConfig（受け入れ個数など）
 
-レポートには次のスタックトレースをそのまま貼れば十分です：
+→ いずれも フェーズ設定が弾かれるため、到達すらできない。
 
-Traceback (most recent call last):
-  File "...\\employee_schedule.py", line 801, in <module>
-    main()
-  File "...\\employee_schedule.py", line 796, in main
-    final, start_day = solve_from_yaml("EnvConfig.yaml", "Schedule.yaml")
-  File "...\\employee_schedule.py", line 769, in solve_from_yaml
-    decided_blocks = _build_pass1_and_solve(day_slots, windows, required_hours)
-  File "...\\employee_schedule.py", line 676, in _build_pass1_and_solve
-    cfg = SolverConfig(
+なぜ起きる？
+
+Java エンジン（Timefold/OptaPlanner）にはこれらの概念・設定があるが、Python バインディング 1.24.0b ではそれらを渡すための SolverConfig フィールドが公開されていない。
+
+その結果、Python からは 最小限の設定（solution_class / entity_class_list / score_director_factory_config / termination_config）しか使えず、アルゴリズム詳細の切替は不可。
+
+いま Python でできる現実的対策
+
+アルゴリズムを弄れない前提で、制約側で解の形を誘導します（既に実装済みの主なもの）：
+
+位相ギャップ最小化（次工程 ASAP）
+
+前工程の最大終了日の翌日から次工程の最早開始までのギャップを 日数×重みでソフトペナルティ。
+
+p1_soft_minimize_phase_gap を追加済み。
+
+日×オペ レベルの同時頭数制限（Pass2 で割付けやすい形）
+
+p1_daily_head_capacity（既存）で、スキル保有人数を超えるブロック頭数の同日重なりをハードで禁止。
+
+同一日・同一オペの“積み上げ”抑制（中ペナルティ）
+
+p1_med_penalize_stack_by_op で C(n,2) をペナルティ化。
+
+過密を避け、Pass2 の未割当を減らす狙い。
+
+“最後に送ったスタック計算の直し”を反映
+
+group_by を (day_id, op_id, sum(heads)) にし、積み上げは “件数” を sum(1) でカウント、容量違反は sum(heads) で評価。
+
+既にあなたの最新版に反映済みの形で OK。
+
+この方向性は CH しか使えない環境でも効果が出る（Pass2 のハード0を取りやすい）ため、Python 1.24.0b の制約下では最適解。
+
+もし更に押し込みたければ（任意の追加アイデア）
+
+工程スパンの凝集（同一モジュール・同位相内で「開始の分散」をペナルティ）
+→ 位相内の最小開始と最大開始の差を小さくするソフト制約（分散抑制）を入れると、Pass2 のスキル制約に合わせて “まとまった塊” を作りやすい。
+
+工場またぎの干渉緩和（Pass2 の「1日1工場」制約に優しい形へ）
+→ Pass1 から工場単位の集中/分散を軽めのソフトで誘導（過密日を避ける）※重くしすぎるとウィンドウ違反へ寄るので軽めに。
+
+モジュール横断の位相間マッチング（上級）
+→ 同位相（P2 同士など）を同じ週内に寄せる微ペナルティで、スキルのやり繰りが利きやすくなるケースあり。
+
+どうしても LS/Tabu/Move を使いたい場合（将来案）
+
+Java 実行（Solver XML/Java API）に切り替え、Python は I/O（YAML 読み書き）に専念。
+
+あるいは 将来の Python 版で phase_list 等が公開されたらアップグレードして再挑戦。
+
+参考としての“証拠ログ”（スクショ代わり）
 TypeError: SolverConfig.__init__() got an unexpected keyword argument 'phase_list'
 
 
-（phase_config_list を使っても同様のエラーになります。）
-
-いま Python 1.24.0b でできること
-
-SolverConfig の 基本フィールド（solution_class、entity_class_list、score_director_factory_config、termination_config）は利用可能。
-
-つまり 制約モデルで誘導し、CH の解をできるだけ LS なしでも良い形に寄せる、というアプローチが現実的です。
-
-実務向けの当面の回避策
-
-制約で挙動を誘導する（今回すでに対応済み）
-
-次工程の早期開始ペナルティ（位相ギャップの最小化）：前工程の最大終了日の翌日から次工程が始まるようにソフト制約でプッシュ。
-
-日次オペレーション別の頭数上限制約 と 同一日の同一オペ積み上げ抑制（中ペナルティ）：Pass2 で未割当が出やすい“密集”を抑える。
-
-将来：Java/XML 側（Timefold Platform/Java バインディング）を使える環境であれば、Local Search＋Tabu や Move Selector を構成ファイルで有効化する。
+（phase_config_list でも同様。moveSelectorConfig / acceptorConfig / foragerConfig 等は、そもそもフェーズに入れられないため到達不可）
