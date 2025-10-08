@@ -1,4 +1,4 @@
-# export_schedule_excel.py
+# python export_schedule_excel_mock.py --schedule Schedule_mock.yaml --env EnvConfig.yaml --out schedule_export_mock.xlsx --skip-weekends
 # ---------------------------------------------------------------------
 # Builds an Excel with four sheets from Schedule.yaml + EnvConfig.yaml
 # SHEET 1 -> "Tasks x Dates" (meta cols + required/assigned per task,
@@ -1067,3 +1067,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
