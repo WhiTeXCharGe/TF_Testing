@@ -1,0 +1,141 @@
+Timefold（Python 1.24.0b）におけるローカルサーチ系アルゴリズム利用の検証レポート
+目的
+
+Pass1 の探索アルゴリズムを、従来の最小構成（CHのみ）からLocal Search / Tabu Search＋MoveSelectorを含む構成へ変更し、品質向上を狙う。
+あわせて、現行の Timefold Python 1.24.0b が当該設定を受け付けるかを実運用コード上で検証する。
+
+変更点（やろうとしたこと）
+
+探索フェーズの明示的指定：phase_list に CONSTRUCTION_HEURISTIC → LOCAL_SEARCH を設定
+
+Local Search の詳細設定：acceptorConfig（tabu サイズ）や foragerConfig
+
+MoveSelector の明示：changeMoveSelectorConfig（start_day / heads / days）、swapMoveSelectorConfig
+
+これらは Timefold のソルバー設定（※主に Java ドキュメントの領域）で一般的に使われるキーで、
+“Local Search/Tabu を使う＝これらの設定を有効化する”という意図。
+
+実施した検証
+1) 実コードでの再現（実運用に近い形でのテスト）
+
+employee_schedule.py の _build_pass1_and_solve 内に“エビデンス用スイッチ”を設置し、意図的に LS/Tabu 設定を渡すパスを通す。
+
+追加したコア部分（抜粋）
+# ----------------- HARD EVIDENCE SWITCHES -----------------
+EVIDENCE_IMPORT_PROBE = False   # （最終実行では False）
+EVIDENCE_CONFIG_NOTE  = True
+
+# --- Local Search/Tabu を要求する設定（1.24.0b では未サポート想定） ---
+print("[EVIDENCE] Attempting Local Search + Tabu + move selectors (expected to FAIL on 1.24.0b).")
+cfg = SolverConfig(
+    solution_class=Pass1Plan,
+    entity_class_list=[BlockDecision],
+    score_director_factory_config=ScoreDirectorFactoryConfig(
+        constraint_provider_function=pass1_constraints
+    ),
+    phase_list=[  # ← ここがキモ（Local Search フェーズを明示）
+        {"phaseType": "CONSTRUCTION_HEURISTIC", "constructionHeuristicType": "FIRST_FIT"},
+        {
+            "phaseType": "LOCAL_SEARCH",
+            "moveSelectorConfig": {
+                "unionMoveSelectorConfig": {
+                    "moveSelectorConfigList": [
+                        {"changeMoveSelectorConfig": {"entityClass": BlockDecision, "variableName": "start_day"}},
+                        {"changeMoveSelectorConfig": {"entityClass": BlockDecision, "variableName": "heads"}},
+                        {"changeMoveSelectorConfig": {"entityClass": BlockDecision, "variableName": "days"}},
+                        {"swapMoveSelectorConfig": {"entityClass": BlockDecision}}
+                    ]
+                }
+            },
+            "acceptorConfig": {"entityTabuSize": 7, "valueTabuSize": 7},
+            "foragerConfig": {"acceptedCountLimit": 4}
+        }
+    ],
+    termination_config=TerminationConfig(spent_limit=Duration(seconds=10))
+)
+solver = SolverFactory.create(cfg).build_solver()  # ← ここでエラーになる想定
+
+実行結果（エラーの証拠）
+
+期待したとおり、SolverConfig.__init__() が phase_list を未知の引数として拒否し、TypeError が発生。
+
+取得したスタックトレース：
+
+[Evidence image]（TypeError: SolverConfig.__init__() got an unexpected keyword argument 'phase_list' と出ているスクショを貼り付け）
+
+先日の試行では、CHのみの最小構成だと問題なく実行・出力（スコアは未充足だが動作はOK）できた一方、
+Local Search/Tabu を要求する設定を渡した途端に TypeError で落ちることを再現できた。
+
+2) 公式ドキュメント／サイト上の根拠（Webエビデンス）
+
+Timefold の Local Search の存在と一般的な設定方法
+・公式ドキュメントにて Local Search のフェーズやログ記録が明示されている（Java中心の解説）。
+　例：Quick Start のログ例で “Local Search phase …” と出力されることが確認できる。 
+docs.timefold.ai
+
+・Local Search/Move Selector の概念・設定が詳説されている（Javaガイド）。 
+docs.timefold.ai
+
+Python パッケージの記述（制約・最小例）
+・PyPI の timefold-solver には Python ラッパーの説明があり、Python 側の紹介例は最小構成の SolverConfig（CHだけで完結する形）に留まっている。Local Search の Python 設定例は掲載されていない。
+　→ Python では まだ Java と同等のフェーズ設定APIが整っていないことの傍証となる。 
+PyPI
+
+まとめると、Local Search／Move Selector／Tabu の概念・使い方は Timefold には存在する（Java側ドキュメントで確認できる）一方、
+Python 1.24.0b の SolverConfig は phase_list などのキーを受け付けない（＝エラーで落ちる）ことが、実行上の事実と整合している。
+
+追加の実観察
+
+一部のケースでは、未知キーが「無視される」ように見える振る舞いもあったが、今回の phase_list は明確に TypeError で拒否された。
+
+**最小構成（CHのみ）**に戻すと、従来どおり解が出力される（Pass1 完了・座席展開・割当まで到達）。
+
+影響
+
+Python 1.24.0b 環境では、Local Search / Tabu / MoveSelector の明示的な構成切り替えが不可。
+
+そのため Pass1 の探索品質を LS で押し上げるアプローチが現状使えない。
+
+探索の高品質化は、制約の改善・重み調整・値域設計・初期解工夫など、CH寄りの工夫で行う必要がある。
+
+回避策・代替案
+
+現行（Python 1.24.0b）の最小構成での改善
+
+制約の強化／重みの見直し（例：PREF_HOURS_WEIGHT などの調整）
+
+候補値域の設計（day_count_options を短縮する等）で近傍を狭め、CHの探索効率・結果を底上げ
+
+Java 実装の Timefold へ移行（必要に応じて）
+
+Local Search / Tabu / MoveSelector をフル活用するには Java 実装の採用が最短
+
+Python 側の将来バージョンの動向待ち
+
+公式が Python API の設定面を拡充したら再評価
+
+結論（サマリ）
+
+やったこと：Pass1 に Local Search / Tabu / MoveSelector を導入するため、phase_list 等を指定して SolverConfig を構成。
+
+結果：Timefold Python 1.24.0b では未サポートのため、phase_list が未知引数として TypeError（証拠画像あり）。
+
+根拠：公式では Local Search の概念・ログは明示（Java側）。一方、Python パッケージの説明／最小例は CH中心で、Python での LS 設定例なし。
+
+影響／方針：当面は CH 前提のチューニングで精度向上を図り、LS/Tabu を使いたい場合は Java 版の検討または Python API の拡充待ち。
+
+参考資料（Web）
+
+- Timefold Quick Start（ログ例に Local Search phase が登場）
+docs.timefold.ai
+https://docs.timefold.ai/timefold-solver/latest/quickstart/shared/try-the-application
+
+- Move Selector リファレンス（Local Search系の構成要素の公式解説）
+
+- Partitioned Search（文中で Local Search を前提にした構成言及あり）
+docs.timefold.ai
+https://docs.timefold.ai/timefold-solver/0.8.x/partitioned-search/partitioned-search?
+
+- PyPI: timefold-solver（Python パッケージの説明。最小構成例のみで、PythonでのLS設定例は見当たらず）
+PyPI
+https://pypi.org/project/timefold-solver/
