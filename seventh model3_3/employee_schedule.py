@@ -992,11 +992,13 @@ def _solve_pass1_overtime_loop_and_export(
     out_prefix: str = "Schedule_",
 ):
     """
-    Loop by per-op tiers:
+    Loop by per-op tiers (no freezing):
       - Tier 1: each op allowed = [min(op.work_hours)]
       - Next tiers add the next allowed hour for that OP (not per-window).
-      - If ANY window of an op is under-produced, bump that OP's tier by +1.
-      - Stop when (a) hard==0, or (b) no op can widen further.
+      - If ANY window of an op is "negative" (under-produced or window spill/too-long),
+        bump that OP's tier by +1 (up to its max).
+      - If hard<0 but no local negatives -> widen ALL ops that can still widen (group conflicts).
+      - Stop when (a) hard==0, or (b) no op can widen further, or (c) reached hard cap.
       - After each solve, export Schedule_{k}.yaml with TRIVIAL Pass 2.
     """
     # --- load inputs
@@ -1007,9 +1009,9 @@ def _solve_pass1_overtime_loop_and_export(
     max_heads_global = max((w.max_heads for w in windows), default=1)
     min_heads_global = min((w.min_heads for w in windows), default=1)
     max_window_len   = max((w.end_day_id - w.start_day_id + 1 for w in windows), default=1)
-    head_options = list(range(min_heads_global, max_heads_global + 1))
-    day_ids      = list(range(len(day_slots)))
-    day_count_options = list(range(1, max_window_len + 1))
+    head_options     = list(range(min_heads_global, max_heads_global + 1))
+    day_ids          = list(range(len(day_slots)))
+    day_count_options= list(range(1, max_window_len + 1))
 
     # ---- group windows by op and set per-op tiers
     from collections import defaultdict
@@ -1017,12 +1019,33 @@ def _solve_pass1_overtime_loop_and_export(
     for idx, w in enumerate(windows):
         wins_by_op[w.op_id].append(idx)
 
-    op_allowed_map = {op_id: sorted(set(int(x) for x in env_opdef[op_id]["allowed"])) for op_id in wins_by_op.keys()}
-    op_max_level   = {op_id: len(al) for op_id, al in op_allowed_map.items()}
-    op_level       = {op_id: 1 for op_id in wins_by_op.keys()}  # start with only the smallest hour
+    op_allowed_map: Dict[str, List[int]] = {
+        op_id: sorted(set(int(x) for x in env_opdef[op_id]["allowed"]))
+        for op_id in wins_by_op.keys()
+    }
+    op_max_level: Dict[str, int] = {op_id: len(al) for op_id, al in op_allowed_map.items()}
+    op_level: Dict[str, int]     = {op_id: 1 for op_id in wins_by_op.keys()}  # start with smallest hour
 
     # hard cap on total loop count (max #choices across all ops)
     hard_cap = max(op_max_level.values() or [1])
+
+    def _block_negative(b: BlockDecision) -> bool:
+        """A block that could be helped by higher hours (shorter span)."""
+        prod = _produced(b)
+        R    = int(b.required_hours)
+        sd   = int(b.start_day)
+        d    = int(b.days)
+        ws   = int(b.window_start)
+        we   = int(b.window_end)
+        end  = sd + d - 1
+        window_len = we - ws + 1
+        if prod < R:
+            return True
+        if d > window_len:
+            return True
+        if sd < ws or end > we:
+            return True
+        return False
 
     loop_idx = 0
     while True:
@@ -1112,16 +1135,25 @@ def _solve_pass1_overtime_loop_and_export(
             print(f"[OT Loop] Finished at iteration {loop_idx} with 0 hard.")
             break
 
-        # ---- decide which OPS to widen (only ops with ANY under-produced block)
-        ops_to_widen = set()
-        for b in solved.blocks:
-            if _produced(b) < int(b.required_hours):
-                ops_to_widen.add(b.op_id)
+        # ---- decide which OPS to widen
+        # First, ops that have ANY negative block (underfill / window spill / too-long)
+        ops_to_widen = {b.op_id for b in solved.blocks if _block_negative(b)}
 
         if not ops_to_widen:
-            print("[OT Loop] No under-produced blocks; nothing to widen per-op. Stopping.")
-            break
+            # No local-negatives but still hard<0 => group conflicts (capacity/phase-order).
+            # Try a global widen pass: bump every op that can still widen.
+            widened_any = False
+            for op_id in op_level.keys():
+                if op_level[op_id] < op_max_level[op_id]:
+                    op_level[op_id] += 1
+                    widened_any = True
+            if not widened_any:
+                print("[OT Loop] hard<0 but all ops at max tier; stopping.")
+                break
+            # continue to next iteration
+            continue
 
+        # Widen ONLY the ops with negatives (keep others as-is)
         widened_something = False
         for op_id in ops_to_widen:
             if op_level[op_id] < op_max_level[op_id]:
@@ -1129,8 +1161,9 @@ def _solve_pass1_overtime_loop_and_export(
                 widened_something = True
 
         if not widened_something:
-            print("[OT Loop] Ops are under-produced but all at max tier; stopping.")
+            print("[OT Loop] Negative ops exist but all at max tier; stopping.")
             break
+        # else: continue loop
 
 
 def main():
