@@ -32,7 +32,6 @@ BLUE_ORDER   = "9DC3E6"  # phase ordering breach (violation)
 PINK_MINMAX  = "F6B5C9"  # staffing min/max breach (violation)
 YELLOW_UNDER = "FFF2CC"  # under-assigned task (violation) -> assigned_hours cell
 ORANGE_SKILL = "F8CBAD"  # skill mismatch (violation) -> sheet2 per-day cells
-MANAGER_MISSING = "FFE699" # highlight 'manager' cell when a task has no manager
 
 # ------------------------------- CONFIG --------------------------------
 # Required hours from Schedule.yaml only:
@@ -141,7 +140,6 @@ def build_maps(env, modules, assignments):
     regions   = env["regions"]
     customers = env["customers"]
     wcompanies= env["worker_companies"]
-    workers   = env["workers"]
 
     mod_map = {m["id"]: m for m in modules}
 
@@ -170,8 +168,6 @@ def build_maps(env, modules, assignments):
         for wid in workers
     }
     worker_skills = {wid: workers[wid].get("skill_map", {}) for wid in workers}
-    worker_is_manager = {wid: bool(workers[wid].get("is_manager", False)) for wid in workers}
-    name_is_manager   = {worker_name[wid]: worker_is_manager[wid] for wid in workers}
 
     # module metadata for sheet 1
     mod_meta_cols = {}
@@ -236,16 +232,6 @@ def build_maps(env, modules, assignments):
         per_day_total[a["date"]] += a["hours"]
         day_op_heads[(m_id, op_id, a["date"])] += 1
 
-    managers_by_task = defaultdict(set)  # (m_id, op_id) -> {manager_names}
-    for a in assignments:
-        wid   = a["worker"]
-        if worker_is_manager.get(wid, False):
-            op_task = a["operation_task"]
-            idx = op_task.find("p")
-            m_id = op_task[:idx] if idx > 0 else op_task
-            op_id = op_task[idx:] if idx > 0 else ""
-            managers_by_task[(m_id, op_id)].add(worker_name.get(wid, wid))
-
     # employee workdays
     for (comp, wname, d), items in edt.items():
         if items:
@@ -263,8 +249,6 @@ def build_maps(env, modules, assignments):
         "worker_name": worker_name,
         "worker_company_name": worker_company_name,
         "worker_skills": worker_skills,
-        "worker_is_manager": worker_is_manager,
-        "name_is_manager": name_is_manager,
         "emp_total_hours": emp_total_hours,
         "emp_workdays": emp_workdays,
         "per_day_total": per_day_total,
@@ -272,7 +256,6 @@ def build_maps(env, modules, assignments):
         "per_cell_assigns_task": per_cell_assigns_task,
         "per_cell_assigns_emp": per_cell_assigns_emp,
         "worker_name": worker_name,
-        "managers_by_task": managers_by_task,
     }
 
 # ----------------------- REQUIRED HOURS (task/module) ------------------
@@ -403,13 +386,6 @@ def detect_violations(env, modules, assignments, maps):
         if mismatch:
             skill_mismatch_cells.add((comp, wname, dt))
 
-    # --- tasks with NO manager at all (across the whole horizon) ---
-    tbl_no_manager = []
-    for (m_id, op_id, _op_name) in modules and maps["module_ops"]:
-        mgrs = maps["managers_by_task"].get((m_id, op_id), set())
-        if not mgrs:
-            tbl_no_manager.append([m_id, op_id])
-
     return {
         "assigned_task": assigned_task,
         "assigned_mod": assigned_mod,
@@ -422,7 +398,6 @@ def detect_violations(env, modules, assignments, maps):
         "tbl_order": tbl_order,
         "tbl_skill": tbl_skill,
         "tbl_minmax": tbl_minmax,
-        "tbl_no_manager": tbl_no_manager,   
     }
 
 # ------------------------------- Skill build -----------------------------
@@ -501,7 +476,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     ws = wb.create_sheet("Tasks x Dates")
 
     # headers incl. required/assigned per task
-    headers = ["module", "module_name", "fab_id", "fab_name", "region", "customer", "task","manager",
+    headers = ["module", "module_name", "fab_id", "fab_name", "region", "customer", "task",
                "required_hours", "assigned_hours"]
     for col, h in enumerate(headers, start=1):
         c = ws.cell(row=1, column=col, value=h); c.font = bold; c.alignment = center
@@ -517,7 +492,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
         c.font = bold; c.alignment = center
         ws.column_dimensions[get_column_letter(j)].width = 26
 
-    widths = [8, 18, 8, 14, 12, 10, 18, 18, 16, 16]
+    widths = [8, 18, 8, 14, 12, 10, 18, 16, 16]
     for idx, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(idx)].width = w
     ws.freeze_panes = get_column_letter(len(headers)+1) + "2"
@@ -552,18 +527,11 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
         ws.cell(row=r_idx, column=6, value=meta["customer"]).font = bold
         ws.cell(row=r_idx, column=7, value=f"{op_id} {op_name}").font = bold
 
-        # managers — list unique manager names for this task
-        mgr_names = sorted(maps["managers_by_task"].get((m_id, op_id), []))
-        mgr_text  = " | ".join(mgr_names) if mgr_names else ""
-        c_mgr = ws.cell(row=r_idx, column=8, value=mgr_text); c_mgr.alignment = center
-        if not mgr_names:
-            c_mgr.fill = PatternFill(start_color=MANAGER_MISSING, end_color=MANAGER_MISSING, fill_type="solid")
-
-        # required/assigned per task (FIX: these are columns 9 and 10)
+        # required/assigned per task
         req = req_task.get((m_id, op_id), 0)
         asg = vios["assigned_task"].get((m_id, op_id), 0)
-        ws.cell(row=r_idx, column=9,  value=req).alignment = center
-        c_asg = ws.cell(row=r_idx, column=10, value=asg); c_asg.alignment = center
+        ws.cell(row=r_idx, column=8, value=req).alignment = center
+        c_asg = ws.cell(row=r_idx, column=9, value=asg); c_asg.alignment = center
         if asg < req:
             c_asg.fill = fill_under  # highlight assigned_hours cell only
 
@@ -618,7 +586,7 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
 
     ws = wb.create_sheet("Employees x Dates")
 
-    base_headers = ["company", "employee", "skills", "Manager"]
+    base_headers = ["company", "employee", "skills"]
     for i, h in enumerate(base_headers, start=1):
         c = ws.cell(row=1, column=i, value=h); c.font = bold
 
@@ -640,10 +608,9 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
     ws.column_dimensions["A"].width = 12
     ws.column_dimensions["B"].width = 12
     ws.column_dimensions["C"].width = 54
-    ws.column_dimensions["D"].width = 10  # NEW: Manager
     ws.column_dimensions[get_column_letter(workdays_col)].width = 11
     ws.column_dimensions[get_column_letter(workhours_col)].width = 11
-    ws.freeze_panes = "E2"
+    ws.freeze_panes = "D2"
 
     # skills text
     def skills_text(wname):
@@ -678,7 +645,6 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
         ws.cell(row=i, column=1, value=comp or "").alignment = left
         ws.cell(row=i, column=2, value=wname or "").alignment = left
         ws.cell(row=i, column=3, value=skills_text(wname)).alignment = left
-        ws.cell(row=i, column=4, value="True" if maps["name_is_manager"].get(wname, False) else "").alignment = center
 
         for j, dt in enumerate(dates, start=len(base_headers)+1):
             txt = " | ".join(sorted(maps["edt"].get((comp, wname, dt), [])))
@@ -1024,12 +990,6 @@ def write_sheet_breaches(wb, vios):
         "Staffing min/max breaches",
         ["date", "module", "op_id", "heads", "min", "max", "status"],
         sorted(vios["tbl_minmax"], key=lambda x:(x[0],x[1],x[2]))
-    )
-
-    write_table(
-        "Tasks with no manager",
-        ["module", "op_id"],
-        sorted(vios["tbl_no_manager"], key=lambda x: (x[0], x[1]))
     )
 
     for col in range(1, 12):

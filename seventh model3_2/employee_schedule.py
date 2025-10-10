@@ -47,6 +47,7 @@ class Employee:
     wid: str          # "w#": used for writing back
     name: str
     skills: Dict[str, int]
+    is_manager: bool = False
 
 @dataclass(frozen=True)
 class TaskWindow:
@@ -164,6 +165,7 @@ class CrewSeat:
     hours: int
     seat_index: int
     seat_key: str
+    block_id: int
 
     # Planning variable
     employee: Annotated[Employee, PlanningVariable]
@@ -196,6 +198,11 @@ _BASE_OP_CAPACITY_BY_OP: Dict[str, int] = {}
 _OP_CAPACITY_BY_OP: Dict[str, int] = {}
 # NEW: day-specific capacity overrides; fallback to _OP_CAPACITY_BY_OP if not present
 _OP_CAPACITY_BY_DAY_OP: Dict[Tuple[int, str], int] = {}
+
+P1_MAIN_MIN    = 1   # Pass1 per tier
+P1_POLISH_MIN  = 1   # Pass1 polish when hard==0
+P2_MAIN_MIN    = 1   # Pass2 main (not used in demo loop, but kept)
+P2_POLISH_MIN  = 1   # Pass2 polish when hard==0
 
 def _capacity_for_op(op_id: str) -> int:
     # Kept for compatibility; used as fallback
@@ -234,7 +241,11 @@ def _is_unassigned(emp: Optional[Employee]) -> bool:
     except Exception:
         return True
 
-
+def _is_manager(emp: Optional[Employee]) -> bool:
+    try:
+        return bool(getattr(emp, "is_manager", False))
+    except Exception:
+        return False
 # -------------------- YAML parsers --------------------
 
 def _parse_env(env_path: str):
@@ -263,7 +274,8 @@ def _parse_env(env_path: str):
         wid = str(w.get("id"))
         name = w.get("name")
         skills = dict(w.get("skill_map") or {})
-        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills))
+        is_mgr = bool(w.get("is_manager", False))
+        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills, is_manager=is_mgr))
         eid += 1
 
     return opdef, employees
@@ -610,6 +622,20 @@ def p2_daily_cap_12h(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p2-daily-cap-12h")
     )
 
+def p2_at_least_one_manager_per_block(cf: ConstraintFactory) -> Constraint:
+    # Group seats by block_id and count how many assigned managers are in the block
+    return (
+        cf.for_each(CrewSeat)
+          .filter(lambda s: not _is_unassigned(s.employee))
+          .group_by(
+              lambda s: s.block_id,
+              ConstraintCollectors.sum(lambda s: 1 if _is_manager(s.employee) else 0)
+          )
+          .filter(lambda block_id, mgr_count: int(mgr_count) < 1)
+          .penalize(HardMediumSoftScore.ONE_HARD)
+          .as_constraint("p2-at-least-one-manager-per-block")
+    )
+
 def p2_soft_avoid_overtime_over8(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(SeatDay)
@@ -640,6 +666,7 @@ def pass2_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p2_assigned_and_skill(cf),
         p2_one_factory_per_emp_day(cf),
         p2_daily_cap_12h(cf),
+        p2_at_least_one_manager_per_block(cf),
         p2_soft_avoid_overtime_over8(cf),
         p2_soft_balance_total_hours(cf),
     ]
@@ -668,6 +695,7 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
                 days=dcount, hours=hours,
                 seat_index=sidx,
                 seat_key=seat_key,
+                block_id=int(b.id),
                 employee=Employee(0, "__UNASSIGNED__", "__UNASSIGNED__", {})
             ))
             sid += 1
@@ -706,7 +734,7 @@ def _score_has_zero_hard(score_obj) -> bool:
 
 def _build_solver(solution_cls, entity_cls_list, constraint_fn,
                   best_limit: str | None,
-                  spent_minutes: float,
+                  spent_minutes: int,
                   unimproved_seconds: int):
     term_kwargs = {}
     if best_limit:
@@ -735,8 +763,6 @@ def _solve_pass1_with_hours_ramp(
     day_slots: List[DaySlot],
     windows: List[TaskWindow],
     required_hours: Dict[Tuple[str, str], int],
-    minutes_per_tier: float = 1.0,                 # <-- 1 minute per your request
-    do_polish_minutes: float = 1.0                 # <-- 1 minute polish when hard==0
 ) -> tuple[list[BlockDecision], int, HardMediumSoftScore, bool]:
     """
     Tier 1: each task's allowed = [min]
@@ -805,7 +831,7 @@ def _solve_pass1_with_hours_ramp(
         print(f"\n[Pass1 Ramp] Tier {tier}/{max_choices} : limit allowed choices to first {tier}")
         solver1 = _build_solver(Pass1Plan, [BlockDecision], pass1_constraints,
                                 best_limit="0hard/*medium/*soft",
-                                spent_minutes=minutes_per_tier,
+                                spent_minutes=P1_MAIN_MIN,
                                 unimproved_seconds=0)
         t0 = time.time()
         solved: Pass1Plan = solver1.solve(pass1)
@@ -824,7 +850,7 @@ def _solve_pass1_with_hours_ramp(
             print("[Pass1 Polish] hard==0, polishing…")
             polish_solver = _build_solver(Pass1Plan, [BlockDecision], pass1_constraints,
                                           best_limit=None,
-                                          spent_minutes=do_polish_minutes,
+                                          spent_minutes=P1_POLISH_MIN,
                                           unimproved_seconds=60)
             p0 = time.time()
             polished: Pass1Plan = polish_solver.solve(solved)
@@ -845,9 +871,7 @@ def _solve_pass2_once_with_optional_polish(
     day_slots: List[DaySlot],
     employees: List[Employee],
     seats: List[CrewSeat],
-    seat_days: List[SeatDay],
-    minutes_main: float = 1.0,         # <-- 1 minute main solve
-    minutes_polish: float = 1.0        # <-- 1 minute polish when hard==0
+    seat_days: List[SeatDay]
 ) -> Pass2Plan:
     plan2 = Pass2Plan(
         days=day_slots,
@@ -859,7 +883,7 @@ def _solve_pass2_once_with_optional_polish(
     # main solve with best_limit to try for hard==0
     solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
                             best_limit="0hard/*medium/*soft",
-                            spent_minutes=minutes_main,
+                            spent_minutes=P2_MAIN_MIN,
                             unimproved_seconds=0)
     s0 = time.time()
     result: Pass2Plan = solver2.solve(plan2)
@@ -871,7 +895,7 @@ def _solve_pass2_once_with_optional_polish(
         print("[Pass2 Polish] hard==0, polishing…")
         poly = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
                              best_limit=None,
-                             spent_minutes=minutes_polish,
+                             spent_minutes=P2_POLISH_MIN,
                              unimproved_seconds=60)
         p0 = time.time()
         result = poly.solve(result)
@@ -882,90 +906,10 @@ def _solve_pass2_once_with_optional_polish(
 
     return result
 
-# -------------------- Feedback helpers --------------------
-
-FEEDBACK_STEP = 1  # reduce capacity by this many heads when Pass 2 fails
-
-def _compute_base_op_capacity_from_skills(env_opdef: Dict[str, Dict], employees: List[Employee]) -> Dict[str, int]:
-    cap: Dict[str, int] = {op_id: 0 for op_id in env_opdef.keys()}
-    for e in employees:
-        if e.id == 0:
-            continue
-        skills = e.skills or {}
-        for op_id in cap.keys():
-            try:
-                if int(skills.get(op_id, 0) or 0) > 0:
-                    cap[op_id] += 1
-            except Exception:
-                pass
-    return cap
-
-def _evaluate_pass2_and_feedback(final_p2: Pass2Plan) -> Tuple[bool, Dict[str, int]]:
-    """
-    Inspect Pass 2 result.
-    Returns:
-      hard_ok: True if no obvious hard violations (proxy check).
-      feedback: op_id -> reduce capacity by N (integer).
-    Proxy checks:
-      - any unassigned or under-skilled seats => reduce capacity for those ops
-    """
-    bad_ops = Counter()
-    for s in final_p2.seats:
-        if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1:
-            bad_ops[s.op_id] += 1
-
-    hard_ok = (len(bad_ops) == 0)
-
-    feedback: Dict[str, int] = {}
-    if not hard_ok:
-        for op_id, _cnt in bad_ops.items():
-            feedback[op_id] = FEEDBACK_STEP  # shave one head of concurrency for this op
-
-    return hard_ok, feedback
-
-def _collect_bad_day_ops(final_p2: Pass2Plan) -> Counter:
-    """Count (day_id, op_id) where seats are unassigned/under-skilled."""
-    bad = Counter()
-    seat_by_key = {s.seat_key: s for s in final_p2.seats}
-    for sd in final_p2.seat_days:
-        s = seat_by_key.get(sd.seat_key)
-        if s is None:
-            continue
-        if _is_unassigned(s.employee) or _skill_level(s.employee, s.op_id) < 1:
-            bad[(int(sd.day.id), s.op_id)] += 1
-    return bad
-
-def _apply_feedback_to_capacity(base_cap: Dict[str, int],
-                                current_cap: Dict[str, int],
-                                feedback: Dict[str, int]) -> Dict[str, int]:
-    new_cap = dict(current_cap)
-    for op_id, reduce_by in feedback.items():
-        target = max(1, min(base_cap.get(op_id, 1), current_cap.get(op_id, 1)) - int(reduce_by))
-        new_cap[op_id] = target
-    return new_cap
-
-def _apply_feedback_day_op(base_op_cap: Dict[str, int],
-                           current_op_cap: Dict[str, int],
-                           current_dayop_cap: Dict[Tuple[int, str], int],
-                           dayop_feedback: Dict[Tuple[int, str], int]) -> Dict[Tuple[int, str], int]:
-    """
-    Reduce capacity only on specific (day, op) keys, but never below 1 and never below what
-    the current global op cap would allow (and never below base either).
-    """
-    new_map = dict(current_dayop_cap)
-    for (day_id, op_id), reduce_by in dayop_feedback.items():
-        base = max(1, base_op_cap.get(op_id, 1))
-        glob = max(1, current_op_cap.get(op_id, 1))
-        cur  = max(1, new_map.get((day_id, op_id), glob))
-        new_map[(int(day_id), op_id)] = max(1, min(base, cur) - int(reduce_by))
-    return new_map
-
-
 # -------------------- Driver (with feedback loop) --------------------
 
 def solve_from_yaml(env_path: str = "EnvConfig.yaml",
-                    sched_path: str = "Schedule.yaml",
-                    minutes_per_tier: float = 1.0):
+                    sched_path: str = "Schedule.yaml"):
     """
     1) Pass 1 hours-ramp. If it reaches hard==0 -> polish Pass 1, expand seats.
     2) Run Pass 2 once (no feedback loop). If hard==0 -> polish Pass 2.
@@ -984,11 +928,7 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml",
     t0 = time.time()
 
     # ---- PASS 1 with hours ramp ----
-    blocks, tier_used, p1_score, p1_ok = _solve_pass1_with_hours_ramp(
-        day_slots, windows, required_hours,
-        minutes_per_tier=minutes_per_tier,
-        do_polish_minutes=1.0
-    )
+    blocks, tier_used, p1_score, p1_ok = _solve_pass1_with_hours_ramp(day_slots, windows, required_hours,)
     print(f"\nPASS 1 finished | tier={tier_used} | score={p1_score}")
 
     if not p1_ok:
@@ -1010,8 +950,6 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml",
         employees=employees,
         seats=seats,
         seat_days=seat_days,
-        minutes_main=1.0,
-        minutes_polish=1.0
     )
 
     t1 = time.time()
@@ -1023,7 +961,7 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml",
 
 
 def main():
-    solve_from_yaml("EnvConfig.yaml", "Schedule.yaml", minutes_per_tier=1.0)
+    solve_from_yaml("EnvConfig.yaml", "Schedule.yaml")
 
 
 if __name__ == "__main__":

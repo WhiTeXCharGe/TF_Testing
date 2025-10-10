@@ -45,6 +45,7 @@ class Employee:
     wid: str          # "w#": used for writing back
     name: str
     skills: Dict[str, int]
+    is_manager: bool = False
 
 @dataclass(frozen=True)
 class TaskWindow:
@@ -162,7 +163,8 @@ class CrewSeat:
     hours: int
     seat_index: int
     seat_key: str
-
+    block_id: int
+    
     # Planning variable
     employee: Annotated[Employee, PlanningVariable]
 
@@ -223,7 +225,11 @@ def _is_unassigned(emp: Optional[Employee]) -> bool:
     except Exception:
         return True
 
-
+def _is_manager(emp: Optional[Employee]) -> bool:
+    try:
+        return bool(getattr(emp, "is_manager", False))
+    except Exception:
+        return False
 # -------------------- YAML parsers --------------------
 
 def _parse_env(env_path: str):
@@ -252,7 +258,8 @@ def _parse_env(env_path: str):
         wid = str(w.get("id"))
         name = w.get("name")
         skills = dict(w.get("skill_map") or {})
-        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills))
+        is_mgr = bool(w.get("is_manager", False))
+        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills, is_manager=is_mgr))
         eid += 1
 
     return opdef, employees
@@ -487,30 +494,62 @@ SMALLER_HEADS_W     = 10    # prefer smaller heads next
 FEWER_DAYS_W        = 1     # then fewer days
 EARLIER_START_W     = 1     # then earlier start (lowest)
 STACK_PAIR_WEIGHT   = 2
+PHASE_GAP_W         = 200   # tune: higher = stronger push to start next phase ASAP
+
 def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
     """
     Medium penalty that discourages stacking many blocks of the same op_id on the same day.
-    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
-    This is convex in n and matches the example: n=3 -> 3 pairs -> 3*2 = 6 penalty.
+    Penalize C(n, 2) * STACK_PAIR_WEIGHT where n is #blocks for (day, op).
     """
     return (
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
-              # block active on this day
               Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
-              ConstraintCollectors.count()
+              lambda d, b: int(d.id),
+              lambda d, b: b.op_id,
+              ConstraintCollectors.sum(lambda d, b: 1)  # emulate count safely
           )
-          .filter(lambda key, cnt: cnt > 1)
+          .filter(lambda day_id, op_id, n: int(n) > 1)
           .penalize(
               HardMediumSoftScore.ONE_MEDIUM,
-              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
-              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+              lambda day_id, op_id, n: STACK_PAIR_WEIGHT * (int(n) * (int(n) - 1) // 2)
           )
           .as_constraint("p1-med-penalize-stack-by-op")
+    )
+
+def p1_soft_minimize_phase_gap(cf: ConstraintFactory) -> Constraint:
+    """
+    For each module and consecutive phases (k -> k+1):
+      Let E = max end day across all blocks in phase k
+      Let S = min start day across all blocks in phase k+1
+      Penalize max(0, S - (E + 1)) * PHASE_GAP_W
+    This encourages the next phase to start immediately after the previous phase finishes.
+    """
+    # Join prev-phase blocks with next-phase blocks within the same module
+    return (
+        cf.for_each(BlockDecision)
+          .join(
+              cf.for_each(BlockDecision),
+              Joiners.equal(lambda a: a.module,         lambda b: b.module),
+              Joiners.equal(lambda a: int(a.phase_num) + 1, lambda b: int(b.phase_num))
+          )
+          # Group by (module, prev_phase_num) and collect max end over prev, min start over next
+          .group_by(
+              lambda a, b: a.module,
+              lambda a, b: int(a.phase_num),
+              ConstraintCollectors.max(lambda a, b: int(a.start_day) + int(a.days) - 1),  # max end prev
+              ConstraintCollectors.min(lambda a, b: int(b.start_day))                      # min start next
+          )
+          # If minStartNext > maxEndPrev + 1, we have idle gap days
+          .filter(lambda module, pnum, max_end_prev, min_start_next: int(min_start_next) > int(max_end_prev) + 1)
+          .penalize(
+              HardMediumSoftScore.ONE_SOFT,
+              lambda module, pnum, max_end_prev, min_start_next: PHASE_GAP_W * (int(min_start_next) - (int(max_end_prev) + 1))
+          )
+          .as_constraint("p1-soft-minimize-phase-gap")
     )
 
 def p1_soft_prefer_hours_near_8(cf: ConstraintFactory) -> Constraint:
@@ -563,6 +602,7 @@ def pass1_constraints(cf: ConstraintFactory) -> List[Constraint]:
         #medium
         p1_med_penalize_stack_by_op(cf),
         # Soft priority order:
+        p1_soft_minimize_phase_gap(cf),
         p1_soft_prefer_hours_near_8(cf),
         p1_soft_prefer_smaller_hours(cf),
         p1_soft_minimize_heads(cf),
@@ -605,6 +645,21 @@ def p2_daily_cap_12h(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p2-daily-cap-12h")
     )
 
+def p2_at_least_one_manager_per_block(cf: ConstraintFactory) -> Constraint:
+    # Group seats by block_id and count how many assigned managers are in the block
+    return (
+        cf.for_each(CrewSeat)
+          .filter(lambda s: not _is_unassigned(s.employee))
+          .group_by(
+              lambda s: s.block_id,
+              ConstraintCollectors.sum(lambda s: 1 if _is_manager(s.employee) else 0)
+          )
+          .filter(lambda block_id, mgr_count: int(mgr_count) < 1)
+          .penalize(HardMediumSoftScore.ONE_HARD)
+          .as_constraint("p2-at-least-one-manager-per-block")
+    )
+
+
 def p2_soft_avoid_overtime_over8(cf: ConstraintFactory) -> Constraint:
     return (
         cf.for_each(SeatDay)
@@ -635,6 +690,7 @@ def pass2_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p2_assigned_and_skill(cf),
         p2_one_factory_per_emp_day(cf),
         p2_daily_cap_12h(cf),
+        p2_at_least_one_manager_per_block(cf),
         p2_soft_avoid_overtime_over8(cf),
         p2_soft_balance_total_hours(cf),
     ]
@@ -663,6 +719,7 @@ def _expand_blocks_to_seats_and_days(blocks: List[BlockDecision], days: List[Day
                 days=dcount, hours=hours,
                 seat_index=sidx,
                 seat_key=seat_key,
+                block_id=int(b.id),
                 employee=Employee(0, "__UNASSIGNED__", "__UNASSIGNED__", {})
             ))
             sid += 1
