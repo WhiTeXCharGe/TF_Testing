@@ -468,21 +468,17 @@ def p1_daily_head_capacity(cf: ConstraintFactory) -> Constraint:
         cf.for_each(DaySlot)
           .join(
               cf.for_each(BlockDecision),
-              # Join on "block active on this day"
-              Joiners.filtering(lambda d, b:
-                  (int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
-              )
+              Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
-          # group by (day_id, op_id) and sum heads
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
-              ConstraintCollectors.sum(lambda d, b: int(b.heads))
+              lambda d, b: int(d.id),                     # key 1: day_id
+              lambda d, b: b.op_id,                       # key 2: op_id
+              ConstraintCollectors.sum(lambda d, b: int(b.heads))  # Bi collector (sum)
           )
-          # if demand > capacity(op), penalize the overflow as HARD
-          .filter(lambda key, total_heads: total_heads > _capacity_for_op(key[1]))
+          .filter(lambda day_id, op_id, total_heads: total_heads > _capacity_for_op(op_id))
           .penalize(
               HardMediumSoftScore.ONE_HARD,
-              lambda key, total_heads: total_heads - _capacity_for_op(key[1])
+              lambda day_id, op_id, total_heads: total_heads - _capacity_for_op(op_id)
           )
           .as_constraint("p1-daily-head-capacity-by-op")
     )
@@ -508,9 +504,9 @@ def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
               Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
           .group_by(
-              lambda d, b: int(d.id),
-              lambda d, b: b.op_id,
-              ConstraintCollectors.sum(lambda d, b: 1)  # emulate count safely
+              lambda d, b: int(d.id),                     # key 1: day_id
+              lambda d, b: b.op_id,                       # key 2: op_id
+              ConstraintCollectors.sum(lambda d, b: 1)    # Bi “count” via sum(1)
           )
           .filter(lambda day_id, op_id, n: int(n) > 1)
           .penalize(
@@ -811,7 +807,7 @@ def _build_pass1_and_solve(day_slots: List[DaySlot], windows: List[TaskWindow],
     )
 
     solver1 = _build_solver(Pass1Plan, [BlockDecision], pass1_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
+                            best_limit="0hard/*medium/*soft", spent_minutes=60, unimproved_seconds=60)
     t1s = time.time()
     solved: Pass1Plan = solver1.solve(pass1)
     t1e = time.time()
@@ -864,7 +860,7 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml", sched_path: str = "Schedul
 
     # ---- Solve Pass 2 ----
     solver2 = _build_solver(Pass2Plan, [CrewSeat], pass2_constraints,
-                            best_limit="0hard/*medium/*soft", spent_minutes=1, unimproved_seconds=60)
+                            best_limit="0hard/*medium/*soft", spent_minutes=60, unimproved_seconds=60)
     p2s = time.time()
     final: Pass2Plan = solver2.solve(plan2)
     p2e = time.time()
