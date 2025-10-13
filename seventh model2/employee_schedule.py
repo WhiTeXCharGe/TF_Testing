@@ -490,8 +490,7 @@ STACK_PAIR_WEIGHT   = 2
 def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
     """
     Medium penalty that discourages stacking many blocks of the same op_id on the same day.
-    For each (day, op_id), let n = # of blocks active that day. We penalize C(n, 2) * STACK_PAIR_WEIGHT.
-    This is convex in n and matches the example: n=3 -> 3 pairs -> 3*2 = 6 penalty.
+    Penalize C(n, 2) * STACK_PAIR_WEIGHT where n is #blocks for (day, op).
     """
     return (
         cf.for_each(DaySlot)
@@ -501,14 +500,14 @@ def p1_med_penalize_stack_by_op(cf: ConstraintFactory) -> Constraint:
               Joiners.filtering(lambda d, b: int(b.start_day) <= int(d.id) <= (int(b.start_day) + int(b.days) - 1))
           )
           .group_by(
-              lambda d, b: (int(d.id), b.op_id),
-              ConstraintCollectors.count()
+              lambda d, b: int(d.id),            # key #1: day_id
+              lambda d, b: b.op_id,              # key #2: op_id
+              ConstraintCollectors.sum(lambda d, b: 1)  # Bi collector: emulate count
           )
-          .filter(lambda key, cnt: cnt > 1)
+          .filter(lambda day_id, op_id, n: int(n) > 1)
           .penalize(
               HardMediumSoftScore.ONE_MEDIUM,
-              # C(n,2) = n*(n-1)/2, then scale by STACK_PAIR_WEIGHT
-              lambda key, cnt: STACK_PAIR_WEIGHT * (int(cnt) * (int(cnt) - 1) // 2)
+              lambda day_id, op_id, n: STACK_PAIR_WEIGHT * (int(n) * (int(n) - 1) // 2)
           )
           .as_constraint("p1-med-penalize-stack-by-op")
     )
