@@ -1,0 +1,364 @@
+Schedule Export — Workbook Guide
+
+This Excel file summarizes the plan and the actual staffing. It has 4 sheets:
+
+Tasks x Dates – timeline per task (module + operation)
+
+Employees x Dates – calendar per employee
+
+Dashboard – KPIs, progress, utilization, team quality, and charts
+
+Breaches – all rule violations in tidy tables
+
+A color legend is at the end:
+Light blue = module start • Red = phase deadline • Purple = phase window breach • Blue = phase ordering breach • Pink = staffing min/max breach • Yellow = under-assigned task • Orange = skill mismatch (sheet 2)
+
+1) Sheet: “Tasks x Dates”
+
+What this shows:
+Each row is one task (a module’s operation) across the planning dates, with who worked each day and key meta.
+
+Columns:
+
+module / module_name — ID and name of the module.
+
+fab_id / fab_name — where the module runs.
+
+region / customer — site’s region and customer name.
+
+task — operation ID and name (e.g., p2o3 Etch).
+
+manager — list of managers who ever worked on that task; highlighted if empty (no manager assigned).
+
+required_hours — planned workload for the task:
+workload_days × 8.
+
+assigned_hours — total hours actually assigned to that task; yellow if below required.
+
+Date columns (one per day in the plan):
+
+Cell text lists workers and hours, e.g. A. Smith(8H) | B. Lee(10H).
+
+Light blue on the module’s start date.
+
+Red on the task’s phase end date (deadline).
+
+Violations override background color: Purple (outside phase window), Blue (phase order broken), Pink (heads below min or above max).
+
+How to read it:
+Scan horizontally to see daily staffing and highlights; scan assigned_hours vs required_hours for coverage gaps; check the manager column for governance.
+
+2) Sheet: “Employees x Dates”
+
+What this shows:
+A roster and per-day view of each employee’s assignments.
+
+Columns:
+
+company — worker’s company.
+
+employee — worker name.
+
+skills — the person’s skill levels by operation (e.g., p1o1:3).
+
+Manager — True if the person is marked as a manager.
+
+Daily columns — for each plan day, shows module+op (hours) if the person worked; orange = skill mismatch (worked an operation they lack a positive skill for).
+
+Workdays — number of days the person worked during the plan.
+
+WorkHours — total hours across the plan.
+
+How to read it:
+Find who worked when, spot orange cells for skill issues, and compare Workdays/WorkHours across the team.
+
+3) Sheet: “Dashboard”
+
+What this shows:
+Top-level KPIs, module progress, employee utilization, overtime/capacity, workload balance, top performers by hours, skills distribution, team quality by block, and charts.
+
+KPIs
+
+Unique workers — count of workers with any assigned hours.
+
+Avg hours/worker-day — fairness/overload signal:
+Σ all hours ÷ Σ all worker-days.
+
+Overtime hours (>8) — across all workers and days:
+Sum(max(0, daily_hours − 8)).
+
+Cap breach (>12h) days — number of person-days above 12 hours.
+
+Cap breach (%) — % of person-days above 12h.
+
+Completion — overall progress:
+Σ assigned_hours ÷ Σ required_hours × 100%.
+
+Progress by module (table)
+
+Columns:
+
+module — module ID.
+
+required_hours — planned total for the module.
+
+assigned_hours — hours assigned so far (yellow if under required).
+
+%complete — assigned_hours ÷ required_hours × 100%.
+
+planned_end — latest phase end date from the plan.
+
+last_assigned — last date any work was logged.
+
+delay (vs plan) — days: last_assigned − planned_end (positive = late).
+
+Assignment Utilization (per employee) — table
+
+Columns:
+
+employee — name.
+
+start_date / end_date — earliest and latest dates the person was assigned.
+
+utilization% — how consistently they were used across their personal window:
+worked_days ÷ planned_days × 100%, where planned_days = end_date − start_date + 1.
+
+Overtime & capacity — two tables + line chart
+
+Employee overtime (table):
+employee, total_ot_hours where ot = max(0, per-day hours − 8).
+
+Total hours per day (table):
+date, total_hours summed across all people for that day.
+
+Line chart: “Total hours per day” — trend of staffing demand.
+
+Workload balance (per employee) — table
+
+employee
+
+workdays — count of worked days.
+
+total_hours — sum across the plan.
+
+avg/day — total_hours ÷ workdays.
+
+stdev/day — daily hour variability (sample standard deviation).
+
+CoV — stdev ÷ avg × 100% (lower = steadier workload).
+
+Top 20 total hours — table + bar chart
+
+employee, total_hours (top 20 by hours).
+
+Bar chart: “Total hours by employee (Top 20)” — shows load concentration.
+
+Employee skill distribution — table
+
+skill (operation ID), total (workers with positive level), then columns per level (e.g., 1..5) with counts.
+Use this to see depth of skill by operation.
+
+Team Quality by Block — table + scatter chart
+
+What is a “block”?
+A continuous stint where a set of workers did the same module + op_id with the same daily hours per person.
+
+Columns:
+
+module, op_id, phase, start_date, end_date — identity and window.
+
+heads — number of people in the block.
+
+hours — daily hours per person in the block.
+
+days — block length (calendar days).
+
+managers — names of managers who appeared in the block.
+
+company_mix — e.g., Alpha×3 | Beta×2.
+
+max_pairs — total unique pairs: heads × (heads − 1) ÷ 2.
+
+same_company_pairs — pairs from the same company.
+
+cohesion_% — same_company_pairs ÷ max_pairs × 100.
+
+op_avg_skill — org-wide mean skill for this operation.
+
+team_avg_skill — mean skill among block members.
+
+balance_dev — |team_avg_skill − op_avg_skill| (lower is better).
+
+balance_score — 0–100 scale penalizing large balance_dev (higher is better).
+
+variety_score — 0–100 skill diversity (based on a Shannon index; higher = more diverse).
+
+Scatter chart: “Balance vs Variety (by block)”
+
+X = balance_dev (left is better), Y = variety_score (higher is better).
+
+Top-left quadrant = well-balanced and diverse teams.
+
+4) Sheet: “Breaches”
+
+What this shows:
+All exceptions collected in sortable tables for quick auditing.
+
+Tables and columns:
+
+Phase window breaches
+
+date, module, phase, op_id, worker, reason (early/late), phase_start, **phase_end`.
+(Work logged outside the phase window.)
+
+Phase ordering breaches
+
+date, module, phase (later), op_id, worker, required_prev_phase_last_date.
+(Work on a later phase before the previous phase fully finished.)
+
+Skill mismatches
+
+date, worker, company, module, op_id.
+(Person worked an operation they have no positive skill level for.)
+
+Staffing min/max breaches
+
+date, module, op_id, heads, min, max, status (below min / above max).
+(On that day, headcount was outside allowed bounds.)
+
+Tasks with no manager
+
+module, op_id.
+(Tasks that never had a manager assigned anywhere in the plan.)
+
+Schedule Export — 使い方ガイド（日本語）
+
+このExcelは、計画と実績のアサインをまとめたものです。シートは4つあります。
+
+Tasks x Dates：タスクごとのタイムライン
+
+Employees x Dates：社員ごとのカレンダー
+
+Dashboard：KPIと進捗、稼働状況、チーム品質の要約とグラフ
+
+Breaches：各種ルール違反の一覧
+
+カラー凡例
+水色はモジュール開始日。赤はフェーズの締切日。紫はフェーズ期間外の作業。青はフェーズ順序の違反。ピンクは必要人数の下振れまたは上限超過。黄色はタスクの割当不足。オレンジはスキル不一致。
+
+――――
+シート1「Tasks x Dates」
+
+概要
+各行が一つのタスクを表す。タスクとはあるモジュールの一つのオペレーションのこと。横方向に計画期間の日付が並び、誰が何時間働いたかが文字で表示される。開始日と締切日は装飾色で示され、違反は上書きの色で強調される。
+
+列の意味
+module と module_name はモジュールのIDと名称。
+fab_id と fab_name は実施場所。
+region と customer は地域と顧客名。
+task はオペレーションIDと名称。
+manager はそのタスクに関与したマネージャの一覧。空欄の場合は強調表示される。
+required_hours は計画工数で、workload_days に 8 を掛けた値。
+assigned_hours は実績合計工数で、required_hours を下回ると黄色で表示。
+日付列はその日の担当者と時間を「氏名(8H)」の形式で表示。モジュール開始日は水色、フェーズ締切日は赤。フェーズ窓外は紫、フェーズ順序違反は青、人数の下限未満または上限超過はピンクで表示される。
+
+読み方の例
+横に目を通して毎日の体制と色の警告を見る。assigned_hours と required_hours を比較して不足のあるタスクを見つける。manager 列で管理者の不在を確認する。
+
+――――
+シート2「Employees x Dates」
+
+概要
+各行が一人の従業員。計画期間の日付ごとに、その人がどのモジュールのどのオペレーションで何時間働いたかを表示する。
+
+列の意味
+company は所属会社。
+employee は氏名。
+skills はオペレーションごとのスキルレベル表記。例は p1o1:3 のような形式。
+Manager は管理者なら True と表示。
+各日付列は「モジュールID+オペレーション (8H)」の形式で該当作業を表示。スキルがゼロまたは未登録のオペレーションを担当した日はオレンジで表示。
+Workdays は作業した日の数。
+WorkHours は期間内の総作業時間。
+
+読み方の例
+各人のカレンダーを確認し、オレンジのセルでスキル不一致を素早く検出する。Workdays と WorkHours で稼働量の偏りを把握する。
+
+――――
+シート3「Dashboard」
+
+概要
+全体の健康状態を要約する。KPI、モジュール別進捗、従業員の稼働利用率、残業と日別総工数、個人別の負荷バランス、上位稼働者、スキル分布、ブロック単位のチーム品質を表示し、主要なグラフも含む。
+
+KPI
+Unique workers は何らかの作業を持つ従業員数。
+Avg hours per worker-day は一人一日あたり平均時間で、総時間を総ワーカーデイで割った値。
+Overtime hours は一日8時間を超えた分の合計。
+Cap breach days は一人一日12時間を超えた件数。
+Cap breach のパーセンテージは12時間超の割合。
+Completion は総割当工数を総計画工数で割った進捗率。
+
+Progress by module の表
+module はモジュールID。
+required_hours はモジュール合計の計画工数。
+assigned_hours は割当済み工数で、計画未達の場合は黄色で表示。
+%complete は assigned_hours を required_hours で割った割合。
+planned_end は計画上の最終フェーズ終了日。
+last_assigned は最後に作業が行われた日。
+delay は last_assigned と planned_end の日数差。正の値は遅延を意味する。
+
+Assignment Utilization の表
+employee は氏名。
+start_date と end_date はその人の最初と最後のアサイン日。
+utilization% は個人の期間内に何日働いたかの密度で、worked_days を planned_days で割った割合。
+
+Overtime and capacity の表と折れ線グラフ
+従業員別残業表は employee と total_ot_hours を示す。日別総工数表は date と total_hours を示す。折れ線グラフは total_hours の日々の推移を示し、需要の山谷を把握できる。
+
+Workload balance の表
+employee は氏名。
+workdays は作業した日数。
+total_hours は総時間。
+avg per day は一日平均。
+stdev per day は日々のばらつきの標準偏差。
+CoV は変動係数で、stdev を平均で割った割合。値が低いほど平準化されている。
+
+Top 20 total hours の表と棒グラフ
+employee と total_hours を時間の多い順に20名まで表示。棒グラフは上位者の負荷集中を視覚化する。
+
+Employee skill distribution の表
+skill はオペレーションID。total は正のスキルレベルを持つ人数。以降の列はレベルごとの人数。オペレーション別にスキル層の厚みを確認できる。
+
+Team Quality by Block の表と散布図
+ブロックとは同じ module と op_id を、同じ一人当たり日次時間で、連続した期間に行ったまとまり。
+module と op_id と phase と start_date と end_date は識別情報。
+heads はブロックの人数。
+hours は一人当たりの日次時間。
+days はブロックの長さ。
+managers は参加した管理者名。
+company_mix は会社構成の要約。
+max_pairs は組み合わせペア総数で heads から計算する。
+same_company_pairs は同一会社同士のペア数。
+cohesion_% は same_company_pairs を max_pairs で割った割合。
+op_avg_skill は組織全体でそのオペレーションの平均スキル。
+team_avg_skill はブロックメンバーの平均スキル。
+balance_dev は両平均の絶対差で、小さいほど良い。
+balance_score は差を罰則化した0から100のスコアで、高いほど良い。
+variety_score はスキル多様性の指標を0から100に正規化したもの。
+散布図は横軸が balance_dev、縦軸が variety_score。左上の領域がバランス良好かつ多様性が高いチームを示す。
+
+――――
+シート4「Breaches」
+
+概要
+すべての違反を表形式で一覧できる。ソートして原因究明に使える。
+
+表の種類と列
+Phase window breaches は date、module、phase、op_id、worker、reason、phase_start、phase_end を表示し、フェーズ期間外の作業を示す。
+Phase ordering breaches は date、module、phase(later)、op_id、worker、required_prev_phase_last_date を表示し、前フェーズ完了前に後続フェーズで作業した事例を示す。
+Skill mismatches は date、worker、company、module、op_id を表示し、スキル未保持の作業を示す。
+Staffing min/max breaches は date、module、op_id、heads、min、max、status を表示し、その日の人数が許容範囲外であることを示す。
+Tasks with no manager は module と op_id を表示し、期間を通じて管理者不在のタスクを示す。
+
+――――
+活用の流れの例
+最初に Dashboard を開いてKPIと進捗と日別需要の傾向を見る。次に Tasks x Dates で各タスクのカバレッジと締切、マネージャ有無を確認する。Employees x Dates で個人のカレンダーとスキル適合性を確認する。問題があれば Breaches で該当行を探し、修正対象を絞り込む。
