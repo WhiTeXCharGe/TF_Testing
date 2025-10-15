@@ -48,6 +48,7 @@ class Employee:
     name: str
     skills: Dict[str, int]
     is_manager: bool = False
+    worker_company: str = ""
 
 @dataclass(frozen=True)
 class TaskWindow:
@@ -212,6 +213,8 @@ def _capacity_for_day_op(day_id: int, op_id: str) -> int:
     # Day-aware capacity: if a per-(day,op) cap exists, use it; else use global op cap
     return _OP_CAPACITY_BY_DAY_OP.get((int(day_id), op_id), _OP_CAPACITY_BY_OP.get(op_id, 999_999))
 
+# average skill among all employees who have skill>0 for the op_id
+_OP_AVG_SKILL: Dict[str, float] = {}
 
 # -------------------- Utility --------------------
 
@@ -246,6 +249,18 @@ def _is_manager(emp: Optional[Employee]) -> bool:
         return bool(getattr(emp, "is_manager", False))
     except Exception:
         return False
+
+def _avg_skill_for_op(op_id: str) -> float:
+    try:
+        return float(_OP_AVG_SKILL.get(op_id, 3.0))
+    except Exception:
+        return 3.0
+    
+def _company(emp: Optional[Employee]) -> str:
+    try:
+        return str(getattr(emp, "worker_company", "") or "")
+    except Exception:
+        return ""
 # -------------------- YAML parsers --------------------
 
 def _parse_env(env_path: str):
@@ -275,7 +290,11 @@ def _parse_env(env_path: str):
         name = w.get("name")
         skills = dict(w.get("skill_map") or {})
         is_mgr = bool(w.get("is_manager", False))
-        employees.append(Employee(id=eid, wid=wid, name=name, skills=skills, is_manager=is_mgr))
+        company = str(w.get("worker_company", "") or "")
+        employees.append(Employee(
+            id=eid, wid=wid, name=name, skills=skills,
+            is_manager=is_mgr, worker_company=company
+        ))
         eid += 1
 
     return opdef, employees
@@ -666,16 +685,68 @@ def p2_at_least_one_manager_per_block(cf: ConstraintFactory) -> Constraint:
           .as_constraint("p2-at-least-one-manager-per-block")
     )
 
-def p2_soft_avoid_overtime_over8(cf: ConstraintFactory) -> Constraint:
+# ---- Pass 2 soft weights ----
+COMPANY_PAIR_W     = 5    # reward for each same-company pair in a block
+SKILL_DIVERSITY_W  = 3    # penalty per same-skill pair (encourage variety)
+SKILL_AVG_W        = 50   # penalty multiplier for |block_avg - global_avg| (scaled)
+
+def p2_soft_same_company_pairs(cf: ConstraintFactory) -> Constraint:
+    """
+    Reward same-company pairs inside the same block (seat pairs counted once).
+    """
     return (
-        cf.for_each(SeatDay)
-          .join(cf.for_each(CrewSeat), Joiners.equal(lambda sd: sd.seat_key, lambda cs: cs.seat_key))
-          .filter(lambda sd, cs: not _is_unassigned(cs.employee))
-          .group_by(lambda sd, cs: (cs.employee.id, sd.day.id),
-                    ConstraintCollectors.sum(lambda sd, cs: int(sd.hours)))
-          .filter(lambda key, tot: tot > 8)
-          .penalize(HardMediumSoftScore.ONE_SOFT, lambda key, tot: tot - 8)
-          .as_constraint("p2-soft-avoid-overtime-over-8")
+        cf.for_each(CrewSeat)
+          .filter(lambda a: not _is_unassigned(a.employee))
+          .join(
+              cf.for_each(CrewSeat),
+              Joiners.equal(lambda a: a.block_id, lambda b: b.block_id),
+          )
+          # only count ordered pairs once and only if both assigned
+          .filter(lambda a, b: (not _is_unassigned(b.employee)) and int(a.id) < int(b.id))
+          .filter(lambda a, b: _company(a.employee) != "" and _company(a.employee) == _company(b.employee))
+          .reward(HardMediumSoftScore.ONE_SOFT, lambda a, b: COMPANY_PAIR_W)
+          .as_constraint("p2-soft-same-company-pairs")
+    )
+
+def p2_soft_encourage_skill_variety(cf: ConstraintFactory) -> Constraint:
+    """
+    Penalize same-skill pairs within the same block (for that op).
+    This nudges the team to mix levels rather than all the same level.
+    """
+    return (
+        cf.for_each(CrewSeat)
+          .filter(lambda a: not _is_unassigned(a.employee))
+          .join(
+              cf.for_each(CrewSeat),
+              Joiners.equal(lambda a: a.block_id, lambda b: b.block_id),
+              Joiners.equal(lambda a: a.op_id,    lambda b: b.op_id),
+          )
+          .filter(lambda a, b: (not _is_unassigned(b.employee)) and int(a.id) < int(b.id))
+          .filter(lambda a, b: _skill_level(a.employee, a.op_id) == _skill_level(b.employee, b.op_id))
+          .penalize(HardMediumSoftScore.ONE_SOFT, lambda a, b: SKILL_DIVERSITY_W)
+          .as_constraint("p2-soft-encourage-skill-variety")
+    )
+
+def p2_soft_balance_block_avg_skill(cf: ConstraintFactory) -> Constraint:
+    """
+    For each block/op, penalize deviation of the block's average skill
+    from the global average skill for that op (computed from all employees).
+    """
+    return (
+        cf.for_each(CrewSeat)
+          .filter(lambda s: not _is_unassigned(s.employee))
+          .group_by(
+              lambda s: (s.block_id, s.op_id),
+              ConstraintCollectors.sum(lambda s: int(_skill_level(s.employee, s.op_id))),
+              ConstraintCollectors.sum(lambda s: 1)
+          )
+          .filter(lambda key, sum_lv, cnt: int(cnt) > 0)
+          .penalize(
+              HardMediumSoftScore.ONE_SOFT,
+              # scale by 100 to avoid float issues, then by SKILL_AVG_W
+              lambda key, sum_lv, cnt: int(SKILL_AVG_W * abs((float(sum_lv) / max(1, int(cnt))) - _avg_skill_for_op(key[1])) * 100)
+          )
+          .as_constraint("p2-soft-balance-block-avg-skill")
     )
 
 def p2_soft_balance_total_hours(cf: ConstraintFactory) -> Constraint:
@@ -697,7 +768,9 @@ def pass2_constraints(cf: ConstraintFactory) -> List[Constraint]:
         p2_one_factory_per_emp_day(cf),
         p2_daily_cap_12h(cf),
         p2_at_least_one_manager_per_block(cf),
-        p2_soft_avoid_overtime_over8(cf),
+        p2_soft_same_company_pairs(cf),
+        p2_soft_encourage_skill_variety(cf),
+        p2_soft_balance_block_avg_skill(cf),
         p2_soft_balance_total_hours(cf),
     ]
 
@@ -954,6 +1027,22 @@ def solve_from_yaml(env_path: str = "EnvConfig.yaml",
     real_emp_count = max(1, len(employees) - 1)
     total_required_hours = sum(required_hours.values())
     _TARGET_HOURS_PER_EMP = total_required_hours / real_emp_count
+    op_sums: Dict[str, int] = {op: 0 for op in env_opdef.keys()}
+    op_cnts: Dict[str, int] = {op: 0 for op in env_opdef.keys()}
+    for e in employees:
+        if e.id == 0:
+            continue
+        for op_id, lvl in (e.skills or {}).items():
+            try:
+                iv = int(lvl or 0)
+                if iv > 0 and op_id in op_sums:
+                    op_sums[op_id] += iv
+                    op_cnts[op_id] += 1
+            except Exception:
+                pass
+    for op_id in op_sums.keys():
+        c = op_cnts[op_id]
+        _OP_AVG_SKILL[op_id] = (op_sums[op_id] / c) if c > 0 else 3.0
 
     t0 = time.time()
 
