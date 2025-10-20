@@ -1,0 +1,95 @@
+Prereqs
+
+Use JDK 17 (set JAVA_HOME to 17; VS Code Java runtime = 17).
+
+Maven 3.8+.
+
+Project layout
+
+pom.xml
+src/main/java/com/yourorg/scheduler/EmployeeSchedule.java
+src/main/java/com/yourorg/scheduler/ExportSchedule.java
+src/main/resources/EnvConfig.yaml
+src/main/resources/Schedule.yaml
+
+
+pom.xml essentials
+
+<properties>
+  <maven.compiler.source>17</maven.compiler.source>
+  <maven.compiler.target>17</maven.compiler.target>
+  <timefold.version>1.27.0.Final</timefold.version>
+  <snakeyaml.version>2.2</snakeyaml.version>
+</properties>
+
+<dependencies>
+  <dependency>
+    <groupId>ai.timefold.solver</groupId>
+    <artifactId>timefold-solver-core</artifactId>
+    <version>${timefold.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.yaml</groupId>
+    <artifactId>snakeyaml</artifactId>
+    <version>${snakeyaml.version}</version>
+  </dependency>
+</dependencies>
+
+<build>
+  <plugins>
+    <!-- optional: copies deps into target/dependency for plain java -cp run -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-dependency-plugin</artifactId>
+      <version>3.6.1</version>
+      <executions>
+        <execution>
+          <id>copy-dependencies</id>
+          <phase>package</phase>
+          <goals><goal>copy-dependencies</goal></goals>
+          <configuration>
+            <outputDirectory>${project.build.directory}/dependency</outputDirectory>
+            <includeScope>runtime</includeScope>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
+
+    <!-- run with mvn exec:java -->
+    <plugin>
+      <groupId>org.codehaus.mojo</groupId>
+      <artifactId>exec-maven-plugin</artifactId>
+      <version>3.2.0</version>
+      <configuration>
+        <mainClass>com.yourorg.scheduler.EmployeeSchedule</mainClass>
+      </configuration>
+    </plugin>
+  </plugins>
+</build>
+
+
+Build
+
+mvn -U clean package
+
+
+Run (pick one)
+
+Using Maven:
+
+mvn -q exec:java -Dexec.mainClass="com.yourorg.scheduler.EmployeeSchedule" \
+  -Dexec.args="src/main/resources/EnvConfig.yaml src/main/resources/Schedule.yaml"
+
+
+Plain Java (after package):
+
+java -cp "target/employee-scheduler-0.1.0.jar;target/dependency/*" \
+  com.yourorg.scheduler.EmployeeSchedule \
+  src/main/resources/EnvConfig.yaml src/main/resources/Schedule.yaml
+
+
+Quick fixes if Maven complains
+
+Refresh deps: mvn -U clean package
+
+Ensure JDK 17 is selected in VS Code / JAVA_HOME (not Java 24).
