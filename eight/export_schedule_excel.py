@@ -4,11 +4,14 @@
 # SHEET 1 -> "Tasks x Dates" (meta cols + required/assigned per task,
 #             per-day cells highlight: start/lightblue, deadline/red,
 #             window breach/purple, ordering breach/blue, staffing minmax/pink.
-#             assigned_hours cell yellow if under-assigned)
+#             assigned_hours cell yellow if under-assigned; shows per-day manager tag ★[AB,CD])
+#             NEW: grey for weekends & fab/region/customer off; brown for "assigned on closed day" breach.
 # SHEET 2 -> "Employees x Dates" (company | employee | skills,
 #             per-day cells highlight: skill mismatch/orange)
-# SHEET 3 -> "Dashboard" (KPIs + tables + CHARTS)
+#             NEW: grey for personal & worker-company off; brown for "assigned on personal/company off" breach.
+# SHEET 3 -> "Dashboard" (KPIs + tables + CHARTS, including Team Quality by Block + Scatter)
 # SHEET 4 -> "Breaches" (window / ordering / skill mismatch / minmax)
+#             NEW: Unavailable-date breaches for Tasks and Employees.
 # ---------------------------------------------------------------------
 
 import os
@@ -17,21 +20,27 @@ import yaml
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from collections import defaultdict, Counter
+from itertools import combinations
 
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.chart import BarChart, LineChart, ScatterChart, Reference, Series  # NEW: ScatterChart
 
 # ------------------------------- COLORS --------------------------------
-LIGHT_BLUE   = "ADD8E6"  # start marker (not a violation)
-RED          = "FF9999"  # deadline marker (not a violation)
+LIGHT_BLUE   = "ADD8E6"   # start marker (not a violation)
+RED          = "FF9999"   # deadline marker (not a violation)
 
-PURPLE_WIN   = "E6B8F7"  # phase window breach (violation)
-BLUE_ORDER   = "9DC3E6"  # phase ordering breach (violation)
-PINK_MINMAX  = "F6B5C9"  # staffing min/max breach (violation)
-YELLOW_UNDER = "FFF2CC"  # under-assigned task (violation) -> assigned_hours cell
-ORANGE_SKILL = "F8CBAD"  # skill mismatch (violation) -> sheet2 per-day cells
+PURPLE_WIN   = "E6B8F7"   # phase window breach (violation)
+BLUE_ORDER   = "9DC3E6"   # phase ordering breach (violation)
+PINK_MINMAX  = "F6B5C9"   # staffing min/max breach (violation)
+YELLOW_UNDER = "FFF2CC"   # under-assigned task (violation) -> assigned_hours cell
+ORANGE_SKILL = "F8CBAD"   # skill mismatch (violation) -> sheet2 per-day cells
+MANAGER_MISSING = "FFE699" # highlight 'manager' cell when a task has no manager
+
+# NEW (calendar visuals)
+GREY_CLOSED   = "DDDDDD"  # closed day shading (weekend/unavailable)
+BROWN_UNAV_BREACH = "C79D6B"  # assignment placed on a closed day (breach)
 
 # ------------------------------- CONFIG --------------------------------
 # Required hours from Schedule.yaml only:
@@ -40,6 +49,9 @@ REQUIRED_HOURS_MODE = True
 
 OT_THRESHOLD = 8
 CAP_HOURS    = 12
+
+# Team quality scoring constants
+BALANCE_K = 25.0  # higher = stricter penalty per dev from op_avg_skill
 
 # ------------------------------ UTILITIES ------------------------------
 def _d(s):
@@ -57,6 +69,16 @@ def _safe(dct, key):
         return dct[key]
     except Exception:
         return None
+
+def _initials(name: str) -> str:
+    if not name:
+        return ""
+    parts = [p for p in str(name).strip().split() if p]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
 
 # ------------------------------- LOADERS -------------------------------
 def load_env(env_path):
@@ -133,6 +155,78 @@ def load_schedule(path):
         })
     return plan_start, plan_end, modules, assignments, assignment_blocks
 
+# ------------------------- NEW: UNAVAILABILITY CAL ---------------------
+def build_unavailability(plan_start: date, plan_end: date, env):
+    """
+    Build date sets for weekends and unavailability by fab/region/customer/worker-company + personal worker off.
+    Returns dict of sets keyed by ids + fab->region/customer maps.
+    """
+    def daterange(start: date, end: date):
+        d = start
+        while d <= end:
+            yield d
+            d += timedelta(days=1)
+
+    weekends = set(d for d in daterange(plan_start, plan_end) if d.weekday() >= 5)  # Sat/Sun
+
+    fabs = env["fabs"]
+    regions = env["regions"]
+    customers = env["customers"]
+    workers = env["workers"]
+    wcompanies = env["worker_companies"]
+
+    fab_off = defaultdict(set)
+    region_off = defaultdict(set)
+    customer_off = defaultdict(set)
+    worker_company_off = defaultdict(set)
+    worker_off = defaultdict(set)
+
+    fab_region = {}
+    fab_customer = {}
+
+    # fab -> off + maps
+    for fid, f in fabs.items():
+        fab_region[fid] = f.get("region")
+        fab_customer[fid] = f.get("customer_company")
+        for s in f.get("unavailable_dates", []) or []:
+            try: fab_off[fid].add(_d(s))
+            except: pass
+
+    # region off
+    for rid, r in regions.items():
+        for s in r.get("unavailable_dates", []) or []:
+            try: region_off[rid].add(_d(s))
+            except: pass
+
+    # customer off
+    for cid, c in customers.items():
+        for s in c.get("unavailable_dates", []) or []:
+            try: customer_off[cid].add(_d(s))
+            except: pass
+
+    # worker company off
+    for wcid, c in wcompanies.items():
+        for s in c.get("unavailable_dates", []) or []:
+            try: worker_company_off[wcid].add(_d(s))
+            except: pass
+
+    # personal worker off
+    for wid, w in workers.items():
+        for s in w.get("unavailable_dates", []) or []:
+            try: worker_off[wid].add(_d(s))
+            except: pass
+
+    return {
+        "weekends": weekends,
+        "fab_off": dict(fab_off),
+        "region_off": dict(region_off),
+        "customer_off": dict(customer_off),
+        "worker_company_off": dict(worker_company_off),
+        "worker_off": dict(worker_off),
+        "fab_region": fab_region,
+        "fab_customer": fab_customer,
+    }
+
 # ---------------------------- AGGREGATIONS -----------------------------
 def build_maps(env, modules, assignments):
     workers   = env["workers"]
@@ -140,6 +234,7 @@ def build_maps(env, modules, assignments):
     regions   = env["regions"]
     customers = env["customers"]
     wcompanies= env["worker_companies"]
+    workers   = env["workers"]
 
     mod_map = {m["id"]: m for m in modules}
 
@@ -167,7 +262,10 @@ def build_maps(env, modules, assignments):
         )
         for wid in workers
     }
+    worker_company_id = {wid: workers[wid].get("worker_company") for wid in workers}
     worker_skills = {wid: workers[wid].get("skill_map", {}) for wid in workers}
+    worker_is_manager = {wid: bool(workers[wid].get("is_manager", False)) for wid in workers}
+    name_is_manager   = {worker_name[wid]: worker_is_manager[wid] for wid in workers}
 
     # module metadata for sheet 1
     mod_meta_cols = {}
@@ -232,6 +330,16 @@ def build_maps(env, modules, assignments):
         per_day_total[a["date"]] += a["hours"]
         day_op_heads[(m_id, op_id, a["date"])] += 1
 
+    managers_by_task = defaultdict(set)  # (m_id, op_id) -> {manager_names}
+    for a in assignments:
+        wid   = a["worker"]
+        if worker_is_manager.get(wid, False):
+            op_task = a["operation_task"]
+            idx = op_task.find("p")
+            m_id = op_task[:idx] if idx > 0 else op_task
+            op_id = op_task[idx:] if idx > 0 else ""
+            managers_by_task[(m_id, op_id)].add(worker_name.get(wid, wid))
+
     # employee workdays
     for (comp, wname, d), items in edt.items():
         if items:
@@ -248,14 +356,17 @@ def build_maps(env, modules, assignments):
         "edt": edt,
         "worker_name": worker_name,
         "worker_company_name": worker_company_name,
+        "worker_company_id": worker_company_id,            # NEW
         "worker_skills": worker_skills,
+        "worker_is_manager": worker_is_manager,
+        "name_is_manager": name_is_manager,
         "emp_total_hours": emp_total_hours,
         "emp_workdays": emp_workdays,
         "per_day_total": per_day_total,
         "day_op_heads": day_op_heads,
         "per_cell_assigns_task": per_cell_assigns_task,
         "per_cell_assigns_emp": per_cell_assigns_emp,
-        "worker_name": worker_name,
+        "managers_by_task": managers_by_task,
     }
 
 # ----------------------- REQUIRED HOURS (task/module) ------------------
@@ -278,7 +389,7 @@ def compute_required_hours_task_module(modules):
     return req_task, req_module
 
 # --------------------------- VIOLATION DETECTION -----------------------
-def detect_violations(env, modules, assignments, maps):
+def detect_violations(env, modules, assignments, maps, cal):
     """Build lookups for coloring and Sheet 4 tables."""
     # Phase windows for each (m_id, phase) from Schedule
     phase_window = {}  # (m_id, phase_id) -> (start, end)
@@ -288,12 +399,19 @@ def detect_violations(env, modules, assignments, maps):
 
     # Phase order: for each module, determine last assignment date per phase (from data)
     last_assigned_in_phase = defaultdict(lambda: defaultdict(lambda: None))  # m_id -> phase -> last_date
-    # Also per-phase set of ops (for mapping op_id->phase quickly)
-    # maps["op_phase_of_module"] already provides mapping.
 
     # assigned_by_task / by_module
     assigned_task  = defaultdict(int)  # (m_id, op_id)
     assigned_mod   = defaultdict(int)  # m_id
+
+    # NEW: unavailable breaches (tasks & employees)
+    unavail_task_cells = set()      # (m_id, op_id, date)
+    unavail_emp_cells  = set()      # (company_name, worker_name, date)
+    tbl_unavail_task   = []         # [date, module, op_id, reason]
+    tbl_unavail_emp    = []         # [date, worker, company, reason, module, op_id]
+
+    # For fab/region/customer lookup
+    # (we derive fab_id from module meta)
     for a in assignments:
         op_task = a["operation_task"]
         idx = op_task.find("p")
@@ -301,6 +419,7 @@ def detect_violations(env, modules, assignments, maps):
         op_id= op_task[idx:] if idx > 0 else ""
         assigned_task[(m_id, op_id)] += a["hours"]
         assigned_mod[m_id]           += a["hours"]
+
         # update last assigned in its phase
         ph = maps["op_phase_of_module"].get((m_id, op_id))
         d  = a["date"]
@@ -308,12 +427,47 @@ def detect_violations(env, modules, assignments, maps):
         if prev is None or d > prev:
             last_assigned_in_phase[m_id][ph] = d
 
+        # ---------- NEW: unavailable breaches while assigned ----------
+        # Module -> fab/region/customer
+        meta = maps["mod_meta_cols"].get(m_id, {})
+        fab_id = meta.get("fab_id")
+        rid = cal["fab_region"].get(fab_id)
+        cid = cal["fab_customer"].get(fab_id)
+
+        # Task-side closures (weekend/fab/region/customer)
+        reasons = []
+        if d in cal["weekends"]:
+            reasons.append("weekend")
+        if fab_id and d in cal["fab_off"].get(fab_id, set()):
+            reasons.append(f"fab_off({fab_id})")
+        if rid and d in cal["region_off"].get(rid, set()):
+            reasons.append(f"region_off({rid})")
+        if cid and d in cal["customer_off"].get(cid, set()):
+            reasons.append(f"customer_off({cid})")
+        if reasons:
+            unavail_task_cells.add((m_id, op_id, d))
+            tbl_unavail_task.append([d.isoformat(), m_id, op_id, ", ".join(reasons)])
+
+        # Employee-side closures (personal + worker-company)
+        wid = a["worker"]
+        wname = maps["worker_name"].get(wid, wid)
+        comp_name = maps["worker_company_name"].get(wid, "")
+        wco = maps["worker_company_id"].get(wid)
+        reasons_e = []
+        if d in cal["worker_off"].get(wid, set()):
+            reasons_e.append("personal_off")
+        if wco and d in cal["worker_company_off"].get(wco, set()):
+            reasons_e.append(f"worker_company_off({wco})")
+        if reasons_e:
+            unavail_emp_cells.add((comp_name, wname, d))
+            tbl_unavail_emp.append([d.isoformat(), wname, comp_name, ", ".join(reasons_e), m_id, op_id])
+        # -------------------------------------------------------------
+
     # Staffing min/max (by op/date)
     op_meta = env["op_meta"]
     wf_id = modules[0].get("workflow") if modules else None
 
     # Build violation sets for quick coloring
-    # Sheet 1 per-day keys: (m_id, op_id, date)
     win_breach_cells   = set()
     order_breach_cells = set()
     minmax_breach_cells= set()
@@ -324,7 +478,7 @@ def detect_violations(env, modules, assignments, maps):
     # Tables for sheet 4
     tbl_window  = []  # [date, module, phase, op, worker, reason, phase_start, phase_end]
     tbl_order   = []  # [date, module, later_phase, op, worker, required_prev_phase_last_date]
-    tbl_skill   = []  # [date, worker, company, module, op]
+    tbl_skill   = []  # [date, worker, company, module, op_id]
     tbl_minmax  = []  # [date, module, op, heads, min, max, status]
 
     # --- window & ordering & minmax (sheet1) ---
@@ -335,15 +489,13 @@ def detect_violations(env, modules, assignments, maps):
             # window
             if (start and dt < start) or (end and dt > end):
                 win_breach_cells.add((m_id, op_id, dt))
-                # we don't know which specific worker in this cell; include rows for each assignment at that cell
                 for A in maps["per_cell_assigns_task"].get((m_id, op_id, dt), []):
                     tbl_window.append([dt.isoformat(), m_id, ph, op_id, A["wname"],
                                        "early" if (start and dt < start) else "late",
                                        start.isoformat() if start else "",
                                        end.isoformat() if end else ""])
 
-            # ordering (phase k used before k-1 finished)
-            # Get last assigned date in previous phase
+            # ordering
             try:
                 prev_phase_num = int(ph[1:]) - 1
                 if prev_phase_num >= 1:
@@ -357,7 +509,7 @@ def detect_violations(env, modules, assignments, maps):
             except Exception:
                 pass
 
-        # min/max staffing for that op/date
+        # min/max staffing
         meta = _safe(_safe(op_meta, wf_id), ph) if wf_id else None
         meta = _safe(meta, op_id) or {}
         min_w = int(meta.get("min_worker_num", 1))
@@ -375,9 +527,6 @@ def detect_violations(env, modules, assignments, maps):
     for (comp, wname, dt), lst in maps["per_cell_assigns_emp"].items():
         mismatch = False
         for info in lst:
-            wid   = None
-            # find wid by name quickly (reverse map once)
-            # we stored wid in info already
             wid = info["worker"]
             skills = maps["worker_skills"].get(wid, {})
             if not skills.get(info["op_id"]):
@@ -385,6 +534,13 @@ def detect_violations(env, modules, assignments, maps):
                 tbl_skill.append([dt.isoformat(), wname, comp, info["m_id"], info["op_id"]])
         if mismatch:
             skill_mismatch_cells.add((comp, wname, dt))
+
+    # --- tasks with NO manager at all (across the whole horizon) ---
+    tbl_no_manager = []
+    for (m_id, op_id, _op_name) in modules and maps["module_ops"]:
+        mgrs = maps["managers_by_task"].get((m_id, op_id), set())
+        if not mgrs:
+            tbl_no_manager.append([m_id, op_id])
 
     return {
         "assigned_task": assigned_task,
@@ -398,15 +554,16 @@ def detect_violations(env, modules, assignments, maps):
         "tbl_order": tbl_order,
         "tbl_skill": tbl_skill,
         "tbl_minmax": tbl_minmax,
+        "tbl_no_manager": tbl_no_manager,
+        # NEW returns
+        "unavail_task_cells": unavail_task_cells,
+        "unavail_emp_cells": unavail_emp_cells,
+        "tbl_unavail_task": tbl_unavail_task,
+        "tbl_unavail_emp": tbl_unavail_emp,
     }
 
-# ------------------------------- Skill build -----------------------------
+# ----------------------- Skill distribution (unchanged) ----------------
 def build_skill_distribution(env):
-    """
-    Returns (rows, levels) where:
-      - rows: list of (op_id, total, [count_at_level for level in levels])
-      - levels: sorted list of skill levels present in the data (e.g. [1,2,3,4,5])
-    """
     workers = env["workers"]
     op_meta = env["op_meta"]
 
@@ -417,7 +574,7 @@ def build_skill_distribution(env):
             for op_id in ops.keys():
                 all_ops.add(op_id)
 
-    # Discover which levels actually appear (fallback to 1..5 if none found)
+    # Discover levels present
     level_set = set()
     for w in workers.values():
         smap = w.get("skill_map", {}) or {}
@@ -432,7 +589,7 @@ def build_skill_distribution(env):
         level_set = {1, 2, 3, 4, 5}
     levels = sorted(level_set)
 
-    # Count employees per op_id per exact level (only >0)
+    # Count employees per op_id per exact level (>0)
     from collections import Counter, defaultdict
     counts = defaultdict(Counter)  # op_id -> Counter(level -> count)
 
@@ -448,7 +605,6 @@ def build_skill_distribution(env):
             except Exception:
                 continue
 
-    # Nice sorting: by phase number then op number if op_id looks like 'p#o#'
     def op_sort_key(op_id: str):
         try:
             p_part, o_part = op_id.split("o", 1)
@@ -466,8 +622,166 @@ def build_skill_distribution(env):
 
     return rows, levels
 
+# -------------------- NEW: op average skill per op_id ------------------
+def compute_op_avg_skill(env):
+    """
+    Mean skill per op_id among all workers who have level > 0 for that op.
+    Returns: dict op_id -> float
+    """
+    workers = env["workers"]
+    sums = defaultdict(int)
+    cnts = defaultdict(int)
+    for w in workers.values():
+        smap = w.get("skill_map", {}) or {}
+        for op_id, lvl in smap.items():
+            try:
+                iv = int(lvl)
+            except Exception:
+                continue
+            if iv > 0:
+                sums[op_id] += iv
+                cnts[op_id] += 1
+    return {op: (sums[op] / cnts[op]) if cnts[op] else 0.0 for op in set(list(sums.keys()) + list(cnts.keys()))}
+
+# --------- NEW: build "Team Quality by Block" aggregated rows ----------
+def build_blocks_quality(modules, assignments, assignment_blocks, env, maps):
+    """
+    Returns list of dict rows, one per block:
+    key fields:
+      module, op_id, phase, start_date, end_date, heads, hours, days,
+      managers, company_mix, max_pairs, same_company_pairs, cohesion_pct,
+      op_avg_skill, team_avg_skill, balance_dev, balance_score, variety_score
+    Grouping heuristic: (module, op_id, start_date, end_date, hours)
+    """
+    worker_name = maps["worker_name"]
+    worker_is_manager = maps["worker_is_manager"]
+    worker_company_id = maps["worker_company_id"]
+    worker_company_name = maps["worker_company_name"]
+    worker_skills = maps["worker_skills"]
+    op_phase_of_module = maps["op_phase_of_module"]
+
+    # Build per-employee blocks keyed by (module, op_id, start, end, hours)
+    # First, we need hours per worker per assignment block: infer from assignments on first work day.
+    # Build quick lookup: (worker, module, op_id, date) -> hours
+    per_w_mop_day_hours = {}
+    for a in assignments:
+        wid = a["worker"]
+        op_task = a["operation_task"]
+        idx = op_task.find("p")
+        m_id = op_task[:idx] if idx > 0 else op_task
+        op_id = op_task[idx:] if idx > 0 else ""
+        per_w_mop_day_hours[(wid, m_id, op_id, a["date"])] = a["hours"]
+
+    # Collate blocks from assignment_blocks
+    # group key
+    def blk_key(wid, op_task, start_date, end_date):
+        idx = op_task.find("p")
+        m_id = op_task[:idx] if idx > 0 else op_task
+        op_id = op_task[idx:] if idx > 0 else ""
+        # infer hours: take hours on the first work date if present; else 8
+        hours = 8
+        wdates = []
+        for ab in assignment_blocks:
+            if ab["worker"] == wid and ab["operation_task"] == op_task and ab["start_date"] == start_date and ab["end_date"] == end_date:
+                wdates = ab.get("work_dates", []) or []
+                break
+        if wdates:
+            h = per_w_mop_day_hours.get((wid, m_id, op_id, wdates[0]), None)
+            if isinstance(h, int):
+                hours = h
+        days = (end_date - start_date).days + 1 if (start_date and end_date) else len(wdates)
+        return (m_id, op_id, start_date, end_date, hours, days)
+
+    # group: block_key -> set of workers
+    block_workers = defaultdict(set)
+    # also union managers across all days within the block
+    block_managers = defaultdict(set)
+
+    for ab in assignment_blocks:
+        wid = ab["worker"]
+        op_task = ab["operation_task"]
+        sd = ab["start_date"]; ed = ab["end_date"]
+        if not sd or not ed:
+            continue
+        key = blk_key(wid, op_task, sd, ed)
+        block_workers[key].add(wid)
+        if maps["worker_is_manager"].get(wid, False):
+            block_managers[key].add(worker_name.get(wid, wid))
+
+    op_avg = compute_op_avg_skill(env)
+
+    rows = []
+    for (m_id, op_id, sd, ed, hours, days), wset in block_workers.items():
+        heads = len(wset)
+        # company mix
+        comp_counts = Counter(worker_company_name.get(wid, "") for wid in wset)
+        comp_text = " | ".join(f"{c or '':s}×{n}" for c, n in sorted(comp_counts.items(), key=lambda kv: (-kv[1], kv[0] or "")))
+
+        # cohesion
+        max_pairs = heads * (heads - 1) // 2
+        same_company_pairs = sum(n * (n - 1) // 2 for n in comp_counts.values())
+        cohesion_pct = (same_company_pairs / max_pairs * 100.0) if max_pairs > 0 else None
+
+        # skills for this op
+        levels = []
+        for wid in wset:
+            lvl = 0
+            try:
+                lvl = int((worker_skills.get(wid) or {}).get(op_id, 0))
+            except Exception:
+                lvl = 0
+            levels.append(max(0, lvl))
+        team_avg_skill = (sum(levels) / len(levels)) if levels else 0.0
+
+        # variety via Shannon index over levels present (ignore zeros if you want)
+        lvl_counts = Counter([lv for lv in levels if lv > 0])
+        if lvl_counts:
+            total = sum(lvl_counts.values())
+            H = 0.0
+            for n in lvl_counts.values():
+                p = n / total
+                if p > 0:
+                    H -= p * math.log(p)
+            Hmax = math.log(len(lvl_counts)) if len(lvl_counts) > 0 else 1.0
+            variety_score = (H / Hmax * 100.0) if Hmax > 0 else 0.0
+        else:
+            variety_score = 0.0
+
+        op_mean = op_avg.get(op_id, 0.0)
+        balance_dev = abs(team_avg_skill - op_mean)
+        balance_score = max(0.0, 100.0 - BALANCE_K * balance_dev)
+
+        phase = maps["op_phase_of_module"].get((m_id, op_id), "")
+        mgrs = sorted(block_managers.get((m_id, op_id, sd, ed, hours, days), set()))
+        mgr_text = ", ".join(mgrs)
+
+        rows.append({
+            "module": m_id,
+            "op_id": op_id,
+            "phase": phase,
+            "start_date": sd.isoformat() if sd else "",
+            "end_date": ed.isoformat() if ed else "",
+            "heads": heads,
+            "hours": hours,
+            "days": days,
+            "managers": mgr_text,
+            "company_mix": comp_text,
+            "max_pairs": max_pairs,
+            "same_company_pairs": same_company_pairs,
+            "cohesion_pct": round(cohesion_pct, 1) if cohesion_pct is not None else "",
+            "op_avg_skill": round(op_mean, 2),
+            "team_avg_skill": round(team_avg_skill, 2),
+            "balance_dev": round(balance_dev, 3),
+            "balance_score": round(balance_score, 1),
+            "variety_score": round(variety_score, 1),
+        })
+
+    # stable sort
+    rows.sort(key=lambda r: (r["module"], r["phase"], r["op_id"], r["start_date"]))
+    return rows
+
 # ------------------------------- WRITERS -------------------------------
-def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task):
+def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task, cal):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left", vertical="center", wrap_text=True)
@@ -476,7 +790,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     ws = wb.create_sheet("Tasks x Dates")
 
     # headers incl. required/assigned per task
-    headers = ["module", "module_name", "fab_id", "fab_name", "region", "customer", "task",
+    headers = ["module", "module_name", "fab_id", "fab_name", "region", "customer", "task","manager",
                "required_hours", "assigned_hours"]
     for col, h in enumerate(headers, start=1):
         c = ws.cell(row=1, column=col, value=h); c.font = bold; c.alignment = center
@@ -490,9 +804,9 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     for j, dt in enumerate(dates, start=len(headers)+1):
         c = ws.cell(row=1, column=j, value=dt.isoformat())
         c.font = bold; c.alignment = center
-        ws.column_dimensions[get_column_letter(j)].width = 26
+        ws.column_dimensions[get_column_letter(j)].width = 28  # a bit wider for ★ tags
 
-    widths = [8, 18, 8, 14, 12, 10, 18, 16, 16]
+    widths = [8, 18, 8, 14, 12, 10, 18, 18, 16, 16]
     for idx, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(idx)].width = w
     ws.freeze_panes = get_column_letter(len(headers)+1) + "2"
@@ -504,6 +818,9 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     fill_order   = PatternFill(start_color=BLUE_ORDER, end_color=BLUE_ORDER, fill_type="solid")
     fill_minmax  = PatternFill(start_color=PINK_MINMAX,end_color=PINK_MINMAX,fill_type="solid")
     fill_under   = PatternFill(start_color=YELLOW_UNDER,end_color=YELLOW_UNDER,fill_type="solid")
+    # NEW
+    fill_grey    = PatternFill(start_color=GREY_CLOSED, end_color=GREY_CLOSED, fill_type="solid")
+    fill_unavail = PatternFill(start_color=BROWN_UNAV_BREACH, end_color=BROWN_UNAV_BREACH, fill_type="solid")
 
     # sort rows
     def mod_sort_key(m_id):
@@ -527,13 +844,25 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
         ws.cell(row=r_idx, column=6, value=meta["customer"]).font = bold
         ws.cell(row=r_idx, column=7, value=f"{op_id} {op_name}").font = bold
 
+        # managers — list unique manager names for this task (all managers)
+        mgr_names = sorted(maps["managers_by_task"].get((m_id, op_id), []))
+        mgr_text  = " | ".join(mgr_names) if mgr_names else ""
+        c_mgr = ws.cell(row=r_idx, column=8, value=mgr_text); c_mgr.alignment = center
+        if not mgr_names:
+            c_mgr.fill = PatternFill(start_color=MANAGER_MISSING, end_color=MANAGER_MISSING, fill_type="solid")
+
         # required/assigned per task
         req = req_task.get((m_id, op_id), 0)
         asg = vios["assigned_task"].get((m_id, op_id), 0)
-        ws.cell(row=r_idx, column=8, value=req).alignment = center
-        c_asg = ws.cell(row=r_idx, column=9, value=asg); c_asg.alignment = center
+        ws.cell(row=r_idx, column=9,  value=req).alignment = center
+        c_asg = ws.cell(row=r_idx, column=10, value=asg); c_asg.alignment = center
         if asg < req:
             c_asg.fill = fill_under  # highlight assigned_hours cell only
+
+        # pre-compute fab/region/customer ids (NEW: used for grey shading)
+        fab_id = meta["fab_id"]
+        rid = cal["fab_region"].get(fab_id)
+        cid = cal["fab_customer"].get(fab_id)
 
         # date cells
         m_start = module_start.get(m_id)
@@ -542,9 +871,21 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
 
         for j, dt in enumerate(dates, start=len(headers)+1):
             txt = " | ".join(sorted(maps["tde"].get((m_id, op_id, dt), [])))
+
             c = ws.cell(row=r_idx, column=j, value=txt)
             c.alignment = center
             c.border = Border(top=thin, bottom=thin, left=thin, right=thin)
+
+            # ----- GREY OUT weekends/fab/region/customer unavailable (NEW) -----
+            is_closed = (
+                (dt in cal["weekends"]) or
+                (fab_id and dt in cal["fab_off"].get(fab_id, set())) or
+                (rid and dt in cal["region_off"].get(rid, set())) or
+                (cid and dt in cal["customer_off"].get(cid, set()))
+            )
+            if is_closed:
+                c.fill = fill_grey
+            # -------------------------------------------------------------------
 
             # decor (non-violation)
             if m_start and dt == m_start:
@@ -552,7 +893,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
             if p_end and dt == p_end:
                 c.fill = fill_deadln
 
-            # violations overlays (priority: minmax > window > ordering)
+            # violations overlays (priority: minmax > window > ordering > unavailable-breach)
             key = (m_id, op_id, dt)
             if key in vios["minmax_breach_cells"]:
                 c.fill = fill_minmax
@@ -560,6 +901,9 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
                 c.fill = fill_win
             elif key in vios["order_breach_cells"]:
                 c.fill = fill_order
+            # NEW: assignment on unavailable day (brown)
+            elif key in vios["unavail_task_cells"]:
+                c.fill = fill_unavail
 
     # row heights
     ws.row_dimensions[1].height = 22
@@ -578,15 +922,18 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     legend("Ordering breach", fill_order, 4)
     legend("Staffing min/max breach", fill_minmax, 5)
     legend("Under-assigned (assigned_hours)", fill_under, 6)
+    # NEW legend items
+    legend("Closed (weekend/unavailable)", PatternFill(start_color=GREY_CLOSED, end_color=GREY_CLOSED, fill_type="solid"), 7)
+    legend("Assigned on closed day", PatternFill(start_color=BROWN_UNAV_BREACH, end_color=BROWN_UNAV_BREACH, fill_type="solid"), 8)
 
-def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
+def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios, cal):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
     ws = wb.create_sheet("Employees x Dates")
 
-    base_headers = ["company", "employee", "skills"]
+    base_headers = ["company", "employee", "skills", "Manager"]
     for i, h in enumerate(base_headers, start=1):
         c = ws.cell(row=1, column=i, value=h); c.font = bold
 
@@ -608,9 +955,10 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
     ws.column_dimensions["A"].width = 12
     ws.column_dimensions["B"].width = 12
     ws.column_dimensions["C"].width = 54
+    ws.column_dimensions["D"].width = 10  # Manager
     ws.column_dimensions[get_column_letter(workdays_col)].width = 11
     ws.column_dimensions[get_column_letter(workhours_col)].width = 11
-    ws.freeze_panes = "D2"
+    ws.freeze_panes = "E2"
 
     # skills text
     def skills_text(wname):
@@ -638,19 +986,42 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
             roster.append((comp, wname)); seen.add((comp, wname))
     roster.sort(key=lambda t: (t[0] or "", t[1] or ""))
 
-    fill_skill = PatternFill(start_color=ORANGE_SKILL, end_color=ORANGE_SKILL, fill_type="solid")
+    fill_skill  = PatternFill(start_color=ORANGE_SKILL, end_color=ORANGE_SKILL, fill_type="solid")
+    fill_grey   = PatternFill(start_color=GREY_CLOSED, end_color=GREY_CLOSED, fill_type="solid")  # NEW
+    fill_unavail= PatternFill(start_color=BROWN_UNAV_BREACH, end_color=BROWN_UNAV_BREACH, fill_type="solid")  # NEW
 
     for i, (comp, wname) in enumerate(roster, start=2):
         ws.row_dimensions[i].height = 34
         ws.cell(row=i, column=1, value=comp or "").alignment = left
         ws.cell(row=i, column=2, value=wname or "").alignment = left
         ws.cell(row=i, column=3, value=skills_text(wname)).alignment = left
+        ws.cell(row=i, column=4, value="True" if maps["name_is_manager"].get(wname, False) else "").alignment = center
+
+        # resolve worker id + company id once per row (NEW)
+        wid = None
+        for k, v in env["workers"].items():
+            if v.get("name") == wname:
+                wid = k; break
+        wco = env["workers"].get(wid, {}).get("worker_company") if wid else None
 
         for j, dt in enumerate(dates, start=len(base_headers)+1):
             txt = " | ".join(sorted(maps["edt"].get((comp, wname, dt), [])))
             c = ws.cell(row=i, column=j, value=txt); c.alignment = center
+
+            # ----- GREY OUT personal & worker-company off (NEW) -----
+            personal_off = wid and (dt in cal["worker_off"].get(wid, set()))
+            company_off  = wco and (dt in cal["worker_company_off"].get(wco, set()))
+            if personal_off or company_off:
+                c.fill = fill_grey
+            # ---------------------------------------------------------
+
+            # keep your skill-mismatch (orange) logic after this
             if (comp, wname, dt) in vios["skill_mismatch_cells"]:
                 c.fill = fill_skill
+
+            # NEW: assigned on personal/company off day (breach color)
+            if (comp, wname, dt) in vios["unavail_emp_cells"]:
+                c.fill = fill_unavail
 
         ws.cell(row=i, column=workdays_col, value=maps["emp_workdays"].get(wname, 0)).alignment = center
         ws.cell(row=i, column=workhours_col, value=maps["emp_total_hours"].get(wname, 0)).alignment = center
@@ -660,14 +1031,18 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios):
     ws.cell(row=legend_row, column=1, value="Legend").font = bold
     cell = ws.cell(row=legend_row+1, column=1, value="Skill mismatch")
     cell.fill = fill_skill; cell.alignment = center
+    cell = ws.cell(row=legend_row+1, column=2, value="Closed (personal/company)")
+    cell.fill = fill_grey; cell.alignment = center
+    cell = ws.cell(row=legend_row+1, column=3, value="Assigned on closed day")
+    cell.fill = fill_unavail; cell.alignment = center
 
-# ----------------------- DASHBOARD (unchanged layout) ------------------
+# ----------------------- DASHBOARD (extended) ------------------
 def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, assignment_blocks, req_module):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     ws = wb.create_sheet("Dashboard")
-    for col in range(1, 80):
+    for col in range(1, 120):
         ws.column_dimensions[get_column_letter(col)].width = 14
 
     # KPIs
@@ -724,7 +1099,7 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
     for j, h in enumerate(hdr, start=1):
         ws.cell(row=start_row+1, column=j, value=h).font = bold
 
-    # last_assigned per module (exact prefix split)
+    # last_assigned per module
     last_assigned_by_module = {}
     for a in assignments:
         op_task = a["operation_task"]
@@ -755,24 +1130,19 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
     for i, row in enumerate(prog_rows, start=start_row+2):
         for j, v in enumerate(row, start=1):
             c = ws.cell(row=i, column=j, value=v)
-            # module-level under-assignment: shade assigned_hours & %complete
             if j in (3,4):  # assigned_hours, %complete
                 req = row[1]; asg = row[2]
                 if isinstance(req,(int,float)) and isinstance(asg,(int,float)) and asg < req:
                     c.fill = fill_under
 
-    # ---------------- Assignment Utilization (employee-wide earliest start/latest end) ----------------
+    # ---------------- Assignment Utilization ----------------
     util_start = start_row + 2 + len(prog_rows) + 2
     ws.cell(row=util_start, column=1, value="Assignment Utilization").font = bold
     util_hdr = ["employee", "start_date", "end_date", "utilization%"]
     for j, h in enumerate(util_hdr, start=1):
         ws.cell(row=util_start+1, column=j, value=h).font = bold
 
-    # Aggregate per employee across all assignment blocks
-    # - earliest start over all their tasks
-    # - latest end over all their tasks
-    # - worked_days = union of all dates they actually worked
-    worker_name = maps["worker_name"]  # id -> display name
+    worker_name = maps["worker_name"]
     agg = {}  # wid -> {"name":..., "start":date, "end":date, "worked": set(date)}
     for blk in assignment_blocks:
         wid = blk["worker"]
@@ -789,7 +1159,6 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
                 agg[wid]["end"] = ed
             agg[wid]["worked"].update(wds)
 
-    # Build rows (sorted by employee name)
     util_rows = []
     for wid, info in agg.items():
         nm = info["name"]
@@ -884,7 +1253,6 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
 
     # charts
     anchor_line = "N2"
-    anchor_ot20 = "N22"
     anchor_tot20= "N44"
 
     if day_rows:
@@ -925,13 +1293,11 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
         ws.cell(row=insert_row, column=1, value="Employee skill distribution").font = bold
         insert_row += 1
 
-        # headers: skill | total | levels...
         headers = ["skill", "total"] + [str(l) for l in levels]
         for j, h in enumerate(headers, start=1):
             ws.cell(row=insert_row, column=j, value=h).font = bold
         insert_row += 1
 
-        # rows
         for (op_id, total, lvl_counts) in skill_rows:
             ws.cell(row=insert_row, column=1, value=op_id)
             ws.cell(row=insert_row, column=2, value=int(total))
@@ -939,7 +1305,6 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
                 ws.cell(row=insert_row, column=idx, value=int(c))
             insert_row += 1
 
-        # a tiny total row at bottom (sum per column)
         ws.cell(row=insert_row, column=1, value="TOTAL").font = bold
         ws.cell(row=insert_row, column=2, value=sum(r[1] for r in skill_rows)).font = bold
         for idx, l in enumerate(levels, start=3):
@@ -949,6 +1314,53 @@ def write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignme
                 value=sum(r[2][idx-3] for r in skill_rows)
             ).font = bold
 
+    # ===== Team Quality by Block (Combined B1 + C1) =====
+    q0 = ws.max_row + 3
+    ws.cell(row=q0, column=1, value="Team Quality by Block").font = bold
+    headers = [
+        "module","op_id","phase","start_date","end_date","heads","hours","days",
+        "managers","company_mix","max_pairs","same_company_pairs","cohesion_%",
+        "op_avg_skill","team_avg_skill","balance_dev","balance_score","variety_score"
+    ]
+    for j, h in enumerate(headers, start=1):
+        ws.cell(row=q0+1, column=j, value=h).font = bold
+
+    block_rows = build_blocks_quality(modules, assignments, assignment_blocks, env, maps)
+    for i, r in enumerate(block_rows, start=q0+2):
+        ws.cell(row=i, column=1,  value=r["module"])
+        ws.cell(row=i, column=2,  value=r["op_id"])
+        ws.cell(row=i, column=3,  value=r["phase"])
+        ws.cell(row=i, column=4,  value=r["start_date"])
+        ws.cell(row=i, column=5,  value=r["end_date"])
+        ws.cell(row=i, column=6,  value=r["heads"])
+        ws.cell(row=i, column=7,  value=r["hours"])
+        ws.cell(row=i, column=8,  value=r["days"])
+        ws.cell(row=i, column=9,  value=r["managers"])
+        ws.cell(row=i, column=10, value=r["company_mix"])
+        ws.cell(row=i, column=11, value=r["max_pairs"])
+        ws.cell(row=i, column=12, value=r["same_company_pairs"])
+        ws.cell(row=i, column=13, value=r["cohesion_pct"] if r["cohesion_pct"] != "" else None)
+        ws.cell(row=i, column=14, value=r["op_avg_skill"])
+        ws.cell(row=i, column=15, value=r["team_avg_skill"])
+        ws.cell(row=i, column=16, value=r["balance_dev"])
+        ws.cell(row=i, column=17, value=r["balance_score"])
+        ws.cell(row=i, column=18, value=r["variety_score"])
+
+    # Data bars or conditional formatting could be added; for now charts:
+    if block_rows:
+        # Scatter: X=balance_dev (col 16), Y=variety_score (col 18)
+        chart = ScatterChart()
+        chart.title = "Balance vs Variety (by block)"
+        chart.x_axis.title = "balance_dev (|team_avg - op_avg|)"
+        chart.y_axis.title = "variety_score"
+        first_row = q0 + 2
+        last_row = q0 + 1 + len(block_rows)
+        xref = Reference(ws, min_col=16, min_row=first_row, max_row=last_row)
+        yref = Reference(ws, min_col=18, min_row=first_row, max_row=last_row)
+        s = Series(yref, xref, title_from_data=False)
+        chart.series.append(s)
+        chart.height = 15; chart.width = 28
+        ws.add_chart(chart, "T{}".format(q0))
 
 def write_sheet_breaches(wb, vios):
     bold = Font(bold=True)
@@ -992,6 +1404,24 @@ def write_sheet_breaches(wb, vios):
         sorted(vios["tbl_minmax"], key=lambda x:(x[0],x[1],x[2]))
     )
 
+    write_table(
+        "Tasks with no manager",
+        ["module", "op_id"],
+        sorted(vios["tbl_no_manager"], key=lambda x: (x[0], x[1]))
+    )
+
+    # NEW: unavailable-date breach tables
+    write_table(
+        "Unavailable breaches (Tasks)",
+        ["date", "module", "op_id", "reason"],
+        sorted(vios["tbl_unavail_task"], key=lambda x:(x[1],x[2],x[0]))
+    )
+    write_table(
+        "Unavailable breaches (Employees)",
+        ["date", "worker", "company", "reason", "module", "op_id"],
+        sorted(vios["tbl_unavail_emp"], key=lambda x:(x[1],x[0]))
+    )
+
     for col in range(1, 12):
         ws.column_dimensions[get_column_letter(col)].width = 18
 
@@ -1005,19 +1435,24 @@ def main():
 
     plan_start, plan_end, modules, assignments, assignment_blocks = load_schedule(args.schedule)
     env  = load_env(args.env)
+
+    # NEW: build calendar closures once
+    cal = build_unavailability(plan_start, plan_end, env)
+
     maps = build_maps(env, modules, assignments)
 
     req_task, req_module = compute_required_hours_task_module(modules)
-    vios = detect_violations(env, modules, assignments, maps)
+    # CHANGED: pass cal into detector
+    vios = detect_violations(env, modules, assignments, maps, cal)
 
     wb = Workbook()
     # remove default
     del wb[wb.sheetnames[0]]
 
-    # ===== SHEET 1 =====
-    write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task)
-    # ===== SHEET 2 =====
-    write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios)
+    # ===== SHEET 1 ===== (CHANGED: pass cal)
+    write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task, cal)
+    # ===== SHEET 2 ===== (CHANGED: pass cal)
+    write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios, cal)
     # ===== SHEET 3 =====
     write_sheet_dashboard(wb, plan_start, plan_end, env, maps, modules, assignments, assignment_blocks, req_module)
     # ===== SHEET 4 =====
