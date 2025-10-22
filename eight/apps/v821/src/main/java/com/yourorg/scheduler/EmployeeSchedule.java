@@ -1,5 +1,3 @@
-// mvn -q exec:java -D"exec.args=src\main\resource\EnvConfig.yaml src\main\resource\Schedule.yaml"
-
 package com.yourorg.scheduler;
 
 import java.io.*;
@@ -24,6 +22,7 @@ import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
+import ai.timefold.solver.core.api.score.stream.tri.TriConstraintStream;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 import ai.timefold.solver.core.config.score.director.ScoreDirectorFactoryConfig;
@@ -34,9 +33,9 @@ import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Pass 1: selective ramp with pinning + per-iteration snapshots (Schedule1.yaml, Schedule2.yaml, ...)
- * Snapshots assign ALL seats to employee ID=1 (no Pass 2).
- * Final polished Pass 1 then goes to Pass 2 and overwrites original Schedule.yaml.
+ * Java port of the Python scheduler for Timefold 1.27.
+ * Pass 1: choose (startDay, heads, days) per window; hours are auto-derived from allowed.
+ * Pass 2: assign one employee per seat (skill checks, 12h/day cap, 1 factory/day, soft balancing).
  */
 public class EmployeeSchedule {
 
@@ -109,12 +108,6 @@ public class EmployeeSchedule {
         public int minHeads;
         public int maxHeads;
         public int workloadDays;
-
-        public List<Integer> fullAllowedSorted() {
-            return (allowed == null || allowed.isEmpty())
-                    ? List.of(8)
-                    : allowed.stream().sorted().collect(Collectors.toList());
-        }
     }
 
     @PlanningEntity
@@ -141,14 +134,6 @@ public class EmployeeSchedule {
         public Integer days;
 
         public int seedHours = 8;
-
-        // pinning
-        public boolean pinned = false;
-        public Integer pinStart = null;
-        public Integer pinHeads = null;
-        public Integer pinDays  = null;
-        public Integer pinHours = null;
-
         public BlockDecision() {}
     }
 
@@ -241,13 +226,6 @@ public class EmployeeSchedule {
     static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
     static final Map<String,Double>  OP_AVG_SKILL = new HashMap<>();
 
-    // snapshot context
-    static class SnapshotCfg {
-        LocalDate planStart;
-        String schedulePath; // original schedule path; snapshots are siblings
-        List<EmployeeFact> employees;
-    }
-
     static boolean isUnassigned(EmployeeFact e) { return e == null || e.id == 0; }
     static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
     static boolean isManager(EmployeeFact e) { return e != null && e.isManager; }
@@ -257,14 +235,15 @@ public class EmployeeSchedule {
     static int produced(BlockDecision b) {
         int h = autoHours(b);
         int H = Math.max(1, b.heads == null ? 1 : b.heads);
-        int D = Math.max(1, b.days  == null ? 1 : b.days);
-        return H * h * D;
+        int D = (b.startDay == null || b.days == null) ? 0 : workingDaysCount(b.startDay, b.days, b.factory);
+        return H * h * Math.max(0, D);
     }
+
     static int autoHours(BlockDecision b) {
         List<Integer> allowed = (b.allowed == null || b.allowed.isEmpty())
                 ? List.of(8) : b.allowed.stream().sorted().collect(Collectors.toList());
         int H = Math.max(1, b.heads == null ? 1 : b.heads);
-        int D = Math.max(1, b.days  == null ? 1 : b.days);
+        int D = (b.startDay == null || b.days == null) ? 0 : workingDaysCount(b.startDay, b.days, b.factory);
         int R = b.requiredHours;
 
         List<int[]> feasible = new ArrayList<>();
@@ -292,6 +271,8 @@ public class EmployeeSchedule {
         }
         return bestH;
     }
+
+
     static int compareTuple(int[] a, int[] b) {
         for (int i = 0; i < Math.min(a.length, b.length); i++) {
             int c = Integer.compare(a[i], b[i]); if (c != 0) return c;
@@ -299,6 +280,18 @@ public class EmployeeSchedule {
         return Integer.compare(a.length, b.length);
     }
 
+    // ---- Calendar / blackout support ----
+    static class Calendars {
+        Set<Integer> weekends = new HashSet<>();
+        Map<String, Set<Integer>> fabOff = new HashMap<>();
+        Map<String, Set<Integer>> regionOff = new HashMap<>();
+        Map<String, Set<Integer>> customerOff = new HashMap<>();
+        Map<String, Set<Integer>> workerCompanyOff = new HashMap<>();
+        Map<String, String> fabToRegion = new HashMap<>();
+        Map<String, String> fabToCustomer = new HashMap<>();
+        Map<String, Set<Integer>> workerOffByWid = new HashMap<>();
+    }
+    static Calendars CAL = new Calendars();
     // --- simple timing/format helpers ---
     private static final java.time.format.DateTimeFormatter CLOCK =
             java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -314,6 +307,128 @@ public class EmployeeSchedule {
         return String.format("%02d:%02d:%02d.%03d", h, m, s, ms);
     }
 
+    // Turn yyyy/MM/dd strings into day indexes
+    static Integer dayIdFromDate(LocalDate planStart, String ymd) {
+        LocalDate d = LocalDate.parse(ymd.replace("-", "/"), DF);
+        return (int) (d.toEpochDay() - planStart.toEpochDay());
+    }
+
+    // Build calendars from EnvConfig, aligned to the plan date range
+    @SuppressWarnings("unchecked")
+    public static void buildCalendars(String envPath, LocalDate planStart, LocalDate planEnd) throws IOException {
+        CAL = new Calendars();
+
+        // Weekends for the whole horizon
+        int horizon = (int) (planEnd.toEpochDay() - planStart.toEpochDay()) + 1;
+        for (int i = 0; i < horizon; i++) {
+            LocalDate d = planStart.plusDays(i);
+            switch (d.getDayOfWeek()) {
+                case SATURDAY:
+                case SUNDAY:
+                    CAL.weekends.add(i);
+                    break;
+                default: /* working day */ 
+            }
+        }
+
+        Map<String,Object> root;
+        try (InputStream in = Files.newInputStream(Paths.get(envPath))) {
+            root = new Yaml().load(in);
+        }
+        Map<String,Object> env = (Map<String,Object>) root.getOrDefault("environment", root);
+
+        // fab_list -> fab off & fab->region / fab->customer
+        List<Map<String,Object>> fabs = (List<Map<String,Object>>) env.getOrDefault("fab_list", List.of());
+        for (Map<String,Object> f : fabs) {
+            String fid = String.valueOf(f.get("id"));
+            String rid = String.valueOf(f.get("region"));
+            String cid = String.valueOf(f.get("customer_company"));
+            CAL.fabToRegion.put(fid, rid);
+            CAL.fabToCustomer.put(fid, cid);
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) f.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.fabOff.put(fid, off);
+        }
+
+        // region_list -> region off
+        List<Map<String,Object>> regions = (List<Map<String,Object>>) env.getOrDefault("region_list", List.of());
+        for (Map<String,Object> r : regions) {
+            String rid = String.valueOf(r.get("id"));
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) r.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.regionOff.put(rid, off);
+        }
+
+        // customer_company_list -> customer off
+        List<Map<String,Object>> custs = (List<Map<String,Object>>) env.getOrDefault("customer_company_list", List.of());
+        for (Map<String,Object> c : custs) {
+            String cid = String.valueOf(c.get("id"));
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) c.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.customerOff.put(cid, off);
+        }
+
+        // worker_company_list -> worker company off
+        List<Map<String,Object>> wcomps = (List<Map<String,Object>>) env.getOrDefault("worker_company_list", List.of());
+        for (Map<String,Object> wc : wcomps) {
+            String cid = String.valueOf(wc.get("id"));
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) wc.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.workerCompanyOff.put(cid, off);
+        }
+
+        // worker_list -> individual worker off (keyed by worker "id"/wid)
+    List<Map<String,Object>> workers = (List<Map<String,Object>>) env.getOrDefault("worker_list", List.of());
+    for (Map<String,Object> w : workers) {
+        String wid = String.valueOf(w.get("id"));
+        Set<Integer> off = new HashSet<>();
+        List<Object> dates = (List<Object>) w.getOrDefault("unavailable_dates", List.of());
+        for (Object o : dates) {
+            Integer did = dayIdFromDate(planStart, String.valueOf(o));
+            if (did != null) off.add(did);
+        }
+        CAL.workerOffByWid.put(wid, off);
+    }
+    }
+
+    // Is this a *working* day for the given fab?
+    static boolean isWorkingDay(int dayId, String fabId) {
+        if (CAL.weekends.contains(dayId)) return false;
+        if (fabId == null) return true;
+        if (CAL.fabOff.getOrDefault(fabId, Set.of()).contains(dayId)) return false;
+        String rid = CAL.fabToRegion.get(fabId);
+        if (rid != null && CAL.regionOff.getOrDefault(rid, Set.of()).contains(dayId)) return false;
+        String cid = CAL.fabToCustomer.get(fabId);
+        if (cid != null && CAL.customerOff.getOrDefault(cid, Set.of()).contains(dayId)) return false;
+        return true;
+    }
+
+    // Count working days inside a box
+    static int workingDaysCount(int startDay, int dayCount, String fabId) {
+        if (startDay < 0 || dayCount == 0) return 0;
+        int end = startDay + dayCount - 1;
+        int n = 0;
+        for (int d = startDay; d <= end; d++) if (isWorkingDay(d, fabId)) n++;
+        return n;
+    }
+
+
     // ---------------- Constraints ----------------
 
     // Pass 1
@@ -325,6 +440,7 @@ public class EmployeeSchedule {
         static final int FEWER_DAYS_W      = 1;
         static final int EARLIER_START_W   = 1;
         static final int STACK_PAIR_WEIGHT = 2;
+        static final int PHASE_GAP_W       = 200;
 
         @Override public Constraint[] defineConstraints(ConstraintFactory f) {
             return new Constraint[] {
@@ -337,9 +453,9 @@ public class EmployeeSchedule {
                 phaseOrder(f),
                 dailyHeadCapacityByOp(f),
 
-                respectPins(f),
-
                 penalizeStackByOp(f),
+
+                // minimizePhaseGap(f),
                 preferHoursNear8(f),
                 preferSmallerHours(f),
                 minimizeHeads(f),
@@ -428,9 +544,10 @@ public class EmployeeSchedule {
         Constraint dailyHeadCapacityByOp(ConstraintFactory f) {
             return f.forEach(DaySlot.class)
                 .join(f.forEach(BlockDecision.class),
-                        Joiners.filtering((DaySlot d, BlockDecision b) ->
-                                b.startDay != null && b.days != null &&
-                                b.startDay <= d.id && d.id <= (b.startDay + b.days - 1)))
+                    Joiners.filtering((DaySlot d, BlockDecision b) ->
+                        b.startDay != null && b.days != null &&
+                        b.startDay <= d.id && d.id <= (b.startDay + b.days - 1) &&
+                        isWorkingDay(d.id, b.factory)))
                 .groupBy((DaySlot d, BlockDecision b) -> d.id,
                          (DaySlot d, BlockDecision b) -> b.opId,
                          ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> b.heads == null ? 0 : b.heads))
@@ -439,18 +556,6 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD, (dayId, opId, totalHeads) ->
                         totalHeads - OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE))
                 .asConstraint("p1-daily-head-capacity-by-op");
-        }
-
-        Constraint respectPins(ConstraintFactory f) {
-            return f.forEach(BlockDecision.class)
-                .filter(b -> b.pinned)
-                .filter(b ->
-                        (b.startDay == null || !b.startDay.equals(b.pinStart)) ||
-                        (b.heads    == null || !b.heads.equals(b.pinHeads))   ||
-                        (b.days     == null || !b.days.equals(b.pinDays))     ||
-                        (b.pinHours != null && autoHours(b) != b.pinHours))
-                .penalize(HardMediumSoftScore.ONE_HARD)
-                .asConstraint("p1-pinned-fixed");
         }
 
         Constraint penalizeStackByOp(ConstraintFactory f) {
@@ -462,37 +567,63 @@ public class EmployeeSchedule {
                 .groupBy(
                     (DaySlot d, BlockDecision b) -> d.id,
                     (DaySlot d, BlockDecision b) -> b.opId,
-                    ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> 1)
+                    ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> 1)   // <-- FIX
                 )
                 .filter((dayId, opId, n) -> n > 1)
                 .penalize(HardMediumSoftScore.ONE_MEDIUM,
-                    (dayId, opId, n) -> 2 * (n * (n - 1) / 2))
+                    (dayId, opId, n) -> STACK_PAIR_WEIGHT * (n * (n - 1) / 2))
                 .asConstraint("p1-med-penalize-stack-by-op");
         }
 
+
+        // Constraint minimizePhaseGap(ConstraintFactory f) {
+        //     return f.forEach(BlockDecision.class)
+        //         .join(f.forEach(BlockDecision.class),
+        //             // same module, next phase
+        //             Joiners.equal((BlockDecision a) -> a.module,  (BlockDecision b) -> b.module),
+        //             Joiners.equal((BlockDecision a) -> a.phaseNum + 1, (BlockDecision b) -> b.phaseNum)
+        //         )
+        //         .groupBy(
+        //             (BlockDecision a, BlockDecision b) -> a.module,
+        //             (BlockDecision a, BlockDecision b) -> a.phaseNum,
+        //             // use numeric collectors to avoid ambiguity
+        //             ConstraintCollectors.maxInt((BlockDecision a, BlockDecision b) ->
+        //                 (a.startDay == null || a.days == null) ? Integer.MIN_VALUE : a.startDay + a.days - 1),
+        //             ConstraintCollectors.minInt((BlockDecision a, BlockDecision b) ->
+        //                 b.startDay == null ? Integer.MAX_VALUE : b.startDay)
+        //         )
+        //         .filter((module, pnum, maxEndPrev, minStartNext) -> minStartNext > (maxEndPrev + 1))
+        //         .penalize(HardMediumSoftScore.ONE_SOFT,
+        //             (module, pnum, maxEndPrev, minStartNext) ->
+        //                 PHASE_GAP_W * (minStartNext - (maxEndPrev + 1)))
+        //         .asConstraint("p1-soft-minimize-phase-gap");
+        // }
+
+
+
         Constraint preferHoursNear8(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> 1000 * Math.abs(autoHours(b) - 8))
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> PREF_HOURS_WEIGHT * Math.abs(autoHours(b) - 8))
                 .asConstraint("p1-soft-prefer-hours-near-8");
         }
         Constraint preferSmallerHours(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> 100 * autoHours(b))
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> SMALLER_HOURS_W * autoHours(b))
                 .asConstraint("p1-soft-prefer-smaller-hours");
         }
         Constraint minimizeHeads(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.heads == null ? 0 : 10 * b.heads)
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.heads == null ? 0 : SMALLER_HEADS_W * b.heads)
                 .asConstraint("p1-soft-minimize-heads");
         }
         Constraint minimizeDays(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.days == null ? 0 : 1 * b.days)
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.days == null ? 0 : FEWER_DAYS_W * b.days)
                 .asConstraint("p1-soft-minimize-days");
         }
         Constraint preferEarlierStart(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.startDay == null ? 0 : 1 * b.startDay)
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.startDay == null ? 0 : EARLIER_START_W * b.startDay)
                 .asConstraint("p1-soft-prefer-earlier-start");
         }
     }
@@ -509,6 +640,7 @@ public class EmployeeSchedule {
                 oneFactoryPerEmpDay(f),
                 dailyCap12h(f),
                 atLeastOneManagerPerBlock(f),
+                employeeAvailableOnSeatDays(f),
                 softSameCompanyPairs(f),
                 softEncourageSkillVariety(f),
                 softBalanceBlockAvgSkill(f),
@@ -554,6 +686,21 @@ public class EmployeeSchedule {
                 .filter((blockId, mgrCount) -> mgrCount < 1)
                 .penalize(HardMediumSoftScore.ONE_HARD)
                 .asConstraint("p2-at-least-one-manager-per-block");
+        }
+
+        Constraint employeeAvailableOnSeatDays(ConstraintFactory f) {
+        return f.forEach(EmployeeSchedule.SeatDay.class)
+            .join(f.forEach(EmployeeSchedule.CrewSeat.class),
+                Joiners.equal((EmployeeSchedule.SeatDay sd) -> sd.seatKey,
+                                (EmployeeSchedule.CrewSeat cs) -> cs.seatKey))
+            .filter((sd, cs) -> !isUnassigned(cs.employee))
+            .filter((sd, cs) -> {
+                String wid = cs.employee.wid;
+                Set<Integer> off = CAL.workerOffByWid.getOrDefault(wid, Set.of());
+                return off.contains(sd.day.id); // if true -> violation
+            })
+            .penalize(HardMediumSoftScore.ONE_HARD)
+            .asConstraint("p2-worker-unavailable-day");
         }
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
@@ -782,7 +929,9 @@ public class EmployeeSchedule {
                 seats.add(cs);
 
                 for (int off=0; off<dcount; off++) {
-                    DaySlot dd = byId.get(start + off);
+                    int did = start + off;
+                    if (!isWorkingDay(did, b.factory)) continue; // skip weekends/unavailable
+                    DaySlot dd = byId.get(did);
                     if (dd != null) seatDays.add(new SeatDay(seatKey, dd, hours, b.factory));
                 }
             }
@@ -814,183 +963,15 @@ public class EmployeeSchedule {
         cfg.withTerminationConfig(term);
 
         return SolverFactory.<S>create(cfg).buildSolver();
-    }
+        }
 
     static boolean hardZero(Score<?> s) { return s != null && s.toString().startsWith("0hard"); }
 
-    // ---------------- Helpers for selective loop + snapshots ----------------
+    // ---------------- Pass 1: hours ramp ----------------
 
     static class Pass1Result { List<BlockDecision> blocks; int tierUsed; HardMediumSoftScore score; boolean hardIsZero; }
 
-    static Set<Integer> detectHardViolators(List<BlockDecision> blocks, List<DaySlot> daySlots) {
-        Set<Integer> bad = new HashSet<>();
-
-        for (BlockDecision b : blocks) {
-            Integer sd = b.startDay, d = b.days, hds = b.heads;
-            if (d != null && sd != null) {
-                int end = sd + d - 1;
-                if (!(sd >= b.windowStart && end <= b.windowEnd && d >= 1)) bad.add(b.id);
-                int maxLen = b.windowEnd - b.windowStart + 1;
-                if (d > maxLen) bad.add(b.id);
-            }
-            if (hds == null || hds < b.minHeads || hds > b.maxHeads) bad.add(b.id);
-
-            int auto = autoHours(b);
-            if (b.allowed == null || b.allowed.isEmpty() || !b.allowed.contains(auto)) bad.add(b.id);
-
-            if (produced(b) < b.requiredHours) bad.add(b.id);
-            {
-                int prod = produced(b);
-                int over = prod - b.requiredHours;
-                int H = Math.max(1, (hds == null ? 1 : hds));
-                if (over > H * auto) bad.add(b.id);
-            }
-        }
-
-        for (BlockDecision a : blocks) {
-            for (BlockDecision b : blocks) {
-                if (!Objects.equals(a.module, b.module)) continue;
-                if (a.phaseNum + 1 != b.phaseNum) continue;
-                if (a.startDay != null && a.days != null && b.startDay != null) {
-                    if ((a.startDay + a.days - 1) >= b.startDay) {
-                        bad.add(a.id); bad.add(b.id);
-                    }
-                }
-            }
-        }
-
-        Map<Integer, List<BlockDecision>> byDay = new HashMap<>();
-        for (BlockDecision b : blocks) {
-            if (b.startDay == null || b.days == null || b.heads == null) continue;
-            for (int day = b.startDay; day <= b.startDay + b.days - 1; day++) {
-                byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(b);
-            }
-        }
-        for (Map.Entry<Integer, List<BlockDecision>> e : byDay.entrySet()) {
-            Map<String, Integer> sumByOp = new HashMap<>();
-            for (BlockDecision b : e.getValue()) {
-                sumByOp.merge(b.opId, (b.heads == null ? 0 : b.heads), Integer::sum);
-            }
-            for (Map.Entry<String,Integer> s : sumByOp.entrySet()) {
-                String op = s.getKey(); int total = s.getValue();
-                int cap = OP_CAPACITY.getOrDefault(op, Integer.MAX_VALUE);
-                if (total > cap) {
-                    for (BlockDecision b : e.getValue()) {
-                        if (Objects.equals(b.opId, op)) bad.add(b.id);
-                    }
-                }
-            }
-        }
-        return bad;
-    }
-
-    static List<BlockDecision> seedBlocksForTier(List<TaskWindow> windows, Map<Integer,Integer> perBlockTier) {
-        List<BlockDecision> blocks = new ArrayList<>();
-        int bid = 1;
-        for (TaskWindow w : windows) {
-            List<Integer> full = w.fullAllowedSorted();
-            int tier = perBlockTier.getOrDefault(bid, 1);
-            List<Integer> tiered = full.subList(0, Math.min(tier, full.size()));
-
-            int baseline = (tiered.size()==1 && tiered.get(0)==4) ? 4 : 8;
-            int req = w.workloadDays * baseline;
-
-            int seedHours = tiered.get(0);
-            int minH = Math.max(1, w.minHeads);
-            int maxDays = w.endDayId - w.startDayId + 1;
-            int safeDen = Math.max(1, seedHours * minH);
-            int seedDays = Math.max(1, Math.min((req + safeDen - 1) / safeDen, maxDays));
-
-            BlockDecision b = new BlockDecision();
-            b.id = bid;
-            b.module = w.module; b.factory = w.factory;
-            b.phaseId = w.phaseId; b.phaseNum = w.phaseNum;
-            b.opId = w.opId;
-            b.windowStart = w.startDayId; b.windowEnd = w.endDayId;
-            b.requiredHours = req;
-            b.allowed = new ArrayList<>(tiered);
-            b.minHeads = w.minHeads; b.maxHeads = w.maxHeads;
-            b.startDay = w.startDayId; b.heads = minH; b.days = seedDays;
-            b.seedHours = seedHours;
-            blocks.add(b);
-            bid++;
-        }
-        return blocks;
-    }
-
-    static List<BlockDecision> cloneBlocks(List<BlockDecision> src) {
-        List<BlockDecision> out = new ArrayList<>();
-        for (BlockDecision s : src) {
-            BlockDecision b = new BlockDecision();
-            b.id = s.id; b.module = s.module; b.factory = s.factory;
-            b.phaseId = s.phaseId; b.phaseNum = s.phaseNum; b.opId = s.opId;
-            b.windowStart = s.windowStart; b.windowEnd = s.windowEnd;
-            b.requiredHours = s.requiredHours;
-            b.allowed = (s.allowed == null ? null : new ArrayList<>(s.allowed));
-            b.minHeads = s.minHeads; b.maxHeads = s.maxHeads;
-            b.startDay = s.startDay; b.heads = s.heads; b.days = s.days;
-            b.seedHours = s.seedHours;
-            b.pinned = s.pinned; b.pinStart = s.pinStart; b.pinHeads = s.pinHeads; b.pinDays = s.pinDays; b.pinHours = s.pinHours;
-            out.add(b);
-        }
-        return out;
-    }
-
-    // --- write a per-iteration snapshot: assign every seat to employee id=1 ---
-    static void writeScheduleSnapshot(
-            int iterIndex,
-            List<BlockDecision> blocks,
-            List<DaySlot> days,
-            SnapshotCfg cfg
-    ) {
-        try {
-            if (cfg == null) return;
-
-            // pick employee id=1; if absent, pick first non-zero
-            EmployeeFact emp1 = null;
-            for (EmployeeFact e : cfg.employees) { if (e != null && e.id == 1) { emp1 = e; break; } }
-            if (emp1 == null) for (EmployeeFact e : cfg.employees) { if (e != null && e.id != 0) { emp1 = e; break; } }
-            if (emp1 == null) { System.out.println("[snapshot] No employee available to write snapshot. Skipping."); return; }
-
-            // expand blocks to seats and force-assign everyone to emp1
-            Expanded ex = expandToSeats(blocks, days);
-            Pass2Plan snap = new Pass2Plan();
-            snap.days = days;
-            snap.employees = cfg.employees;
-            snap.seatDays = ex.seatDays;
-            snap.seats = ex.seats;
-            if (snap.seats != null) for (CrewSeat s : snap.seats) s.employee = emp1;
-
-            // paths
-            Path orig = Paths.get(cfg.schedulePath);                 // the *existing* Schedule.yaml
-            String baseName = "Schedule" + iterIndex + ".yaml";
-            Path out = (orig.getParent() == null) ? Paths.get(baseName) : orig.getParent().resolve(baseName);
-
-            // ensure directory + ensure the snapshot file exists by copying from the template
-            Path parent = out.getParent();
-            if (parent != null) Files.createDirectories(parent);
-            if (Files.notExists(out)) {
-                Files.copy(orig, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-            System.out.println("[snapshot] Target: " + out.toAbsolutePath());
-
-            // now overwrite assignments in the newly created file
-            ExportSchedule.overwriteScheduleWithAssignments(snap, cfg.planStart, out.toString());
-            System.out.println("[snapshot] Wrote " + out);
-        } catch (Exception ex) {
-            System.out.println("[snapshot] Failed to write snapshot for loop " + iterIndex + ": " + ex.getMessage());
-            ex.printStackTrace(System.out);
-        }
-    }
-
-    // ---------------- Pass 1: SELECTIVE RAMP LOOP with snapshots ----------------
-
-    static Pass1Result solvePass1SelectiveRamp(
-            List<DaySlot> daySlots,
-            List<TaskWindow> windows,
-            SnapshotCfg snapshotCfg
-    ) {
-        // Global value ranges
+    static Pass1Result solvePass1HoursRamp(List<DaySlot> daySlots, List<TaskWindow> windows) {
         int maxHeads = windows.stream().mapToInt(w -> w.maxHeads).max().orElse(1);
         int minHeads = windows.stream().mapToInt(w -> w.minHeads).min().orElse(1);
         int maxWin   = windows.stream().mapToInt(w -> w.endDayId - w.startDayId + 1).max().orElse(1);
@@ -1001,26 +982,44 @@ public class EmployeeSchedule {
         List<Integer> dayCountOptions = new ArrayList<>();
         for (int d=1; d<=maxWin; d++) dayCountOptions.add(d);
 
-        // per-block current tier (start at 1)
-        Map<Integer,Integer> perBlockTier = new HashMap<>();
-        int nBlocks = windows.size();
-        for (int i=1; i<=nBlocks; i++) perBlockTier.put(i, 1);
+        int maxChoices = windows.stream()
+                .mapToInt(w -> (w.allowed == null || w.allowed.isEmpty()) ? 1 : w.allowed.size())
+                .max().orElse(1);
 
-        // compute per-block max tier
-        Map<Integer,Integer> perBlockMaxTier = new HashMap<>();
-        {
-            int id = 1;
+        List<BlockDecision> bestBlocks = new ArrayList<>();
+        HardMediumSoftScore bestScore = null;
+        int bestTier = 1;
+
+        for (int tier=1; tier<=maxChoices; tier++) {
+            List<BlockDecision> blocks = new ArrayList<>();
+            int bid = 1;
             for (TaskWindow w : windows) {
-                perBlockMaxTier.put(id++, Math.max(1, w.fullAllowedSorted().size()));
+                List<Integer> allowedSorted = (w.allowed == null || w.allowed.isEmpty())
+                        ? List.of(8) : w.allowed.stream().sorted().collect(Collectors.toList());
+                List<Integer> tiered = allowedSorted.subList(0, Math.min(tier, allowedSorted.size()));
+
+                int baseline = (tiered.size()==1 && tiered.get(0)==4) ? 4 : 8;
+                int req = w.workloadDays * baseline;
+
+                int seedHours = tiered.get(0);
+                int minH = Math.max(1, w.minHeads);
+                int maxDays = w.endDayId - w.startDayId + 1;
+                int safeDen = Math.max(1, seedHours * minH);
+                int seedDays = Math.max(1, Math.min((req + safeDen - 1) / safeDen, maxDays));
+
+                BlockDecision b = new BlockDecision();
+                b.id = bid++;
+                b.module = w.module; b.factory = w.factory;
+                b.phaseId = w.phaseId; b.phaseNum = w.phaseNum;
+                b.opId = w.opId;
+                b.windowStart = w.startDayId; b.windowEnd = w.endDayId;
+                b.requiredHours = req;
+                b.allowed = new ArrayList<>(tiered);
+                b.minHeads = w.minHeads; b.maxHeads = w.maxHeads;
+                b.startDay = w.startDayId; b.heads = minH; b.days = seedDays;
+                b.seedHours = seedHours;
+                blocks.add(b);
             }
-        }
-
-        Pass1Result best = new Pass1Result();
-        best.score = null; best.blocks = null; best.tierUsed = 1; best.hardIsZero = false;
-
-        int globalMaxLoops = perBlockMaxTier.values().stream().mapToInt(Integer::intValue).max().orElse(1);
-        for (int iter = 1; iter <= globalMaxLoops; iter++) {
-            List<BlockDecision> blocks = seedBlocksForTier(windows, perBlockTier);
 
             Pass1Plan p1 = new Pass1Plan();
             p1.dayIds = dayIds; p1.headOptions = headOptions; p1.dayCountOptions = dayCountOptions;
@@ -1030,100 +1029,26 @@ public class EmployeeSchedule {
                     Pass1Constraints.class, "0hard/*medium/*soft", 30, 60);
             Pass1Plan solved = solver.solve(p1);
 
-            // snapshot for this iteration (using the just-solved blocks)
-            writeScheduleSnapshot(iter, solved.blocks, daySlots, snapshotCfg);
-
-            if (best.score == null ||
-                (hardZero(solved.getScore()) && !hardZero(best.score)) ||
-                (!hardZero(best.score) && solved.getScore().toString().compareTo(best.score.toString()) < 0)) {
-                best.blocks = cloneBlocks(solved.blocks);
-                best.score = solved.getScore();
+            if (bestScore == null || (hardZero(solved.getScore()) && !hardZero(bestScore))) {
+                bestBlocks = solved.blocks; bestScore = solved.getScore(); bestTier = tier;
             }
 
             if (hardZero(solved.getScore())) {
                 // polish
-                System.out.println("Polish Pass 1 at " + nowClock());
                 Solver<Pass1Plan> polish = buildSolver(Pass1Plan.class, new Class<?>[]{ BlockDecision.class },
                         Pass1Constraints.class, null, 20, 60);
                 Pass1Plan polished = polish.solve(solved);
 
-                // write polished snapshot over the same iter index
-                writeScheduleSnapshot(iter, polished.blocks, daySlots, snapshotCfg);
-
                 Pass1Result r = new Pass1Result();
-                r.blocks = polished.blocks; r.tierUsed = -1; r.score = polished.getScore(); r.hardIsZero = true;
-                return r;
-            }
-
-            // Detect hard violators
-            Set<Integer> violators = detectHardViolators(solved.blocks, daySlots);
-
-            // Build next-iteration seed: pin non-violators, tier-up violators
-            boolean anyTierChange = false;
-            List<BlockDecision> next = new ArrayList<>();
-            Map<Integer, BlockDecision> solvedById = solved.blocks.stream()
-                    .collect(Collectors.toMap(b -> b.id, b -> b));
-            int bid = 1;
-            for (TaskWindow w : windows) {
-                BlockDecision solvedB = solvedById.get(bid);
-                List<Integer> full = w.fullAllowedSorted();
-                int curTier = perBlockTier.getOrDefault(bid, 1);
-
-                BlockDecision nb = new BlockDecision();
-                nb.id = bid;
-                nb.module = w.module; nb.factory = w.factory;
-                nb.phaseId = w.phaseId; nb.phaseNum = w.phaseNum;
-                nb.opId = w.opId;
-                nb.windowStart = w.startDayId; nb.windowEnd = w.endDayId;
-                nb.requiredHours = (w.workloadDays * ((full.size()==1 && full.get(0)==4)?4:8));
-                nb.minHeads = w.minHeads; nb.maxHeads = w.maxHeads;
-
-                if (!violators.contains(bid)) {
-                    nb.pinned = true;
-                    nb.pinStart = solvedB.startDay;
-                    nb.pinHeads = solvedB.heads;
-                    nb.pinDays  = solvedB.days;
-                    int h = autoHours(solvedB);
-                    nb.pinHours = h;
-                    nb.allowed = List.of(h);
-                    nb.startDay = nb.pinStart;
-                    nb.heads    = nb.pinHeads;
-                    nb.days     = nb.pinDays;
-                } else {
-                    int maxTier = perBlockMaxTier.get(bid);
-                    int newTier = Math.min(maxTier, curTier + 1);
-                    if (newTier != curTier) {
-                        anyTierChange = true;
-                        perBlockTier.put(bid, newTier);
-                    }
-                    List<Integer> tiered = full.subList(0, Math.min(perBlockTier.get(bid), full.size()));
-                    nb.allowed = new ArrayList<>(tiered);
-
-                    int seedHours = tiered.get(0);
-                    int minH = Math.max(1, w.minHeads);
-                    int maxDays = w.endDayId - w.startDayId + 1;
-                    int safeDen = Math.max(1, seedHours * minH);
-                    int seedDays = Math.max(1, Math.min((nb.requiredHours + safeDen - 1) / safeDen, maxDays));
-                    nb.startDay = w.startDayId; nb.heads = minH; nb.days = seedDays;
-                }
-
-                next.add(nb);
-                bid++;
-            }
-
-            if (!anyTierChange) {
-                Pass1Result r = new Pass1Result();
-                r.blocks = (best.blocks != null ? best.blocks : next);
-                r.tierUsed = -1; r.score = (best.score != null ? best.score : solved.getScore());
-                r.hardIsZero = hardZero(r.score);
+                r.blocks = polished.blocks; r.tierUsed = tier; r.score = polished.getScore(); r.hardIsZero = true;
                 return r;
             }
         }
 
         Pass1Result r = new Pass1Result();
-        r.blocks = best.blocks; r.tierUsed = -1;
-        r.score = (best.score == null) ? HardMediumSoftScore.ofHard(1) : best.score;
-        r.hardIsZero = hardZero(r.score);
+        r.blocks = bestBlocks; r.tierUsed = bestTier;
+        r.score = (bestScore == null) ? HardMediumSoftScore.ofHard(1) : bestScore;
+        r.hardIsZero = false;
         return r;
     }
 
@@ -1139,7 +1064,6 @@ public class EmployeeSchedule {
         Pass2Plan result = solver.solve(p2);
 
         if (hardZero(result.getScore())) {
-            System.out.println("Polish Pass 2 at " + nowClock());
             Solver<Pass2Plan> polish = buildSolver(Pass2Plan.class, new Class<?>[]{ CrewSeat.class },
                     Pass2Constraints.class, null, 20, 60);
             result = polish.solve(result);
@@ -1155,29 +1079,28 @@ public class EmployeeSchedule {
         ParsedEnv env = parseEnv(envPath);
         ParsedSchedule sch = parseSchedule(schedPath, env.opdef);
 
+        // Build blackout calendars based on EnvConfig + plan range
+        buildCalendars(envPath, sch.planStart, sch.planEnd);
+
         int realEmp = Math.max(1, env.employees.size() - 1);
         int totalReq = sch.requiredByKey.values().stream().mapToInt(Integer::intValue).sum();
         TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
 
-        SnapshotCfg snapCfg = new SnapshotCfg();
-        snapCfg.planStart = sch.planStart;
-        snapCfg.schedulePath = schedPath;
-        snapCfg.employees = env.employees;
-
         // ---- PASS 1 ----
-        System.out.println("Start PASS 1 (selective ramp + snapshots) at " + nowClock());
+        System.out.println("Start PASS 1 at " + nowClock());
         long t1 = System.nanoTime();
-        Pass1Result p1 = solvePass1SelectiveRamp(sch.daySlots, sch.windows, snapCfg);
+        Pass1Result p1 = solvePass1HoursRamp(sch.daySlots, sch.windows);
         long t1End = System.nanoTime();
         System.out.printf(
-            "Done PASS 1 at %s | duration=%s | score=%s | blocks=%d%n",
+            "Done PASS 1 at %s | duration=%s | score=%s | tierUsed=%d | blocks=%d%n",
             nowClock(),
             fmt(java.time.Duration.ofNanos(t1End - t1)),
             String.valueOf(p1.score),
+            p1.tierUsed,
             p1.blocks == null ? 0 : p1.blocks.size()
         );
 
-        // Build seats pre-Pass2
+        // Build seats so we can report counts before PASS 2
         Expanded ex = expandToSeats(p1.blocks, sch.daySlots);
         System.out.printf("Expanded to seats: %d seats, %d seat-days%n",
             ex.seats == null ? 0 : ex.seats.size(),
@@ -1185,30 +1108,23 @@ public class EmployeeSchedule {
         );
 
         // ---- PASS 2 ----
-        Pass2Plan finalP2;
-        if (p1.hardIsZero) {
-            System.out.println("Start PASS 2 at " + nowClock());
-            long t2 = System.nanoTime();
-            finalP2 = solvePass2Once(sch.daySlots, env.employees, ex.seats, ex.seatDays);
-            long t2End = System.nanoTime();
-            System.out.printf(
-                "Done PASS 2 at %s | duration=%s | score=%s | seats=%d%n",
-                nowClock(),
-                fmt(java.time.Duration.ofNanos(t2End - t2)),
-                String.valueOf(finalP2.getScore()),
-                finalP2.seats == null ? 0 : finalP2.seats.size()
-            );
-        } else {
-            System.out.println("PASS 1 hard score != 0. Skipping PASS 2 (diagnostic output only).");
-            finalP2 = new Pass2Plan();
-            finalP2.days = sch.daySlots; finalP2.employees = env.employees;
-            finalP2.seats = ex.seats; finalP2.seatDays = ex.seatDays;
-        }
+        System.out.println("Start PASS 2 at " + nowClock());
+        long t2 = System.nanoTime();
+        Pass2Plan finalP2 = solvePass2Once(sch.daySlots, env.employees, ex.seats, ex.seatDays);
+        long t2End = System.nanoTime();
+        System.out.printf(
+            "Done PASS 2 at %s | duration=%s | score=%s | seats=%d%n",
+            nowClock(),
+            fmt(java.time.Duration.ofNanos(t2End - t2)),
+            String.valueOf(finalP2.getScore()),
+            finalP2.seats == null ? 0 : finalP2.seats.size()
+        );
 
         RunResult rr = new RunResult();
         rr.finalPlan = finalP2; rr.planStart = sch.planStart;
         return rr;
     }
+
 
     public static void main(String[] args) throws Exception {
         String envPath = args.length > 0 ? args[0] : "EnvConfig.yaml";
@@ -1216,8 +1132,9 @@ public class EmployeeSchedule {
 
         RunResult rr = solveFromYaml(envPath, schedPath);
 
-        // Final: overwrite original Schedule.yaml with real (Pass 2) assignments
-        ExportSchedule.overwriteScheduleWithAssignments(rr.finalPlan, rr.planStart, schedPath);
+        // Write back to Schedule.yaml
+        ExportSchedule.overwriteScheduleWithAssignments(rr.finalPlan, rr.planStart, schedPath, envPath);
+
         System.out.println("Done.");
     }
 }
