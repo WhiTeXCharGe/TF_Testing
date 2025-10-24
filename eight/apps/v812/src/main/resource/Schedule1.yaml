@@ -4261,16 +4261,6 @@ schedule:
       hour: 16
     plan_flexibility: Flexible
   - worker: w1
-    operation_task: e10p3o1
-    start_date: 2025/09/30
-    end_date: 2025/10/01
-    work_date_list:
-    - date: 2025/09/30
-      hour: 48
-    - date: 2025/10/01
-      hour: 48
-    plan_flexibility: Flexible
-  - worker: w1
     operation_task: e20p2o1
     start_date: 2025/10/16
     end_date: 2025/10/17
@@ -4279,6 +4269,16 @@ schedule:
       hour: 56
     - date: 2025/10/17
       hour: 56
+    plan_flexibility: Flexible
+  - worker: w1
+    operation_task: e10p3o1
+    start_date: 2025/09/30
+    end_date: 2025/10/01
+    work_date_list:
+    - date: 2025/09/30
+      hour: 48
+    - date: 2025/10/01
+      hour: 48
     plan_flexibility: Flexible
   - worker: w1
     operation_task: e24p4o3

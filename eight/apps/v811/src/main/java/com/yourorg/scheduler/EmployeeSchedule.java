@@ -835,6 +835,7 @@ public class EmployeeSchedule {
         int bestTier = 1;
 
         for (int tier=1; tier<=maxChoices; tier++) {
+            System.out.println("Ramp tier" + tier + " at " + nowClock());
             List<BlockDecision> blocks = new ArrayList<>();
             int bid = 1;
             for (TaskWindow w : windows) {
@@ -872,13 +873,15 @@ public class EmployeeSchedule {
             Solver<Pass1Plan> solver = buildSolver(Pass1Plan.class, new Class<?>[]{ BlockDecision.class },
                     Pass1Constraints.class, "0hard/*medium/*soft", 1, 0);
             Pass1Plan solved = solver.solve(p1);
-
+            System.out.printf("Done tier %d at %s | score=%s%n",
+                    tier, nowClock(), String.valueOf(solved.getScore()));
             if (bestScore == null || (hardZero(solved.getScore()) && !hardZero(bestScore))) {
                 bestBlocks = solved.blocks; bestScore = solved.getScore(); bestTier = tier;
             }
 
             if (hardZero(solved.getScore())) {
                 // polish
+                System.out.println("Polish Pass 1 at " + nowClock());
                 Solver<Pass1Plan> polish = buildSolver(Pass1Plan.class, new Class<?>[]{ BlockDecision.class },
                         Pass1Constraints.class, null, 1, 60);
                 Pass1Plan polished = polish.solve(solved);

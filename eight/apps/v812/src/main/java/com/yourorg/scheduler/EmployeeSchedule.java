@@ -1020,6 +1020,7 @@ public class EmployeeSchedule {
 
         int globalMaxLoops = perBlockMaxTier.values().stream().mapToInt(Integer::intValue).max().orElse(1);
         for (int iter = 1; iter <= globalMaxLoops; iter++) {
+            System.out.println("Ramp tier" + iter + " at " + nowClock());
             List<BlockDecision> blocks = seedBlocksForTier(windows, perBlockTier);
 
             Pass1Plan p1 = new Pass1Plan();
@@ -1032,7 +1033,9 @@ public class EmployeeSchedule {
 
             // snapshot for this iteration (using the just-solved blocks)
             writeScheduleSnapshot(iter, solved.blocks, daySlots, snapshotCfg);
-
+            System.out.printf("Done tier %d at %s | score=%s%n",
+                    iter, nowClock(), String.valueOf(solved.getScore()));
+                    
             if (best.score == null ||
                 (hardZero(solved.getScore()) && !hardZero(best.score)) ||
                 (!hardZero(best.score) && solved.getScore().toString().compareTo(best.score.toString()) < 0)) {
@@ -1079,17 +1082,22 @@ public class EmployeeSchedule {
                 nb.minHeads = w.minHeads; nb.maxHeads = w.maxHeads;
 
                 if (!violators.contains(bid)) {
-                    nb.pinned = true;
-                    nb.pinStart = solvedB.startDay;
-                    nb.pinHeads = solvedB.heads;
-                    nb.pinDays  = solvedB.days;
                     int h = autoHours(solvedB);
-                    nb.pinHours = h;
-                    nb.allowed = List.of(h);
-                    nb.startDay = nb.pinStart;
-                    nb.heads    = nb.pinHeads;
-                    nb.days     = nb.pinDays;
+                    nb.allowed = List.of(h);          // freeze only the hours choice
+                    // Seed with the latest good values (not pinned, just initial values)
+                    nb.startDay = solvedB.startDay;
+                    nb.heads    = solvedB.heads;
+                    nb.days     = solvedB.days;
+
+                    // Make sure we don't accidentally pin
+                    nb.pinned   = false;
+                    nb.pinStart = null;
+                    nb.pinHeads = null;
+                    nb.pinDays  = null;
+                    nb.pinHours = null;
+
                 } else {
+                    // ❗ Violator: ramp hours tier up (same as before)
                     int maxTier = perBlockMaxTier.get(bid);
                     int newTier = Math.min(maxTier, curTier + 1);
                     if (newTier != curTier) {
@@ -1105,6 +1113,13 @@ public class EmployeeSchedule {
                     int safeDen = Math.max(1, seedHours * minH);
                     int seedDays = Math.max(1, Math.min((nb.requiredHours + safeDen - 1) / safeDen, maxDays));
                     nb.startDay = w.startDayId; nb.heads = minH; nb.days = seedDays;
+
+                    // No pinning here either
+                    nb.pinned   = false;
+                    nb.pinStart = null;
+                    nb.pinHeads = null;
+                    nb.pinDays  = null;
+                    nb.pinHours = null;
                 }
 
                 next.add(nb);
