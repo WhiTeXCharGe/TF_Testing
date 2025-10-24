@@ -567,11 +567,12 @@ public class EmployeeSchedule {
                 .join(f.forEach(BlockDecision.class),
                     Joiners.filtering((DaySlot d, BlockDecision b) ->
                         b.startDay != null && b.days != null &&
-                        b.startDay <= d.id && d.id <= (b.startDay + b.days - 1)))
+                        b.startDay <= d.id && d.id <= (b.startDay + b.days - 1) &&
+                        isWorkingDay(d.id, b.factory))) // ← ensure we only count working days
                 .groupBy(
                     (DaySlot d, BlockDecision b) -> d.id,
                     (DaySlot d, BlockDecision b) -> b.opId,
-                    ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> 1)   // <-- FIX
+                    ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> 1)
                 )
                 .filter((dayId, opId, n) -> n > 1)
                 .penalize(HardMediumSoftScore.ONE_MEDIUM,
@@ -1092,10 +1093,13 @@ public class EmployeeSchedule {
 
             seats.add(cs);
 
-            // exact seat-days with per-day hours (do not skip weekends; violations are allowed but will be reported)
+            // exact seat-days with per-day hours
             for (Map.Entry<Integer,Integer> e : fa.hoursByDay.entrySet()) {
                 int did = e.getKey();
                 int hrs = e.getValue();
+
+                if (!isWorkingDay(did, factory)) continue;
+
                 DaySlot dd = byId.get(did);
                 if (dd != null) seatDays.add(new SeatDay(seatKey, dd, hrs, factory));
             }
