@@ -11,6 +11,7 @@ com\yourorg\scheduler\EmployeeSchedule$ParsedSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$Pass1Result.class
 com\yourorg\scheduler\EmployeeSchedule$SeatDay.class
 com\yourorg\scheduler\EmployeeSchedule$Pass1Constraints.class
+com\yourorg\scheduler\EmployeeSchedule$FixedAssign.class
 com\yourorg\scheduler\EmployeeSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$Pass1Plan.class
 com\yourorg\scheduler\EmployeeSchedule$Pass2Plan.class

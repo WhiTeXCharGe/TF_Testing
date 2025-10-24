@@ -194,6 +194,10 @@ public class EmployeeSchedule {
         @PlanningVariable
         public EmployeeFact employee;
 
+        // EXPLAIN: If `pinnedWid` is non-null, this seat must be assigned to that worker.
+        public boolean pinned = false;
+        public String pinnedWid = null;
+
         public CrewSeat() {}
     }
 
@@ -394,17 +398,17 @@ public class EmployeeSchedule {
         }
 
         // worker_list -> individual worker off (keyed by worker "id"/wid)
-    List<Map<String,Object>> workers = (List<Map<String,Object>>) env.getOrDefault("worker_list", List.of());
-    for (Map<String,Object> w : workers) {
-        String wid = String.valueOf(w.get("id"));
-        Set<Integer> off = new HashSet<>();
-        List<Object> dates = (List<Object>) w.getOrDefault("unavailable_dates", List.of());
-        for (Object o : dates) {
-            Integer did = dayIdFromDate(planStart, String.valueOf(o));
-            if (did != null) off.add(did);
+        List<Map<String,Object>> workers = (List<Map<String,Object>>) env.getOrDefault("worker_list", List.of());
+        for (Map<String,Object> w : workers) {
+            String wid = String.valueOf(w.get("id"));
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) w.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.workerOffByWid.put(wid, off);
         }
-        CAL.workerOffByWid.put(wid, off);
-    }
     }
 
     // Is this a *working* day for the given fab?
@@ -641,6 +645,10 @@ public class EmployeeSchedule {
                 dailyCap12h(f),
                 atLeastOneManagerPerBlock(f),
                 employeeAvailableOnSeatDays(f),
+
+                // EXPLAIN: This hard constraint locks a pinned seat to its original worker.
+                respectPinnedAssignments(f),
+
                 softSameCompanyPairs(f),
                 softEncourageSkillVariety(f),
                 softBalanceBlockAvgSkill(f),
@@ -689,18 +697,35 @@ public class EmployeeSchedule {
         }
 
         Constraint employeeAvailableOnSeatDays(ConstraintFactory f) {
-        return f.forEach(EmployeeSchedule.SeatDay.class)
-            .join(f.forEach(EmployeeSchedule.CrewSeat.class),
-                Joiners.equal((EmployeeSchedule.SeatDay sd) -> sd.seatKey,
-                                (EmployeeSchedule.CrewSeat cs) -> cs.seatKey))
-            .filter((sd, cs) -> !isUnassigned(cs.employee))
-            .filter((sd, cs) -> {
-                String wid = cs.employee.wid;
-                Set<Integer> off = CAL.workerOffByWid.getOrDefault(wid, Set.of());
-                return off.contains(sd.day.id); // if true -> violation
-            })
-            .penalize(HardMediumSoftScore.ONE_HARD)
-            .asConstraint("p2-worker-unavailable-day");
+            return f.forEach(EmployeeSchedule.SeatDay.class)
+                .join(f.forEach(EmployeeSchedule.CrewSeat.class),
+                    Joiners.equal((EmployeeSchedule.SeatDay sd) -> sd.seatKey,
+                                  (EmployeeSchedule.CrewSeat cs) -> cs.seatKey))
+                .filter((sd, cs) -> {
+                    // Personal off
+                    String wid = cs.employee.wid;
+                    Set<Integer> personalOff = CAL.workerOffByWid.getOrDefault(wid, Set.of());
+
+                    // // Company off (Pass 2 scope)
+                    // String compId = company(cs.employee); // assumes employee.workerCompany stores the company id
+                    // Set<Integer> companyOff = CAL.workerCompanyOff.getOrDefault(compId, Set.of());
+
+                    // EXPLAIN: Keep the reference to `companyOff` in the return even if commented above for clarity.
+                    Set<Integer> companyOff = Set.of();
+                    return personalOff.contains(sd.day.id) || companyOff.contains(sd.day.id);
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD)
+                .asConstraint("p2-worker-unavailable-day");
+        }
+
+        // EXPLAIN: If a seat was generated from a Fixed assignment, it carries `pinned=true` and `pinnedWid`.
+        //          The solver must keep the same worker on that seat.
+        Constraint respectPinnedAssignments(ConstraintFactory f) {
+            return f.forEach(CrewSeat.class)
+                .filter(s -> s.pinned)
+                .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
+                .penalize(HardMediumSoftScore.ONE_HARD)
+                .asConstraint("p2-hard-respect-pinned-assignments");
         }
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
@@ -761,11 +786,26 @@ public class EmployeeSchedule {
     }
     static class ParsedEnv {
         Map<String,OpDef> opdef; List<EmployeeFact> employees;
+
+        // EXPLAIN: helper lookup so we can find the EmployeeFact by worker id (wid) when pinning.
+        Map<String, EmployeeFact> byWid;
     }
     static class ParsedSchedule {
         LocalDate planStart; LocalDate planEnd;
         List<DaySlot> daySlots; List<TaskWindow> windows;
         Map<String,Integer> requiredByKey;
+
+        // EXPLAIN: Fixed assignments parsed from Schedule.yaml; key (module|op) -> total fixed hours.
+        List<FixedAssign> fixedRows;
+        Map<String,Integer> fixedHoursByKey;
+    }
+
+    // EXPLAIN: Represents one Fixed row from Schedule.yaml turned into day-indexed hours.
+    static class FixedAssign {
+        String module; String opId; String factory; String wid;
+        int startDayId; int endDayId;
+        Map<Integer,Integer> hoursByDay = new HashMap<>(); // dayId -> hours
+        String phaseId; int phaseNum;
     }
 
     @SuppressWarnings("unchecked")
@@ -800,6 +840,7 @@ public class EmployeeSchedule {
         employees.add(new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, ""));
         List<Map<String,Object>> workers = (List<Map<String,Object>>) env.getOrDefault("worker_list", List.of());
         int eid = 1;
+        Map<String, EmployeeFact> byWid = new HashMap<>();
         for (Map<String,Object> w : workers) {
             String wid = safeStr(w.get("id"));
             String name = safeStr(w.get("name"));
@@ -810,7 +851,9 @@ public class EmployeeSchedule {
             for (Map.Entry<String,Object> e : smap.entrySet()) {
                 skills.put(e.getKey(), parseInt(e.getValue(), 0));
             }
-            employees.add(new EmployeeFact(eid++, wid, name, skills, isMgr, company));
+            EmployeeFact ef = new EmployeeFact(eid++, wid, name, skills, isMgr, company);
+            employees.add(ef);
+            byWid.put(wid, ef);
         }
 
         // capacities
@@ -837,7 +880,7 @@ public class EmployeeSchedule {
         }
 
         ParsedEnv out = new ParsedEnv();
-        out.opdef = opdef; out.employees = employees;
+        out.opdef = opdef; out.employees = employees; out.byWid = byWid;
         return out;
     }
 
@@ -894,9 +937,63 @@ public class EmployeeSchedule {
             }
         }
 
+        // EXPLAIN: Parse Fixed assignments (if any) from `assignment_list` so we can pin them in Pass 2
+        //          and subtract their hours from Pass 1 requirements.
+        List<FixedAssign> fixedRows = new ArrayList<>();
+        Map<String,Integer> fixedHoursByKey = new HashMap<>(); // (module|op) -> hours
+
+        List<Map<String,Object>> asgs = (List<Map<String,Object>>) s.getOrDefault("assignment_list", List.of());
+        for (Map<String,Object> a : asgs) {
+            String flex = safeStr(a.get("plan_flexibility"));
+            if (!"fixed".equalsIgnoreCase(flex)) continue;
+
+            String opTask = safeStr(a.get("operation_task")); // e.g., e16p4o1
+            // parse module and opId
+            int idx = opTask.indexOf("p");
+            String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
+            String pAndO = (idx > 0) ? opTask.substring(idx) : "";
+            // opId is like p4o1 -> keep as is
+            String opId = pAndO;
+
+            String wid = safeStr(a.get("worker"));
+            LocalDate sd = a.get("start_date") == null ? null : LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+            LocalDate ed = a.get("end_date")   == null ? null : LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+            int sId = sd == null ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
+            int eId = ed == null ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
+
+            Map<Integer,Integer> byDay = new HashMap<>();
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            List<Map<String,Object>> wdl = (List<Map<String,Object>>) a.getOrDefault(wdKey, List.of());
+            for (Map<String,Object> item : wdl) {
+                LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
+                int did = (int)(d.toEpochDay() - start.toEpochDay());
+                int h = parseInt(item.get("hour"), 0);
+                byDay.merge(did, h, Integer::sum);
+                fixedHoursByKey.merge(module + "|" + opId, h, Integer::sum);
+            }
+
+            // phase info (if we can infer)
+            String phId = "";
+            int phNum = 0;
+            try {
+                String pPart = opId.split("o", 2)[0]; // p4
+                phId = pPart;
+                phNum = phaseNumFromId(pPart);
+            } catch (Exception ignore) {}
+
+            FixedAssign fa = new FixedAssign();
+            fa.module = module; fa.opId = opId; fa.wid = wid;
+            fa.startDayId = sId; fa.endDayId = eId;
+            fa.hoursByDay = byDay;
+            fa.phaseId = phId; fa.phaseNum = phNum;
+            // factory can be resolved later when we join with windows; leave null here
+            fixedRows.add(fa);
+        }
+
         ParsedSchedule out = new ParsedSchedule();
         out.planStart = start; out.planEnd = end;
         out.daySlots = days; out.windows = windows; out.requiredByKey = required;
+        out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
         return out;
     }
 
@@ -941,6 +1038,65 @@ public class EmployeeSchedule {
         return ex;
     }
 
+    // EXPLAIN: Build pinned seats directly from Fixed rows (exact days & hours), assigned to the given worker.
+    static Expanded expandPinnedSeats(ParsedSchedule sch, ParsedEnv env, List<TaskWindow> windows, List<DaySlot> days) {
+        Map<Integer, DaySlot> byId = days.stream().collect(Collectors.toMap(d -> d.id, d -> d));
+        // quick lookup for factory by module (from windows)
+        Map<String,String> moduleToFactory = new HashMap<>();
+        Map<String,String> moduleOpToPhase = new HashMap<>();
+        Map<String,Integer> moduleOpToPhaseNum = new HashMap<>();
+        for (TaskWindow w : windows) {
+            moduleToFactory.put(w.module, w.factory);
+            moduleOpToPhase.put(w.module + "|" + w.opId, w.phaseId);
+            moduleOpToPhaseNum.put(w.module + "|" + w.opId, w.phaseNum);
+        }
+
+        List<CrewSeat> seats = new ArrayList<>();
+        List<SeatDay> seatDays = new ArrayList<>();
+        int sid = 1_000_000; // keep pinned IDs separate from flexible seats
+
+        for (FixedAssign fa : sch.fixedRows) {
+            String factory = moduleToFactory.getOrDefault(fa.module, null);
+            String seatKey = fa.module + "|" + fa.opId + "|PIN|" + fa.wid + "|d" + fa.startDayId;
+            CrewSeat cs = new CrewSeat();
+            cs.id = sid++;
+            cs.module = fa.module; cs.factory = factory;
+            cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
+            cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
+            cs.opId = fa.opId; cs.startDayId = fa.startDayId < 0 ? 0 : fa.startDayId;
+            // derive days count from explicit map
+            int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(cs.startDayId);
+            int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(cs.startDayId);
+            cs.days = maxDid - minDid + 1;
+            // if multiple hours across days, store the max; real hours will be in seatDays
+            cs.hours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
+            cs.seatIndex = 0;
+            cs.seatKey = seatKey;
+            cs.blockId = -1; // not from Pass 1
+            cs.pinned = true;
+            cs.pinnedWid = fa.wid;
+
+            // assign employee object
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            cs.employee = ef;
+
+            seats.add(cs);
+
+            // exact seat-days with per-day hours (do not skip weekends; violations are allowed but will be reported)
+            for (Map.Entry<Integer,Integer> e : fa.hoursByDay.entrySet()) {
+                int did = e.getKey();
+                int hrs = e.getValue();
+                DaySlot dd = byId.get(did);
+                if (dd != null) seatDays.add(new SeatDay(seatKey, dd, hrs, factory));
+            }
+        }
+
+        Expanded ex = new Expanded();
+        ex.seats = seats; ex.seatDays = seatDays;
+        return ex;
+    }
+
     // ---------------- Solver builders ----------------
 
     static <S> Solver<S> buildSolver(Class<S> solutionClass,
@@ -963,7 +1119,7 @@ public class EmployeeSchedule {
         cfg.withTerminationConfig(term);
 
         return SolverFactory.<S>create(cfg).buildSolver();
-        }
+    }
 
     static boolean hardZero(Score<?> s) { return s != null && s.toString().startsWith("0hard"); }
 
@@ -971,7 +1127,9 @@ public class EmployeeSchedule {
 
     static class Pass1Result { List<BlockDecision> blocks; int tierUsed; HardMediumSoftScore score; boolean hardIsZero; }
 
-    static Pass1Result solvePass1HoursRamp(List<DaySlot> daySlots, List<TaskWindow> windows) {
+    // EXPLAIN: Accept `fixedHoursByKey` so Pass 1 only plans the remaining hours.
+    static Pass1Result solvePass1HoursRamp(List<DaySlot> daySlots, List<TaskWindow> windows,
+                                           Map<String,Integer> fixedHoursByKey) {
         int maxHeads = windows.stream().mapToInt(w -> w.maxHeads).max().orElse(1);
         int minHeads = windows.stream().mapToInt(w -> w.minHeads).min().orElse(1);
         int maxWin   = windows.stream().mapToInt(w -> w.endDayId - w.startDayId + 1).max().orElse(1);
@@ -991,6 +1149,7 @@ public class EmployeeSchedule {
         int bestTier = 1;
 
         for (int tier=1; tier<=maxChoices; tier++) {
+            System.out.println("Ramp tier" + tier + " at " + nowClock());
             List<BlockDecision> blocks = new ArrayList<>();
             int bid = 1;
             for (TaskWindow w : windows) {
@@ -999,7 +1158,14 @@ public class EmployeeSchedule {
                 List<Integer> tiered = allowedSorted.subList(0, Math.min(tier, allowedSorted.size()));
 
                 int baseline = (tiered.size()==1 && tiered.get(0)==4) ? 4 : 8;
-                int req = w.workloadDays * baseline;
+                int totalReq = w.workloadDays * baseline;
+                int fixed = fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
+                int req = Math.max(0, totalReq - fixed); // EXPLAIN: only plan what's not already pinned
+
+                if (req == 0) {
+                    // EXPLAIN: nothing to plan for this window; skip creating a block
+                    continue;
+                }
 
                 int seedHours = tiered.get(0);
                 int minH = Math.max(1, w.minHeads);
@@ -1029,12 +1195,15 @@ public class EmployeeSchedule {
                     Pass1Constraints.class, "0hard/*medium/*soft", 30, 60);
             Pass1Plan solved = solver.solve(p1);
 
+            System.out.printf("Done tier %d at %s | score=%s%n",
+                    tier, nowClock(), String.valueOf(solved.getScore()));
             if (bestScore == null || (hardZero(solved.getScore()) && !hardZero(bestScore))) {
                 bestBlocks = solved.blocks; bestScore = solved.getScore(); bestTier = tier;
             }
 
             if (hardZero(solved.getScore())) {
                 // polish
+                System.out.println("Polish Pass 1 at " + nowClock());
                 Solver<Pass1Plan> polish = buildSolver(Pass1Plan.class, new Class<?>[]{ BlockDecision.class },
                         Pass1Constraints.class, null, 20, 60);
                 Pass1Plan polished = polish.solve(solved);
@@ -1089,7 +1258,7 @@ public class EmployeeSchedule {
         // ---- PASS 1 ----
         System.out.println("Start PASS 1 at " + nowClock());
         long t1 = System.nanoTime();
-        Pass1Result p1 = solvePass1HoursRamp(sch.daySlots, sch.windows);
+        Pass1Result p1 = solvePass1HoursRamp(sch.daySlots, sch.windows, sch.fixedHoursByKey);
         long t1End = System.nanoTime();
         System.out.printf(
             "Done PASS 1 at %s | duration=%s | score=%s | tierUsed=%d | blocks=%d%n",
@@ -1101,16 +1270,30 @@ public class EmployeeSchedule {
         );
 
         // Build seats so we can report counts before PASS 2
-        Expanded ex = expandToSeats(p1.blocks, sch.daySlots);
-        System.out.printf("Expanded to seats: %d seats, %d seat-days%n",
-            ex.seats == null ? 0 : ex.seats.size(),
-            ex.seatDays == null ? 0 : ex.seatDays.size()
+        Expanded exFlex = expandToSeats(p1.blocks, sch.daySlots);
+
+        // EXPLAIN: Build pinned seats from Fixed rows and merge them with flexible seats.
+        Expanded exPinned = expandPinnedSeats(sch, env, sch.windows, sch.daySlots);
+
+        List<CrewSeat> allSeats = new ArrayList<>();
+        allSeats.addAll(exPinned.seats);
+        allSeats.addAll(exFlex.seats);
+
+        List<SeatDay> allSeatDays = new ArrayList<>();
+        allSeatDays.addAll(exPinned.seatDays);
+        allSeatDays.addAll(exFlex.seatDays);
+
+        System.out.printf("Expanded to seats: %d seats (pinned=%d, flexible=%d), %d seat-days%n",
+            allSeats.size(),
+            exPinned.seats.size(),
+            exFlex.seats.size(),
+            allSeatDays.size()
         );
 
         // ---- PASS 2 ----
         System.out.println("Start PASS 2 at " + nowClock());
         long t2 = System.nanoTime();
-        Pass2Plan finalP2 = solvePass2Once(sch.daySlots, env.employees, ex.seats, ex.seatDays);
+        Pass2Plan finalP2 = solvePass2Once(sch.daySlots, env.employees, allSeats, allSeatDays);
         long t2End = System.nanoTime();
         System.out.printf(
             "Done PASS 2 at %s | duration=%s | score=%s | seats=%d%n",
