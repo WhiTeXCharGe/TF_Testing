@@ -901,11 +901,15 @@ public class EmployeeSchedule {
         List<TaskWindow> windows = new ArrayList<>();
         Map<String,Integer> required = new HashMap<>();
 
-        List<Map<String,Object>> wfTasks = (List<Map<String,Object>>) s.getOrDefault("workflow_task_list", List.of());
+        Object wfObj = s.get("workflow_task_list");
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
         for (Map<String,Object> wf : wfTasks) {
             String module = safeStr(wf.get("id"));
             String fab = safeStr(wf.get("fab"));
-            List<Map<String,Object>> phases = (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of());
+            Object phasesObj = wf.get("phase_task_list");
+            @SuppressWarnings("unchecked")
+            List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
             for (Map<String,Object> ph : phases) {
                 String phId = safeStr(ph.get("phase"));
                 int phNum = phaseNumFromId(phId);
@@ -914,7 +918,9 @@ public class EmployeeSchedule {
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
                 int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
 
-                List<Map<String,Object>> opTasks = (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of());
+                Object opsObj = ph.get("operation_task_list");
+                @SuppressWarnings("unchecked")
+                List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
                     String opId = safeStr(ot.get("operation"));
                     int workloadDays = parseInt(ot.get("workload_days"), 0);
@@ -942,18 +948,24 @@ public class EmployeeSchedule {
         List<FixedAssign> fixedRows = new ArrayList<>();
         Map<String,Integer> fixedHoursByKey = new HashMap<>(); // (module|op) -> hours
 
-        List<Map<String,Object>> asgs = (List<Map<String,Object>>) s.getOrDefault("assignment_list", List.of());
+        Object asgObj = s.get("assignment_list");
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> asgs = (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
+
         for (Map<String,Object> a : asgs) {
+            // handle both "work_date_list" and the common typo "work_date_lsit"
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            Object wdObj = a.get(wdKey);
+            @SuppressWarnings("unchecked")
+            List<Map<String,Object>> wdl = (wdObj instanceof List) ? (List<Map<String,Object>>) wdObj : List.of();
+
             String flex = safeStr(a.get("plan_flexibility"));
             if (!"fixed".equalsIgnoreCase(flex)) continue;
 
             String opTask = safeStr(a.get("operation_task")); // e.g., e16p4o1
-            // parse module and opId
             int idx = opTask.indexOf("p");
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
-            String pAndO = (idx > 0) ? opTask.substring(idx) : "";
-            // opId is like p4o1 -> keep as is
-            String opId = pAndO;
+            String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
             String wid = safeStr(a.get("worker"));
             LocalDate sd = a.get("start_date") == null ? null : LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
@@ -962,8 +974,6 @@ public class EmployeeSchedule {
             int eId = ed == null ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
             Map<Integer,Integer> byDay = new HashMap<>();
-            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
-            List<Map<String,Object>> wdl = (List<Map<String,Object>>) a.getOrDefault(wdKey, List.of());
             for (Map<String,Object> item : wdl) {
                 LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
                 int did = (int)(d.toEpochDay() - start.toEpochDay());
@@ -972,7 +982,7 @@ public class EmployeeSchedule {
                 fixedHoursByKey.merge(module + "|" + opId, h, Integer::sum);
             }
 
-            // phase info (if we can infer)
+            // phase info (best-effort)
             String phId = "";
             int phNum = 0;
             try {
@@ -986,7 +996,6 @@ public class EmployeeSchedule {
             fa.startDayId = sId; fa.endDayId = eId;
             fa.hoursByDay = byDay;
             fa.phaseId = phId; fa.phaseNum = phNum;
-            // factory can be resolved later when we join with windows; leave null here
             fixedRows.add(fa);
         }
 
