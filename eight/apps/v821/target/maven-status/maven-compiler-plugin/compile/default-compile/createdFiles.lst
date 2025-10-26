@@ -13,6 +13,7 @@ com\yourorg\scheduler\EmployeeSchedule$SeatDay.class
 com\yourorg\scheduler\EmployeeSchedule$Pass1Constraints.class
 com\yourorg\scheduler\EmployeeSchedule$FixedAssign.class
 com\yourorg\scheduler\EmployeeSchedule.class
+com\yourorg\scheduler\EmployeeSchedule$FixedHeadDay.class
 com\yourorg\scheduler\EmployeeSchedule$Pass1Plan.class
 com\yourorg\scheduler\EmployeeSchedule$Pass2Plan.class
 com\yourorg\scheduler\ExportSchedule.class

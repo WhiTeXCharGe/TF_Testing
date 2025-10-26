@@ -132,7 +132,7 @@ environment:
   - id: w1
     name: AA
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o1: 2
       p2o1: 3
@@ -155,7 +155,7 @@ environment:
   - id: w3
     name: AC
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o3: 4
       p2o3: 5
@@ -166,7 +166,7 @@ environment:
   - id: w4
     name: AD
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o1: 5
       p3o1: 1
@@ -189,7 +189,7 @@ environment:
   - id: w6
     name: AF
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o3: 2
       p3o3: 3
@@ -201,7 +201,7 @@ environment:
   - id: w7
     name: AG
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 3
       p4o1: 4
@@ -212,7 +212,7 @@ environment:
   - id: w8
     name: AH
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o2: 4
       p4o2: 5
@@ -224,7 +224,7 @@ environment:
   - id: w9
     name: AI
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 5
       p4o3: 1
@@ -247,7 +247,7 @@ environment:
   - id: w11
     name: AK
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o2: 2
       p1o2: 3
@@ -258,7 +258,7 @@ environment:
   - id: w12
     name: AL
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o3: 3
       p1o3: 4
@@ -270,7 +270,7 @@ environment:
   - id: w13
     name: AM
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o1: 4
       p2o1: 5
@@ -281,7 +281,7 @@ environment:
   - id: w14
     name: AN
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o2: 5
       p2o2: 1
@@ -293,7 +293,7 @@ environment:
   - id: w15
     name: AO
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o3: 1
       p2o3: 2
@@ -316,7 +316,7 @@ environment:
   - id: w17
     name: AQ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o2: 3
       p3o2: 4
@@ -327,7 +327,7 @@ environment:
   - id: w18
     name: AR
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o3: 4
       p3o3: 5
@@ -339,7 +339,7 @@ environment:
   - id: w19
     name: AS
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 5
       p4o1: 1
@@ -350,7 +350,7 @@ environment:
   - id: w20
     name: AT
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o2: 1
       p4o2: 2
@@ -362,7 +362,7 @@ environment:
   - id: w21
     name: AU
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 2
       p4o3: 3
@@ -385,7 +385,7 @@ environment:
   - id: w23
     name: AW
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o2: 4
       p1o2: 5
@@ -396,7 +396,7 @@ environment:
   - id: w24
     name: AX
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o3: 5
       p1o3: 1
@@ -408,7 +408,7 @@ environment:
   - id: w25
     name: AY
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o1: 1
       p2o1: 2
@@ -419,7 +419,7 @@ environment:
   - id: w26
     name: AZ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o2: 2
       p2o2: 3
@@ -442,7 +442,7 @@ environment:
   - id: w28
     name: BB
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o1: 4
       p3o1: 5
@@ -454,7 +454,7 @@ environment:
   - id: w29
     name: BC
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o2: 5
       p3o2: 1
@@ -477,7 +477,7 @@ environment:
   - id: w31
     name: BE
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 2
       p4o1: 3
@@ -488,7 +488,7 @@ environment:
   - id: w32
     name: BF
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o2: 3
       p4o2: 4
@@ -500,7 +500,7 @@ environment:
   - id: w33
     name: BG
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 4
       p4o3: 5
@@ -523,7 +523,7 @@ environment:
   - id: w35
     name: BI
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o2: 1
       p1o2: 2
@@ -534,7 +534,7 @@ environment:
   - id: w36
     name: BJ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o3: 2
       p1o3: 3
@@ -557,7 +557,7 @@ environment:
   - id: w38
     name: BL
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o2: 4
       p2o2: 5
@@ -569,7 +569,7 @@ environment:
   - id: w39
     name: BM
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o3: 5
       p2o3: 1
@@ -592,7 +592,7 @@ environment:
   - id: w41
     name: BO
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o2: 2
       p3o2: 3
@@ -603,7 +603,7 @@ environment:
   - id: w42
     name: BP
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o3: 3
       p3o3: 4
@@ -615,7 +615,7 @@ environment:
   - id: w43
     name: BQ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 4
       p4o1: 5
@@ -638,7 +638,7 @@ environment:
   - id: w45
     name: BS
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 1
       p4o3: 2
@@ -649,7 +649,7 @@ environment:
   - id: w46
     name: BT
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o1: 2
       p1o1: 3
@@ -661,7 +661,7 @@ environment:
   - id: w47
     name: BU
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o2: 3
       p1o2: 4
@@ -695,7 +695,7 @@ environment:
   - id: w50
     name: BX
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o2: 1
       p2o2: 2
@@ -707,7 +707,7 @@ environment:
   - id: w51
     name: BY
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o3: 2
       p2o3: 3
@@ -718,7 +718,7 @@ environment:
   - id: w52
     name: BZ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o1: 3
       p3o1: 4
@@ -730,7 +730,7 @@ environment:
   - id: w53
     name: CA
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o2: 4
       p3o2: 5
@@ -753,7 +753,7 @@ environment:
   - id: w55
     name: CC
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 1
       p4o1: 2
@@ -764,7 +764,7 @@ environment:
   - id: w56
     name: CD
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o2: 2
       p4o2: 3
@@ -776,7 +776,7 @@ environment:
   - id: w57
     name: CE
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 3
       p4o3: 4
@@ -799,7 +799,7 @@ environment:
   - id: w59
     name: CG
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p4o2: 5
       p1o2: 1
@@ -822,7 +822,7 @@ environment:
   - id: w61
     name: CI
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o1: 2
       p2o1: 3
@@ -845,7 +845,7 @@ environment:
   - id: w63
     name: CK
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o3: 4
       p2o3: 5
@@ -856,7 +856,7 @@ environment:
   - id: w64
     name: CL
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o1: 5
       p3o1: 1
@@ -879,7 +879,7 @@ environment:
   - id: w66
     name: CN
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o3: 2
       p3o3: 3
@@ -891,7 +891,7 @@ environment:
   - id: w67
     name: CO
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 3
       p4o1: 4
@@ -914,7 +914,7 @@ environment:
   - id: w69
     name: CQ
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o3: 5
       p4o3: 1
@@ -960,7 +960,7 @@ environment:
   - id: w73
     name: CU
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o1: 4
       p2o1: 5
@@ -971,7 +971,7 @@ environment:
   - id: w74
     name: CV
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p1o2: 5
       p2o2: 1
@@ -1006,7 +1006,7 @@ environment:
   - id: w77
     name: CY
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p2o2: 3
       p3o2: 4
@@ -1029,7 +1029,7 @@ environment:
   - id: w79
     name: DA
     worker_company: c2
-    is_manager: false
+    is_manager: true
     skill_map:
       p3o1: 5
       p4o1: 1

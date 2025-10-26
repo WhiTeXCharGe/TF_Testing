@@ -137,6 +137,17 @@ public class EmployeeSchedule {
         public BlockDecision() {}
     }
 
+    // NEW: fact used in Pass 1 so capacity constraint accounts for Fixed boxes.
+    public static class FixedHeadDay {
+        public int dayId;
+        public String opId;
+        public int heads;
+        public FixedHeadDay() {}
+        public FixedHeadDay(int dayId, String opId, int heads) {
+            this.dayId = dayId; this.opId = opId; this.heads = heads;
+        }
+    }
+
     @PlanningSolution
     public static class Pass1Plan {
         @ValueRangeProvider(id = "vrDayIds")
@@ -153,6 +164,10 @@ public class EmployeeSchedule {
 
         @ProblemFactCollectionProperty
         public List<DaySlot> daySlots;
+
+        // NEW: fixed heads to consider (derived from Fixed assignments)
+        @ProblemFactCollectionProperty
+        public List<FixedHeadDay> fixedHeadDays;
 
         @PlanningEntityCollectionProperty
         public List<BlockDecision> blocks;
@@ -432,7 +447,27 @@ public class EmployeeSchedule {
         return n;
     }
 
-
+    // EXPLAIN: Convert Fixed rows to per-(dayId, opId) heads for Pass 1 capacity.
+    static List<FixedHeadDay> buildFixedHeadDays(List<FixedAssign> fixedRows) {
+        Map<String, Integer> cnt = new HashMap<>(); // key: dayId|opId -> heads
+        for (FixedAssign fa : fixedRows) {
+            for (Map.Entry<Integer,Integer> e : fa.hoursByDay.entrySet()) {
+                int did = e.getKey();
+                int hrs = e.getValue();
+                if (hrs <= 0) continue;
+                String key = did + "|" + fa.opId;
+                cnt.merge(key, 1, Integer::sum);
+            }
+        }
+        List<FixedHeadDay> out = new ArrayList<>();
+        for (Map.Entry<String,Integer> en : cnt.entrySet()) {
+            String[] parts = en.getKey().split("\\|", 2);
+            int did = Integer.parseInt(parts[0]);
+            String opId = parts[1];
+            out.add(new FixedHeadDay(did, opId, en.getValue()));
+        }
+        return out;
+    }
     // ---------------- Constraints ----------------
 
     // Pass 1
@@ -545,20 +580,32 @@ public class EmployeeSchedule {
                 .asConstraint("p1-phase-order");
         }
 
+        // NEW: capacity now includes fixed heads for the same (day, op).
         Constraint dailyHeadCapacityByOp(ConstraintFactory f) {
-            return f.forEach(DaySlot.class)
+            var flex = f.forEach(DaySlot.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.filtering((DaySlot d, BlockDecision b) ->
                         b.startDay != null && b.days != null &&
                         b.startDay <= d.id && d.id <= (b.startDay + b.days - 1) &&
                         isWorkingDay(d.id, b.factory)))
-                .groupBy((DaySlot d, BlockDecision b) -> d.id,
-                         (DaySlot d, BlockDecision b) -> b.opId,
-                         ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> b.heads == null ? 0 : b.heads))
-                .filter((dayId, opId, totalHeads) -> totalHeads >
-                        OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE))
-                .penalize(HardMediumSoftScore.ONE_HARD, (dayId, opId, totalHeads) ->
-                        totalHeads - OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE))
+                .groupBy(
+                    (DaySlot d, BlockDecision b) -> d.id,
+                    (DaySlot d, BlockDecision b) -> b.opId,
+                    ConstraintCollectors.sum((DaySlot d, BlockDecision b) -> b.heads == null ? 0 : b.heads)
+                );
+
+            return flex
+                .join(f.forEach(FixedHeadDay.class),
+                    Joiners.equal((Integer dayId, String opId, Integer flexHeads) -> dayId,
+                                  (FixedHeadDay fh) -> fh.dayId),
+                    Joiners.equal((Integer dayId, String opId, Integer flexHeads) -> opId,
+                                  (FixedHeadDay fh) -> fh.opId))
+                .penalize(HardMediumSoftScore.ONE_HARD,
+                    (dayId, opId, flexHeads, fh) -> {
+                        int total = flexHeads + fh.heads;
+                        int cap = OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE);
+                        return Math.max(0, total - cap);
+                    })
                 .asConstraint("p1-daily-head-capacity-by-op");
         }
 
@@ -1004,6 +1051,22 @@ public class EmployeeSchedule {
         out.planStart = start; out.planEnd = end;
         out.daySlots = days; out.windows = windows; out.requiredByKey = required;
         out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+
+        // EXPLAIN: push phase windows right if the previous phase has Fixed days that end later.
+        Map<String,Integer> latestFixedEnd = new HashMap<>(); // key: module|phaseNum
+        for (FixedAssign fa : fixedRows) {
+            if (fa.hoursByDay.isEmpty()) continue;
+            int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(-1);
+            latestFixedEnd.merge(fa.module + "|" + fa.phaseNum, maxDid, Math::max);
+        }
+        for (TaskWindow w : windows) {
+            int prev = w.phaseNum - 1;
+            if (prev <= 0) continue;
+            Integer endPrev = latestFixedEnd.get(w.module + "|" + prev);
+            if (endPrev != null) {
+                w.startDayId = Math.max(w.startDayId, endPrev + 1);
+            }
+        }
         return out;
     }
 
@@ -1142,7 +1205,7 @@ public class EmployeeSchedule {
 
     // EXPLAIN: Accept `fixedHoursByKey` so Pass 1 only plans the remaining hours.
     static Pass1Result solvePass1HoursRamp(List<DaySlot> daySlots, List<TaskWindow> windows,
-                                           Map<String,Integer> fixedHoursByKey) {
+                                           Map<String,Integer> fixedHoursByKey, List<FixedHeadDay> fixedHeadDays) {
         int maxHeads = windows.stream().mapToInt(w -> w.maxHeads).max().orElse(1);
         int minHeads = windows.stream().mapToInt(w -> w.minHeads).min().orElse(1);
         int maxWin   = windows.stream().mapToInt(w -> w.endDayId - w.startDayId + 1).max().orElse(1);
@@ -1202,7 +1265,11 @@ public class EmployeeSchedule {
 
             Pass1Plan p1 = new Pass1Plan();
             p1.dayIds = dayIds; p1.headOptions = headOptions; p1.dayCountOptions = dayCountOptions;
-            p1.daySlots = daySlots; p1.blocks = blocks;
+            p1.daySlots = daySlots; 
+            // NEW: keep empty if there were no fixed rows parsed at call-site
+            p1.fixedHeadDays = fixedHeadDays == null ? new ArrayList<>() : fixedHeadDays;
+            
+            p1.blocks = blocks;
 
             Solver<Pass1Plan> solver = buildSolver(Pass1Plan.class, new Class<?>[]{ BlockDecision.class },
                     Pass1Constraints.class, "0hard/*medium/*soft", 30, 60);
@@ -1271,7 +1338,9 @@ public class EmployeeSchedule {
         // ---- PASS 1 ----
         System.out.println("Start PASS 1 at " + nowClock());
         long t1 = System.nanoTime();
-        Pass1Result p1 = solvePass1HoursRamp(sch.daySlots, sch.windows, sch.fixedHoursByKey);
+        List<FixedHeadDay> fixedHeadDays = buildFixedHeadDays(sch.fixedRows);
+        Pass1Result p1 = solvePass1HoursRamp(
+                sch.daySlots, sch.windows, sch.fixedHoursByKey, fixedHeadDays);
         long t1End = System.nanoTime();
         System.out.printf(
             "Done PASS 1 at %s | duration=%s | score=%s | tierUsed=%d | blocks=%d%n",
@@ -1334,3 +1403,4 @@ public class EmployeeSchedule {
         System.out.println("Done.");
     }
 }
+

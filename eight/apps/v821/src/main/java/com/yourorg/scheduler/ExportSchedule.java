@@ -54,15 +54,21 @@ public class ExportSchedule {
         // seatKey -> (module, op, factory), and employee by seat
         Map<String, String[]> seatMeta = new HashMap<>();
         Map<String, EmployeeSchedule.EmployeeFact> empBySeat = new HashMap<>();
+        // EXPLAIN: Track which seats were generated from Fixed rows so we can skip them when exporting.
+        Map<String, Boolean> seatPinned = new HashMap<>();
         for (EmployeeSchedule.CrewSeat s : finalPass2.seats) {
             if (s == null) continue;
             seatMeta.put(s.seatKey, new String[]{ s.module, s.opId, s.factory });
             empBySeat.put(s.seatKey, s.employee);
+            seatPinned.put(s.seatKey, s.pinned);
         }
 
         // sum hours per (wid, dayIdx, module, op)
         Map<List<Object>, Integer> per = new HashMap<>();
         for (EmployeeSchedule.SeatDay sd : finalPass2.seatDays) {
+            // EXPLAIN: Do not export pinned (Fixed) seat-days; keep the original Fixed records from the file.
+            if (Boolean.TRUE.equals(seatPinned.get(sd.seatKey))) continue;
+
             EmployeeSchedule.EmployeeFact e = empBySeat.get(sd.seatKey);
             if (e == null || e.id == 0) continue;
             String[] meta = seatMeta.get(sd.seatKey);
@@ -153,7 +159,20 @@ public class ExportSchedule {
             }
         }
 
-        sched.put("assignment_list", assignments);
+        // EXPLAIN: Preserve the original Fixed rows from the file verbatim, then append new Flexible rows.
+        List<Map<String,Object>> original = (List<Map<String,Object>>) sched.getOrDefault("assignment_list", List.of());
+        List<Map<String,Object>> preservedFixed = new ArrayList<>();
+        for (Map<String,Object> a : original) {
+            String flex = String.valueOf(a.getOrDefault("plan_flexibility", "Flexible"));
+            if ("fixed".equalsIgnoreCase(flex)) {
+                preservedFixed.add(a);
+            }
+        }
+
+        List<Map<String,Object>> merged = new ArrayList<>();
+        merged.addAll(preservedFixed);  // keep Fixed unchanged
+        merged.addAll(assignments);     // add newly generated Flexible
+        sched.put("assignment_list", merged);
 
         DumperOptions opt = new DumperOptions();
         opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
@@ -163,6 +182,6 @@ public class ExportSchedule {
         try (Writer out = Files.newBufferedWriter(Paths.get(schedPath))) {
             yaml.dump(root, out);
         }
-        System.out.println("Overwrote " + schedPath + " with " + assignments.size() + " assignments.");
+        System.out.println("Overwrote " + schedPath + " with " + assignments.size() + " new flexible assignments; preserved " + preservedFixed.size() + " fixed assignments.");
     }
 }
