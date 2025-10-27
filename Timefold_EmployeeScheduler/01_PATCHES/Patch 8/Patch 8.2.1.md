@@ -1,6 +1,6 @@
-# Patch 8.2.1 — **Weekend & Unavailable-Date Aware Scheduling** (Java/Timefold)
+# Patch 8.2.1 — **Weekend & Unavailable-Date Aware Scheduling + Recalculate Flexible & Fixed** (Java/Timefold)
 
-> This patch extends **8.1.1** by adding **calendar blackouts** (weekends + per-entity unavailable dates) to both Pass 1 (block sizing) and Pass 2 (people assignment). On any blacked-out day, a block’s **effective hours = 0**. Assignments are also prevented on days when a worker is unavailable.
+> This patch extends **8.1.1** by adding **calendar blackouts** (weekends + per-entity unavailable dates) to both Pass 1 (block sizing) and Pass 2 (people assignment), and adds a unified **recalculate** flow for **Fixed** (pinned) and **Flexible** schedules. On any blacked-out day, a block’s **effective hours = 0**. Assignments are also prevented on days when a worker is unavailable. Existing fixed rows in `Schedule.yaml` are re-read, pinned, and **subtracted** from flexible demand before planning.
 
 ---
 
@@ -8,17 +8,18 @@
 
 - **Calendar model**: Weekends and multiple “unavailable” sources (fab, region, customer company, worker company, individual worker).
     
-- **Pass 1 production math respects calendars**: `produced()` and `autoHours()` now multiply by **working-day count**, not raw day count.
+- **Pass 1 math respects calendars**: `produced()` and `autoHours()` use **working-day count** (not raw span).
     
-- **Pass 2 feasibility respects calendars**:
+- **Pass 2 feasibility respects calendars**: seat-days on blacked-out dates are **not created**; workers cannot be assigned on their **unavailable** dates (hard).
     
-    - Seat-days are not created for blacked-out dates (so they cannot be staffed).
-        
-    - Hard constraint blocks assigning a worker on a day they’re marked **unavailable**.
-        
-- **Capacity-by-op only on working days**: Daily operator head-count check ignores blacked-out dates.
+- **Capacity-by-op only on working days**; also **includes fixed heads** so flexible seats don’t overbook.
     
-- **Exporter signature**: `ExportSchedule.overwriteScheduleWithAssignments(..., envPath)` (to keep calendar context if needed).
+- **Recalculate Fixed**: parse `assignment_list` with `plan_flexibility: fixed` → create **pinned** seats & exact seat-days (hours per day).
+    
+- **Recalculate Flexible**: remaining hours after fixed subtraction are planned by Pass 1/2.
+    
+- **Exporter signature change** (keep calendars available):  
+    `ExportSchedule.overwriteScheduleWithAssignments(Pass2Plan finalPlan, LocalDate planStart, String schedPath, String envPath)`.
     
 
 ---
@@ -27,56 +28,57 @@
 
 ### 1) Calendar primitives
 
-- **Types & maps**
+- **Types & maps**: `Calendars CAL` with `weekends`, `fabOff`, `regionOff`, `customerOff`, `workerCompanyOff`, `workerOffByWid`, and crosswalks `fabToRegion`, `fabToCustomer`.
     
-    - `Calendars CAL` with: `weekends`, `fabOff`, `regionOff`, `customerOff`, `workerCompanyOff`, `workerOffByWid`, and crosswalks: `fabToRegion`, `fabToCustomer`.
-        
-- **Builders**
+- **Builders**: `buildCalendars(envPath, planStart, planEnd)` loads **EnvConfig.yaml** and generates **weekends** across the horizon.
     
-    - `buildCalendars(envPath, planStart, planEnd)` populates all sets from **EnvConfig.yaml** plus computed **weekends** inside plan range.
-        
-    - `dayIdFromDate(...)` converts `yyyy/MM/dd` (or `yyyy-MM-dd`) into day indices.
-        
-- **Queries**
+- **Queries**:
     
-    - `isWorkingDay(dayId, fabId)` checks weekend + fab → region → customer blackouts.
+    - `isWorkingDay(dayId, fabId)` → weekend + fab→region→customer blackouts.
         
-    - `workingDaysCount(startDay, dayCount, fabId)` counts only **working** days in the interval.
+    - `workingDaysCount(startDay, dayCount, fabId)` → only **working** days.
+        
+    - `dayIdFromDate(...)` → `"yyyy/MM/dd"` or `"yyyy-MM-dd"` → day index.
         
 
 ### 2) Pass 1: block math with blackouts
 
-- **Produced hours**
+- **Produced hours**:  
+    `produced(b) = H * autoHours(b) * workingDaysCount(b.startDay, b.days, b.factory)` (0 if start/days unset).
     
-    - `produced(b)` now:  
-        `H * autoHours(b) * workingDaysCount(b.startDay, b.days, b.factory)`  
-        (if `startDay`/`days` unset → 0)
-        
-- **Hours selection**
+- **Hours selection** (`autoHours`) uses **effective working days**, still capping **overfill ≤ one extra day** (vs. `H*h`).
     
-    - `autoHours(b)` computes feasibility against **working day count**, thus:
-        
-        - honors **underfill** relative to real working capacity,
-            
-        - still caps **overfill ≤ one extra day** using the same rule, but with _effective_ days.
-            
-- **Capacity constraint**  
-    `dailyHeadCapacityByOp`: only counts heads on **working days**.
+- **Capacity** (`dailyHeadCapacityByOp`) counts **flex heads on working days** and **adds fixed heads** (`FixedHeadDay`) to avoid overbooking.
+    
+- **Stacking penalty** only considers **working** days.
     
 
-### 3) Pass 2: seat-days and worker availability
+### 3) Pass 2: seat-days & availability
 
-- **Seat-day generation**
+- **Seat-day generation**: `expandToSeats(...)` **skips** blacked-out days (weekends/unavailable).
     
-    - `expandToSeats(...)`: skips creating seat-days for blacked-out dates (weekends/unavailable).
+- **Hard constraints**:
+    
+    - `employeeAvailableOnSeatDays` (worker personal unavailable → **hard**).
         
-- **New hard constraint**
-    
-    - `employeeAvailableOnSeatDays`: prevents assignment if worker’s **personal unavailable** set contains that day.
+    - `assignedAndSkill`, `dailyCap12h`, `oneFactoryPerEmpDay`, `atLeastOneManagerPerBlock`.
         
-- **Unchanged hard rules** still apply (skill eligibility, 12h/day cap, one factory/person/day, ≥1 manager/block).
+    - `respectPinnedAssignments` (for fixed seats).
+        
+- **Soft constraints** unchanged: company cohesion, skill variety, block average skill, total hour balance.
     
-- **Unchanged soft rules** (same-company cohesion, skill variety, block avg skill, total hour balance).
+
+### 4) Recalculate Fixed & Flexible (unified)
+
+- **Parse Fixed**: from `schedule.assignment_list` where `plan_flexibility: fixed`. Supports both `work_date_list` and the typo `work_date_lsit`.
+    
+- **Pin & seat-days**: `expandPinnedSeats(...)` creates **pinned** `CrewSeat`s (`pinned=true`, `pinnedWid`), with **exact** seat-days/hours (also filtered by `isWorkingDay`).
+    
+- **Subtract Fixed from demand**: `fixedHoursByKey` (sum of per-day fixed hours) is subtracted from `(module|op)` workload in Pass 1.
+    
+- **Fixed heads → capacity**: `buildFixedHeadDays(...)` contributes heads to daily op capacity checks so flexible planning respects real headroom.
+    
+- **Merge**: final seat set = **Pinned + Flexible**; both exported.
     
 
 ---
@@ -93,14 +95,14 @@ From `EnvConfig.yaml` (under `environment`):
     
 - `worker_company_list[].unavailable_dates: [...]`
     
-- `worker_list[].unavailable_dates: [...]`
+- `worker_list[].unavailable_dates: [...]` (used as **worker-specific** availability)
     
-    - Also used for **worker-specific** availability in Pass 2.
-        
 
-> Dates may be `"yyyy/MM/dd"` or `"yyyy-MM-dd"`; both are accepted.
+From `Schedule.yaml` (for Fixed):
 
-No change to `Schedule.yaml` schema. The blackout logic is derived from **EnvConfig** + plan range.
+`- worker: w17   operation_task: e16p4o1   start_date: 2025/10/21   end_date: 2025/10/24   plan_flexibility: fixed   work_date_list:     - {date: 2025/10/21, hour: 8}     - {date: 2025/10/23, hour: 6}`
+
+> Dates may be `"yyyy/MM/dd"` or `"yyyy-MM-dd"`. No schema changes required.
 
 ---
 
@@ -108,91 +110,99 @@ No change to `Schedule.yaml` schema. The blackout logic is derived from **EnvCon
 
 |Area|Before (8.1.1)|Now (8.2.1)|
 |---|---|---|
-|Pass 1 – production|Days = `b.days`|Days = **working days only** (weekends/unavailable → 0 contribution)|
-|Pass 1 – over/underfill|vs. `H * h * D` (raw)|vs. `H * h * D_working`|
-|Pass 1 – daily capacity by op|All active days|**Working days only**|
-|Pass 2 – seat-days|All calendar days in block|**No seat-days on blackouts**|
-|Pass 2 – worker availability|N/A|**Hard**: cannot assign if worker marked unavailable on that day|
+|Pass 1 – production|`H*h*D_raw`|`H*h*D_working` (weekends/unavailable → 0)|
+|Pass 1 – under/overfill|vs raw days|vs **working** days|
+|Pass 1 – daily capacity|Flex only, all active days|**Working days only**, **+ Fixed heads**|
+|Pass 2 – seat-days|All calendar days|**No seat-days on blackouts**|
+|Pass 2 – worker availability|N/A|**Hard**: cannot assign on worker unavailable day|
+|Fixed handling|N/A|Parse, **pin**, **subtract** hours, include heads in capacity|
 
 ---
 
 ## 📈 Expected impact
 
-- **More realistic block sizing**: blocks spanning weekends/holidays will auto-increase `days`/`heads`/**or** pick larger `hours` tier to hit required effort without cheating through blacked-out days.
+- **Realistic block sizing** across weekends/holidays; blocks may lengthen or select larger `hours`.
     
-- **Fewer infeasible assignments**: Pass 2 never tries to staff on blacked-out days; worker private time off is respected.
+- **Fewer infeasible assignments**: no seat-days on blackouts; worker personal time off respected.
     
-- **Stable performance**: Complexity increase is minimal (set lookups). Typical runtime near 8.1.1.
+- **Stable performance**: set lookups only; similar runtime to 8.1.1.
     
 
 ---
 
 ## 🧪 Quick sanity checklist
 
--  Weekend dates inside the plan range produce **no seat-days** and **no capacity accumulation**.
+- Weekend/holiday dates ⇒ **no seat-days** and **no capacity accumulation**.
     
--  `unavailable_dates` at fab/region/customer cascade as expected.
+- Fab/region/customer blackouts cascade; company/worker unavailable respected.
     
--  Workers with `unavailable_dates` cannot be assigned on those days (hard violation if attempted).
+- Fixed rows **reduce** flexible demand and **consume capacity**.
     
--  Underfill/overfill constraints reflect **working** days, not raw span.
+- Phase windows shift right if a previous phase has fixed work that ends later.
     
--  Existing soft-score behavior unchanged aside from ripple effects of true working capacity.
+- Exported `assignment_list` only contains **actual working days** (runs grouped), with `work_date_list` exact hours.
     
 
 ---
 
 ## 🧰 How to run
 
-`# Example (Windows path form kept from earlier notes) mvn -q exec:java -D"exec.args=EnvConfig.yaml Schedule.yaml"`
+`mvn -q exec:java -Dexec.args="EnvConfig.yaml Schedule.yaml"`
 
-- The solver will:
+Flow:
+
+1. Build calendars from **EnvConfig** (weekends + all blackouts).
     
-    1. Build calendars from **EnvConfig**,
-        
-    2. Solve Pass 1 with blackout-aware production,
-        
-    3. Expand seats (skipping blackouts),
-        
-    4. Solve Pass 2 with worker-availability enforcement,
-        
-    5. Export assignments back to `Schedule.yaml` (exporter now takes `envPath` too).
-        
+2. **Recalculate Fixed**: parse fixed rows → pin seats & seat-days; compute `fixedHoursByKey` & `FixedHeadDay`.
+    
+3. **Recalculate Flexible**: Pass 1 plans the remainder (working-day aware) with fixed heads in capacity.
+    
+4. Expand flexible seats (skip blackouts) and merge with pinned seats.
+    
+5. Pass 2 assigns (respecting availability, capacity, managers, etc.).
+    
+6. Export assignments back to `Schedule.yaml` via  
+    `ExportSchedule.overwriteScheduleWithAssignments(finalPlan, planStart, schedPath, envPath)`.
+    
 
 ---
 
 ## 🗂️ Notable code touchpoints
 
-- `buildCalendars`, `isWorkingDay`, `workingDaysCount`, `dayIdFromDate`
+- Calendars: `buildCalendars`, `isWorkingDay`, `workingDaysCount`, `dayIdFromDate`
     
-- `produced`, `autoHours` (Pass 1 math)
+- Pass 1 math: `produced`, `autoHours`
     
-- `Pass1Constraints.dailyHeadCapacityByOp` (working-day filter)
+- Pass 1 capacity: `Pass1Constraints.dailyHeadCapacityByOp` (**working-day filter + fixed heads**)
     
-- `expandToSeats` (skip blackouts)
+- Seats: `expandToSeats` (**skip blackouts**)
     
-- `Pass2Constraints.employeeAvailableOnSeatDays` (new hard rule)
+- Fixed path: `parseSchedule` → `fixedRows` & `fixedHoursByKey`, `expandPinnedSeats`, `buildFixedHeadDays`
     
-- `ExportSchedule.overwriteScheduleWithAssignments(finalPlan, planStart, schedPath, envPath)`
+- Pass 2 hard rules: `employeeAvailableOnSeatDays`, `respectPinnedAssignments`, `dailyCap12h`, `oneFactoryPerEmpDay`, `assignedAndSkill`, `atLeastOneManagerPerBlock`
+    
+- Exporter: `ExportSchedule.overwriteScheduleWithAssignments(finalPlan, planStart, schedPath, envPath)`
     
 
 ---
 
 ## ⚠️ Notes & pitfalls
 
-- If **no** `unavailable_dates` are configured, weekends are still treated as **non-working** by default.
+- If **no** `unavailable_dates` configured, weekends are still **non-working** by default.
     
-- Make sure `fab_list[].id`, `region_list[].id`, `customer_company_list[].id`, and `worker_company_list[].id` match the references used in your schedule/env so cascade mapping works (`fabToRegion`, `fabToCustomer`).
+- Ensure IDs line up across env & schedule: `fab_list[].id`, `region_list[].id`, `customer_company_list[].id`, `worker_company_list[].id`, and worker `id` (wid).
     
-- Use consistent calendars for multi-fab modules; capacity checks are per-op **per working day**.
+- Fixed on a blackout date ⇒ that day is **skipped** (no seat-day); adjust either the fixed row or blackout sets.
+    
+- Update the call site to the **4-arg exporter**; otherwise calendars may be empty at export time.
     
 
 ---
 
 ## 🔮 Next ideas
 
-- Optional **“work Saturday”** toggle per fab/region/customer to treat Saturdays as working.
+- Per-fab/region/customer **“work Saturday”** toggle.
     
-- **Per-operation** blackout overrides (e.g., test ops allowed on weekends).
+- Per-operation blackout overrides (e.g., allow test ops on weekends).
     
-- Snapshot diagnostics (like 8.1.2) with blackout overlays for Gantt visualization.
+- Snapshot diagnostics (8.1.2 style) with blackout overlays for Gantt.
