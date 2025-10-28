@@ -481,3 +481,166 @@ public static void main(String[] args) throws Exception {
 * If you previously referenced `ExportSchedule.overwriteScheduleWithAssignments(...)`, delete that call; the new `exportSolved(...)` handles output.
 
 If you paste these exact methods over your copies, it should resolve the “can’t run” blockers you hit (especially the missing `ExportSchedule` and the capacity + fixed-baseline pieces).
+
+
+8)
+@SuppressWarnings("unchecked")
+static ParsedSchedule parseSchedule(String schedPath, Map<String,OpDef> opdef) throws IOException {
+    Map<String,Object> root = loadYaml(schedPath);
+    Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
+
+    // 1) Read declared plan_range…
+    LocalDate planStart = LocalDate.parse(
+        safeStr(((Map<String,Object>)s.get("plan_range")).get("start_date")).replace("-", "/"), DF);
+    LocalDate planEnd   = LocalDate.parse(
+        safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
+
+    // …but 2) expand horizon to cover workflow windows + ANY assignment dates (fixed or flexible)
+    LocalDate minDate = planStart;
+    LocalDate maxDate = planEnd;
+
+    Object wfObj = s.get("workflow_task_list");
+    List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
+    for (Map<String,Object> wf : wfTasks) {
+        Object phasesObj = wf.get("phase_task_list");
+        List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
+        for (Map<String,Object> ph : phases) {
+            LocalDate pStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+            LocalDate pEnd   = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+            if (pStart.isBefore(minDate)) minDate = pStart;
+            if (pEnd.isAfter(maxDate))    maxDate = pEnd;
+        }
+    }
+
+    Object asgObj = s.get("assignment_list");
+    List<Map<String,Object>> asgs = (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
+    for (Map<String,Object> a : asgs) {
+        // include both fixed and flexible in horizon expansion
+        String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+        List<Map<String,Object>> wdl = (a.get(wdKey) instanceof List) ? (List<Map<String,Object>>) a.get(wdKey) : List.of();
+        for (Map<String,Object> item : wdl) {
+            LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
+            if (d.isBefore(minDate)) minDate = d;
+            if (d.isAfter(maxDate))  maxDate = d;
+        }
+        if (a.get("start_date") != null) {
+            LocalDate sd = LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+            if (sd.isBefore(minDate)) minDate = sd;
+        }
+        if (a.get("end_date") != null) {
+            LocalDate ed = LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+            if (ed.isAfter(maxDate)) maxDate = ed;
+        }
+    }
+
+    // 3) Build expanded day slots
+    int horizon = (int) (maxDate.toEpochDay() - minDate.toEpochDay()) + 1;
+    List<DaySlot> days = new ArrayList<>();
+    for (int i=0;i<horizon;i++) days.add(new DaySlot(i, minDate.plusDays(i)));
+
+    Map<LocalDate,Integer> dayIdByDate = new HashMap<>();
+    for (DaySlot d : days) dayIdByDate.put(d.date, d.id);
+
+    // 4) Build windows + baseline required hours
+    List<TaskWindow> windows = new ArrayList<>();
+    Map<String,Integer> required = new HashMap<>();
+
+    for (Map<String,Object> wf : wfTasks) {
+        String module = safeStr(wf.get("id"));
+        String fab = safeStr(wf.get("fab"));
+        Object phasesObj = wf.get("phase_task_list");
+        List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
+        for (Map<String,Object> ph : phases) {
+            String phId = safeStr(ph.get("phase"));
+            int phNum = phaseNumFromId(phId);
+            LocalDate pStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+            LocalDate pEnd   = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+            int startId = dayIdByDate.get(pStart);
+            int endId   = dayIdByDate.get(pEnd);
+
+            Object opsObj = ph.get("operation_task_list");
+            List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
+            for (Map<String,Object> ot : opTasks) {
+                String opId = safeStr(ot.get("operation"));
+                int workloadDays = parseInt(ot.get("workload_days"), 0);
+
+                OpDef od = opdef.get(opId);
+                if (od == null) throw new IllegalArgumentException("operation "+opId+" missing in EnvConfig");
+
+                int baseline = (od.allowed.size()==1 && od.allowed.get(0)==4) ? 4 : 8;
+                int req = workloadDays * baseline;
+                required.merge(module + "|" + opId, req, Integer::sum);
+
+                TaskWindow tw = new TaskWindow();
+                tw.module = module; tw.factory = fab;
+                tw.phaseId = phId; tw.phaseNum = phNum;
+                tw.opId = opId; tw.startDayId = startId; tw.endDayId = endId;
+                tw.allowed = od.allowed; tw.minHeads = od.min; tw.maxHeads = od.max;
+                tw.workloadDays = workloadDays;
+                windows.add(tw);
+            }
+        }
+    }
+
+    // 5) Parse FIXED rows (pin + subtract); FLEXIBLE rows: only used to expand horizon above
+    List<FixedAssign> fixedRows = new ArrayList<>();
+    Map<String,Integer> fixedHoursByKey = new HashMap<>();
+    for (Map<String,Object> a : asgs) {
+        String flex = safeStr(a.get("plan_flexibility"));
+        if (!"fixed".equalsIgnoreCase(flex)) continue;
+
+        String opTask = safeStr(a.get("operation_task"));
+        int idx = opTask.indexOf("p");
+        String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
+        String opId   = (idx > 0) ? opTask.substring(idx) : "";
+
+        String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+        List<Map<String,Object>> wdl = (a.get(wdKey) instanceof List) ? (List<Map<String,Object>>) a.get(wdKey) : List.of();
+
+        String wid = safeStr(a.get("worker"));
+        LocalDate sd = a.get("start_date") == null ? null : LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+        LocalDate ed = a.get("end_date")   == null ? null : LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+        int sId = sd == null ? -1 : dayIdByDate.get(sd);
+        int eId = ed == null ? -1 : dayIdByDate.get(ed);
+
+        Map<Integer,Integer> byDay = new HashMap<>();
+        for (Map<String,Object> item : wdl) {
+            LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
+            int did = dayIdByDate.get(d);
+            int h = parseInt(item.get("hour"), 0);
+            if (h > 0) {
+                byDay.merge(did, h, Integer::sum);
+                fixedHoursByKey.merge(module + "|" + opId, h, Integer::sum);
+            }
+        }
+
+        String phId = ""; int phNum = 0;
+        try { String pPart = opId.split("o", 2)[0]; phId = pPart; phNum = phaseNumFromId(pPart); } catch (Exception ignore) {}
+
+        FixedAssign fa = new FixedAssign();
+        fa.module = module; fa.opId = opId; fa.wid = wid;
+        fa.startDayId = sId; fa.endDayId = eId;
+        fa.hoursByDay = byDay; fa.phaseId = phId; fa.phaseNum = phNum;
+        fixedRows.add(fa);
+    }
+
+    // 6) If a previous phase has fixed days that end later, push the next phase start right
+    Map<String,Integer> latestFixedEnd = new HashMap<>(); // key: module|phaseNum
+    for (FixedAssign fa : fixedRows) {
+        if (fa.hoursByDay.isEmpty()) continue;
+        int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(-1);
+        latestFixedEnd.merge(fa.module + "|" + fa.phaseNum, maxDid, Math::max);
+    }
+    for (TaskWindow w : windows) {
+        int prev = w.phaseNum - 1;
+        if (prev <= 0) continue;
+        Integer endPrev = latestFixedEnd.get(w.module + "|" + prev);
+        if (endPrev != null) w.startDayId = Math.max(w.startDayId, endPrev + 1);
+    }
+
+    ParsedSchedule out = new ParsedSchedule();
+    out.planStart = minDate; out.planEnd = maxDate;
+    out.daySlots = days; out.windows = windows; out.requiredByKey = required;
+    out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+    return out;
+}
