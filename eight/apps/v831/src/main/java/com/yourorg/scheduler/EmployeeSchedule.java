@@ -301,6 +301,7 @@ public class EmployeeSchedule {
 
     // ---- Calendar / blackout support ----
     static class Calendars {
+        // Existing fields ...
         Set<Integer> weekends = new HashSet<>();
         Map<String, Set<Integer>> fabOff = new HashMap<>();
         Map<String, Set<Integer>> regionOff = new HashMap<>();
@@ -309,6 +310,25 @@ public class EmployeeSchedule {
         Map<String, String> fabToRegion = new HashMap<>();
         Map<String, String> fabToCustomer = new HashMap<>();
         Map<String, Set<Integer>> workerOffByWid = new HashMap<>();
+        Map<String, Map<String, Integer>> transitDays = new HashMap<>(); // fromRegion -> (toRegion -> days)
+        Map<String, Integer> regionStayMaxOn = new HashMap<>();       // regionId -> max_stay_on
+        Map<String, Integer> regionStayOffInterval = new HashMap<>(); // regionId -> stay_off_interval
+
+        int transitDays(String from, String to) {
+            if (from == null || to == null || from.equals(to)) return 0;
+            return transitDays.getOrDefault(from, Map.of()).getOrDefault(to, 0);
+        }
+
+        String regionOfFab(String fabId) {
+            return fabId == null ? null : fabToRegion.get(fabId);
+        }
+
+        int maxStayOn(String regionId) {
+            return regionStayMaxOn.getOrDefault(regionId, Integer.MAX_VALUE);
+        }
+        int stayOffInterval(String regionId) {
+            return Math.max(1, regionStayOffInterval.getOrDefault(regionId, 1));
+        }
     }
     static Calendars CAL = new Calendars();
     // --- simple timing/format helpers ---
@@ -424,6 +444,42 @@ public class EmployeeSchedule {
             }
             CAL.workerOffByWid.put(wid, off);
         }
+
+        // transite_day_map  (note the key name matches the YAML)
+        List<Map<String,Object>> tmap =
+                (List<Map<String,Object>>) env.getOrDefault("transite_day_map", List.of());
+        for (Map<String,Object> t : tmap) {
+            String from = String.valueOf(t.get("from"));
+            String to   = String.valueOf(t.get("to"));
+            int days    = parseInt(t.get("days"), 0);
+            if (from != null && to != null && !from.isBlank() && !to.isBlank() && days > 0) {
+                CAL.transitDays
+                    .computeIfAbsent(from, k -> new HashMap<>())
+                    .put(to, days);
+            }
+        }
+
+        // region_list -> OFF dates + 滞在日数( max_stay_on / stay_off_interval )
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> regionList = (List<Map<String,Object>>) env.getOrDefault("region_list", List.of());
+        for (Map<String,Object> r : regionList) {
+            String rid = String.valueOf(r.get("id"));
+
+            // OFF dates
+            Set<Integer> off = new HashSet<>();
+            List<Object> dates = (List<Object>) r.getOrDefault("unavailable_dates", List.of());
+            for (Object o : dates) {
+                Integer did = dayIdFromDate(planStart, String.valueOf(o));
+                if (did != null) off.add(did);
+            }
+            CAL.regionOff.put(rid, off);
+
+            // 滞在日数 parameters
+            int maxStayOn   = parseInt(r.get("max_stay_on"), Integer.MAX_VALUE);
+            int offInterval = parseInt(r.get("stay_off_interval"), 1);
+            CAL.regionStayMaxOn.put(rid, maxStayOn);
+            CAL.regionStayOffInterval.put(rid, Math.max(1, offInterval));
+}
     }
 
     // Is this a *working* day for the given fab?
@@ -467,6 +523,33 @@ public class EmployeeSchedule {
             out.add(new FixedHeadDay(did, opId, en.getValue()));
         }
         return out;
+    }
+
+    // Inside EmployeeSchedule.Pass2Constraints (e.g., just before defineConstraints or after constants)
+    private static int maxSegmentSpanWithBreak(List<Integer> dayList, int offInterval) {
+        if (dayList == null || dayList.isEmpty()) return 0;
+        // defensively handle offInterval
+        int brk = Math.max(1, offInterval);
+
+        List<Integer> ds = new ArrayList<>(dayList);
+        Collections.sort(ds);
+
+        int best = 1;
+        int segStart = ds.get(0);
+        int prev = ds.get(0);
+
+        for (int i = 1; i < ds.size(); i++) {
+            int d = ds.get(i);
+            int gap = d - prev - 1; // number of non-work days between prev and d
+            // A break occurs if we have >= offInterval days out of this region
+            if (gap >= brk) {
+                best = Math.max(best, prev - segStart + 1);
+                segStart = d;
+            }
+            prev = d;
+        }
+        best = Math.max(best, prev - segStart + 1);
+        return best;
     }
     // ---------------- Constraints ----------------
 
@@ -693,9 +776,9 @@ public class EmployeeSchedule {
                 dailyCap12h(f),
                 atLeastOneManagerPerBlock(f),
                 employeeAvailableOnSeatDays(f),
-
-                // EXPLAIN: This hard constraint locks a pinned seat to its original worker.
                 respectPinnedAssignments(f),
+                regionTransitGap(f),
+                regionStayMaxOn(f),
 
                 softSameCompanyPairs(f),
                 softEncourageSkillVariety(f),
@@ -774,6 +857,97 @@ public class EmployeeSchedule {
                 .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
                 .penalize(HardMediumSoftScore.ONE_HARD)
                 .asConstraint("p2-hard-respect-pinned-assignments");
+        }
+
+        //  honor region travel gaps between consecutive work days for the same employee.
+        Constraint regionTransitGap(ConstraintFactory f) {
+            // (SeatDay, CrewSeat) for assigned seats
+            var a1 = f.forEach(SeatDay.class)
+                .join(f.forEach(CrewSeat.class),
+                    Joiners.equal((SeatDay sd) -> sd.seatKey, (CrewSeat cs) -> cs.seatKey))
+                .filter((sd, cs) -> !isUnassigned(cs.employee));
+
+            // Pair with a *later* (SeatDay, CrewSeat) of the *same employee*
+            return a1
+                // Bi -> Tri: add a later SeatDay
+                .join(f.forEach(SeatDay.class),
+                    Joiners.lessThan( // sd2.day.id > sd1.day.id
+                        (SeatDay sd1, CrewSeat cs1) -> sd1.day.id,
+                        (SeatDay sd2) -> sd2.day.id))
+                // Tri -> Quad: attach the CrewSeat for that later SeatDay
+                .join(f.forEach(CrewSeat.class),
+                    Joiners.equal(
+                        (SeatDay sd1, CrewSeat cs1, SeatDay sd2) -> sd2.seatKey,
+                        (CrewSeat cs2) -> cs2.seatKey))
+                // Same employee on both sides
+                .filter((sd1, cs1, sd2, cs2) -> !isUnassigned(cs2.employee)
+                        && cs1.employee.id == cs2.employee.id)
+                // Enforce region travel gap
+                .filter((sd1, cs1, sd2, cs2) -> {
+                    String r1 = CAL.regionOfFab(cs1.factory);
+                    String r2 = CAL.regionOfFab(cs2.factory);
+                    int need = CAL.transitDays(r1, r2);    // required gap days
+                    if (need <= 0) return false;           // same/undefined regions -> no constraint
+                    int delta = sd2.day.id - sd1.day.id;   // days between the two assignments
+                    return delta <= need;                  // violation if the gap is too small
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD,
+                    (sd1, cs1, sd2, cs2) -> {
+                        String r1 = CAL.regionOfFab(cs1.factory);
+                        String r2 = CAL.regionOfFab(cs2.factory);
+                        int need  = CAL.transitDays(r1, r2);
+                        int delta = sd2.day.id - sd1.day.id;
+                        return Math.max(1, need - delta + 1); // proportional shortfall
+                    })
+                .asConstraint("p2-region-transit-gap");
+        }
+
+        /** NEW HARD: Over-stay in same region beyond max_stay_on, unless a break >= stay_off_interval resets the run.
+         *
+         * Logic:
+         *  - Group assigned seat-days by (employeeId, regionId).
+         *  - Collect all dayIds he actually works in that region.
+         *  - Build "stay segments": sort dayIds; split when the gap of OUT-of-region days >= stay_off_interval.
+         *  - If any segment length > max_stay_on(region), penalize the overage (span - max).
+         */
+        Constraint regionStayMaxOn(ConstraintFactory f) {
+            // Gather (empId, regionId) -> list of dayIds he works in that region
+            var perEmpRegionDays = f.forEach(EmployeeSchedule.SeatDay.class)
+                .join(f.forEach(EmployeeSchedule.CrewSeat.class),
+                    Joiners.equal((EmployeeSchedule.SeatDay sd) -> sd.seatKey,
+                                    (EmployeeSchedule.CrewSeat cs) -> cs.seatKey))
+                .filter((sd, cs) -> !isUnassigned(cs.employee))
+                .groupBy(
+                    // key
+                    (sd, cs) -> Arrays.asList(cs.employee.id, CAL.regionOfFab(cs.factory)),
+                    // collect list of dayIds
+                    ai.timefold.solver.core.api.score.stream.ConstraintCollectors.toList(
+                        (sd, cs) -> sd.day.id
+                    )
+                )
+                // ignore null/unknown regions (no limit)
+                .filter((key, dayList) -> key.get(1) != null);
+
+            return perEmpRegionDays
+                .filter((key, dayList) -> {
+                    String regionId = (String) key.get(1);
+                    int maxOn  = CAL.maxStayOn(regionId);
+                    int offInt = CAL.stayOffInterval(regionId);
+                    if (maxOn == Integer.MAX_VALUE) return false; // no limit configured
+
+                    // Compute max segment span with the given break rule
+                    int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+                    return maxSpan > maxOn;
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD,
+                    (key, dayList) -> {
+                        String regionId = (String) key.get(1);
+                        int maxOn  = CAL.maxStayOn(regionId);
+                        int offInt = CAL.stayOffInterval(regionId);
+                        int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+                        return Math.max(1, maxSpan - maxOn);
+                    })
+                .asConstraint("p2-visa-presence-max-stay-on");
         }
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
@@ -965,7 +1139,7 @@ public class EmployeeSchedule {
                 int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
 
                 Object opsObj = ph.get("operation_task_list");
-                List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opTasks = (List<Map<String,Object>>) opsObj : List.of();
+                List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
                     String opId = safeStr(ot.get("operation"));
                     int workloadDays = parseInt(ot.get("workload_days"), 0);
@@ -1083,6 +1257,7 @@ public class EmployeeSchedule {
         }
         return out;
     }
+
 
     // ---------------- Build seats from blocks ----------------
 
@@ -1280,7 +1455,6 @@ public class EmployeeSchedule {
             Pass1Plan p1 = new Pass1Plan();
             p1.dayIds = dayIds; p1.headOptions = headOptions; p1.dayCountOptions = dayCountOptions;
             p1.daySlots = daySlots; 
-            // NEW: keep empty if there were no fixed rows parsed at call-site
             p1.fixedHeadDays = fixedHeadDays == null ? new ArrayList<>() : fixedHeadDays;
             
             p1.blocks = blocks;
@@ -1417,3 +1591,4 @@ public class EmployeeSchedule {
         System.out.println("Done.");
     }
 }
+
