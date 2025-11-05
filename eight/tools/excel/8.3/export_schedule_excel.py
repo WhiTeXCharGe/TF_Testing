@@ -817,27 +817,36 @@ def build_blocks_quality(modules, assignments, assignment_blocks, env, maps):
     return rows
 # ------------------------------ REGION POLICY HELPERS ------------------------------
 def _region_policy(regions, rid):
-    """Return (stay_limit_days, stay_gap_days) for region id, with robust key fallback."""
+    """Return (stay_limit_days, stay_gap_days) for region id, robust to different key names."""
     if not rid or rid not in regions:
-        return (None, None)
+        return (None, 0)
     r = regions[rid] or {}
-    # Accept multiple possible key names (compatible with older envs):
-    stay_limit = (
-        r.get("stay_limit") or r.get("max_stay") or r.get("max_stay_days")
-        or r.get("visa_stay_limit")
-    )
-    stay_gap = (
-        r.get("stay_gap") or r.get("min_gap") or r.get("stay_break_gap")
-        or r.get("visa_stay_gap") or r.get("interval_off")
-    )
+
+    # --- your schema first ---
+    stay_limit = r.get("max_stay_on")         # e.g., 60
+    stay_gap   = r.get("stay_off_interval")   # e.g., 5
+
+    # --- legacy / alternate names as fallback ---
+    if stay_limit is None:
+        stay_limit = (
+            r.get("stay_limit") or r.get("max_stay") or r.get("max_stay_days")
+            or r.get("visa_stay_limit")
+        )
+    if stay_gap is None:
+        stay_gap = (
+            r.get("stay_gap") or r.get("min_gap") or r.get("stay_break_gap")
+            or r.get("visa_stay_gap") or r.get("interval_off")
+        )
+
     try:
         stay_limit = int(stay_limit) if stay_limit is not None else None
     except Exception:
         stay_limit = None
     try:
-        stay_gap = int(stay_gap) if stay_gap is not None else None
+        stay_gap = int(stay_gap) if stay_gap is not None else 0
     except Exception:
-        stay_gap = None
+        stay_gap = 0
+
     return (stay_limit, stay_gap)
 
 
@@ -875,6 +884,19 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
         rid = cal["fab_region"].get(fab_id)
         return rid, m_id
 
+    # transit time between regions (days)
+    transit_days = {}
+    try:
+        env_root = env if "environment" not in env else env["environment"]
+        for tr in env_root.get("transite_day_map", []) or []:
+            try:
+                k = (tr.get("from"), tr.get("to"))
+                transit_days[k] = int(tr.get("days", 0))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
     # Collect per-worker working dates with their regions
     perw_dates = defaultdict(list)  # wname -> list of (date, region_id)
     worker_name = maps["worker_name"]
@@ -904,6 +926,15 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
             start_date, cur_r = lst[i]
             (stay_limit, stay_gap) = _region_policy(regions, cur_r)
             if stay_gap is None: stay_gap = 0
+            # If this is the first segment for this worker, also place an initial "in"
+            if i == 0:
+                pre_in_day = start_date - timedelta(days=1)
+                if plan_start <= pre_in_day <= plan_end:
+                    # avoid duplicate if somehow already present
+                    already = any(m.get("type") == "in" and m.get("date") == pre_in_day
+                                for m in move_markers[wname])
+                    if not already:
+                        move_markers[wname].append({"type": "in", "date": pre_in_day, "region": cur_r})
 
             end_date = start_date
             j = i + 1
@@ -952,12 +983,20 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
                 if next_gap is None:
                     (_, old_gap) = _region_policy(regions, cur_r)
                     next_gap = old_gap if old_gap is not None else 0
-                actual_gap = (next_start - seg_end).days - 1
-                if actual_gap < next_gap:
+
+                # Add transit requirement if region actually changes
+                extra_transit = 0
+                if cur_r != next_r:
+                    extra_transit = transit_days.get((cur_r, next_r), 0)
+
+                required_gap = max(next_gap, extra_transit)
+                actual_gap   = (next_start - seg_end).days - 1
+
+                if actual_gap < required_gap:
                     tbl_move_gap.append([
                         wname, cur_r, next_r,
                         seg_end.isoformat(), next_start.isoformat(),
-                        actual_gap, next_gap
+                        actual_gap, required_gap
                     ])
     return presence_map, segments, tbl_overstay, tbl_move_gap, move_markers
 
