@@ -14,6 +14,8 @@ import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.domain.solution.PlanningEntityCollectionProperty;
 import ai.timefold.solver.core.api.domain.solution.PlanningSolution;
 import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty;
+import ai.timefold.solver.core.api.domain.valuerange.CountableValueRange;
+import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeFactory;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
@@ -30,6 +32,7 @@ import ai.timefold.solver.core.api.solver.SolverFactory;
 import ai.timefold.solver.core.config.score.director.ScoreDirectorFactoryConfig;
 import ai.timefold.solver.core.config.solver.SolverConfig;
 import ai.timefold.solver.core.config.solver.termination.TerminationConfig;
+import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListValueRange;
 
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -114,85 +117,127 @@ public class EmployeeSchedule {
     public static class BlockDecision {
         @PlanningId public int id;
 
-        // facts
+        // facts...
         public String module;
         public String factory;
         public String phaseId;
         public int phaseNum;
         public String opId;
 
-        // immutable window
         public int windowStart;
         public int windowEnd;
-        public int requiredHours;     // hours remaining to plan (after subtracting fixed)
-        public List<Integer> allowed; // allowed work-hours values per worker/day
+        public int requiredHours;
+        public List<Integer> allowed;
         public int minHeads;
         public int maxHeads;
 
-        // planning vars (entity-dependent ranges)
-        @PlanningVariable(valueRangeProviderRefs = "vrStartWithinWindow")
+        @PlanningVariable(valueRangeProviderRefs = "vrStartWithinWindow",
+                  strengthComparatorClass = StartDayStrength.class)
         public Integer startDay;
 
         @PlanningVariable(valueRangeProviderRefs = "vrDaysWithinWindow")
         public Integer days;
 
-        // Value ranges — manual list build (no .toList() needed)
-        @ValueRangeProvider(id = "vrStartWithinWindow")
-        public List<Integer> vrStartWithinWindow() {
-            int from = windowStart;
-            int to   = Math.max(windowStart, windowEnd); // inclusive
-            List<Integer> out = new ArrayList<>();
-            for (int i = from; i <= to; i++) out.add(i);
-            return out;
-        }
-        @ValueRangeProvider(id = "vrDaysWithinWindow")
-        public List<Integer> vrDaysWithinWindow() {
-            int maxLen = windowEnd - windowStart + 1;
-            int from = 1, to = Math.max(1, maxLen);
-            List<Integer> out = new ArrayList<>();
-            for (int i = from; i <= to; i++) out.add(i);
-            return out;
+        public static final class StartDayStrength implements Comparator<Integer> {
+            @Override public int compare(Integer a, Integer b) {
+                // earlier dates first; nulls last so solver can set startDay early
+                if (a == null) return (b == null) ? 0 : 1;
+                if (b == null) return -1;
+                return Integer.compare(a, b);
+            }
         }
 
-        public BlockDecision() {}
+        public static final class HoursStrength implements Comparator<Integer> {
+            @Override public int compare(Integer a, Integer b) {
+                // prefer smaller hours (8 < 10 < 12)
+                if (a == null) return (b == null) ? 0 : 1;
+                if (b == null) return -1;
+                return Integer.compare(a, b);
+            }
+        }
+
+        // --- PATCH: ValueRangeFactory instead of hand-built lists ---
+        @PlanningVariable(valueRangeProviderRefs = "vrAllowedHours",
+                        strengthComparatorClass = HoursStrength.class)
+        public Integer hours; // null at start → falls back to first allowed
+
+        @ValueRangeProvider(id = "vrStartWithinWindow")
+        public CountableValueRange<Integer> vrStartWithinWindow() {
+            return ValueRangeFactory.createIntValueRange(windowStart, windowEnd + 1);
+        }
+
+        @ValueRangeProvider(id = "vrDaysWithinWindow")
+        public CountableValueRange<Integer> vrDaysWithinWindow() {
+            int maxLen = Math.max(1, windowEnd - windowStart + 1);
+            return ValueRangeFactory.createIntValueRange(1, maxLen + 1);
+        }
+
+        // NEW: discrete list value range for hours (8,10,12, …)
+        @ValueRangeProvider(id = "vrAllowedHours")
+        public CountableValueRange<Integer> vrAllowedHours() {
+            List<Integer> a = (allowed == null || allowed.isEmpty())
+                    ? List.of(8)
+                    : allowed.stream().distinct().sorted().toList();
+            return new ListValueRange<>(a);
+        }
+
+
+        // helper used in constraints where hours is needed
+        public int chosenHours() {
+            if (hours != null) return hours;
+            // default to smallest allowed to bias toward 8 even before it’s set
+            return (allowed == null || allowed.isEmpty()) ? 8
+                    : allowed.stream().mapToInt(Integer::intValue).min().orElse(8);
+        }
     }
 
     @PlanningEntity
     public static class CrewSeat {
         @PlanningId public int id;
 
-        // parent block linkage
-        public int blockId;           // join to BlockDecision.id
+        public int blockId;
         public String module;
         public String factory;
         public String phaseId;
         public int phaseNum;
         public String opId;
 
-        // seat meta
-        public int seatIndex;         // 0..maxHeads-1
-        public boolean needManager;   // one seat per block may set true, others false
+        public int seatIndex;
+        public boolean needManager;
 
-        // If this is a pinned seat (coming from fixed assignment), timing is fixed here.
         public boolean pinned = false;
-        public String pinnedWid = null;
-        public Integer pinnedStart = null; // for pinned only (index in plan)
-        public Integer pinnedDays  = null; // for pinned only
-        public Integer pinnedHours = null; // per-day hours for pinned days; if 0 use op default 8
+        public String  pinnedWid = null;
+        public Integer pinnedStart = null;
+        public Integer pinnedDays  = null;
+        public Integer pinnedHours = null;
 
-        // Planning variable: employee chosen from entity-dependent range
+        // Computed candidates (filled once per solve stage; see filler below)
         private List<EmployeeFact> candidateEmployees = List.of();
 
+        private static final EmployeeFact UNASSIGNED =
+            new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+
+        // --- PATCH: Range is created from the prefiltered candidate list ---
         @ValueRangeProvider(id = "eligibleEmployeesForSeat")
-        public List<EmployeeFact> eligibleEmployeesForSeat() {
+        public Collection<EmployeeFact> eligibleEmployeesForSeat() {
+            // Pinned: only the pinned worker (or UNASSIGNED so the range is never empty)
             if (pinned && pinnedWid != null) {
                 for (EmployeeFact e : candidateEmployees) {
-                    if (e != null && pinnedWid.equals(e.wid)) return List.of(e);
+                    if (e != null && pinnedWid.equals(e.wid)) {
+                        return List.of(e);
+                    }
                 }
-                return List.of();
+                return List.of(UNASSIGNED);
             }
-            return candidateEmployees;
+
+            // Normal seat
+            List<EmployeeFact> base = (candidateEmployees == null || candidateEmployees.isEmpty())
+                ? List.of(UNASSIGNED)  // keep range non-empty
+                : candidateEmployees;
+
+            return base;
         }
+
         public void setCandidateEmployees(List<EmployeeFact> list) {
             this.candidateEmployees = (list == null) ? List.of() : list;
         }
@@ -203,6 +248,7 @@ public class EmployeeSchedule {
 
         public CrewSeat() {}
     }
+
 
     @PlanningSolution
     public static class SinglePassPlan {
@@ -442,8 +488,9 @@ public class EmployeeSchedule {
         @Override public Constraint[] defineConstraints(ConstraintFactory f) {
             return new Constraint[] {
                 // block feasibility
-                withinWindow(f),
-                daysWithinWindowLen(f),
+                // withinWindow(f),
+                // daysWithinWindowLen(f),
+                endWithinWindow(f),
                 hoursValueAllowed(f),
                 phaseOrder(f),
 
@@ -453,7 +500,7 @@ public class EmployeeSchedule {
                 dailyHeadCapacityByOp(f),
 
                 // seat-level hard rules
-                assignedAndSkill(f),
+                // assignedAndSkill(f),
                 employeeAvailableAllDays(f),
                 pinnedRespected(f),
                 oneFactoryPerEmpPerDay(f),
@@ -490,10 +537,19 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD, b -> b.days - (b.windowEnd - b.windowStart + 1))
                 .asConstraint("block-days-window-length");
         }
+        
+        Constraint endWithinWindow(ConstraintFactory f) {
+            return f.forEach(BlockDecision.class)
+                .filter(b -> b.startDay != null && b.days != null
+                        && (b.startDay + b.days - 1) > b.windowEnd)
+                .penalize(HardMediumSoftScore.ONE_HARD,
+                    b -> (b.startDay + b.days - 1) - b.windowEnd) // how far you overran
+                .asConstraint("block-end-within-window");
+        }
 
         Constraint hoursValueAllowed(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .filter(b -> b.allowed == null || b.allowed.isEmpty() || !b.allowed.contains(autoHours(b)))
+                .filter(b -> b.allowed == null || b.allowed.isEmpty() || !b.allowed.contains(b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_HARD)
                 .asConstraint("block-hours-in-allowed");
         }
@@ -535,7 +591,7 @@ public class EmployeeSchedule {
             return perBlock
                 .filter((b, seats) -> {
                     int D = workingDaysCount(b.startDay, b.days, b.factory);
-                    int hours = autoHours(b);
+                    int hours = b.chosenHours();
                     int staffed = staffedCountForBlock(seats);
                     int prod = staffed * hours * Math.max(0, D);
                     return prod < b.requiredHours;
@@ -543,7 +599,7 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD,
                     (b, seats) -> {
                         int D = workingDaysCount(b.startDay, b.days, b.factory);
-                        int hours = autoHours(b);
+                        int hours = b.chosenHours();
                         int staffed = staffedCountForBlock(seats);
                         int prod = staffed * hours * Math.max(0, D);
                         return b.requiredHours - prod;
@@ -561,7 +617,7 @@ public class EmployeeSchedule {
             return perBlock
                 .filter((b, seats) -> {
                     int D = workingDaysCount(b.startDay, b.days, b.factory);
-                    int hours = autoHours(b);
+                    int hours = b.chosenHours();
                     int staffed = staffedCountForBlock(seats);
                     int prod = staffed * hours * Math.max(0, D);
                     int over = prod - b.requiredHours;
@@ -570,7 +626,7 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD,
                     (b, seats) -> {
                         int D = workingDaysCount(b.startDay, b.days, b.factory);
-                        int hours = autoHours(b);
+                        int hours = b.chosenHours();
                         int staffed = staffedCountForBlock(seats);
                         int prod = staffed * hours * Math.max(0, D);
                         int over = prod - b.requiredHours;
@@ -662,7 +718,7 @@ public class EmployeeSchedule {
                          ConstraintCollectors.sum((d, s, b) ->
                              (s.pinned && s.pinnedHours != null && s.pinnedHours > 0)
                                  ? s.pinnedHours
-                                 : autoHours(b)))
+                                 : b.chosenHours()))
                 .filter((key, tot) -> tot > DAILY_CAP)
                 .penalize(HardMediumSoftScore.ONE_HARD, (key, tot) -> tot - DAILY_CAP)
                 .asConstraint("seat-daily-cap-12h");
@@ -774,13 +830,13 @@ public class EmployeeSchedule {
         Constraint preferHoursNear8(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
                 .penalize(HardMediumSoftScore.ONE_MEDIUM,
-                    b -> PREF_HOURS_WEIGHT * Math.abs(autoHours(b) - 8))
+                    b -> PREF_HOURS_WEIGHT * Math.abs(b.chosenHours() - 8))
                 .asConstraint("soft-hours-near-8");
         }
 
         Constraint preferSmallerHours(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_SOFT, b -> SMALLER_HOURS_W * autoHours(b))
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> SMALLER_HOURS_W * b.chosenHours())
                 .asConstraint("soft-smaller-hours");
         }
 
@@ -838,7 +894,7 @@ public class EmployeeSchedule {
                          ConstraintCollectors.sum((d, s, b) ->
                              (s.pinned && s.pinnedHours != null && s.pinnedHours > 0)
                                  ? s.pinnedHours
-                                 : autoHours(b)))
+                                 : b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_SOFT, (empId, tot) -> (int)Math.abs(tot - TARGET_HOURS_PER_EMP))
                 .asConstraint("soft-balance-total-hours");
         }
@@ -1186,39 +1242,44 @@ public class EmployeeSchedule {
 
     // ---------------- Entity-dependent employee ranges ----------------
 
-    private static void fillSeatCandidatesSinglePass(List<CrewSeat> seats,
-                                                     List<BlockDecision> blocks,
-                                                     List<EmployeeFact> employees) {
+    private static void fillSeatCandidatesSinglePass(
+            List<CrewSeat> seats,
+            List<BlockDecision> blocks,
+            List<EmployeeFact> employees) {
+
         Map<Integer, BlockDecision> byBlock = new HashMap<>();
         for (BlockDecision b : blocks) byBlock.put(b.id, b);
 
         Map<String, Set<Integer>> personalOff = CAL.workerOffByWid;
 
         for (CrewSeat s : seats) {
+            // Pinned seats → restrict to the pinned worker in value range
             if (s.pinned) {
                 EmployeeFact pinnedEmp = null;
                 for (EmployeeFact e : employees) {
                     if (e != null && s.pinnedWid != null && s.pinnedWid.equals(e.wid)) { pinnedEmp = e; break; }
                 }
-                if (pinnedEmp != null) s.setCandidateEmployees(List.of(pinnedEmp));
-                else s.setCandidateEmployees(List.of());
+                s.setCandidateEmployees(pinnedEmp == null ? List.of() : List.of(pinnedEmp));
                 continue;
             }
 
             BlockDecision b = byBlock.get(s.blockId);
+            // Use current entity vars if set, else conservative estimate = entire window
             int estStart = (b != null && b.startDay != null) ? b.startDay : b.windowStart;
-            int estDays  = (b != null && b.days != null)     ? b.days     : Math.max(1, b.windowEnd - b.windowStart + 1);
+            int estDays  = (b != null && b.days     != null) ? b.days     : Math.max(1, b.windowEnd - b.windowStart + 1);
 
             List<EmployeeFact> cand = new ArrayList<>();
             for (EmployeeFact e : employees) {
                 if (e == null || e.id == 0) continue;
-                if (skill(e, s.opId) < 1) continue;
+                // Skill gate
+                if (e.skills.getOrDefault(s.opId, 0) < 1) continue;
 
+                // Availability gate (skip non-working fab days)
                 Set<Integer> off = personalOff.getOrDefault(e.wid, Set.of());
                 boolean clash = false;
-                for (int i=0;i<estDays;i++) {
+                for (int i = 0; i < estDays; i++) {
                     int did = estStart + i;
-                    if (!isWorkingDay(did, s.factory)) continue;
+                    if (!isWorkingDay(did, s.factory)) continue; // fab closed; not a person off violation
                     if (off.contains(did)) { clash = true; break; }
                 }
                 if (clash) continue;
@@ -1226,16 +1287,20 @@ public class EmployeeSchedule {
                 cand.add(e);
             }
 
+            // Manager gate (only if the seat requires a manager)
             if (s.needManager) {
-                boolean hasMgr = cand.stream().anyMatch(EmployeeSchedule::isManager);
+                boolean hasMgr = cand.stream().anyMatch(emp -> emp != null && emp.isManager);
                 if (hasMgr) {
-                    cand = cand.stream().filter(EmployeeSchedule::isManager).collect(Collectors.toList());
+                    cand.removeIf(emp -> emp == null || !emp.isManager);
+                } else {
+                    // leave empty → infeasible seat is visible to solver early (or keep a soft to encourage mgr)
                 }
             }
 
             s.setCandidateEmployees(cand);
         }
     }
+
 
     // ---------------- Solver builder ----------------
 

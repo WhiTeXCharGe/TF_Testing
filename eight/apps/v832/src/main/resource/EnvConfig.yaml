@@ -98,15 +98,15 @@ environment:
   region_list:
   - id: r1
     name: America
-    max_stay_on: 1000
+    max_stay_on: 60
     max_annual_stay: 1000
-    stay_off_interval: 1000
+    stay_off_interval: 5
     unavailable_dates: []
   - id: r2
     name: Taiwan
-    max_stay_on: 1000
+    max_stay_on: 60
     max_annual_stay: 1000
-    stay_off_interval: 1000
+    stay_off_interval: 5
     unavailable_dates: []
   customer_company_list:
   - id: c1
