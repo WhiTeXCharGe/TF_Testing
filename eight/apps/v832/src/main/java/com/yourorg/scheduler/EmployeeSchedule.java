@@ -211,42 +211,48 @@ public class EmployeeSchedule {
         public Integer pinnedDays  = null;
         public Integer pinnedHours = null;
 
-        // Computed candidates (filled once per solve stage; see filler below)
+        // Computed candidates (filled once per solve stage)
         private List<EmployeeFact> candidateEmployees = List.of();
 
         private static final EmployeeFact UNASSIGNED =
             new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
 
-        // --- PATCH: Range is created from the prefiltered candidate list ---
-        @ValueRangeProvider(id = "eligibleEmployeesForSeat")
-        public Collection<EmployeeFact> eligibleEmployeesForSeat() {
-            // Pinned: only the pinned worker (or UNASSIGNED so the range is never empty)
-            if (pinned && pinnedWid != null) {
-                for (EmployeeFact e : candidateEmployees) {
-                    if (e != null && pinnedWid.equals(e.wid)) {
-                        return List.of(e);
-                    }
-                }
-                return List.of(UNASSIGNED);
-            }
-
-            // Normal seat
-            List<EmployeeFact> base = (candidateEmployees == null || candidateEmployees.isEmpty())
-                ? List.of(UNASSIGNED)  // keep range non-empty
-                : candidateEmployees;
-
-            return base;
-        }
+        public CrewSeat() {}
 
         public void setCandidateEmployees(List<EmployeeFact> list) {
             this.candidateEmployees = (list == null) ? List.of() : list;
         }
         public List<EmployeeFact> getCandidateEmployees() { return candidateEmployees; }
 
+        @ValueRangeProvider(id = "eligibleEmployeesForSeat")
+        public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
+            // Pinned → pin hard (or UNASSIGNED if you prefer; this doesn’t affect manager logic)
+            if (pinned && pinnedWid != null) {
+                for (EmployeeFact e : candidateEmployees) {
+                    if (e != null && pinnedWid.equals(e.wid)) {
+                        return new ListValueRange<>(List.of(e));
+                    }
+                }
+                // For pinned but missing, you can still allow UNASSIGNED here if you want.
+                return new ListValueRange<>(List.of(UNASSIGNED));
+            }
+
+            List<EmployeeFact> base = (candidateEmployees == null) ? List.of() : candidateEmployees;
+
+            if (needManager) {
+                // STRICT: manager-only, no UNASSIGNED fallback
+                base = base.stream().filter(emp -> emp != null && emp.isManager).toList();
+                // IMPORTANT: do NOT add UNASSIGNED here
+                return new ListValueRange<>(base);
+            } else {
+                // Non-manager seat may keep UNASSIGNED as a legal value to ease feasibility
+                if (base.isEmpty()) base = List.of(UNASSIGNED);
+                return new ListValueRange<>(base);
+            }
+        }
+
         @PlanningVariable(valueRangeProviderRefs = "eligibleEmployeesForSeat")
         public EmployeeFact employee;
-
-        public CrewSeat() {}
     }
 
 
@@ -505,7 +511,7 @@ public class EmployeeSchedule {
                 pinnedRespected(f),
                 oneFactoryPerEmpPerDay(f),
                 dailyCap12h(f),
-                atLeastOneManagerPerBlock(f),
+                // atLeastOneManagerPerBlock(f),
                 regionTransitGap(f),
                 regionStayMaxOn(f),
 
@@ -1287,17 +1293,18 @@ public class EmployeeSchedule {
                 cand.add(e);
             }
 
-            // Manager gate (only if the seat requires a manager)
+            // Manager gate (strict, no UNASSIGNED fallback)
             if (s.needManager) {
-                boolean hasMgr = cand.stream().anyMatch(emp -> emp != null && emp.isManager);
-                if (hasMgr) {
-                    cand.removeIf(emp -> emp == null || !emp.isManager);
-                } else {
-                    // leave empty → infeasible seat is visible to solver early (or keep a soft to encourage mgr)
+                cand = cand.stream().filter(emp -> emp != null && emp.isManager).toList();
+                if (cand.isEmpty()) {
+                    throw new IllegalStateException(
+                        "No manager candidates for block " + s.blockId +
+                        " seatIndex=" + s.seatIndex + " (" + s.module + " " + s.opId + ")."
+                    );
                 }
             }
-
             s.setCandidateEmployees(cand);
+
         }
     }
 
