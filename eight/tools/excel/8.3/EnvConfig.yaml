@@ -107,7 +107,7 @@ environment:
     max_stay_on: 60
     max_annual_stay: 1000
     stay_off_interval: 5
-    unavailable_dates: [2025/10/03]
+    unavailable_dates: [2025/09/03]
   customer_company_list:
   - id: c1
     name: AAA

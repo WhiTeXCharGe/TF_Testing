@@ -105,6 +105,7 @@ def load_env(env_path):
     customers = {c["id"]: c for c in env.get("customer_company_list", [])}
     wcompanies= {c["id"]: c for c in env.get("worker_company_list", [])}
     workers   = {w["id"]: w for w in env.get("worker_list", [])}
+    
 
     # operation meta: workflow_id -> phase_id -> op_id -> meta
     op_meta = defaultdict(lambda: defaultdict(dict))
@@ -125,6 +126,7 @@ def load_env(env_path):
         "workers": workers,
         "worker_companies": wcompanies,
         "op_meta": op_meta,
+        "transite_day_map": env.get("transite_day_map", []),
     }
 
 def load_schedule(path):
@@ -886,16 +888,12 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
 
     # transit time between regions (days)
     transit_days = {}
-    try:
-        env_root = env if "environment" not in env else env["environment"]
-        for tr in env_root.get("transite_day_map", []) or []:
-            try:
-                k = (tr.get("from"), tr.get("to"))
-                transit_days[k] = int(tr.get("days", 0))
-            except Exception:
-                pass
-    except Exception:
-        pass
+    for tr in (env.get("transite_day_map") or []):
+        try:
+            k = (tr.get("from"), tr.get("to"))
+            transit_days[k] = int(tr.get("days", 0))
+        except Exception:
+            pass
     
     # Collect per-worker working dates with their regions
     perw_dates = defaultdict(list)  # wname -> list of (date, region_id)
@@ -984,13 +982,16 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
                     (_, old_gap) = _region_policy(regions, cur_r)
                     next_gap = old_gap if old_gap is not None else 0
 
-                # Add transit requirement if region actually changes
-                extra_transit = 0
+                # Transit requirement strictly governs inter-region moves.
+                # If there is a mapping for (cur_r -> next_r), use it.
+                # If not, fall back to region stay_gap (next_gap).
                 if cur_r != next_r:
-                    extra_transit = transit_days.get((cur_r, next_r), 0)
+                    transit_req = transit_days.get((cur_r, next_r), None)
+                    required_gap = transit_req if transit_req is not None else next_gap
+                else:
+                    required_gap = 0  # same region → no “move” gap needed
 
-                required_gap = max(next_gap, extra_transit)
-                actual_gap   = (next_start - seg_end).days - 1
+                actual_gap = (next_start - seg_end).days - 1
 
                 if actual_gap < required_gap:
                     tbl_move_gap.append([
