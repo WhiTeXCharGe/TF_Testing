@@ -17,27 +17,29 @@ from pathlib import Path
 import yaml
 
 # -------------------- DEFAULTS (edit once, run many) --------------------
-DEFAULT_NUM_EMPLOYEES = 80
-DEFAULT_MANAGER_PERCENT = 50.0
+DEFAULT_NUM_EMPLOYEES = 120
+DEFAULT_MANAGER_PERCENT = 100
 
 DEFAULT_SKILL_COUNT_MIN = 4
 DEFAULT_SKILL_COUNT_MAX = 6
 
 # available levels and their global distribution
-DEFAULT_LEVELS = [1, 2, 3, 4, 5]
-DEFAULT_LEVEL_WEIGHTS = [10, 20, 40, 20, 10]  # sum ~= 100
+# DEFAULT_LEVELS = [1, 2, 3, 4, 5]
+# DEFAULT_LEVEL_WEIGHTS = [10, 20, 40, 20, 10]  # sum ~= 100
+DEFAULT_LEVELS = [1]
+DEFAULT_LEVEL_WEIGHTS = [100]  # sum ~= 100
 
 # how many regions per employee (cardinality) -> probability
 # keys are integers (0 means none), values are probabilities (sum ~= 1.0)
-DEFAULT_REGION_CARDINALITY_WEIGHTS = {0: 0.8, 1: 0.15, 2: 0.05}
+DEFAULT_REGION_CARDINALITY_WEIGHTS = {0: 1}
 
 # percentage of employees who will have unavailable dates and max count per such employee
-DEFAULT_UNAVAIL_EMP_PERCENT = 0.0
-DEFAULT_UNAVAIL_MAX_PER_EMP = 0
+DEFAULT_UNAVAIL_EMP_PERCENT = 0
+DEFAULT_UNAVAIL_MAX_PER_EMP = 1
 
 # Plan range for generating unavailable_dates (used only if you want random personal off-days)
 DEFAULT_PLAN_START = "2025/09/01"
-DEFAULT_PLAN_END = "2025/12/09"
+DEFAULT_PLAN_END = "2025/01/10"
 
 # random seed (None for non-deterministic)
 DEFAULT_SEED = 42
