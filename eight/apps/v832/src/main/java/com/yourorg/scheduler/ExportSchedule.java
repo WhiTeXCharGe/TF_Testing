@@ -23,7 +23,16 @@ public class ExportSchedule {
         try (InputStream in = Files.newInputStream(Paths.get(schedPath))) {
             root = new Yaml().load(in);
         }
+
+        // Support both:
+        //   { schedule: { ... } }
+        // and:
+        //   { plan_range: ..., workflow_task_list: ..., assignment_list: ... }
         Map<String,Object> sched = (Map<String,Object>) root.get("schedule");
+        if (sched == null || sched.isEmpty()) {
+            // treat the root as the schedule section
+            sched = root;
+        }
 
         // ---- Ensure calendars (optional) ----
         try {
@@ -39,12 +48,15 @@ public class ExportSchedule {
 
         // ---- Build (module, op) -> operation_task_id map ----
         Map<String,String> opTaskId = new HashMap<>();
-        List<Map<String,Object>> wfList = (List<Map<String,Object>>) sched.getOrDefault("workflow_task_list", List.of());
+        List<Map<String,Object>> wfList =
+            (List<Map<String,Object>>) sched.getOrDefault("workflow_task_list", List.of());
         for (Map<String,Object> wf : wfList) {
             String module = String.valueOf(wf.get("id"));
-            List<Map<String,Object>> phases = (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of());
+            List<Map<String,Object>> phases =
+                (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of());
             for (Map<String,Object> ph : phases) {
-                List<Map<String,Object>> ops = (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of());
+                List<Map<String,Object>> ops =
+                    (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of());
                 for (Map<String,Object> ot : ops) {
                     String op = String.valueOf(ot.get("operation"));
                     String otId = String.valueOf(ot.get("id"));
@@ -53,15 +65,15 @@ public class ExportSchedule {
             }
         }
 
-        // ---- Index facts ----
-        Map<Integer, EmployeeSchedule.BlockDecision> blockById = new HashMap<>();
-        if (plan.blocks != null) {
-            for (EmployeeSchedule.BlockDecision b : plan.blocks) blockById.put(b.id, b);
-        }
-        DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
-
         // ---- Original fixed rows preserved ----
-        List<Map<String,Object>> original = (List<Map<String,Object>>) sched.getOrDefault("assignment_list", List.of());
+        Object assignmentObj = sched.get("assignment_list");
+        List<Map<String,Object>> original;
+        if (assignmentObj instanceof List) {
+            original = (List<Map<String,Object>>) assignmentObj;
+        } else {
+            original = new ArrayList<>();
+        }
+
         List<Map<String,Object>> preservedFixed = new ArrayList<>();
         for (Map<String,Object> a : original) {
             String flex = String.valueOf(a.getOrDefault("plan_flexibility", "Flexible"));
@@ -81,7 +93,6 @@ public class ExportSchedule {
 
             // Some files have the typo "work_date_lsit"
             String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
-            @SuppressWarnings("unchecked")
             List<Map<String, Object>> wdl =
                 (List<Map<String, Object>>) a.getOrDefault(wdKey, List.of());
 
@@ -92,6 +103,13 @@ public class ExportSchedule {
                 if (did != null) set.add(did);
             }
         }
+
+        // ---- Index facts ----
+        Map<Integer, EmployeeSchedule.BlockDecision> blockById = new HashMap<>();
+        if (plan.blocks != null) {
+            for (EmployeeSchedule.BlockDecision b : plan.blocks) blockById.put(b.id, b);
+        }
+        DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
         // ---- Build flexible rows from solved seats ----
         List<Map<String,Object>> newFlex = new ArrayList<>();
@@ -148,7 +166,6 @@ public class ExportSchedule {
                 newFlex.add(row);
             }
         }
-
 
         // ---- Write back ----
         List<Map<String,Object>> merged = new ArrayList<>();

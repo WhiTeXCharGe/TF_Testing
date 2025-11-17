@@ -516,12 +516,12 @@ public class EmployeeSchedule {
                 regionStayMaxOn(f),
 
                 // softs
-                preferHoursNear8(f),
+                // preferHoursNear8(f),
                 preferSmallerHours(f),
                 preferEarlierStart(f),
-                softSameCompanyPairs(f),
-                softEncourageSkillVariety(f),
-                softBalanceBlockAvgSkill(f),
+                // softSameCompanyPairs(f),
+                // softEncourageSkillVariety(f),
+                // softBalanceBlockAvgSkill(f),
                 softBalanceTotalHours(f)
             };
         }
@@ -835,7 +835,7 @@ public class EmployeeSchedule {
         // ---------- Softs ----------
         Constraint preferHoursNear8(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .penalize(HardMediumSoftScore.ONE_MEDIUM,
+                .penalize(HardMediumSoftScore.ONE_SOFT,
                     b -> PREF_HOURS_WEIGHT * Math.abs(b.chosenHours() - 8))
                 .asConstraint("soft-hours-near-8");
         }
@@ -1385,7 +1385,7 @@ public class EmployeeSchedule {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                20  /* spentMinutes */,
+                60  /* spentMinutes */,
                 300   /* unimprovedSeconds */);
 
         SinglePassPlan best2 = stage2.solve(best1);
