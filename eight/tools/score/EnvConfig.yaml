@@ -101,13 +101,13 @@ environment:
     max_stay_on: 60
     max_annual_stay: 1000
     stay_off_interval: 5
-    unavailable_dates: [2025/09/15]
+    unavailable_dates: []
   - id: r2
     name: Taiwan
     max_stay_on: 60
     max_annual_stay: 1000
     stay_off_interval: 5
-    unavailable_dates: [2025/09/03]
+    unavailable_dates: []
   customer_company_list:
   - id: c1
     name: AAA
@@ -118,18 +118,7 @@ environment:
     annual_overtime_limit: 1000
     monthly_overtime_limit: 1000
     unavailable_dates: []
-  - id: c3
-    name: YYY
-    annual_overtime_limit: 1000
-    monthly_overtime_limit: 1000
-    unavailable_dates: []
-  transite_day_map:
-  - from: r1
-    to: r2
-    days: 4
-  - from: r2
-    to: r1
-    days: 4
+  transite_day_map: []
   worker_list:
   - id: w1
     name: AA
