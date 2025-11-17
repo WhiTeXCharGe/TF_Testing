@@ -20,5 +20,9 @@
   <modules>
     <module>apps/v811</module>
     <module>apps/v812</module>
+    <module>apps/v821</module>
+    <module>apps/v822</module>
+    <module>apps/v831</module>
+    <module>apps/v832</module>
   </modules>
 </project>
