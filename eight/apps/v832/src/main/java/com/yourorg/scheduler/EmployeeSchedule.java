@@ -33,6 +33,8 @@ import ai.timefold.solver.core.config.score.director.ScoreDirectorFactoryConfig;
 import ai.timefold.solver.core.config.solver.SolverConfig;
 import ai.timefold.solver.core.config.solver.termination.TerminationConfig;
 import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListValueRange;
+import ai.timefold.solver.core.api.solver.SolutionManager;
+import ai.timefold.solver.core.api.score.ScoreExplanation;
 
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -512,8 +514,8 @@ public class EmployeeSchedule {
                 oneFactoryPerEmpPerDay(f),
                 dailyCap12h(f),
                 // atLeastOneManagerPerBlock(f),
-                regionTransitGap(f),
-                regionStayMaxOn(f),
+                // regionTransitGap(f),
+                // regionStayMaxOn(f),
 
                 // softs
                 // preferHoursNear8(f),
@@ -1311,27 +1313,32 @@ public class EmployeeSchedule {
 
     // ---------------- Solver builder ----------------
 
-    static <S> Solver<S> buildSolver(Class<S> solutionClass,
-                                     Class<?>[] entityClasses,
-                                     Class<? extends ConstraintProvider> providerClass,
-                                     String bestScoreLimit,
-                                     Integer spentMinutes,
-                                     Integer unimprovedSeconds) {
+    static <S> SolverFactory<S> buildSolverFactory(Class<S> solutionClass,
+                                                Class<?>[] entityClasses,
+                                                Class<? extends ConstraintProvider> providerClass,
+                                                String bestScoreLimit,
+                                                Integer spentMinutes,
+                                                Integer unimprovedSeconds) {
         SolverConfig cfg = new SolverConfig();
         cfg.withSolutionClass(solutionClass);
         cfg.withEntityClasses(entityClasses);
-        cfg.withScoreDirectorFactory(new ScoreDirectorFactoryConfig().withConstraintProviderClass(providerClass));
+        cfg.withScoreDirectorFactory(
+                new ScoreDirectorFactoryConfig().withConstraintProviderClass(providerClass)
+        );
 
         TerminationConfig term = new TerminationConfig();
         if (bestScoreLimit != null) term.setBestScoreLimit(bestScoreLimit);
-        if (spentMinutes != null && spentMinutes > 0)
+        if (spentMinutes != null && spentMinutes > 0) {
             term.setSpentLimit(java.time.Duration.ofMinutes(spentMinutes));
-        if (unimprovedSeconds != null && unimprovedSeconds > 0)
+        }
+        if (unimprovedSeconds != null && unimprovedSeconds > 0) {
             term.setUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedSeconds));
+        }
         cfg.withTerminationConfig(term);
 
-        return SolverFactory.<S>create(cfg).buildSolver();
+        return SolverFactory.create(cfg);
     }
+
     static boolean hardZero(Score<?> s) { return s != null && s.toString().startsWith("0hard"); }
 
     // ---------------- Public API ----------------
@@ -1362,12 +1369,13 @@ public class EmployeeSchedule {
         long t0 = System.nanoTime();
 
         // ---- Stage 1: your current settings (e.g., 90/90) ----
-        Solver<SinglePassPlan> stage1 = buildSolver(
+        SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 "0hard/*medium/*soft", 90, 300);
 
+        Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
         long t1 = System.nanoTime();
@@ -1377,17 +1385,18 @@ public class EmployeeSchedule {
                 best1.blocks == null ? 0 : best1.blocks.size(),
                 best1.seats == null ? 0 : best1.seats.size());
 
-        // ---- Stage 2 (polish): 20 minutes, start from stage1 result ----
-        System.out.println("Start POLISH (stage2, 20m) at " + nowClock());
+        // ---- Stage 2 (polish): 60 minutes, start from stage1 result ----
+        System.out.println("Start POLISH (stage2, 60m) at " + nowClock());
 
-        Solver<SinglePassPlan> stage2 = buildSolver(
+        SolverFactory<SinglePassPlan> factoryStage2 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
                 60  /* spentMinutes */,
-                300   /* unimprovedSeconds */);
+                300 /* unimprovedSeconds */);
 
+        Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);
 
         long t2 = System.nanoTime();
@@ -1395,6 +1404,28 @@ public class EmployeeSchedule {
                 nowClock(), fmt(java.time.Duration.ofNanos(t2 - t1)),
                 String.valueOf(best2.getScore()));
 
+        // ---- Score explanation per constraint for the final solution ----
+        SolutionManager<SinglePassPlan, HardMediumSoftScore> solutionManager =
+                SolutionManager.create(factoryStage2);
+
+        ScoreExplanation<SinglePassPlan, HardMediumSoftScore> explanation =
+                solutionManager.explain(best2);
+
+        // key of the map is already the constraint name (String)
+        explanation.getConstraintMatchTotalMap().forEach((constraintName, cmt) -> {
+            System.out.println(constraintName + " = " + cmt.getScore());
+        });
+
+
+        System.out.println("=== Java earlier-start per block ===");
+        for (BlockDecision b : best2.blocks) {
+            int sd = (b.startDay == null ? -1 : b.startDay);
+            int pen = (b.startDay == null ? 0 : SinglePassConstraints.EARLIER_START_W * b.startDay);
+            System.out.printf(
+                "JAVA blockId=%d module=%s op=%s startDay=%d penalty=%d%n",
+                b.id, b.module, b.opId, sd, pen
+            );
+        }
         RunResult rr = new RunResult();
         rr.plan = best2; rr.planStart = sch.planStart;
         return rr;
