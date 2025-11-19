@@ -13,7 +13,7 @@ SCHEDULE_OUT_PATH = "Schedule.yaml"   # same as input = overwrite
 
 # --- Target counts after update ---
 # Total workers you want in EnvConfig.environment.worker_list
-WORKER_NUM = 200
+WORKER_NUM = 120
 
 # Total equipment modules you want in Schedule.schedule.workflow_task_list
 # e1..e{EQ_NUM} will exist after update (existing are kept, new ones appended).

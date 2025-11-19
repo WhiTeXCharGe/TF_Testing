@@ -39,6 +39,29 @@ import update_config as cfg
 
 # ---------------- helpers ----------------
 
+class InlineList(list):
+    pass
+
+class InlineDict(dict):
+    pass
+
+def represent_inline_list(dumper, data):
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+
+def represent_inline_dict(dumper, data):
+    return dumper.represent_mapping("tag:yaml.org,2002:map", data, flow_style=True)
+
+# register representers (works with safe_dump too)
+def set_up_yaml_inline():
+    # for default Dumper (yaml.dump)
+    yaml.add_representer(InlineList, represent_inline_list)
+    yaml.add_representer(InlineDict, represent_inline_dict)
+
+    # for SafeDumper (yaml.safe_dump)
+    yaml.add_representer(InlineList, represent_inline_list, Dumper=yaml.SafeDumper)
+    yaml.add_representer(InlineDict, represent_inline_dict, Dumper=yaml.SafeDumper)
+
+
 def parse_date(s: str) -> dt.date:
     s = str(s).strip().replace("-", "/")
     return dt.datetime.strptime(s, "%Y/%m/%d").date()
@@ -79,6 +102,34 @@ def backup_file(path: Path) -> None:
     except Exception as e:
         print(f"Warning: failed to write backup for {path}: {e}")
 
+def add_working_days(start_date: dt.date, days: int) -> dt.date:
+    """Add 'days' working days to start_date. skipping weekends and holidays"""
+    current = start_date
+    remaining = days
+    while remaining > 0:
+        current += dt.timedelta(days=1)
+        if current.weekday() < 5 and not is_holiday(current): 
+            remaining -= 1
+    return current
+
+
+def enforce_flow_style_in_env(env_root: dict) -> None:
+    """Wraps lists/maps so PyYAML prints them in inline flow style."""
+    env = env_root.get("environment") or env_root
+
+    # workflow_list -> phases -> operations: work_hours -> InlineList
+    for wf in env.get("workflow_list") or []:
+        for ph in wf.get("phase_list") or []:
+            for op in ph.get("operation_list") or []:
+                wh = op.get("work_hours")
+                if isinstance(wh, list) and not isinstance(wh, InlineList):
+                    op["work_hours"] = InlineList(wh)
+
+    # worker_list: skill_map -> InlineDict
+    for w in env.get("worker_list") or []:
+        sm = w.get("skill_map")
+        if isinstance(sm, dict) and not isinstance(sm, InlineDict):
+            w["skill_map"] = InlineDict(sm)
 
 # ---------------- Env: workers extension ----------------
 
@@ -152,7 +203,7 @@ def extend_workers_if_needed(env_root: Dict[str, Any]) -> Tuple[int, int]:
                 "name": wname,
                 "worker_company": company.get("id"),
                 "is_manager": is_manager,
-                "skill_map": skill_map,
+                "skill_map": InlineDict(skill_map),
                 "fab_suitability_map": [],
                 "unavailable_dates": [],
             }
@@ -226,8 +277,16 @@ def build_one_module(
     worklength: List[Tuple[int, List[int]]],
 ) -> Tuple[Dict[str, Any], dt.date]:
     """
-    Build one equipment module e{eq_index+1} with phases p1..p4
-    using the same pattern as data_generation.py.
+    Build one equipment module e{eq_index+1}.
+
+    For this module:
+      - All phases use the SAME start_date (module_start).
+      - Each phase has its own end_date.
+      - end_date is cumulative in WORKING DAYS:
+          phase1_end = module_start + phase1_days
+          phase2_end = module_start + (phase1_days + phase2_days)
+          ...
+      - Weekends are NOT counted as days (uses add_working_days).
     """
     eq_id = f"e{eq_index + 1}"
     name = f"SU {1000 + eq_index + 1}A"
@@ -240,36 +299,35 @@ def build_one_module(
             f"worklength length {len(worklength)} does not match number of phases {len(phase_list)}"
         )
 
-    # ensure phase_start is not holiday
-    phase_start = start_day
-    while is_holiday(phase_start):
-        phase_start += dt.timedelta(days=1)
+    # module_start: shift to next non-holiday if needed
+    module_start = start_day
+    while is_holiday(module_start):
+        module_start += dt.timedelta(days=1)
 
-    final_end = phase_start
+    # cumulative working-day offsets from module_start
+    cumulative_days = 0
+    final_end = module_start
 
     for phase_dict, (phase_days, op_wls) in zip(phase_list, worklength):
-        # compute phase_end over working days
-        phase_end = phase_start
-        days_needed = int(phase_days)
-        while days_needed > 0:
-            phase_end += dt.timedelta(days=1)
-            if not is_holiday(phase_end):
-                days_needed -= 1
+        phase_days = int(phase_days)
 
+        # add this phase's days to cumulative
+        cumulative_days += phase_days
+
+        # end date = module_start + cumulative_days (working days)
+        phase_end = add_working_days(module_start, cumulative_days)
+
+        # IMPORTANT: start_date is ALWAYS module_start
         phase_task = build_phase_task(
             eq_id=eq_id,
             phase_dict=phase_dict,
             op_worklengths=op_wls,
-            start_day=phase_start,
+            start_day=module_start,
             end_day=phase_end,
         )
         phase_task_list.append(phase_task)
-        final_end = phase_end
 
-        # next phase starts after this one
-        phase_start = phase_end + dt.timedelta(days=1)
-        while is_holiday(phase_start):
-            phase_start += dt.timedelta(days=1)
+        final_end = phase_end
 
     eq_dict = {
         "id": eq_id,
@@ -436,6 +494,8 @@ def main():
     env_root = load_yaml(env_path)
     sched_root = load_yaml(sched_in)
 
+    set_up_yaml_inline()
+
     # 1) extend workers
     random.seed(cfg.ENV_SEED)
     before_workers, added_workers = extend_workers_if_needed(env_root)
@@ -460,7 +520,7 @@ def main():
 
     if extra > 0:
         if last_end is not None:
-            start_day = last_end + dt.timedelta(days=1)
+            start_day = last_start + dt.timedelta(days=1)
         else:
             # if no modules, start from cutoff
             start_day = cutoff
@@ -508,6 +568,7 @@ def main():
         sched_root["schedule"] = sched
 
     # write env & schedule back (with backup)
+    enforce_flow_style_in_env(env_root)
     backup_file(env_path)
     with env_path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(env_root, f, sort_keys=False, allow_unicode=True)

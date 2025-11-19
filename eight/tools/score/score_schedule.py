@@ -562,7 +562,11 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
 
     env_obj = {"by_wid": by_wid}
     blocks, seats = build_entities(schedule, env_obj, opdef, schedule["fixed_hours_by_key"])
-
+    # Match Java: totalReq and TARGET_HOURS_PER_EMP
+    total_req = sum(schedule["required_by_key"].values())
+    real_emp = max(1, len(employees) - 1)  # exclude UNASSIGNED
+    target_hours_per_emp = total_req / real_emp
+    
     hard = 0
     medium = 0
     soft = 0
@@ -820,18 +824,19 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
         pass
 
     if "softBalanceTotalHours" in enable:
-        total_req = sum(schedule["required_by_key"].values())
-        # naive real_emp estimation = number of unique workers in seats
-        real_emp = max(1, len(set(s.get("pinnedWid") for s in seats if s.get("pinnedWid"))))
-        target = total_req / real_emp
         emp_hours = defaultdict(int)
         for s in seats:
             wid = s.get("pinnedWid")
             if not wid:
                 continue
-            emp_hours[wid] += sum(h for h in s.get("hoursByDay", {}).values() if h > 0)
+            factory = s.get("factory")
+            for d_i, h in s.get("hoursByDay", {}).items():
+                # count only working days, same as Java's seatCoversDayAndWorking
+                if h > 0 and is_working_day(d_i, factory):
+                    emp_hours[wid] += h
+
         for wid, tot in emp_hours.items():
-            soft -= int(abs(tot - target))
+            soft -= int(abs(tot - target_hours_per_emp))
 
     return hard, 0, soft
 

@@ -1,10 +1,10 @@
-WORKER_NUM = 80
+WORKER_NUM = 40
 EQ_PER_DAYS = 0.5
 EQ_PER_DAYS_SIGMA = 0.5
-EQ_NUM = 30
+EQ_NUM = 10
 
-skill_level_list = (1,2,3,4,5)
-skill_level_weights = (0.05, 0.1, 0.5, 0.25, 0.1)
+skill_level_list = (1,)
+skill_level_weights = (1.0,)
 
 normal_worklength = [
     (15, [30, 20, 20]),
@@ -20,8 +20,8 @@ vip_worklength = [
     (8, [12, 8]),
 ]
 
-manager_rate = 0.3
+manager_rate = 1.0
 
-worker_company_num = 2
+worker_company_num = 1
 
 is_skip_weekend = False

@@ -8,26 +8,17 @@ environment:
       operation_list:
       - id: p1o1
         name: Heavy
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
       - id: p1o2
         name: Mech
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
       - id: p1o3
         name: Elec
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
     - id: p2
@@ -35,18 +26,12 @@ environment:
       operation_list:
       - id: p2o1
         name: Mech
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
       - id: p2o2
         name: Elec
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
     - id: p3
@@ -54,10 +39,7 @@ environment:
       operation_list:
       - id: p3o1
         name: QC
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
     - id: p4
@@ -65,18 +47,12 @@ environment:
       operation_list:
       - id: p4o1
         name: QC
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
       - id: p4o2
         name: Mech
-        work_hours:
-        - 8
-        - 10
-        - 12
+        work_hours: [8,10,12]
         min_worker_num: 2
         max_worker_num: 3
   fab_list:
@@ -742,215 +718,5 @@ environment:
     worker_company: c2
     is_manager: true
     skill_map: {p2o2: 1, p3o1: 1, p1o1: 1, p4o1: 1, p1o3: 1, p1o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w91
-    name: DM
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p3o1: 1, p2o1: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w92
-    name: DN
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p3o1: 1, p1o3: 1, p1o2: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w93
-    name: DO
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p4o1: 1, p1o1: 1, p2o1: 1, p1o3: 1, p1o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w94
-    name: DP
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p1o1: 1, p2o1: 1, p1o3: 1, p1o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w95
-    name: DQ
-    worker_company: c2
-    is_manager: true
-    skill_map: {p4o2: 1, p4o1: 1, p2o1: 1, p1o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w96
-    name: DR
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p1o1: 1, p3o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w97
-    name: DS
-    worker_company: c2
-    is_manager: true
-    skill_map: {p4o2: 1, p4o1: 1, p1o1: 1, p3o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w98
-    name: DT
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p1o1: 1, p4o2: 1, p1o3: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w99
-    name: DU
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p4o1: 1, p1o1: 1, p2o1: 1, p2o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w100
-    name: DV
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p1o2: 1, p1o1: 1, p2o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w101
-    name: DW
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p3o1: 1, p4o1: 1, p1o3: 1, p1o2: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w102
-    name: DX
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p4o1: 1, p1o1: 1, p2o2: 1, p1o3: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w103
-    name: DY
-    worker_company: c2
-    is_manager: true
-    skill_map: {p1o3: 1, p1o2: 1, p1o1: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w104
-    name: DZ
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p4o1: 1, p2o2: 1, p1o3: 1, p1o2: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w105
-    name: EA
-    worker_company: c2
-    is_manager: true
-    skill_map: {p4o2: 1, p1o2: 1, p2o2: 1, p2o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w106
-    name: EB
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p1o2: 1, p2o2: 1, p1o3: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w107
-    name: EC
-    worker_company: c2
-    is_manager: true
-    skill_map: {p1o3: 1, p1o1: 1, p2o1: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w108
-    name: ED
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p3o1: 1, p1o3: 1, p1o2: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w109
-    name: EE
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p1o1: 1, p3o1: 1, p1o3: 1, p1o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w110
-    name: EF
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p1o2: 1, p1o3: 1, p3o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w111
-    name: EG
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p1o1: 1, p2o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w112
-    name: EH
-    worker_company: c2
-    is_manager: true
-    skill_map: {p1o2: 1, p2o2: 1, p4o1: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w113
-    name: EI
-    worker_company: c2
-    is_manager: true
-    skill_map: {p1o2: 1, p3o1: 1, p4o1: 1, p1o3: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w114
-    name: EJ
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p4o1: 1, p2o1: 1, p1o3: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w115
-    name: EK
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p1o1: 1, p2o1: 1, p2o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w116
-    name: EL
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p1o1: 1, p3o1: 1, p2o1: 1, p1o3: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w117
-    name: EM
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p1o2: 1, p1o3: 1, p4o1: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w118
-    name: EN
-    worker_company: c2
-    is_manager: true
-    skill_map: {p2o2: 1, p4o1: 1, p3o1: 1, p1o3: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w119
-    name: EO
-    worker_company: c2
-    is_manager: true
-    skill_map: {p3o1: 1, p2o2: 1, p1o1: 1, p4o1: 1, p1o2: 1, p4o2: 1}
-    fab_suitability_map: []
-    unavailable_dates: []
-  - id: w120
-    name: EP
-    worker_company: c2
-    is_manager: true
-    skill_map: {p4o1: 1, p1o1: 1, p2o1: 1, p1o3: 1, p1o2: 1}
     fab_suitability_map: []
     unavailable_dates: []
