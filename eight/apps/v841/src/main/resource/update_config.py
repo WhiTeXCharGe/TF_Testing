@@ -17,7 +17,7 @@ WORKER_NUM = 80
 
 # Total equipment modules you want in Schedule.schedule.workflow_task_list
 # e1..e{EQ_NUM} will exist after update (existing are kept, new ones appended).
-EQ_NUM = 15
+EQ_NUM = 13
 
 # --- Plan range extra days ---
 # plan_range.end_date = max(last_module_end) + PLAN_RANGE_EXTRA_DAYS

@@ -282,6 +282,7 @@ public class EmployeeSchedule {
     // ---------------- Globals & helpers ----------------
 
     static final int DAILY_CAP = 12;
+    static final int MODULE_HISTORY_LOOKBACK_DAYS = 5;
     static double TARGET_HOURS_PER_EMP = 0.0;
 
     static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
@@ -848,28 +849,11 @@ public class EmployeeSchedule {
                 .asConstraint("soft-smaller-hours");
         }
 
-        // Constraint preferEarlierStart(ConstraintFactory f) {
-        //     return f.forEach(BlockDecision.class)
-        //         .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.startDay == null ? 0 : EARLIER_START_W * b.startDay)
-        //         .asConstraint("soft-earlier-start");
-        // }
-
         Constraint preferEarlierStart(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                    // only consider blocks that actually have a startDay
-                    .filter(b -> b.startDay != null)
-                    .penalize(HardMediumSoftScore.ONE_SOFT, b -> {
-                        // delay relative to earliest allowed day in the window
-                        int delay = b.startDay - b.windowStart;
-                        if (delay <= 0) {
-                            return 0; // already as early as window allows
-                        }
-                        return EARLIER_START_W * delay;
-                    })
-                    .asConstraint("soft-earlier-start");
+                .penalize(HardMediumSoftScore.ONE_SOFT, b -> b.startDay == null ? 0 : EARLIER_START_W * b.startDay)
+                .asConstraint("soft-earlier-start");
         }
-
-
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
@@ -1037,6 +1021,9 @@ public class EmployeeSchedule {
         LocalDate end   = LocalDate.parse(
                 safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
 
+        // NEW: modules whose last phase ends BEFORE this date are treated as "history only" and ignored
+        LocalDate moduleKeepCutoff = start.minusDays(MODULE_HISTORY_LOOKBACK_DAYS);
+
         int horizon = (int) (end.toEpochDay() - start.toEpochDay()) + 1;
         List<DaySlot> days = new ArrayList<>();
         for (int i=0;i<horizon;i++) days.add(new DaySlot(i, start.plusDays(i)));
@@ -1044,46 +1031,94 @@ public class EmployeeSchedule {
         List<TaskWindow> windows = new ArrayList<>();
         Map<String,Integer> required = new HashMap<>();
 
+        // Remember which modules are still in scope so we can also filter assignments.
+        Set<String> keptModules = new HashSet<>();
+
         Object wfObj = s.get("workflow_task_list");
         List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
         for (Map<String,Object> wf : wfTasks) {
             String module = safeStr(wf.get("id"));
             String fab = safeStr(wf.get("fab"));
             Object phasesObj = wf.get("phase_task_list");
-            List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
+            List<Map<String,Object>> phases = (phasesObj instanceof List)
+                    ? (List<Map<String,Object>>) phasesObj
+                    : List.of();
+
+            // --- NEW: compute last end date of this module ---
+            LocalDate moduleLastEnd = null;
+            for (Map<String,Object> ph : phases) {
+                LocalDate pEnd = LocalDate.parse(
+                        safeStr(ph.get("end_date")).replace("-", "/"), DF);
+                if (moduleLastEnd == null || pEnd.isAfter(moduleLastEnd)) {
+                    moduleLastEnd = pEnd;
+                }
+            }
+
+            // If the whole module finished long before the current plan_start, drop it completely
+            if (moduleLastEnd != null && moduleLastEnd.isBefore(moduleKeepCutoff)) {
+                continue;
+            }
+
+            keptModules.add(module);
+
+            // --- Build TaskWindow for each phase / operation ---
             for (Map<String,Object> ph : phases) {
                 String phId = safeStr(ph.get("phase"));
                 int phNum = phaseNumFromId(phId);
-                LocalDate pStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
-                LocalDate pEnd   = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+
+                LocalDate pStart = LocalDate.parse(
+                        safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                LocalDate pEnd   = LocalDate.parse(
+                        safeStr(ph.get("end_date")).replace("-", "/"), DF);
+
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
                 int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
 
+                // NEW: clamp windows to the current horizon [0 ..]
+                if (endId < 0) {
+                    // Phase is fully before the new plan_start -> treat residual work as starting now
+                    startId = 0;
+                    endId = 0;
+                } else if (startId < 0) {
+                    // Phase overlaps the boundary -> cut off the past part
+                    startId = 0;
+                }
+
                 Object opsObj = ph.get("operation_task_list");
-                List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
+                List<Map<String,Object>> opTasks = (opsObj instanceof List)
+                        ? (List<Map<String,Object>>) opsObj
+                        : List.of();
                 for (Map<String,Object> ot : opTasks) {
                     String opId = safeStr(ot.get("operation"));
                     int workloadDays = parseInt(ot.get("workload_days"), 0);
 
                     OpDef od = opdef.get(opId);
-                    if (od == null) throw new IllegalArgumentException("operation "+opId+" missing in EnvConfig");
+                    if (od == null) {
+                        throw new IllegalArgumentException("operation " + opId + " missing in EnvConfig");
+                    }
 
-                    int baseline = (od.allowed.size()==1 && od.allowed.get(0)==4) ? 4 : 8;
+                    int baseline = (od.allowed.size() == 1 && od.allowed.get(0) == 4) ? 4 : 8;
                     int req = workloadDays * baseline;
                     required.merge(module + "|" + opId, req, Integer::sum);
 
                     TaskWindow tw = new TaskWindow();
-                    tw.module = module; tw.factory = fab;
-                    tw.phaseId = phId; tw.phaseNum = phNum;
-                    tw.opId = opId; tw.startDayId = startId; tw.endDayId = endId;
-                    tw.allowed = od.allowed; tw.minHeads = od.min; tw.maxHeads = od.max;
+                    tw.module = module;
+                    tw.factory = fab;
+                    tw.phaseId = phId;
+                    tw.phaseNum = phNum;
+                    tw.opId = opId;
+                    tw.startDayId = startId;
+                    tw.endDayId = endId;
+                    tw.allowed = od.allowed;
+                    tw.minHeads = od.min;
+                    tw.maxHeads = od.max;
                     tw.workloadDays = workloadDays;
                     windows.add(tw);
                 }
             }
         }
 
-        // ---- Read fixed assignments
+        // ---- Read fixed assignments (only for kept modules) ----
         List<FixedAssign> fixedRows = new ArrayList<>();
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
         Object asgObj = s.get("assignment_list");
@@ -1099,16 +1134,27 @@ public class EmployeeSchedule {
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
             String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
+            // NEW: skip assignments for modules completely out of scope
+            if (!keptModules.contains(module)) {
+                continue;
+            }
+
             boolean isFixed = "fixed".equalsIgnoreCase(flex);
 
             String phId = "";
             int phNum = 0;
-            try { String pPart = opId.split("o", 2)[0]; phId = pPart; phNum = phaseNumFromId(pPart); } catch (Exception ignore) {}
+            try {
+                String pPart = opId.split("o", 2)[0];
+                phId = pPart;
+                phNum = phaseNumFromId(pPart);
+            } catch (Exception ignore) {}
 
             String wid = safeStr(a.get("worker"));
 
-            LocalDate sd = a.get("start_date") == null ? null : LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
-            LocalDate ed = a.get("end_date")   == null ? null : LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+            LocalDate sd = a.get("start_date") == null ? null :
+                    LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+            LocalDate ed = a.get("end_date") == null ? null :
+                    LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
             int sId = sd == null ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
             int eId = ed == null ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
@@ -1117,7 +1163,9 @@ public class EmployeeSchedule {
             }
 
             String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
-            List<Map<String,Object>> wdl = (a.get(wdKey) instanceof List) ? (List<Map<String,Object>>) a.get(wdKey) : List.of();
+            List<Map<String,Object>> wdl = (a.get(wdKey) instanceof List)
+                    ? (List<Map<String,Object>>) a.get(wdKey)
+                    : List.of();
 
             Map<Integer,Integer> byDay = new HashMap<>();
             int totalFixedHours = 0;
@@ -1136,20 +1184,29 @@ public class EmployeeSchedule {
             }
             if (isFixed && !byDay.isEmpty()) {
                 FixedAssign fa = new FixedAssign();
-                fa.module = module; fa.opId = opId; fa.wid = wid;
-                fa.startDayId = sId; fa.endDayId = eId;
-                fa.hoursByDay = byDay; fa.phaseId = phId; fa.phaseNum = phNum;
+                fa.module = module;
+                fa.opId = opId;
+                fa.wid = wid;
+                fa.startDayId = sId;
+                fa.endDayId = eId;
+                fa.hoursByDay = byDay;
+                fa.phaseId = phId;
+                fa.phaseNum = phNum;
                 fa.factory = null; // will be inferred later
                 fixedRows.add(fa);
             }
         }
 
         ParsedSchedule out = new ParsedSchedule();
-        out.planStart = start; out.planEnd = end;
-        out.daySlots = days; out.windows = windows; out.requiredByKey = required;
-        out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+        out.planStart = start;
+        out.planEnd = end;
+        out.daySlots = days;
+        out.windows = windows;
+        out.requiredByKey = required;
+        out.fixedRows = fixedRows;
+        out.fixedHoursByKey = fixedHoursByKey;
 
-        // ---- Push phase windows based on fixed ends (even if outside horizon)
+        // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
             int prev = w.phaseNum - 1;
             if (prev <= 0) continue;
@@ -1165,6 +1222,7 @@ public class EmployeeSchedule {
         }
         return out;
     }
+
 
     // ---------------- Build entities for single pass ----------------
 

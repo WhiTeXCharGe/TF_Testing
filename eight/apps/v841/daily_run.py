@@ -2,25 +2,32 @@
 """
 daily_run.py
 
-Incremental day-by-day scheduler driver.
+Incremental scheduler driver with "evaluate every X working days" and
+cutoff = (last module start + 1 working day).
 
 Behavior:
 - Finds project root (directory containing pom.xml).
 - Uses src/main/resource/EnvConfig.yaml and Schedule.yaml.
-- First day:
-    * Run update_schedule2 WITHOUT adding new modules
-      (only plan_range + Fixed/Flexible updates).
-    * Run Java solver.
-    * Output Schedule_YYYYMMDD.yaml.
-- Following days (working days only):
-    * Set cutoff = max(plan_start, today - MODULE_HISTORY_LOOKBACK_DAYS).
-    * Set cfg.CURRENT_SIM_DAY_STR = today (string).
-    * Call update_schedule2.main() to:
-         - mark assignments Fixed/Flexible
-         - maybe add new modules (0 or more) for *this* day only
-    * Reload Schedule.yaml and count modules.
-    * If module count increased → run Java solver and export Schedule_YYYYMMDD.yaml.
-    * If no new modules → skip solver & export (nothing “interesting” happened).
+- Simulates over plan_range[start_date..end_date] but:
+    * Only saves Schedule_YYYYMMDD.yaml (and runs solver)
+      on:
+        - the first day (baseline), and
+        - days when new modules are actually added.
+- For each evaluation day D:
+    1) Reads current Schedule.yaml and finds last module start date.
+    2) Sets in update_config:
+         CUTOFF_DATE_STR      = (last_module_start + 1 working day)
+         CURRENT_SIM_DAY_STR  = D
+         MODULE_SEED_OFFSET   = eval_index (0,1,2,...)
+    3) Runs update_schedule2.main() to:
+         - set plan_flexibility (before cutoff = Fixed, after = Flexible)
+         - maybe append new modules (starting after last module start)
+         - update plan_range
+    4) If (D == plan_start OR modules_added > 0):
+         - Runs Maven Java solver (EmployeeSchedule).
+         - Copies Schedule.yaml to:
+               src/main/resource/schedule_outputs/Schedule_YYYYMMDD.yaml
+- Evaluation days are spaced by EQ_EVAL_DAYS working days.
 """
 
 import os
@@ -32,17 +39,12 @@ from pathlib import Path
 
 import yaml
 
-# ================== CONFIG ==================
-
-MODULE_HISTORY_LOOKBACK_DAYS = 5
-
+# Relative paths from project root
 RESOURCE_REL = Path("src") / "main" / "resource"
 ENV_NAME = "EnvConfig.yaml"
 SCHEDULE_NAME = "Schedule.yaml"
 OUTPUT_DIR_NAME = "schedule_outputs"
 
-
-# ================== HELPERS ==================
 
 def find_project_root(start: Path) -> Path:
     """Walk upwards until we find pom.xml."""
@@ -66,24 +68,26 @@ def load_schedule(path: Path) -> dict:
 
 
 def is_weekend(d: dt.date) -> bool:
-    return d.weekday() >= 5  # 5=Sat, 6=Sun
+    # Monday=0 ... Sunday=6
+    return d.weekday() >= 5
 
 
-def count_modules_from_root(sched_root: dict) -> int:
-    """Count e1, e2, ... in workflow_task_list."""
-    sched = sched_root.get("schedule") or sched_root
-    wf_list = sched.get("workflow_task_list") or []
-    c = 0
-    for mod in wf_list:
-        mid = str(mod.get("id") or "")
-        if mid.startswith("e") and mid[1:].isdigit():
-            c += 1
-    return c
+def next_working_day(d: dt.date) -> dt.date:
+    nd = d + dt.timedelta(days=1)
+    while is_weekend(nd):
+        nd += dt.timedelta(days=1)
+    return nd
 
 
-# ================== MAIN FLOW ==================
+def advance_working_days(d: dt.date, n: int) -> dt.date:
+    nd = d
+    for _ in range(n):
+        nd = next_working_day(nd)
+    return nd
+
 
 def main():
+    # ---- Locate project + resource dir ----
     here = Path(__file__).resolve()
     project_root = find_project_root(here)
     resource_dir = project_root / RESOURCE_REL
@@ -101,12 +105,12 @@ def main():
 
     # Make Python see update_config.py and update_schedule2.py in resource_dir
     sys.path.insert(0, str(resource_dir))
-    os.chdir(resource_dir)  # so update_* sees EnvConfig.yaml / Schedule.yaml
+    os.chdir(resource_dir)
 
     import update_config as cfg
     import update_schedule2 as upd
 
-    # ---------- Initial load to get plan_range + initial module count ----------
+    # ---------- Initial load to get plan_range ----------
     sched_root = load_schedule(sched_path)
     sched = sched_root.get("schedule") or sched_root
     plan_range = sched.get("plan_range") or {}
@@ -116,89 +120,112 @@ def main():
 
     plan_start = parse_ymd(plan_range["start_date"])
     plan_end = parse_ymd(plan_range["end_date"])
-    initial_module_count = count_modules_from_root(sched_root)
+
+    # Existing modules → find initial last start date
+    modules0, last_start0, last_end0 = upd.collect_existing_modules(sched_root)
+
+    # EQ_EVAL_DAYS (X working days per evaluation)
+    step_days = max(1, int(getattr(cfg, "EQ_EVAL_DAYS", 1)))
+
+    # First evaluation day:
+    #   step_days = 1 → current = cutoff0
+    #   step_days = 2 → current = cutoff0 + 1 working day, etc.
+    if last_start0 is not None:
+        cutoff0 = next_working_day(last_start0)
+    else:
+        # if no modules yet, treat plan_start as base and cutoff = plan_start
+        cutoff0 = plan_start
+
+    current = advance_working_days(cutoff0, step_days - 1)
 
     print(f"[INFO] Initial plan_range: {plan_start} .. {plan_end}")
-    print(f"[INFO] Initial modules: {initial_module_count}")
+    print("[INFO] Lookback is DISABLED (no trimming).")
 
+    # Choose mvn executable (Windows vs others)
     mvn_exe = "mvn.cmd" if os.name == "nt" else "mvn"
 
-    current = plan_start
-    prev_module_count = initial_module_count
-    first_day_done = False
+    eval_index = 0  # increases only on evaluation steps (for MODULE_SEED_OFFSET)
 
-    while current <= plan_end:
+    while True:
+        if current > plan_end:
+            print(f"[DONE] Reached plan_end {plan_end}, stop.")
+            break
+
         if is_weekend(current):
+            # This should rarely trigger because current advances in working days,
+            # but keep it safe.
             print(f"[SKIP] {current} (weekend)")
             current += dt.timedelta(days=1)
             continue
 
-        # cutoff: keep MODULE_HISTORY_LOOKBACK_DAYS flexible
-        cutoff = current - dt.timedelta(days=MODULE_HISTORY_LOOKBACK_DAYS)
-        if cutoff < plan_start:
-            cutoff = plan_start
+        # ----- Load current schedule & compute cutoff from *current* last_start -----
+        sched_before = load_schedule(sched_path)
+        modules_before, last_start_before, last_end_before = upd.collect_existing_modules(sched_before)
+        before_count = len(modules_before)
 
-        print("\n==============================================")
-        print(f"[DAY] {current}  | cutoff={ymd(cutoff)}")
-        print("==============================================")
+        if last_start_before is not None:
+            cutoff = next_working_day(last_start_before)
+        else:
+            cutoff = plan_start  # no modules yet
 
-        # Tell update_* which logical day this is
         cfg.CUTOFF_DATE_STR = ymd(cutoff)
         cfg.CURRENT_SIM_DAY_STR = ymd(current)
+        cfg.MODULE_SEED_OFFSET = eval_index
 
-        # First day: freeze EQ_NUM so NO new modules are created
-        if not first_day_done:
-            # reload current module count
-            sched_root = load_schedule(sched_path)
-            prev_module_count = count_modules_from_root(sched_root)
+        print("\n==============================================")
+        print(f"[DAY] {current}  | cutoff={cfg.CUTOFF_DATE_STR}  | modules_before={before_count}")
+        print("==============================================")
 
-            orig_eq_num = cfg.EQ_NUM
-            cfg.EQ_NUM = prev_module_count
-            print(f"[INIT] First day: forcing EQ_NUM={cfg.EQ_NUM} (no new modules).")
-            upd.main()
-            cfg.EQ_NUM = orig_eq_num
+        # 1) Update Schedule.yaml: mark Fixed/Flexible + maybe extend modules
+        upd.main()
+
+        # 2) Reload and inspect AFTER
+        sched_after = load_schedule(sched_path)
+        modules_after, last_start_after, last_end_after = upd.collect_existing_modules(sched_after)
+        after_count = len(modules_after)
+
+        # just for logging, read the current plan_range from the file
+        sched2 = sched_after.get("schedule") or sched_after
+        plan_range2 = sched2.get("plan_range") or {}
+
+        modules_added = after_count - before_count
+        print(f"[INFO] modules_after={after_count}, modules_added_today={modules_added}")
+        print(f"[INFO] plan_range now: {plan_range2.get('start_date')} .. {plan_range2.get('end_date')}")
+
+        # 3) Decide whether to run solver and snapshot
+        run_solver = (current == plan_start) or (modules_added > 0)
+
+        if run_solver:
+            mvn_cmd = [
+                mvn_exe,
+                "-q",
+                "-DskipTests",
+                "exec:java",
+                f"-Dexec.args=src/main/resource/{ENV_NAME} src/main/resource/{SCHEDULE_NAME}",
+            ]
+            print(f"[RUN] {' '.join(mvn_cmd)}  (cwd={project_root})")
+            subprocess.run(mvn_cmd, cwd=project_root, check=True)
+
+            out_name = f"Schedule_{current.strftime('%Y%m%d')}.yaml"
+            out_path = out_dir / out_name
+            shutil.copy2(sched_path, out_path)
+            print(f"[OUT] Wrote {out_path.relative_to(project_root)}")
         else:
-            upd.main()
+            print("[SKIP] No new modules today and not first day -> skip solver/snapshot.")
 
-        # After update, reload and count modules
-        sched_root = load_schedule(sched_path)
-        new_module_count = count_modules_from_root(sched_root)
-        print(f"[INFO] Modules: prev={prev_module_count}, now={new_module_count}")
+        # --- stop if EQ_NUM reached (AFTER we solved for this day) ---
+        try:
+            target_modules = int(cfg.EQ_NUM)
+        except Exception:
+            target_modules = None
 
-        # Decide whether to run solver
-        if not first_day_done:
-            # Always run for the first day
-            should_solve = True
-        else:
-            should_solve = new_module_count > prev_module_count
+        if target_modules is not None and after_count >= target_modules:
+            print(f"[DONE] target modules reached: {after_count} / {target_modules}.")
+            break
 
-        if not should_solve:
-            print("[SKIP] No new modules today → skip solver/export.")
-            prev_module_count = new_module_count
-            current += dt.timedelta(days=1)
-            first_day_done = True
-            continue
-
-        # 2) Run Java solver via Maven
-        mvn_cmd = [
-            mvn_exe,
-            "-q",
-            "-DskipTests",
-            "exec:java",
-            f"-Dexec.args=src/main/resource/{ENV_NAME} src/main/resource/{SCHEDULE_NAME}",
-        ]
-        print(f"[RUN] {' '.join(mvn_cmd)}  (cwd={project_root})")
-        subprocess.run(mvn_cmd, cwd=project_root, check=True)
-
-        # 3) Snapshot Schedule.yaml for this day
-        out_name = f"Schedule_{current.strftime('%Y%m%d')}.yaml"
-        out_path = out_dir / out_name
-        shutil.copy2(sched_path, out_path)
-        print(f"[OUT] Wrote {out_path.relative_to(project_root)}")
-
-        prev_module_count = new_module_count
-        current += dt.timedelta(days=1)
-        first_day_done = True
+        # advance to the next evaluation day (every step_days working days)
+        current = advance_working_days(current, step_days)
+        eval_index += 1  # for MODULE_SEED_OFFSET
 
     print("\n[DONE] Daily run finished.")
 
