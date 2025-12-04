@@ -193,18 +193,43 @@ def main():
         print(f"[INFO] plan_range now: {plan_range2.get('start_date')} .. {plan_range2.get('end_date')}")
 
         # 3) Decide whether to run solver and snapshot
-        run_solver = (current == plan_start) or (modules_added > 0)
+        assignment_list_now = sched2.get("assignm_list") or []
+        run_solver = (current == plan_start) or (modules_added > 0) or (len(assignment_list_now) == 0)
 
         if run_solver:
-            mvn_cmd = [
-                mvn_exe,
-                "-q",
-                "-DskipTests",
-                "exec:java",
-                f"-Dexec.args=src/main/resource/{ENV_NAME} src/main/resource/{SCHEDULE_NAME}",
+            # ----------------------------------------------
+            # NEW: Run Java solver directly (no Maven)
+            # ----------------------------------------------
+            
+            java_cmd = [
+                "java",
+                "-Xms4g", "-Xmx8g",        # adjust depending on your RAM
+                "-cp", "target/classes;target/dependency/*",   # Linux → ":" instead of ";"
+                "com.yourorg.scheduler.RunEmployeeScheduleOnce",
+                f"src/main/resource/{ENV_NAME}",
+                f"src/main/resource/{SCHEDULE_NAME}",
             ]
-            print(f"[RUN] {' '.join(mvn_cmd)}  (cwd={project_root})")
-            subprocess.run(mvn_cmd, cwd=project_root, check=True)
+            
+            print(f"[RUN-JAVA] {' '.join(java_cmd)}  (cwd={project_root})")
+            subprocess.run(java_cmd, cwd=project_root, check=True)
+            
+            # ----------------------------------------------
+            # OLD MAVEN METHOD (KEEPED AS COMMENT)
+            # ----------------------------------------------
+"""
+mvn_cmd = [
+    mvn_exe,
+    "-q",
+    "-DskipTests",
+    "exec:java",
+    f"-Dexec.args=src/main/resource/{ENV_NAME} src/main/resource/{SCHEDULE_NAME}",
+]
+print(f"[RUN] {' '.join(mvn_cmd)}  (cwd={project_root})")
+env = os.environ.copy()
+env["MAVEN_OPTS"] = "-Xms4g -Xmx8g"
+subprocess.run(mvn_cmd, cwd=project_root, check=True, env=env)
+"""
+# ----------------------------------------------
 
             out_name = f"Schedule_{current.strftime('%Y%m%d')}.yaml"
             out_path = out_dir / out_name
@@ -232,3 +257,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
