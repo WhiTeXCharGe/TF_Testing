@@ -165,14 +165,31 @@ public class EmployeeSchedule {
 
         @ValueRangeProvider(id = "vrStartWithinWindow")
         public CountableValueRange<Integer> vrStartWithinWindow() {
-            return ValueRangeFactory.createIntValueRange(windowStart, windowEnd + 1);
+            int from = windowStart;
+            int to   = windowEnd;
+
+            // Guard: never let from > to (bad window from YAML / phase push)
+            if (to < from) {
+                System.out.printf(
+                    "WARN vrStartWithinWindow: window inverted for block %d (%s %s) start=%d end=%d -> clamped%n",
+                    id, module, opId, from, to
+                );
+                to = from;  // single-day window
+            }
+
+            // Timefold IntValueRange is inclusive [from, to]
+            return ValueRangeFactory.createIntValueRange(from, to);
         }
 
         @ValueRangeProvider(id = "vrDaysWithinWindow")
         public CountableValueRange<Integer> vrDaysWithinWindow() {
-            int maxLen = Math.max(1, windowEnd - windowStart + 1);
-            return ValueRangeFactory.createIntValueRange(1, maxLen + 1);
+            int span = windowEnd - windowStart + 1;
+            int maxLen = Math.max(1, span);
+
+            // days length in [1, maxLen] (inclusive)
+            return ValueRangeFactory.createIntValueRange(1, maxLen);
         }
+
 
         // NEW: discrete list value range for hours (8,10,12, …)
         @ValueRangeProvider(id = "vrAllowedHours")
