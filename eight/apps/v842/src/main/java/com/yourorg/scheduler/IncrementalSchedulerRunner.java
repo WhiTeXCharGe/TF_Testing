@@ -34,12 +34,6 @@ public class IncrementalSchedulerRunner {
 
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
-    private static LocalDate parseDate(Object s) {
-        if (s == null) return null;
-        String str = s.toString().trim().replace("-", "/");
-        return LocalDate.parse(str, YMD);
-    }
-
     private static String ymd(LocalDate d) {
         return d.format(YMD);
     }
@@ -68,6 +62,12 @@ public class IncrementalSchedulerRunner {
             nd = nextWorkingDay(nd);
         }
         return nd;
+    }
+
+    private static LocalDate parseDate(Object s) {
+        if (s == null) return null;
+        String str = s.toString().trim().replace("-", "/");
+        return LocalDate.parse(str, YMD);
     }
 
     // YAML load/save
@@ -109,6 +109,32 @@ public class IncrementalSchedulerRunner {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private static boolean hasExistingAssignments(Map<String, Object> root) {
+        // root may be { schedule: { ... } } or flat
+        Object schedObj = root.get("schedule");
+        Map<String, Object> sched;
+        if (schedObj instanceof Map) {
+            sched = (Map<String, Object>) schedObj;
+        } else {
+            sched = root;
+        }
+
+        Object assignmentObj = sched.get("assignment_list");
+        if (!(assignmentObj instanceof List)) {
+            return false;
+        }
+        return !((List<?>) assignmentObj).isEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    static boolean isInitialRun(Map<String, Object> schedRoot) {
+        Map<String, Object> sched = (Map<String, Object>) schedRoot.get("schedule");
+        Object alObj = sched.get("assignment_list");
+        if (!(alObj instanceof List<?> list)) return true;
+        return list.isEmpty();  // initial if empty
+    }
+
     // ------------------------------------------------------------------
     // update_schedule2.py equivalents
     // ------------------------------------------------------------------
@@ -117,7 +143,7 @@ public class IncrementalSchedulerRunner {
         return "" + (char) ('A' + idx / 26) + (char) ('A' + idx % 26);
     }
 
-    @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked")
     private static int[] extendWorkersIfNeeded(Map<String, Object> envRoot) {
         Map<String, Object> env = getOrCreateMap(envRoot, "environment");
 
@@ -202,6 +228,7 @@ public class IncrementalSchedulerRunner {
         env.put("worker_list", workerList);
         return new int[]{beforeN, added};
     }
+
 
     private static int weightedChoiceInt(Random rng, List<Integer> values, List<Double> weights) {
         double sum = 0.0;
@@ -637,34 +664,38 @@ public class IncrementalSchedulerRunner {
 
             boolean hasAssignments = !assignmentsNow.isEmpty();
 
-            // emulate Python early-exit for MODULE_SEED_OFFSET == 0
-            if (evalIndex == 0) {
-                System.out.println("[INFO] First evaluation: no modules added, keep plan_range as is.");
-                Map<String, Object> pr2 =
-                        (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
-                if (!pr2.containsKey("start_date")) {
-                    pr2.put("start_date", ymd(cutoff));
-                }
-                sched.put("plan_range", pr2);
-                schedRoot.put("schedule", sched);
+        if (evalIndex == 0) {
+            System.out.println("[INFO] First evaluation: no modules added, keep plan_range as is.");
+            Map<String, Object> pr2 =
+                    (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
+            if (!pr2.containsKey("start_date")) {
+                pr2.put("start_date", ymd(cutoff));
+            }
+            sched.put("plan_range", pr2);
+            schedRoot.put("schedule", sched);
 
-                backupFile(envPath);
-                saveYaml(envPath, envRoot);
-                if (schedOutPath.equals(schedPath)) backupFile(schedPath);
-                saveYaml(schedOutPath, schedRoot);
+            backupFile(envPath);
+            saveYaml(envPath, envRoot);
+            if (schedOutPath.equals(schedPath)) backupFile(schedPath);
+            saveYaml(schedOutPath, schedRoot);
 
-                // run solver on initial baseline
+            // === NEW: only run solver if there is NO assignment yet ===
+            if (!hasAssignments) {
+                System.out.println("[INFO] First evaluation: assignment_list is empty -> run initial solve.");
                 runSolver(projectRoot, envPath, schedPath);
                 String outName = "Schedule_" + current.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
                 Path outPath = outDir.resolve(outName);
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
-
-                // move to next eval
-                current = advanceWorkingDays(current, stepDays);
-                evalIndex++;
-                continue;
+            } else {
+                System.out.println("[SKIP] First evaluation: assignment_list already has rows and no new modules -> skip solver.");
             }
+
+            // move to next eval
+            current = advanceWorkingDays(current, stepDays);
+            evalIndex++;
+            continue;
+        }
 
             LocalDate currentSimDay = current;
             boolean allowExtendToday;
@@ -781,16 +812,15 @@ public class IncrementalSchedulerRunner {
             System.out.println("New plan_range: " + pr.get("start_date") + " .. " + pr.get("end_date"));
 
             // 3) run solver?
-            // Python code had a typo: assignm_list; replicating that behavior:
-            Object assignmList = sched.get("assignm_list");
-            int assignmLen = 0;
-            if (assignmList instanceof List) {
-                assignmLen = ((List<?>) assignmList).size();
-            }
+            boolean hasExistingAssignmentsNow = hasExistingAssignments(schedRoot);
+
+            // Rule:
+            // - If there is NO assignment yet  -> we must run solver (initial baseline).
+            // - If there ARE assignments:
+            //      - run only when modules were added today (modulesAdded > 0)
+            //      - otherwise skip.
             boolean runSolver =
-                    current.equals(planStart) ||
-                            (modulesAdded > 0) ||
-                            (assignmLen == 0);
+                    (!hasExistingAssignmentsNow) || (modulesAdded > 0);
 
             if (runSolver) {
                 runSolver(projectRoot, envPath, schedPath);
@@ -799,8 +829,9 @@ public class IncrementalSchedulerRunner {
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
             } else {
-                System.out.println("[SKIP] No new modules today and not first day -> skip solver/snapshot.");
+                System.out.println("[SKIP] No new modules today AND assignment_list already has rows -> skip solver/snapshot.");
             }
+
 
             // stop if EQ_NUM reached
             int afterCount = currentN + modulesAdded;
@@ -817,17 +848,13 @@ public class IncrementalSchedulerRunner {
     }
 
     private static void runSolver(Path projectRoot, Path envPath, Path schedPath) throws Exception {
-        // Call the real entry point directly instead of main()
-        System.out.println("[RUN-JAVA] EmployeeSchedule.solveFromYaml(...)");
-        System.out.println("          env  = " + envPath);
-        System.out.println("          sched= " + schedPath);
-
-        // Use absolute paths so there is zero doubt
-        EmployeeSchedule.solveFromYaml(
-                envPath.toString().replace("\\", "/"),
-                schedPath.toString().replace("\\", "/")
-        );
+        System.out.println("[RUN-JAVA] EmployeeSchedule.main(...)");
+        EmployeeSchedule.main(new String[]{
+            envPath.toString().replace("\\", "/"),
+            schedPath.toString().replace("\\", "/")
+        });
     }
+
 
     private static Path findProjectRoot(Path start) {
         Path p = start;

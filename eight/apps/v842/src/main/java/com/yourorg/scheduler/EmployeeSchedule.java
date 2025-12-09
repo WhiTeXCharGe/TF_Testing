@@ -165,31 +165,14 @@ public class EmployeeSchedule {
 
         @ValueRangeProvider(id = "vrStartWithinWindow")
         public CountableValueRange<Integer> vrStartWithinWindow() {
-            int from = windowStart;
-            int to   = windowEnd;
-
-            // Guard: never let from > to (bad window from YAML / phase push)
-            if (to < from) {
-                System.out.printf(
-                    "WARN vrStartWithinWindow: window inverted for block %d (%s %s) start=%d end=%d -> clamped%n",
-                    id, module, opId, from, to
-                );
-                to = from;  // single-day window
-            }
-
-            // Timefold IntValueRange is inclusive [from, to]
-            return ValueRangeFactory.createIntValueRange(from, to);
+            return ValueRangeFactory.createIntValueRange(windowStart, windowEnd + 1);
         }
 
         @ValueRangeProvider(id = "vrDaysWithinWindow")
         public CountableValueRange<Integer> vrDaysWithinWindow() {
-            int span = windowEnd - windowStart + 1;
-            int maxLen = Math.max(1, span);
-
-            // days length in [1, maxLen] (inclusive)
-            return ValueRangeFactory.createIntValueRange(1, maxLen);
+            int maxLen = Math.max(1, windowEnd - windowStart + 1);
+            return ValueRangeFactory.createIntValueRange(1, maxLen + 1);
         }
-
 
         // NEW: discrete list value range for hours (8,10,12, …)
         @ValueRangeProvider(id = "vrAllowedHours")
@@ -1180,6 +1163,19 @@ public class EmployeeSchedule {
                 w.startDayId = Math.max(w.startDayId, endPrev + 1);
             }
         }
+        // After pushing, some windows may have start > end (no free days left in horizon).
+        // For those, we effectively treat them as "no flexible workload left":
+        // set workloadDays=0 so buildEntitiesSinglePass() will skip creating a BlockDecision.
+        for (TaskWindow w : windows) {
+            if (w.startDayId > w.endDayId) {
+                System.out.printf(
+                    "[WARN] Collapsed window for module=%s phase=%s op=%s (startDayId=%d > endDayId=%d). " +
+                    "Marking workloadDays=0 so this block is not scheduled.%n",
+                    w.module, w.phaseId, w.opId, w.startDayId, w.endDayId
+                );
+                w.workloadDays = 0;
+            }
+        }
         return out;
     }
 
@@ -1438,28 +1434,28 @@ public class EmployeeSchedule {
                 nowClock(), fmt(java.time.Duration.ofNanos(t2 - t1)),
                 String.valueOf(best2.getScore()));
 
-        // ---- Score explanation per constraint for the final solution ----
-        SolutionManager<SinglePassPlan, HardMediumSoftScore> solutionManager =
-                SolutionManager.create(factoryStage2);
+        // // ---- Score explanation per constraint for the final solution ----
+        // SolutionManager<SinglePassPlan, HardMediumSoftScore> solutionManager =
+        //         SolutionManager.create(factoryStage2);
 
-        ScoreExplanation<SinglePassPlan, HardMediumSoftScore> explanation =
-                solutionManager.explain(best2);
+        // ScoreExplanation<SinglePassPlan, HardMediumSoftScore> explanation =
+        //         solutionManager.explain(best2);
 
-        // key of the map is already the constraint name (String)
-        explanation.getConstraintMatchTotalMap().forEach((constraintName, cmt) -> {
-            System.out.println(constraintName + " = " + cmt.getScore());
-        });
+        // // key of the map is already the constraint name (String)
+        // explanation.getConstraintMatchTotalMap().forEach((constraintName, cmt) -> {
+        //     System.out.println(constraintName + " = " + cmt.getScore());
+        // });
 
 
-        System.out.println("=== Java earlier-start per block ===");
-        for (BlockDecision b : best2.blocks) {
-            int sd = (b.startDay == null ? -1 : b.startDay);
-            int pen = (b.startDay == null ? 0 : SinglePassConstraints.EARLIER_START_W * b.startDay);
-            System.out.printf(
-                "JAVA blockId=%d module=%s op=%s startDay=%d penalty=%d%n",
-                b.id, b.module, b.opId, sd, pen
-            );
-        }
+        // System.out.println("=== Java earlier-start per block ===");
+        // for (BlockDecision b : best2.blocks) {
+        //     int sd = (b.startDay == null ? -1 : b.startDay);
+        //     int pen = (b.startDay == null ? 0 : SinglePassConstraints.EARLIER_START_W * b.startDay);
+        //     System.out.printf(
+        //         "JAVA blockId=%d module=%s op=%s startDay=%d penalty=%d%n",
+        //         b.id, b.module, b.opId, sd, pen
+        //     );
+        // }
         RunResult rr = new RunResult();
         rr.plan = best2; rr.planStart = sch.planStart;
         return rr;

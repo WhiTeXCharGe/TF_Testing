@@ -1,7 +1,7 @@
 schedule:
   plan_range:
     start_date: 2025/09/01
-    end_date: 2026/02/17
+    end_date: 2026/02/14
   workflow_task_list:
   - id: e1
     name: SU 1001A
@@ -18300,67 +18300,6 @@ schedule:
         operation: p4o1
         workload_days: 12
       - id: e300p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e301
-    name: SU 1301A
-    workflow: workflow
-    fab: f4
-    phase_task_list:
-    - id: e301p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/12/25
-      end_date: 2026/01/09
-      operation_task_list:
-      - id: e301p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e301p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e301p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e301p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/12/25
-      end_date: 2026/01/21
-      operation_task_list:
-      - id: e301p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e301p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e301p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/12/25
-      end_date: 2026/01/27
-      operation_task_list:
-      - id: e301p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e301p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/12/25
-      end_date: 2026/02/03
-      operation_task_list:
-      - id: e301p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e301p4o2
         name: Mech
         operation: p4o2
         workload_days: 8
