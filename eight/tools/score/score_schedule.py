@@ -562,19 +562,34 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
 
     env_obj = {"by_wid": by_wid}
     blocks, seats = build_entities(schedule, env_obj, opdef, schedule["fixed_hours_by_key"])
+    print("=== Python earlier-start per block ===")
+    for b in blocks:
+        sd = b.get("startDay")
+        pen = 0 if sd is None else EARLIER_START_W * sd
+        print(f"PY blockId={b['id']} module={b['module']} op={b['opId']} startDay={sd} penalty={pen}")
+
     # Match Java: totalReq and TARGET_HOURS_PER_EMP
     total_req = sum(schedule["required_by_key"].values())
     real_emp = max(1, len(employees) - 1)  # exclude UNASSIGNED
     target_hours_per_emp = total_req / real_emp
-    
+
     hard = 0
     medium = 0
     soft = 0
+
+    # --- soft breakdown (each constraint) ---
+    soft_prefHoursNear8 = 0
+    soft_prefSmaller = 0
+    soft_prefEarlier = 0
+    soft_balanceTotal = 0
 
     # Indexing helpers
     seats_by_block = defaultdict(list)
     for s in seats:
         seats_by_block[s["blockId"]].append(s)
+
+    # ---------------- HARD / MEDIUM ----------------
+    # (everything here is same as your current code)
 
     # withinWindow
     if "withinWindow" in enable:
@@ -606,18 +621,16 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
 
     # phaseOrder (a before b if phaseNum+1)
     if "phaseOrder" in enable:
-        # group by module
         by_module = defaultdict(list)
         for b in blocks:
             by_module[b["module"]].append(b)
         for module, blist in by_module.items():
-            # check successive phases
             by_phase = defaultdict(list)
             for b in blist:
                 by_phase[b["phaseNum"]].append(b)
             for an in by_phase.keys():
                 bn = an + 1
-                if bn not in by_phase: 
+                if bn not in by_phase:
                     continue
                 for a in by_phase[an]:
                     for b in by_phase[bn]:
@@ -681,9 +694,9 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
                     hard -= 1
                     break
 
-    # pinnedRespected
+    # pinnedRespected (no-op here because Python only sees pinned concrete seats)
     if "pinnedRespected" in enable:
-        pass  # concrete seats imply pinned-respected
+        pass
 
     # oneFactoryPerEmpPerDay
     if "oneFactoryPerEmpPerDay" in enable:
@@ -717,7 +730,6 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
     # regionTransitGap
     if "regionTransitGap" in enable:
         wid_to_empid = {}
-        # We'll just assign incremental ids for wids encountered
         counter = 1
         for s in seats:
             wid = s.get("pinnedWid")
@@ -779,49 +791,30 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
             if max_span > max_on:
                 hard -= max(1, max_span - max_on)
 
-    # -------- Softs --------
-    PREF_HOURS_WEIGHT = 3000
-    SMALLER_HOURS_W = 40
-    EARLIER_START_W = 1
-    COMPANY_PAIR_W = 5
-    SKILL_DIVERSITY_W = 3
-    SKILL_AVG_W = 50
+    # ---------------- SOFTS (with breakdown) ----------------
 
     if "preferHoursNear8" in enable:
         for b in blocks:
-            soft -= (PREF_HOURS_WEIGHT * abs(b["hours"] - 8))
+            inc = PREF_HOURS_WEIGHT * abs(b["hours"] - 8)
+            soft_prefHoursNear8 -= inc
+            soft -= inc
 
     if "preferSmallerHours" in enable:
         for b in blocks:
-            soft -= (SMALLER_HOURS_W * b["hours"])
+            inc = SMALLER_HOURS_W * b["hours"]
+            soft_prefSmaller -= inc
+            soft -= inc
 
     if "preferEarlierStart" in enable:
         for b in blocks:
             sd = b.get("startDay")
             if sd is not None:
-                soft -= (EARLIER_START_W * sd)
+                inc = EARLIER_START_W * sd
+                soft_prefEarlier -= inc
+                soft -= inc
 
-    if "softSameCompanyPairs" in enable:
-        by_block = defaultdict(list)
-        for s in seats:
-            by_block[s["blockId"]].append(s)
-        for b_id, slist in by_block.items():
-            emps = []
-            for s in slist:
-                wid = s.get("pinnedWid")
-                if not wid:
-                    continue
-                # No detailed emp object here; company can't be looked up reliably without full env tie-in
-                # Skip if no company available. (You can extend this with env if needed.)
-            # For simplicity, skip reward unless you extend with env companies.
-
-    if "softEncourageSkillVariety" in enable:
-        # Can't compute skills without env employee map; skipping (set weight=0 effect).
-        pass
-
-    if "softBalanceBlockAvgSkill" in enable:
-        # Without skills lookup, skip.
-        pass
+    # softSameCompanyPairs / softEncourageSkillVariety / softBalanceBlockAvgSkill are
+    # still skipped here (no employee/company/skill info for seats).
 
     if "softBalanceTotalHours" in enable:
         emp_hours = defaultdict(int)
@@ -831,14 +824,25 @@ def eval_score(env_path: str, schedule_path: str, enable: Set[str]):
                 continue
             factory = s.get("factory")
             for d_i, h in s.get("hoursByDay", {}).items():
-                # count only working days, same as Java's seatCoversDayAndWorking
                 if h > 0 and is_working_day(d_i, factory):
                     emp_hours[wid] += h
 
         for wid, tot in emp_hours.items():
-            soft -= int(abs(tot - target_hours_per_emp))
+            inc = int(abs(tot - target_hours_per_emp))
+            soft_balanceTotal -= inc
+            soft -= inc
 
-    return hard, 0, soft
+    # return total + breakdown
+    return (
+        hard,
+        medium,
+        soft,
+        soft_prefHoursNear8,
+        soft_prefSmaller,
+        soft_prefEarlier,
+        soft_balanceTotal,
+    )
+
 
 def run_cli():
     ap = argparse.ArgumentParser()
@@ -850,11 +854,27 @@ def run_cli():
 
     enabled = set([x.strip() for x in args.on.split(",") if x.strip()])
     if not enabled:
-        enabled = set(ALL_CONSTRAINTS) - {"withinWindow","daysWithinWindowLen"}
+        enabled = set(ALL_CONSTRAINTS) - {"withinWindow", "daysWithinWindowLen"}
 
-    hard, medium, soft = eval_score(args.env, args.schedule, enabled)
+    (
+        hard,
+        medium,
+        soft,
+        s_near8,
+        s_smaller,
+        s_earlier,
+        s_balance_total,
+    ) = eval_score(args.env, args.schedule, enabled)
+
     print(f"Score: {hard}hard/{medium}medium/{soft}soft")
     print(f"{hard}hard/{soft}soft")
+    print()
+    print("Soft breakdown (per constraint):")
+    print(f"  preferHoursNear8       : {s_near8}")
+    print(f"  preferSmallerHours     : {s_smaller}")
+    print(f"  preferEarlierStart     : {s_earlier}")
+    print(f"  softBalanceTotalHours  : {s_balance_total}")
+
 
 if __name__ == "__main__":
     run_cli()

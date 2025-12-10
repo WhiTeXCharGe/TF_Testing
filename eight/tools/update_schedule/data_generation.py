@@ -163,32 +163,52 @@ class FabDef:
 
 def create_area_map() -> tuple[dict[str, FabDef], dict[str, RegionDef], dict[str, CompanyDef]]:
     region_map: dict[str, RegionDef] = {
-        "r1": RegionDef("r1", "Japan"),
+        "r1": RegionDef("r1", "America"),
+        "r2": RegionDef("r1", "Germany"),
     }
     company_map: dict[str, CompanyDef] = {
         "c1": CompanyDef("c1", "AAA"),
+        "c2": CompanyDef("c2", "BBB"),
     }
 
-    fab_num = 3
+    # fab_num = 3
+    # fab_map: dict[str, FabDef] = {}
+    # region = next(iter(region_map.values()))
+    # company = next(iter(company_map.values()))
+    # for i in range(fab_num):
+    #     fab = FabDef(
+    #         id=f"f{i + 1}",
+    #         name=f"{company.name} Fab{i + 1}",
+    #         region=region,
+    #         company=company,
+    #     )
+    #     fab_map[fab.id] = fab
     fab_map: dict[str, FabDef] = {}
-    region = next(iter(region_map.values()))
-    company = next(iter(company_map.values()))
-    for i in range(fab_num):
-        fab = FabDef(
-            id=f"f{i + 1}",
-            name=f"{company.name} Fab{i + 1}",
-            region=region,
-            company=company,
-        )
-        fab_map[fab.id] = fab
+
+    # ★ 全ての region × 全ての customer_company の組み合わせで Fab を作る
+    fab_index = 1
+    for region in region_map.values():
+        for company in company_map.values():
+            fab_id = f"f{fab_index}"
+            fab_name = f"{company.name} Fab{fab_index}"
+            fab = FabDef(
+                id=fab_id,
+                name=fab_name,
+                region=region,
+                company=company,
+            )
+            fab_map[fab.id] = fab
+            fab_index += 1
+
+    return fab_map, region_map, company_map
 
     return fab_map, region_map, company_map
 
 
 def create_worker_company_map() -> dict[str, CompanyDef]:
     companies = [
-        CompanyDef("c2", "XXX"),
-        CompanyDef("c3", "YYY"),
+        CompanyDef("c3", "XXX"),
+        CompanyDef("c4", "YYY"),
     ]
 
     company_map: dict[str, CompanyDef] = {}
@@ -323,6 +343,16 @@ def is_holiday(day: date, _fab: FabDef | None) -> bool:
         # TODO: fab-specific holidays if needed
     return False
 
+def add_working_days(day: date, days: int, fab: FabDef | None) -> date:
+    """Add 'days' working days to day, skipping weekends/holidays."""
+    current = day
+    remaining = days
+    while remaining > 0:
+        current = current + timedelta(days=1)
+        if not is_holiday(current, fab):
+            remaining -= 1
+    return current
+
 
 def to_eq_operation_dict(
     operation: OperationDef,
@@ -373,48 +403,46 @@ def to_eq_dict(
     start_day: date,
     worklength: list[tuple[int, list[int]]],
 ) -> tuple[dict, date]:
-    # module id e1, e2, ...
     eq_id = f"e{index + 1}"
-    # simple name: e.g. "SU 1001A"
     name = f"SU {1000 + index + 1}A"
 
     phase_task_list: list[dict] = []
 
-    # We make phases sequential: p1 -> p2 -> p3 -> p4
-    phase_start = start_day
-    # ensure phase_start is not holiday
-    while is_holiday(phase_start, fab):
-        phase_start = phase_start + timedelta(days=1)
+    # Move module_start to the first working day
+    module_start = start_day
+    while is_holiday(module_start, fab):
+        module_start = module_start + timedelta(days=1)
 
-    final_end_day = phase_start
+    cumulative_days = 0
+    final_end_day = module_start
 
     for i, phase in enumerate(workflow.phase_list):
         phase_length_days = worklength[i][0]
         op_worklengths = worklength[i][1]
 
-        # compute phase_end as phase_length_days *working days* after phase_start
-        phase_end = phase_start
-        days_needed = phase_length_days
-        while days_needed > 0:
-            phase_end = phase_end + timedelta(days=1)
-            if not is_holiday(phase_end, fab):
-                days_needed -= 1
+        # Add this phase's length to cumulative working days
+        cumulative_days += phase_length_days
+
+        # We want "length = cumulative_days working days inclusive"
+        # e.g. length=15 from 09/01 -> 15th working day = 09/19
+        if cumulative_days <= 1:
+            # 1 working-day window: start == end
+            phase_end = module_start
+        else:
+            # Inclusive -> move (cumulative_days - 1) working days forward
+            phase_end = add_working_days(module_start, cumulative_days - 1, fab)
 
         phase_dict = to_eq_phase_dict(
             phase=phase,
             operation_worklengths=op_worklengths,
-            start_day=phase_start,
+            start_day=module_start,
             end_day=phase_end,
             eq_id=eq_id,
         )
         phase_task_list.append(phase_dict)
 
-        final_end_day = phase_end
-
-        # next phase starts after this one
-        phase_start = phase_end + timedelta(days=1)
-        while is_holiday(phase_start, fab):
-            phase_start = phase_start + timedelta(days=1)
+        if phase_end > final_end_day:
+            final_end_day = phase_end
 
     eq_dict = {
         "id": eq_id,
@@ -425,6 +453,7 @@ def to_eq_dict(
     }
 
     return eq_dict, final_end_day
+
 
 
 def create_worklength_list(

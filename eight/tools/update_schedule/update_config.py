@@ -28,3 +28,5 @@ PLAN_RANGE_EXTRA_DAYS = 3
 ENV_SEED = 100
 # Module extension (start dates, fab choice, normal/vip pattern)
 MODULE_SEED = 200
+
+EQ_EVAL_DAYS = 1
