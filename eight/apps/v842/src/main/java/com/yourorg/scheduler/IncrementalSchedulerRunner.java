@@ -71,13 +71,16 @@ public class IncrementalSchedulerRunner {
     }
 
     // YAML load/save
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> loadYaml(Path path) throws IOException {
         if (!Files.exists(path)) {
             return new LinkedHashMap<>();
         }
         try (InputStream in = Files.newInputStream(path)) {
-            Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));  // ← change here
+            LoaderOptions opts = new LoaderOptions();
+            // default is 3_000_000; raise to about 5 MB
+            opts.setCodePointLimit(5 * 1024 * 1024);  // ≈ 5 MB
+
+            Yaml yaml = new Yaml(new SafeConstructor(opts));
             Object obj = yaml.load(in);
             if (obj instanceof Map) {
                 return (Map<String, Object>) obj;

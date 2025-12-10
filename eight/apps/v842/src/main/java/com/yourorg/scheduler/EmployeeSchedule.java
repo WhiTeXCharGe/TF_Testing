@@ -38,6 +38,8 @@ import ai.timefold.solver.core.api.score.ScoreExplanation;
 
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * SINGLE PASS scheduler (Timefold 1.27-compatible).
@@ -49,7 +51,11 @@ public class EmployeeSchedule {
     @SuppressWarnings("unchecked")
     static Map<String, Object> loadYaml(String path) throws IOException {
         try (InputStream in = Files.newInputStream(Paths.get(path))) {
-            return new Yaml().load(in);
+            LoaderOptions opts = new LoaderOptions();
+            opts.setCodePointLimit(5 * 1024 * 1024); // ≈ 5 MB
+
+            Yaml yaml = new Yaml(new SafeConstructor(opts));
+            return yaml.load(in);
         }
     }
     static void saveYaml(String path, Map<String, Object> root) throws IOException {
@@ -510,21 +516,21 @@ public class EmployeeSchedule {
                 // seat-level hard rules
                 // assignedAndSkill(f),
                 employeeAvailableAllDays(f),
-                pinnedRespected(f),
+                pinnedRespected(f), //2
                 oneFactoryPerEmpPerDay(f),
                 dailyCap12h(f),
                 // atLeastOneManagerPerBlock(f),
-                regionTransitGap(f),
-                regionStayMaxOn(f),
+                regionTransitGap(f), //1
+                regionStayMaxOn(f), //1
 
                 // softs
                 // preferHoursNear8(f),
-                preferSmallerHours(f),
-                preferEarlierStart(f),
-                softSameCompanyPairs(f),
-                softEncourageSkillVariety(f),
-                softBalanceBlockAvgSkill(f),
-                softBalanceTotalHours(f)
+                // preferSmallerHours(f), //3
+                // preferEarlierStart(f), //3
+                // softSameCompanyPairs(f), //3
+                // softEncourageSkillVariety(f), //3
+                // softBalanceBlockAvgSkill(f), //3
+                // softBalanceTotalHours(f) //3
             };
         }
 
@@ -547,6 +553,7 @@ public class EmployeeSchedule {
         }
         
         Constraint endWithinWindow(ConstraintFactory f) {
+            System.out.println("A11111");
             return f.forEach(BlockDecision.class)
                 .filter(b -> b.startDay != null && b.days != null
                         && (b.startDay + b.days - 1) > b.windowEnd)
@@ -556,6 +563,7 @@ public class EmployeeSchedule {
         }
 
         Constraint hoursValueAllowed(ConstraintFactory f) {
+            System.out.println("A22222");
             return f.forEach(BlockDecision.class)
                 .filter(b -> b.allowed == null || b.allowed.isEmpty() || !b.allowed.contains(b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_HARD)
@@ -563,6 +571,7 @@ public class EmployeeSchedule {
         }
 
         Constraint phaseOrder(ConstraintFactory f) {
+            System.out.println("A33333");
             return f.forEach(BlockDecision.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((BlockDecision a) -> a.module, (BlockDecision b) -> b.module),
@@ -590,6 +599,7 @@ public class EmployeeSchedule {
 
         // ---------- Production from staffed seats ----------
         Constraint noUnderfillByBlock(ConstraintFactory f) {
+            System.out.println("A44444");
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
@@ -616,6 +626,7 @@ public class EmployeeSchedule {
         }
 
         Constraint overfillAtMostOneDayByBlock(ConstraintFactory f) {
+            System.out.println("A55555");
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
@@ -645,6 +656,7 @@ public class EmployeeSchedule {
 
         // Sum heads by (day, op) for staffed seats whose span covers the day
         Constraint dailyHeadCapacityByOp(ConstraintFactory f) {
+            System.out.println("A66666");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -669,6 +681,7 @@ public class EmployeeSchedule {
         }
 
         Constraint employeeAvailableAllDays(ConstraintFactory f) {
+            System.out.println("B11111");
             return f.forEach(CrewSeat.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -692,6 +705,7 @@ public class EmployeeSchedule {
         }
 
         Constraint pinnedRespected(ConstraintFactory f) {
+            System.out.println("B222222");
             return f.forEach(CrewSeat.class)
                 .filter(s -> s.pinned)
                 .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
@@ -701,6 +715,7 @@ public class EmployeeSchedule {
 
         // For each (emp, day) count distinct factories across staffed seats -> must be 1
         Constraint oneFactoryPerEmpPerDay(ConstraintFactory f) {
+            System.out.println("B33333");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -716,6 +731,7 @@ public class EmployeeSchedule {
 
         // Sum hours per (emp, day) -> cap 12
         Constraint dailyCap12h(ConstraintFactory f) {
+            System.out.println("B44444");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -754,6 +770,7 @@ public class EmployeeSchedule {
 
         // ---- Region transit (map Tri -> Uni then join Uni↔Uni)
         Constraint regionTransitGap(ConstraintFactory f) {
+            System.out.println("B55555");
             var empDayUni = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -804,6 +821,7 @@ public class EmployeeSchedule {
         }
 
         Constraint regionStayMaxOn(ConstraintFactory f) {
+            System.out.println("B66666");
             var items = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -843,6 +861,7 @@ public class EmployeeSchedule {
         }
 
         Constraint preferSmallerHours(ConstraintFactory f) {
+            System.out.println("C11111");
             return f.forEach(BlockDecision.class)
                 .penalize(HardMediumSoftScore.ONE_SOFT, b -> SMALLER_HOURS_W * b.chosenHours())
                 .asConstraint("soft-smaller-hours");
@@ -855,6 +874,7 @@ public class EmployeeSchedule {
         // }
 
         Constraint preferEarlierStart(ConstraintFactory f) {
+            System.out.println("C22222");
             return f.forEach(BlockDecision.class)
                     // only consider blocks that actually have a startDay
                     .filter(b -> b.startDay != null)
@@ -872,6 +892,7 @@ public class EmployeeSchedule {
 
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
+            System.out.println("C33333");
             return f.forEach(CrewSeat.class)
                 .filter(a -> !isUnassigned(a.employee))
                 .join(f.forEach(CrewSeat.class),
@@ -884,6 +905,7 @@ public class EmployeeSchedule {
         }
 
         Constraint softEncourageSkillVariety(ConstraintFactory f) {
+            System.out.println("C44444");
             return f.forEach(CrewSeat.class)
                 .filter(a -> !isUnassigned(a.employee))
                 .join(f.forEach(CrewSeat.class),
@@ -896,6 +918,7 @@ public class EmployeeSchedule {
         }
 
         Constraint softBalanceBlockAvgSkill(ConstraintFactory f) {
+            System.out.println("C55555");
             return f.forEach(CrewSeat.class)
                 .filter(s -> !isUnassigned(s.employee))
                 .groupBy(s -> Arrays.asList(s.blockId, s.opId),
@@ -909,6 +932,7 @@ public class EmployeeSchedule {
         }
 
         Constraint softBalanceTotalHours(ConstraintFactory f) {
+            System.out.println("C66666");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -943,6 +967,9 @@ public class EmployeeSchedule {
         // Fixed assignments parsed from Schedule.yaml
         List<FixedAssign> fixedRows;
         Map<String,Integer> fixedHoursByKey;
+
+        //modules that still matter after cut-off
+        Set<String> activeModules;
     }
     static class FixedAssign {
         String module; String opId; String factory; String wid;
@@ -1039,10 +1066,15 @@ public class EmployeeSchedule {
 
         int horizon = (int) (end.toEpochDay() - start.toEpochDay()) + 1;
         List<DaySlot> days = new ArrayList<>();
-        for (int i=0;i<horizon;i++) days.add(new DaySlot(i, start.plusDays(i)));
+        for (int i = 0; i < horizon; i++) {
+            days.add(new DaySlot(i, start.plusDays(i)));
+        }
 
         List<TaskWindow> windows = new ArrayList<>();
         Map<String,Integer> required = new HashMap<>();
+
+        // NEW: track last end dayId per module
+        Map<String,Integer> moduleLastEnd = new HashMap<>();
 
         Object wfObj = s.get("workflow_task_list");
         List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
@@ -1059,6 +1091,9 @@ public class EmployeeSchedule {
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
                 int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
 
+                // remember the latest end per module (even if before horizon)
+                moduleLastEnd.merge(module, endId, Math::max);
+
                 Object opsObj = ph.get("operation_task_list");
                 List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
@@ -1066,9 +1101,11 @@ public class EmployeeSchedule {
                     int workloadDays = parseInt(ot.get("workload_days"), 0);
 
                     OpDef od = opdef.get(opId);
-                    if (od == null) throw new IllegalArgumentException("operation "+opId+" missing in EnvConfig");
+                    if (od == null) {
+                        throw new IllegalArgumentException("operation " + opId + " missing in EnvConfig");
+                    }
 
-                    int baseline = (od.allowed.size()==1 && od.allowed.get(0)==4) ? 4 : 8;
+                    int baseline = (od.allowed.size() == 1 && od.allowed.get(0) == 4) ? 4 : 8;
                     int req = workloadDays * baseline;
                     required.merge(module + "|" + opId, req, Integer::sum);
 
@@ -1083,7 +1120,40 @@ public class EmployeeSchedule {
             }
         }
 
-        // ---- Read fixed assignments
+        // ---- Determine cut-off date ----
+        // If "cut_off_date" exists in schedule, use it; otherwise use plan_range.start_date
+        LocalDate cutOffDate;
+        Object cutOffObj = s.get("cut_off_date");
+        if (cutOffObj != null) {
+            cutOffDate = LocalDate.parse(safeStr(cutOffObj).replace("-", "/"), DF);
+        } else {
+            cutOffDate = start; // default: anything that ends before plan_start is "finished"
+        }
+        int cutOffDayId = (int) (cutOffDate.toEpochDay() - start.toEpochDay());
+
+        // activeModules = modules whose last end is on/after cut-off
+        Set<String> activeModules = new HashSet<>();
+        for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
+            if (e.getValue() >= cutOffDayId) {
+                activeModules.add(e.getKey());
+            }
+        }
+        // Edge case: if none pass the cut-off, keep everything
+        if (activeModules.isEmpty()) {
+            activeModules.addAll(moduleLastEnd.keySet());
+        }
+
+        // remove windows for modules that are already fully finished
+        windows.removeIf(w -> !activeModules.contains(w.module));
+
+        // remove requiredByKey entries for finished modules
+        required.entrySet().removeIf(e -> {
+            String key = e.getKey();
+            String mod = key.contains("|") ? key.substring(0, key.indexOf('|')) : key;
+            return !activeModules.contains(mod);
+        });
+
+        // ---- Read fixed assignments (only for active modules) ----
         List<FixedAssign> fixedRows = new ArrayList<>();
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
         Object asgObj = s.get("assignment_list");
@@ -1099,18 +1169,28 @@ public class EmployeeSchedule {
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
             String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
+            // NEW: ignore fixed rows for modules that ended before cut-off
+            if (!activeModules.contains(module)) {
+                continue;
+            }
+
             boolean isFixed = "fixed".equalsIgnoreCase(flex);
 
             String phId = "";
             int phNum = 0;
-            try { String pPart = opId.split("o", 2)[0]; phId = pPart; phNum = phaseNumFromId(pPart); } catch (Exception ignore) {}
+            try {
+                String pPart = opId.split("o", 2)[0];
+                phId = pPart; phNum = phaseNumFromId(pPart);
+            } catch (Exception ignore) {}
 
             String wid = safeStr(a.get("worker"));
 
-            LocalDate sd = a.get("start_date") == null ? null : LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
-            LocalDate ed = a.get("end_date")   == null ? null : LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
-            int sId = sd == null ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
-            int eId = ed == null ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
+            LocalDate sd = a.get("start_date") == null ? null :
+                    LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+            LocalDate ed = a.get("end_date")   == null ? null :
+                    LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+            int sId = (sd == null) ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
+            int eId = (ed == null) ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
             if (isFixed && eId >= Integer.MIN_VALUE) {
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
@@ -1131,6 +1211,7 @@ public class EmployeeSchedule {
                     latestFixedEndInRange.merge(module + "|" + phNum, did, Math::max);
                 }
             }
+
             if (isFixed && totalFixedHours > 0) {
                 fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
@@ -1163,9 +1244,10 @@ public class EmployeeSchedule {
                 w.startDayId = Math.max(w.startDayId, endPrev + 1);
             }
         }
+
         // After pushing, some windows may have start > end (no free days left in horizon).
         // For those, we effectively treat them as "no flexible workload left":
-        // set workloadDays=0 so buildEntitiesSinglePass() will skip creating a BlockDecision.
+        // set workloadDays = 0 so buildEntitiesSinglePass() will skip creating a BlockDecision.
         for (TaskWindow w : windows) {
             if (w.startDayId > w.endDayId) {
                 System.out.printf(
@@ -1176,8 +1258,10 @@ public class EmployeeSchedule {
                 w.workloadDays = 0;
             }
         }
+
         return out;
     }
+
 
     // ---------------- Build entities for single pass ----------------
 
@@ -1378,9 +1462,9 @@ public class EmployeeSchedule {
     public static RunResult solveFromYaml(String envPath, String schedPath) throws IOException {
         ParsedEnv env = parseEnv(envPath);
         ParsedSchedule sch = parseSchedule(schedPath, env.opdef);
-
+        System.out.printf("A");
         buildCalendars(envPath, sch.planStart, sch.planEnd);
-
+        System.out.printf("B");
         int realEmp = Math.max(1, env.employees.size() - 1);
         int totalReq = sch.requiredByKey.values().stream().mapToInt(Integer::intValue).sum();
         TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
@@ -1397,16 +1481,18 @@ public class EmployeeSchedule {
 
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
-
+        System.out.println("D00000");
         // ---- Stage 1: your current settings (e.g., 90/90) ----
         SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 "0hard/*medium/*soft", 120, 60);
-
+        System.out.println("D11111");
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
+        System.out.println("D22222");
         SinglePassPlan best1 = stage1.solve(p);
+        System.out.println("D33333");
 
         long t1 = System.nanoTime();
         System.out.printf("Stage1 done %s | duration=%s | score=%s | blocks=%d | seats=%d%n",
