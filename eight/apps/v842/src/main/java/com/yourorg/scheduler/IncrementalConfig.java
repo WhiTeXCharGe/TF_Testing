@@ -20,7 +20,7 @@ public class IncrementalConfig {
     public static final double MANAGER_RATE = 0.5;
     public static final int WORKER_COMPANY_NUM = 2;
 
-    public static final boolean IS_SKIP_WEEKEND = false;
+    public static final boolean IS_SKIP_WEEKEND = true;
 
     // ---- from update_config.py ----
     public static final int PLAN_RANGE_EXTRA_DAYS = 3;

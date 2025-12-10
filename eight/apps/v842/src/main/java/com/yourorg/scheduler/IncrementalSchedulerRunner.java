@@ -336,19 +336,23 @@ public class IncrementalSchedulerRunner {
 
         int cumulativeDays = 0;
         LocalDate finalEnd = moduleStart;
-
         List<Map<String, Object>> phaseTaskList = new ArrayList<>();
 
         for (int i = 0; i < phaseList.size(); i++) {
             Map<String, Object> ph = phaseList.get(i);
-            @SuppressWarnings("unchecked")
             List<Object> tuple = (List<Object>) worklength.get(i);
             int phaseDays = ((Number) tuple.get(0)).intValue();
-            @SuppressWarnings("unchecked")
             List<Integer> opWls = (List<Integer>) tuple.get(1);
 
             cumulativeDays += phaseDays;
-            LocalDate phaseEnd = addWorkingDays(moduleStart, cumulativeDays);
+
+            // >>> FIX HERE: inclusive working-day window
+            LocalDate phaseEnd;
+            if (cumulativeDays <= 1) {
+                phaseEnd = moduleStart;
+            } else {
+                phaseEnd = addWorkingDays(moduleStart, cumulativeDays - 1);
+            }
 
             Map<String, Object> phaseTask =
                     buildPhaseTask(eqId, ph, opWls, moduleStart, phaseEnd);
@@ -363,11 +367,10 @@ public class IncrementalSchedulerRunner {
         eqDict.put("workflow", String.valueOf(workflow.getOrDefault("id", "workflow")));
         eqDict.put("fab", fabId);
         eqDict.put("phase_task_list", phaseTaskList);
-
-        // attach final_end as a synthetic field if needed, but we just return eqDict
         eqDict.put("__END_DATE", finalEnd);
         return eqDict;
     }
+
 
     private static LocalDate addWorkingDays(LocalDate start, int days) {
         LocalDate current = start;
