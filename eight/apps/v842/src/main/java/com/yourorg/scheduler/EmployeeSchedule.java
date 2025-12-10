@@ -525,12 +525,12 @@ public class EmployeeSchedule {
 
                 // softs
                 // preferHoursNear8(f),
-                // preferSmallerHours(f), //3
-                // preferEarlierStart(f), //3
-                // softSameCompanyPairs(f), //3
-                // softEncourageSkillVariety(f), //3
-                // softBalanceBlockAvgSkill(f), //3
-                // softBalanceTotalHours(f) //3
+                preferSmallerHours(f), //3
+                preferEarlierStart(f), //3
+                softSameCompanyPairs(f), //3
+                softEncourageSkillVariety(f), //3
+                softBalanceBlockAvgSkill(f), //3
+                softBalanceTotalHours(f) //3
             };
         }
 
@@ -553,7 +553,6 @@ public class EmployeeSchedule {
         }
         
         Constraint endWithinWindow(ConstraintFactory f) {
-            System.out.println("A11111");
             return f.forEach(BlockDecision.class)
                 .filter(b -> b.startDay != null && b.days != null
                         && (b.startDay + b.days - 1) > b.windowEnd)
@@ -563,7 +562,6 @@ public class EmployeeSchedule {
         }
 
         Constraint hoursValueAllowed(ConstraintFactory f) {
-            System.out.println("A22222");
             return f.forEach(BlockDecision.class)
                 .filter(b -> b.allowed == null || b.allowed.isEmpty() || !b.allowed.contains(b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_HARD)
@@ -571,7 +569,6 @@ public class EmployeeSchedule {
         }
 
         Constraint phaseOrder(ConstraintFactory f) {
-            System.out.println("A33333");
             return f.forEach(BlockDecision.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((BlockDecision a) -> a.module, (BlockDecision b) -> b.module),
@@ -599,7 +596,6 @@ public class EmployeeSchedule {
 
         // ---------- Production from staffed seats ----------
         Constraint noUnderfillByBlock(ConstraintFactory f) {
-            System.out.println("A44444");
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
@@ -626,7 +622,6 @@ public class EmployeeSchedule {
         }
 
         Constraint overfillAtMostOneDayByBlock(ConstraintFactory f) {
-            System.out.println("A55555");
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
@@ -656,7 +651,6 @@ public class EmployeeSchedule {
 
         // Sum heads by (day, op) for staffed seats whose span covers the day
         Constraint dailyHeadCapacityByOp(ConstraintFactory f) {
-            System.out.println("A66666");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -681,7 +675,6 @@ public class EmployeeSchedule {
         }
 
         Constraint employeeAvailableAllDays(ConstraintFactory f) {
-            System.out.println("B11111");
             return f.forEach(CrewSeat.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -705,7 +698,6 @@ public class EmployeeSchedule {
         }
 
         Constraint pinnedRespected(ConstraintFactory f) {
-            System.out.println("B222222");
             return f.forEach(CrewSeat.class)
                 .filter(s -> s.pinned)
                 .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
@@ -715,7 +707,6 @@ public class EmployeeSchedule {
 
         // For each (emp, day) count distinct factories across staffed seats -> must be 1
         Constraint oneFactoryPerEmpPerDay(ConstraintFactory f) {
-            System.out.println("B33333");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -731,7 +722,6 @@ public class EmployeeSchedule {
 
         // Sum hours per (emp, day) -> cap 12
         Constraint dailyCap12h(ConstraintFactory f) {
-            System.out.println("B44444");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -770,7 +760,6 @@ public class EmployeeSchedule {
 
         // ---- Region transit (map Tri -> Uni then join Uni↔Uni)
         Constraint regionTransitGap(ConstraintFactory f) {
-            System.out.println("B55555");
             var empDayUni = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -821,7 +810,6 @@ public class EmployeeSchedule {
         }
 
         Constraint regionStayMaxOn(ConstraintFactory f) {
-            System.out.println("B66666");
             var items = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -861,7 +849,6 @@ public class EmployeeSchedule {
         }
 
         Constraint preferSmallerHours(ConstraintFactory f) {
-            System.out.println("C11111");
             return f.forEach(BlockDecision.class)
                 .penalize(HardMediumSoftScore.ONE_SOFT, b -> SMALLER_HOURS_W * b.chosenHours())
                 .asConstraint("soft-smaller-hours");
@@ -874,7 +861,6 @@ public class EmployeeSchedule {
         // }
 
         Constraint preferEarlierStart(ConstraintFactory f) {
-            System.out.println("C22222");
             return f.forEach(BlockDecision.class)
                     // only consider blocks that actually have a startDay
                     .filter(b -> b.startDay != null)
@@ -892,33 +878,37 @@ public class EmployeeSchedule {
 
 
         Constraint softSameCompanyPairs(ConstraintFactory f) {
-            System.out.println("C33333");
             return f.forEach(CrewSeat.class)
-                .filter(a -> !isUnassigned(a.employee))
-                .join(f.forEach(CrewSeat.class),
-                      Joiners.equal((CrewSeat a) -> a.blockId, (CrewSeat b) -> b.blockId))
-                .filter((a, b) -> !isUnassigned(b.employee) && a.id < b.id)
-                .filter((a, b) -> !company(a.employee).isEmpty()
-                        && company(a.employee).equals(company(b.employee)))
-                .reward(HardMediumSoftScore.ONE_SOFT, (a, b) -> COMPANY_PAIR_W)
+                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !company(s.employee).isEmpty())
+                .groupBy(
+                    // key: [blockId, company]
+                    s -> Arrays.asList(s.blockId, company(s.employee)),
+                    ConstraintCollectors.count()
+                )
+                .filter((key, count) -> count > 1)
+                .reward(HardMediumSoftScore.ONE_SOFT,
+                    (key, count) -> COMPANY_PAIR_W * (count * (count - 1) / 2)
+                )
                 .asConstraint("soft-same-company-pairs");
         }
 
         Constraint softEncourageSkillVariety(ConstraintFactory f) {
-            System.out.println("C44444");
             return f.forEach(CrewSeat.class)
-                .filter(a -> !isUnassigned(a.employee))
-                .join(f.forEach(CrewSeat.class),
-                      Joiners.equal((CrewSeat a) -> a.blockId, (CrewSeat b) -> b.blockId),
-                      Joiners.equal((CrewSeat a) -> a.opId,    (CrewSeat b) -> b.opId))
-                .filter((a, b) -> !isUnassigned(b.employee) && a.id < b.id)
-                .filter((a, b) -> skill(a.employee, a.opId) == skill(b.employee, b.opId))
-                .penalize(HardMediumSoftScore.ONE_SOFT, (a, b) -> SKILL_DIVERSITY_W)
+                .filter(s -> !isUnassigned(s.employee))
+                .groupBy(
+                    // key: [blockId, opId, skillLevel]
+                    s -> Arrays.asList(s.blockId, s.opId, skill(s.employee, s.opId)),
+                    ConstraintCollectors.count()
+                )
+                .filter((key, count) -> count > 1)
+                .penalize(HardMediumSoftScore.ONE_SOFT,
+                    (key, count) -> SKILL_DIVERSITY_W * (count * (count - 1) / 2)
+                )
                 .asConstraint("soft-encourage-skill-variety");
         }
 
         Constraint softBalanceBlockAvgSkill(ConstraintFactory f) {
-            System.out.println("C55555");
             return f.forEach(CrewSeat.class)
                 .filter(s -> !isUnassigned(s.employee))
                 .groupBy(s -> Arrays.asList(s.blockId, s.opId),
@@ -932,7 +922,6 @@ public class EmployeeSchedule {
         }
 
         Constraint softBalanceTotalHours(ConstraintFactory f) {
-            System.out.println("C66666");
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -1481,18 +1470,15 @@ public class EmployeeSchedule {
 
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
-        System.out.println("D00000");
+
         // ---- Stage 1: your current settings (e.g., 90/90) ----
         SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 "0hard/*medium/*soft", 120, 60);
-        System.out.println("D11111");
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
-        System.out.println("D22222");
         SinglePassPlan best1 = stage1.solve(p);
-        System.out.println("D33333");
 
         long t1 = System.nanoTime();
         System.out.printf("Stage1 done %s | duration=%s | score=%s | blocks=%d | seats=%d%n",

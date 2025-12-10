@@ -572,8 +572,10 @@ public class IncrementalSchedulerRunner {
         }
 
         // Load initial schedule to get plan_range
+        Map<String, Object> envRoot = loadYaml(envPath);
         Map<String, Object> schedRoot = loadYaml(schedPath);
         Map<String, Object> sched = getOrCreateMap(schedRoot, "schedule");
+        @SuppressWarnings("unchecked")
         Map<String, Object> planRange =
                 (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
 
@@ -590,17 +592,23 @@ public class IncrementalSchedulerRunner {
 
         int stepDays = Math.max(1, EQ_EVAL_DAYS);
 
+        // FIRST day of the first block = cutoff0 (first working day after lastStart0, or planStart)
         LocalDate cutoff0;
         if (lastStart0 != null) {
             cutoff0 = nextWorkingDay(lastStart0);
         } else {
             cutoff0 = planStart;
         }
+        // ensure cutoff0 itself is not a weekend
+        while (isWeekend(cutoff0)) {
+            cutoff0 = cutoff0.plusDays(1);
+        }
 
-        LocalDate current = advanceWorkingDays(cutoff0, stepDays - 1);
         System.out.println("[INFO] Initial plan_range: " + planStart + " .. " + planEnd);
         System.out.println("[INFO] Lookback is DISABLED (no trimming).");
 
+        // first block starts at cutoff0
+        LocalDate current = cutoff0;
         int evalIndex = 0;
 
         while (true) {
@@ -608,14 +616,32 @@ public class IncrementalSchedulerRunner {
                 System.out.println("[DONE] Reached plan_end " + planEnd + ", stop.");
                 break;
             }
-            if (isWeekend(current)) {
-                System.out.println("[SKIP] " + current + " (weekend)");
-                current = current.plusDays(1);
-                continue;
+
+            // --------------------------------------------------
+            // 1) Build this block's working days [blockStart .. blockEnd]
+            // --------------------------------------------------
+            List<LocalDate> blockDays = new ArrayList<>();
+            LocalDate d = current;
+            while (blockDays.size() < stepDays && !d.isAfter(planEnd)) {
+                if (!isWeekend(d)) {
+                    blockDays.add(d);
+                }
+                d = d.plusDays(1);
             }
 
-            // Load latest Env & Schedule each loop
-            Map<String, Object> envRoot = loadYaml(envPath);
+            if (blockDays.isEmpty()) {
+                System.out.println("[DONE] No working days left until plan_end " + planEnd + ", stop.");
+                break;
+            }
+
+            LocalDate blockStart = blockDays.get(0);
+            LocalDate blockEnd   = blockDays.get(blockDays.size() - 1);
+
+            // --------------------------------------------------
+            // 2) Load latest Env & Schedule each BLOCK
+            //    (REUSE variables, don't redeclare)
+            // --------------------------------------------------
+            envRoot = loadYaml(envPath);
             schedRoot = loadYaml(schedPath);
             sched = getOrCreateMap(schedRoot, "schedule");
 
@@ -624,28 +650,30 @@ public class IncrementalSchedulerRunner {
                     collectExistingModules(schedRoot);
             List<Map<String, Object>> modulesBefore = triple.first;
             LocalDate lastStartBefore = triple.second;
-            LocalDate lastEndBefore = triple.third;
+            LocalDate lastEndBefore   = triple.third;
             int beforeCount = modulesBefore.size();
 
+            // cutoff is still based on lastStartBefore
             LocalDate cutoff = (lastStartBefore != null) ? nextWorkingDay(lastStartBefore) : planStart;
 
             System.out.println("\n==============================================");
-            System.out.println("[DAY] " + current + "  | cutoff=" + ymd(cutoff) +
+            System.out.println("[BLOCK] " + blockStart + " .. " + blockEnd +
+                    "  | cutoff=" + ymd(cutoff) +
                     "  | modules_before=" + beforeCount);
             System.out.println("==============================================");
 
-            // 1) update_schedule2.main() equivalent
-
+            // 3) update_schedule2.main() equivalent (workers, assignments, modules)
+            // --------------------------------------------------
             // a) extend workers
             int[] workerCounts = extendWorkersIfNeeded(envRoot);
-            int beforeWorkers = workerCounts[0];
-            int addedWorkers = workerCounts[1];
-            int afterWorkers = beforeWorkers + addedWorkers;
+            int beforeWorkers  = workerCounts[0];
+            int addedWorkers   = workerCounts[1];
+            int afterWorkers   = beforeWorkers + addedWorkers;
 
-            // b) update assignments
+            // b) update assignments based on cutoff
             int[] assignCounts = updateAssignments(schedRoot, cutoff);
-            int totalAssign = assignCounts[0];
-            int changedFixed = assignCounts[1];
+            int totalAssign    = assignCounts[0];
+            int changedFixed   = assignCounts[1];
 
             // c) initial schedule / initial_schedule flag
             @SuppressWarnings("unchecked")
@@ -653,104 +681,135 @@ public class IncrementalSchedulerRunner {
                     (List<Map<String, Object>>) sched.getOrDefault("assignment_list", new ArrayList<>());
             boolean initialSchedule = assignmentsNow.isEmpty();
 
-            // d) incremental module adding
+            // d) incremental module adding (over ALL days in this block)
             triple = collectExistingModules(schedRoot);
             List<Map<String, Object>> modulesNow = triple.first;
             LocalDate lastStart = triple.second;
-            LocalDate lastEnd = triple.third;
-            int currentN = modulesNow.size();
-            int targetN = EQ_NUM;
-            int remaining = Math.max(0, targetN - currentN);
+            LocalDate lastEnd   = triple.third;
+            int currentN        = modulesNow.size();
+            int targetN         = EQ_NUM;
+            int remaining       = Math.max(0, targetN - currentN);
 
             Map<String, Object> workflow = pickWorkflow(envRoot);
-            List<String> fabIds = collectFabIds(envRoot);
+            List<String> fabIds          = collectFabIds(envRoot);
 
             boolean hasAssignments = !assignmentsNow.isEmpty();
 
-        if (evalIndex == 0) {
-            System.out.println("[INFO] First evaluation: no modules added, keep plan_range as is.");
-            Map<String, Object> pr2 =
-                    (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
-            if (!pr2.containsKey("start_date")) {
-                pr2.put("start_date", ymd(cutoff));
-            }
-            sched.put("plan_range", pr2);
-            schedRoot.put("schedule", sched);
-
-            backupFile(envPath);
-            saveYaml(envPath, envRoot);
-            if (schedOutPath.equals(schedPath)) backupFile(schedPath);
-            saveYaml(schedOutPath, schedRoot);
-
-            // === NEW: only run solver if there is NO assignment yet ===
-            if (!hasAssignments) {
-                System.out.println("[INFO] First evaluation: assignment_list is empty -> run initial solve.");
-                runSolver(projectRoot, envPath, schedPath);
-                String outName = "Schedule_" + current.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
-                Path outPath = outDir.resolve(outName);
-                Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
-            } else {
-                System.out.println("[SKIP] First evaluation: assignment_list already has rows and no new modules -> skip solver.");
-            }
-
-            // move to next eval
-            current = advanceWorkingDays(current, stepDays);
-            evalIndex++;
-            continue;
-        }
-
-            LocalDate currentSimDay = current;
-            boolean allowExtendToday;
-            if (!hasAssignments && currentSimDay.equals(cutoff)) {
-                allowExtendToday = false;
-            } else {
-                allowExtendToday = true;
-            }
-
-            int modulesToday = 0;
-            if (remaining > 0 && allowExtendToday) {
-                double eqPerDay = EQ_PER_DAYS;
-                double eqSigmaDay = EQ_PER_DAYS_SIGMA;
-                int evalDays = Math.max(1, EQ_EVAL_DAYS);
-
-                double eqPer = eqPerDay * evalDays;
-                double eqSigma = eqSigmaDay * evalDays;
-
-                Random rngDay = new Random(MODULE_SEED * 10007L + evalIndex);
-
-                double demand = Math.max(0.0, rngDay.nextGaussian() * eqSigma + eqPer);
-
-                if (demand <= 0.0) {
-                    modulesToday = 0;
-                } else if (demand < 1.0) {
-                    if (rngDay.nextDouble() < demand) modulesToday = 1;
-                } else {
-                    int whole = (int) demand;
-                    double frac = demand - whole;
-                    modulesToday = whole;
-                    if (rngDay.nextDouble() < frac) modulesToday++;
+            // --------------------------------------------------
+            // First evaluation (evalIndex == 0) special handling
+            // --------------------------------------------------
+            if (evalIndex == 0) {
+                System.out.println("[INFO] First evaluation block: no modules added, keep plan_range as is.");
+                Map<String, Object> pr2 =
+                        (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
+                if (!pr2.containsKey("start_date")) {
+                    pr2.put("start_date", ymd(cutoff));
                 }
-                if (modulesToday > remaining) modulesToday = remaining;
+                sched.put("plan_range", pr2);
+
+                // NEW: store cutoff date used by solver = FIRST day of this block
+                sched.put("cut_off_date", ymd(blockStart));
+
+                schedRoot.put("schedule", sched);
+
+                backupFile(envPath);
+                saveYaml(envPath, envRoot);
+                if (schedOutPath.equals(schedPath)) backupFile(schedPath);
+                saveYaml(schedOutPath, schedRoot);
+
+                // only run solver if there is NO assignment yet
+                if (!hasAssignments) {
+                    System.out.println("[INFO] First evaluation: assignment_list is empty -> run initial solve.");
+                    runSolver(projectRoot, envPath, schedPath);
+                    String outName = "Schedule_" + blockStart.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
+                    Path outPath = outDir.resolve(outName);
+                    Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
+                } else {
+                    System.out.println("[SKIP] First evaluation: assignment_list already has rows and no new modules -> skip solver.");
+                }
+
+                // move to next BLOCK
+                current = blockEnd.plusDays(1);
+                while (isWeekend(current)) current = current.plusDays(1);
+                evalIndex++;
+                continue;
             }
+
+            // --------------------------------------------------
+            // Inside this block: simulate arrivals PER DAY
+            // --------------------------------------------------
+            LocalDate newLastEnd = lastEnd;
+            int modulesAdded     = 0;
+            int startIndex       = currentN;
 
             List<Map<String, Object>> newModules = new ArrayList<>();
-            LocalDate newLastEnd = lastEnd;
 
-            if (modulesToday > 0) {
-                LocalDate[] lastEndHolder = new LocalDate[]{lastEnd != null ? lastEnd : cutoff};
-                newModules = createNewModules(
+            double eqPerDay    = EQ_PER_DAYS;
+            double eqSigmaDay  = EQ_PER_DAYS_SIGMA;
+            Random rngDay      = new Random(MODULE_SEED * 10007L + evalIndex);
+
+            // We only allow extending on days after initial cutoff rules
+            for (LocalDate currentSimDay : blockDays) {
+                if (remaining <= 0) break;
+
+                boolean allowExtendToday;
+                if (!hasAssignments && currentSimDay.equals(cutoff)) {
+                    // same rule as before: do not extend on very first day with no assignments
+                    allowExtendToday = false;
+                } else {
+                    allowExtendToday = true;
+                }
+
+                if (!allowExtendToday) {
+                    continue;
+                }
+
+                int modulesToday = 0;
+                if (remaining > 0) {
+                    double demand = Math.max(0.0, rngDay.nextGaussian() * eqSigmaDay + eqPerDay);
+
+                    if (demand <= 0.0) {
+                        modulesToday = 0;
+                    } else if (demand < 1.0) {
+                        if (rngDay.nextDouble() < demand) modulesToday = 1;
+                    } else {
+                        int whole = (int) demand;
+                        double frac = demand - whole;
+                        modulesToday = whole;
+                        if (rngDay.nextDouble() < frac) modulesToday++;
+                    }
+
+                    if (modulesToday > remaining) modulesToday = remaining;
+                }
+
+                if (modulesToday <= 0) {
+                    System.out.println("[BLOCK] " + currentSimDay + ": demand <= 0, no modules added.");
+                    continue;
+                }
+
+                LocalDate[] lastEndHolder = new LocalDate[]{newLastEnd != null ? newLastEnd : cutoff};
+                List<Map<String, Object>> modsForDay = createNewModules(
                         workflow,
                         fabIds,
-                        currentN,
+                        startIndex,
                         modulesToday,
                         currentSimDay,
                         lastEndHolder,
-                        evalIndex
+                        evalIndex * 1000 + modulesAdded   // offset for randomness
                 );
                 newLastEnd = lastEndHolder[0];
 
-                // append to workflow_task_list
+                startIndex        += modulesToday;
+                remaining         -= modulesToday;
+                modulesAdded      += modulesToday;
+                newModules.addAll(modsForDay);
+
+                System.out.println("[BLOCK] " + currentSimDay + ": added " + modulesToday + " modules.");
+            }
+
+            // Append any new modules to workflow_task_list
+            if (!newModules.isEmpty()) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> wfList =
                         (List<Map<String, Object>>) sched.getOrDefault("workflow_task_list", new ArrayList<>());
@@ -759,8 +818,11 @@ public class IncrementalSchedulerRunner {
                 schedRoot.put("schedule", sched);
             }
 
-            // e) update plan_range
-            Map<String, Object> pr = (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
+            // --------------------------------------------------
+            // e) update plan_range (end_date only)
+            // --------------------------------------------------
+            Map<String, Object> pr =
+                    (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
 
             if (initialSchedule) {
                 System.out.println("[INFO] Initial run: no modules added, keep plan_range as is.");
@@ -768,6 +830,10 @@ public class IncrementalSchedulerRunner {
                     pr.put("start_date", ymd(cutoff));
                 }
                 sched.put("plan_range", pr);
+
+                // cutoff date for solver = first day of this block
+                sched.put("cut_off_date", ymd(blockStart));
+
                 schedRoot.put("schedule", sched);
 
                 backupFile(envPath);
@@ -776,28 +842,32 @@ public class IncrementalSchedulerRunner {
                 saveYaml(schedOutPath, schedRoot);
 
                 System.out.println("[INFO] Exiting early after initial solve setup.");
-                // still run solver
                 runSolver(projectRoot, envPath, schedPath);
-                String outName = "Schedule_" + current.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
+                String outName = "Schedule_" + blockStart.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
                 Path outPath = outDir.resolve(outName);
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
 
-                current = advanceWorkingDays(current, stepDays);
+                current = blockEnd.plusDays(1);
+                while (isWeekend(current)) current = current.plusDays(1);
                 evalIndex++;
                 continue;
             }
 
             LocalDate currentEnd = parseDate(pr.get("end_date"));
             List<LocalDate> endCandidates = new ArrayList<>();
-            if (currentEnd != null) endCandidates.add(currentEnd);
+            if (currentEnd != null)   endCandidates.add(currentEnd);
             if (lastEndBefore != null) endCandidates.add(lastEndBefore);
-            if (newLastEnd != null) endCandidates.add(newLastEnd);
+            if (newLastEnd != null)   endCandidates.add(newLastEnd);
             LocalDate endBase = endCandidates.isEmpty() ? cutoff :
                     endCandidates.stream().max(LocalDate::compareTo).orElse(cutoff);
             LocalDate endFinal = endBase.plusDays(PLAN_RANGE_EXTRA_DAYS);
             pr.put("end_date", ymd(endFinal));
             sched.put("plan_range", pr);
+
+            // IMPORTANT: cutoff date used by EmployeeSchedule = FIRST day of this block
+            sched.put("cut_off_date", ymd(blockStart));
+
             schedRoot.put("schedule", sched);
 
             // write back env & schedule
@@ -806,35 +876,29 @@ public class IncrementalSchedulerRunner {
             if (schedOutPath.equals(schedPath)) backupFile(schedPath);
             saveYaml(schedOutPath, schedRoot);
 
-            int modulesAdded = newModules.size();
             System.out.println("Assignments: " + totalAssign + " processed, " + changedFixed + " set to Fixed.");
             System.out.println("Workers: before=" + beforeWorkers + ", added=" + addedWorkers +
                     ", after=" + afterWorkers + ", target=" + WORKER_NUM + ".");
             System.out.println("Modules: existing=" + currentN + ", added=" + modulesAdded +
                     ", target=" + targetN + ".");
             System.out.println("New plan_range: " + pr.get("start_date") + " .. " + pr.get("end_date"));
+            System.out.println("cut_off_date for solver: " + ymd(blockStart));
 
             // 3) run solver?
             boolean hasExistingAssignmentsNow = hasExistingAssignments(schedRoot);
 
-            // Rule:
-            // - If there is NO assignment yet  -> we must run solver (initial baseline).
-            // - If there ARE assignments:
-            //      - run only when modules were added today (modulesAdded > 0)
-            //      - otherwise skip.
-            boolean runSolver =
+            boolean runSolverNow =
                     (!hasExistingAssignmentsNow) || (modulesAdded > 0);
 
-            if (runSolver) {
+            if (runSolverNow) {
                 runSolver(projectRoot, envPath, schedPath);
-                String outName = "Schedule_" + current.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
+                String outName = "Schedule_" + blockStart.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
                 Path outPath = outDir.resolve(outName);
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
             } else {
-                System.out.println("[SKIP] No new modules today AND assignment_list already has rows -> skip solver/snapshot.");
+                System.out.println("[SKIP] No new modules in this block AND assignment_list already has rows -> skip solver/snapshot.");
             }
-
 
             // stop if EQ_NUM reached
             int afterCount = currentN + modulesAdded;
@@ -843,12 +907,15 @@ public class IncrementalSchedulerRunner {
                 break;
             }
 
-            current = advanceWorkingDays(current, stepDays);
+            // Move to FIRST working day of next block
+            current = blockEnd.plusDays(1);
+            while (isWeekend(current)) current = current.plusDays(1);
             evalIndex++;
         }
 
         System.out.println("\n[DONE] Daily run finished (Java).");
     }
+
 
     private static void runSolver(Path projectRoot, Path envPath, Path schedPath) throws Exception {
         System.out.println("[RUN-JAVA] EmployeeSchedule.main(...)");

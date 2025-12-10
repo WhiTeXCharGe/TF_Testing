@@ -10,7 +10,7 @@ public class IncrementalConfig {
 
     public static final double EQ_PER_DAYS = 2.5;
     public static final double EQ_PER_DAYS_SIGMA = 2.5;
-    public static final int EQ_NUM = 301;           // total modules target
+    public static final int EQ_NUM = 300;           // total modules target
 
     public static final List<Integer> SKILL_LEVEL_LIST =
             Arrays.asList(1, 2, 3, 4, 5);
@@ -25,11 +25,11 @@ public class IncrementalConfig {
     // ---- from update_config.py ----
     public static final int PLAN_RANGE_EXTRA_DAYS = 3;
 
-    public static final int ENV_SEED = 100;
-    public static final int MODULE_SEED = 200;
+    public static final int ENV_SEED = 152;
+    public static final int MODULE_SEED = 173;
 
     // how many working days per evaluation step (like EQ_EVAL_DAYS)
-    public static final int EQ_EVAL_DAYS = 1;
+    public static final int EQ_EVAL_DAYS = 5;
 
         // worklength patterns (from normal_worklength / vip_worklength in Python)
     // Each inner list is: [ phase_total_days, [workload_days_per_operation...] ]
