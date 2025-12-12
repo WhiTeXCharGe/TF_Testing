@@ -699,19 +699,22 @@ public class IncrementalSchedulerRunner {
             boolean hasAssignments = !assignmentsNow.isEmpty();
 
             // --------------------------------------------------
-            // First evaluation (evalIndex == 0) special handling
+            // First evaluation (evalIndex == 0)
+            //
+            // Spec:
+            //  1) assignment_list is EMPTY  -> initial full solve, NO new modules.
+            //  2) assignment_list has rows  -> behave like normal block
+            //     (add modules this block, then solve).
             // --------------------------------------------------
-            if (evalIndex == 0) {
-                System.out.println("[INFO] First evaluation block: no modules added, keep plan_range as is.");
-                Map<String, Object> pr2 =
-                        (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
-                if (!pr2.containsKey("start_date")) {
-                    pr2.put("start_date", ymd(cutoff));
-                }
-                sched.put("plan_range", pr2);
+            if (evalIndex == 0 && !hasAssignments) {
+                System.out.println("[INFO] First evaluation block with empty assignment_list: "
+                        + "run initial full-horizon solve (no new modules, no cut-off).");
 
-                // NEW: store cutoff date used by solver = FIRST day of this block
-                sched.put("cut_off_date", ymd(blockStart));
+                // IMPORTANT:
+                //  - Do NOT touch plan_range.start_date/end_date.
+                //  - Do NOT set cut_off_date here.
+                //    EmployeeSchedule will default cut_off_date = plan_start,
+                //    so no modules are considered "already finished".
 
                 schedRoot.put("schedule", sched);
 
@@ -720,24 +723,30 @@ public class IncrementalSchedulerRunner {
                 if (schedOutPath.equals(schedPath)) backupFile(schedPath);
                 saveYaml(schedOutPath, schedRoot);
 
-                // only run solver if there is NO assignment yet
-                if (!hasAssignments) {
-                    System.out.println("[INFO] First evaluation: assignment_list is empty -> run initial solve.");
-                    runSolver(projectRoot, envPath, schedPath);
-                    String outName = "Schedule_" + blockStart.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
-                    Path outPath = outDir.resolve(outName);
-                    Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
-                } else {
-                    System.out.println("[SKIP] First evaluation: assignment_list already has rows and no new modules -> skip solver.");
-                }
+                // Initial solve for existing modules only (e.g., e1..e50)
+                runSolver(projectRoot, envPath, schedPath);
 
-                // move to next BLOCK
+                String outName = "Schedule_" +
+                        blockStart.format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".yaml";
+                Path outPath = outDir.resolve(outName);
+                Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
+
+                // After this, assignment_list is filled.
+                // Next blocks (evalIndex >= 1) will follow the normal incremental path:
+                //   - add modules for each EQ_EVAL_DAYS block
+                //   - set cut_off_date = blockStart
+                //   - run solver again.
+
                 current = blockEnd.plusDays(1);
                 while (isWeekend(current)) current = current.plusDays(1);
                 evalIndex++;
                 continue;
             }
+            // If evalIndex == 0 && hasAssignments == true:
+            //   → we FALL THROUGH to the normal block logic below
+            //      (modules will be added in this first block, no gap).
+
 
             // --------------------------------------------------
             // Inside this block: simulate arrivals PER DAY
@@ -756,13 +765,8 @@ public class IncrementalSchedulerRunner {
             for (LocalDate currentSimDay : blockDays) {
                 if (remaining <= 0) break;
 
-                boolean allowExtendToday;
-                if (!hasAssignments && currentSimDay.equals(cutoff)) {
-                    // same rule as before: do not extend on very first day with no assignments
-                    allowExtendToday = false;
-                } else {
-                    allowExtendToday = true;
-                }
+                boolean allowExtendToday = true;
+
 
                 if (!allowExtendToday) {
                     continue;

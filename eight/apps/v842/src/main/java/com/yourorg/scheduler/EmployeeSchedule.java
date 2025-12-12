@@ -293,6 +293,12 @@ public class EmployeeSchedule {
     static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
     static final Map<String,Double>  OP_AVG_SKILL = new HashMap<>();
 
+    // fixed schedule background (built once per solveFromYaml)
+    static Map<Integer, Map<Integer, Integer>> FIXED_HOURS_BY_EMP_DAY = new HashMap<>();
+    static Map<Integer, Map<Integer, Set<String>>> FIXED_FACTORIES_BY_EMP_DAY = new HashMap<>();
+
+    public static final boolean TRIM_FINISHED_MODULES = true;
+
     static boolean isUnassigned(EmployeeFact e) { return e == null || e.id == 0; }
     static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
     static boolean isManager(EmployeeFact e) { return e != null && e.isManager; }
@@ -714,13 +720,44 @@ public class EmployeeSchedule {
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
                 .groupBy((d, s, b) -> Arrays.asList(s.employee.id, d.id),
-                         ConstraintCollectors.toSet((d, s, b) -> s.factory))
-                .filter((key, facs) -> facs.size() > 1)
-                .penalize(HardMediumSoftScore.ONE_HARD, (key, facs) -> facs.size() - 1)
+                        ConstraintCollectors.toSet((d, s, b) -> s.factory))
+                .filter((key, dynamicFabs) -> {
+                    int empId = (int) key.get(0);
+                    int dayId = (int) key.get(1);
+
+                    Map<Integer, Set<String>> byDay =
+                            FIXED_FACTORIES_BY_EMP_DAY.get(empId);
+                    Set<String> fixedFabs = (byDay == null)
+                            ? Collections.emptySet()
+                            : byDay.getOrDefault(dayId, Collections.emptySet());
+
+                    if (fixedFabs.isEmpty()) {
+                        // no fixed schedule that day → original behaviour
+                        return dynamicFabs.size() > 1;
+                    }
+
+                    Set<String> all = new HashSet<>(dynamicFabs);
+                    all.addAll(fixedFabs);
+                    return all.size() > 1;
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicFabs) -> {
+                    int empId = (int) key.get(0);
+                    int dayId = (int) key.get(1);
+
+                    Map<Integer, Set<String>> byDay =
+                            FIXED_FACTORIES_BY_EMP_DAY.get(empId);
+                    Set<String> fixedFabs = (byDay == null)
+                            ? Collections.emptySet()
+                            : byDay.getOrDefault(dayId, Collections.emptySet());
+
+                    Set<String> all = new HashSet<>(dynamicFabs);
+                    all.addAll(fixedFabs);
+                    return all.size() - 1;
+                })
                 .asConstraint("seat-one-factory-per-emp-day");
         }
 
-        // Sum hours per (emp, day) -> cap 12
+
         Constraint dailyCap12h(ConstraintFactory f) {
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
@@ -729,14 +766,35 @@ public class EmployeeSchedule {
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
                 .groupBy((d, s, b) -> Arrays.asList(s.employee.id, d.id),
-                         ConstraintCollectors.sum((d, s, b) ->
-                             (s.pinned && s.pinnedHours != null && s.pinnedHours > 0)
-                                 ? s.pinnedHours
-                                 : b.chosenHours()))
-                .filter((key, tot) -> tot > DAILY_CAP)
-                .penalize(HardMediumSoftScore.ONE_HARD, (key, tot) -> tot - DAILY_CAP)
+                        ConstraintCollectors.sum((d, s, b) ->
+                            (s.pinned && s.pinnedHours != null && s.pinnedHours > 0)
+                                ? s.pinnedHours
+                                : b.chosenHours()))
+                .filter((key, dynamicHours) -> {
+                    int empId = (int) key.get(0);
+                    int dayId = (int) key.get(1);
+
+                    int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                            .getOrDefault(empId, Collections.emptyMap())
+                            .getOrDefault(dayId, 0);
+
+                    int total = dynamicHours + fixedHours;
+                    return total > DAILY_CAP;
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicHours) -> {
+                    int empId = (int) key.get(0);
+                    int dayId = (int) key.get(1);
+
+                    int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                            .getOrDefault(empId, Collections.emptyMap())
+                            .getOrDefault(dayId, 0);
+
+                    int total = dynamicHours + fixedHours;
+                    return total - DAILY_CAP;
+                })
                 .asConstraint("seat-daily-cap-12h");
         }
+
 
         Constraint atLeastOneManagerPerBlock(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
@@ -1062,7 +1120,7 @@ public class EmployeeSchedule {
         List<TaskWindow> windows = new ArrayList<>();
         Map<String,Integer> required = new HashMap<>();
 
-        // NEW: track last end dayId per module
+        // Track last end dayId per module (even if before horizon)
         Map<String,Integer> moduleLastEnd = new HashMap<>();
 
         Object wfObj = s.get("workflow_task_list");
@@ -1120,29 +1178,35 @@ public class EmployeeSchedule {
         }
         int cutOffDayId = (int) (cutOffDate.toEpochDay() - start.toEpochDay());
 
-        // activeModules = modules whose last end is on/after cut-off
+        // ---- Decide activeModules (respect TRIM_FINISHED_MODULES) ----
         Set<String> activeModules = new HashSet<>();
-        for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
-            if (e.getValue() >= cutOffDayId) {
-                activeModules.add(e.getKey());
+        if (TRIM_FINISHED_MODULES) {
+            // activeModules = modules whose last end is on/after cut-off
+            for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
+                if (e.getValue() >= cutOffDayId) {
+                    activeModules.add(e.getKey());
+                }
             }
-        }
-        // Edge case: if none pass the cut-off, keep everything
-        if (activeModules.isEmpty()) {
+            // Edge case: if none pass the cut-off, keep everything
+            if (activeModules.isEmpty()) {
+                activeModules.addAll(moduleLastEnd.keySet());
+            }
+
+            // remove windows for modules that are already fully finished
+            windows.removeIf(w -> !activeModules.contains(w.module));
+
+            // remove requiredByKey entries for finished modules
+            required.entrySet().removeIf(e -> {
+                String key = e.getKey();
+                String mod = key.contains("|") ? key.substring(0, key.indexOf('|')) : key;
+                return !activeModules.contains(mod);
+            });
+        } else {
+            // No trimming → treat all modules as active
             activeModules.addAll(moduleLastEnd.keySet());
         }
 
-        // remove windows for modules that are already fully finished
-        windows.removeIf(w -> !activeModules.contains(w.module));
-
-        // remove requiredByKey entries for finished modules
-        required.entrySet().removeIf(e -> {
-            String key = e.getKey();
-            String mod = key.contains("|") ? key.substring(0, key.indexOf('|')) : key;
-            return !activeModules.contains(mod);
-        });
-
-        // ---- Read fixed assignments (only for active modules) ----
+        // ---- Read fixed assignments (only trim by module when TRIM_FINISHED_MODULES = true) ----
         List<FixedAssign> fixedRows = new ArrayList<>();
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
         Object asgObj = s.get("assignment_list");
@@ -1158,8 +1222,8 @@ public class EmployeeSchedule {
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
             String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
-            // NEW: ignore fixed rows for modules that ended before cut-off
-            if (!activeModules.contains(module)) {
+            // Ignore fixed rows for finished modules only when trimming is enabled
+            if (TRIM_FINISHED_MODULES && !activeModules.contains(module)) {
                 continue;
             }
 
@@ -1215,9 +1279,14 @@ public class EmployeeSchedule {
         }
 
         ParsedSchedule out = new ParsedSchedule();
-        out.planStart = start; out.planEnd = end;
-        out.daySlots = days; out.windows = windows; out.requiredByKey = required;
-        out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+        out.planStart = start;
+        out.planEnd = end;
+        out.daySlots = days;
+        out.windows = windows;
+        out.requiredByKey = required;
+        out.fixedRows = fixedRows;
+        out.fixedHoursByKey = fixedHoursByKey;
+        out.activeModules = activeModules;  // <<<<<< store it here
 
         // ---- Push phase windows based on fixed ends (even if outside horizon)
         for (TaskWindow w : windows) {
@@ -1235,8 +1304,8 @@ public class EmployeeSchedule {
         }
 
         // After pushing, some windows may have start > end (no free days left in horizon).
-        // For those, we effectively treat them as "no flexible workload left":
-        // set workloadDays = 0 so buildEntitiesSinglePass() will skip creating a BlockDecision.
+        // For those, treat as "no flexible workload left": set workloadDays = 0
+        // so buildEntitiesSinglePass() will skip creating a BlockDecision.
         for (TaskWindow w : windows) {
             if (w.startDayId > w.endDayId) {
                 System.out.printf(
@@ -1459,6 +1528,40 @@ public class EmployeeSchedule {
         TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
+
+        // --------------------------------------------------
+        // Build background fixed-hours/factories per (emp, day)
+        // --------------------------------------------------
+        FIXED_HOURS_BY_EMP_DAY.clear();
+        FIXED_FACTORIES_BY_EMP_DAY.clear();
+
+        for (FixedAssign fa : sch.fixedRows) {
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null || ef.id == 0) {
+                continue; // unknown worker, skip
+            }
+            int empId = ef.id;
+
+            // hours per day
+            Map<Integer, Integer> hoursMap =
+                FIXED_HOURS_BY_EMP_DAY.computeIfAbsent(empId, k -> new HashMap<>());
+            for (Map.Entry<Integer, Integer> e : fa.hoursByDay.entrySet()) {
+                int dayId = e.getKey();
+                int h = e.getValue();
+                hoursMap.merge(dayId, h, Integer::sum);
+            }
+
+            // factories per day
+            if (fa.factory != null && !fa.factory.isBlank()) {
+                Map<Integer, Set<String>> facMap =
+                    FIXED_FACTORIES_BY_EMP_DAY.computeIfAbsent(empId, k -> new HashMap<>());
+                for (Integer dayId : fa.hoursByDay.keySet()) {
+                    Set<String> set =
+                        facMap.computeIfAbsent(dayId, k -> new HashSet<>());
+                    set.add(fa.factory);
+                }
+            }
+        }
 
         fillSeatCandidatesSinglePass(built.seats, built.blocks, env.employees);
 
