@@ -298,6 +298,9 @@ public class EmployeeSchedule {
     static Map<Integer, Map<Integer, Set<String>>> FIXED_FACTORIES_BY_EMP_DAY = new HashMap<>();
 
     public static final boolean TRIM_FINISHED_MODULES = true;
+    // if module ended more than this many days before cutOffDate,
+    // it is considered finished and can be trimmed.
+    public static final int MODULE_TRIM_GRACE_DAYS = 6; // x days, change as you like
 
     static boolean isUnassigned(EmployeeFact e) { return e == null || e.id == 0; }
     static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
@@ -1100,7 +1103,7 @@ public class EmployeeSchedule {
         out.opdef = opdef; out.employees = employees; out.byWid = byWid;
         return out;
     }
-
+    
     @SuppressWarnings("unchecked")
     static ParsedSchedule parseSchedule(String schedPath, Map<String,OpDef> opdef) throws IOException {
         Map<String,Object> root = loadYaml(schedPath);
@@ -1174,20 +1177,31 @@ public class EmployeeSchedule {
         if (cutOffObj != null) {
             cutOffDate = LocalDate.parse(safeStr(cutOffObj).replace("-", "/"), DF);
         } else {
-            cutOffDate = start; // default: anything that ends before plan_start is "finished"
+            cutOffDate = start; // default: anything that ends well before plan_start is "finished"
         }
         int cutOffDayId = (int) (cutOffDate.toEpochDay() - start.toEpochDay());
 
-        // ---- Decide activeModules (respect TRIM_FINISHED_MODULES) ----
+        // ---- Decide activeModules, using grace-gap x days ----
         Set<String> activeModules = new HashSet<>();
         if (TRIM_FINISHED_MODULES) {
-            // activeModules = modules whose last end is on/after cut-off
+            int grace = MODULE_TRIM_GRACE_DAYS; // x
+
             for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
-                if (e.getValue() >= cutOffDayId) {
-                    activeModules.add(e.getKey());
+                String module = e.getKey();
+                int lastEndDayId = e.getValue();
+
+                // gap = how many days between module end and cutOff
+                // if gap > grace → treat as finished (trim)
+                // if gap <= grace → keep as active
+                int gap = cutOffDayId - lastEndDayId;
+
+                if (gap <= grace) {
+                    // lastEnd is on/after (cutOff - grace)
+                    activeModules.add(module);
                 }
             }
-            // Edge case: if none pass the cut-off, keep everything
+
+            // Edge case: if none pass the rule, keep everything
             if (activeModules.isEmpty()) {
                 activeModules.addAll(moduleLastEnd.keySet());
             }
@@ -1286,7 +1300,7 @@ public class EmployeeSchedule {
         out.requiredByKey = required;
         out.fixedRows = fixedRows;
         out.fixedHoursByKey = fixedHoursByKey;
-        out.activeModules = activeModules;  // <<<<<< store it here
+        out.activeModules = activeModules;  // store active set
 
         // ---- Push phase windows based on fixed ends (even if outside horizon)
         for (TaskWindow w : windows) {
@@ -1319,6 +1333,7 @@ public class EmployeeSchedule {
 
         return out;
     }
+
 
 
     // ---------------- Build entities for single pass ----------------
