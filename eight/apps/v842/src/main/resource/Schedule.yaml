@@ -1833,4 +1833,5 @@ schedule:
         name: Mech
         operation: p4o2
         workload_days: 8
-  assignment_list: []
+  assignment_list: [
+    ]
