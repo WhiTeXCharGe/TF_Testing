@@ -7,12 +7,12 @@ import org.yaml.snakeyaml.LoaderOptions;
 
 import java.io.*;
 import java.nio.file.*;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import static com.yourorg.scheduler.IncrementalConfig.*;
-
 
 /**
  * Java version of daily_run.py + update_schedule2.py
@@ -38,30 +38,162 @@ public class IncrementalSchedulerRunner {
         return d.format(YMD);
     }
 
-    private static boolean isWeekend(LocalDate d) {
-        int dow = d.getDayOfWeek().getValue(); // Mon=1 .. Sun=7
-        return dow >= 6;
+    // ------------------------------------------------------------------
+    // Region / fab holiday calendar
+    // ------------------------------------------------------------------
+
+    private static class HolidayCalendar {
+        final Map<String, String> fabToRegionId;
+        final Map<String, Set<Integer>> regionWeeklyDows;
+        final Map<String, Set<LocalDate>> regionSingleDates;
+        final Set<Integer> globalWeeklyDows;
+        final Set<LocalDate> globalSingleDates;
+
+        HolidayCalendar(Map<String, String> fabToRegionId,
+                        Map<String, Set<Integer>> regionWeeklyDows,
+                        Map<String, Set<LocalDate>> regionSingleDates,
+                        Set<Integer> globalWeeklyDows,
+                        Set<LocalDate> globalSingleDates) {
+            this.fabToRegionId = fabToRegionId;
+            this.regionWeeklyDows = regionWeeklyDows;
+            this.regionSingleDates = regionSingleDates;
+            this.globalWeeklyDows = globalWeeklyDows;
+            this.globalSingleDates = globalSingleDates;
+        }
     }
 
-    private static boolean isHoliday(LocalDate d) {
-        if (IS_SKIP_WEEKEND && isWeekend(d)) return true;
+    @SuppressWarnings("unchecked")
+    private static HolidayCalendar buildHolidayCalendar(Map<String, Object> envRoot) {
+        Map<String, Object> env = getOrCreateMap(envRoot, "environment");
+
+        Map<String, String> fabToRegionId = new HashMap<>();
+        Map<String, Set<Integer>> regionWeekly = new HashMap<>();
+        Map<String, Set<LocalDate>> regionSingle = new HashMap<>();
+        Set<Integer> globalWeekly = new HashSet<>();
+        Set<LocalDate> globalSingle = new HashSet<>();
+
+        // region_list -> unavailable_dates
+        List<Map<String, Object>> regionList =
+                (List<Map<String, Object>>) env.getOrDefault("region_list", new ArrayList<>());
+        for (Map<String, Object> r : regionList) {
+            Object idObj = r.get("id");
+            if (idObj == null) continue;
+            String regionId = idObj.toString();
+
+            Object unavailObj = r.get("unavailable_dates");
+            if (!(unavailObj instanceof List<?> unavailListRaw)) continue;
+
+            for (Object o : unavailListRaw) {
+                if (!(o instanceof Map<?, ?> m)) continue;
+
+                if (m.containsKey("weekly")) {
+                    Map<String, Object> weekly = (Map<String, Object>) m.get("weekly");
+                    Object wListObj = weekly.get("weekdays");
+                    if (wListObj instanceof List<?> wList) {
+                        for (Object w : wList) {
+                            if (w == null) continue;
+                            int dow = weekdayCodeToInt(w.toString());
+                            regionWeekly
+                                    .computeIfAbsent(regionId, k -> new HashSet<>())
+                                    .add(dow);
+                            globalWeekly.add(dow);
+                        }
+                    }
+                }
+
+                if (m.containsKey("single")) {
+                    Map<String, Object> single = (Map<String, Object>) m.get("single");
+                    Object dListObj = single.get("days");
+                    if (dListObj instanceof List<?> dList) {
+                        for (Object d : dList) {
+                            if (d == null) continue;
+                            LocalDate ld = parseDate(d);
+                            regionSingle
+                                    .computeIfAbsent(regionId, k -> new HashSet<>())
+                                    .add(ld);
+                            globalSingle.add(ld);
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no unavailable_dates are defined at all, fallback to weekend skip
+        if (globalWeekly.isEmpty() && globalSingle.isEmpty() && IS_SKIP_WEEKEND) {
+            globalWeekly.add(DayOfWeek.SATURDAY.getValue());
+            globalWeekly.add(DayOfWeek.SUNDAY.getValue());
+        }
+
+        // fab_list -> region
+        List<Map<String, Object>> fabList =
+                (List<Map<String, Object>>) env.getOrDefault("fab_list", new ArrayList<>());
+        for (Map<String, Object> f : fabList) {
+            Object fid = f.get("id");
+            Object reg = f.get("region");
+            if (fid != null && reg != null) {
+                fabToRegionId.put(fid.toString(), reg.toString());
+            }
+        }
+
+        return new HolidayCalendar(fabToRegionId, regionWeekly, regionSingle, globalWeekly, globalSingle);
+    }
+
+    private static int weekdayCodeToInt(String code) {
+        String c = code.toLowerCase(Locale.ROOT);
+        return switch (c) {
+            case "mon", "月" -> DayOfWeek.MONDAY.getValue();
+            case "tue", "tues", "火" -> DayOfWeek.TUESDAY.getValue();
+            case "wed", "水" -> DayOfWeek.WEDNESDAY.getValue();
+            case "thu", "thur", "thu.", "木" -> DayOfWeek.THURSDAY.getValue();
+            case "fri", "金" -> DayOfWeek.FRIDAY.getValue();
+            case "sat", "土" -> DayOfWeek.SATURDAY.getValue();
+            case "sun", "日" -> DayOfWeek.SUNDAY.getValue();
+            default -> throw new IllegalArgumentException("Unknown weekday code: " + code);
+        };
+    }
+
+    private static boolean isGlobalHoliday(LocalDate d, HolidayCalendar hc) {
+        int dow = d.getDayOfWeek().getValue();
+        if (hc.globalWeeklyDows.contains(dow)) return true;
+        if (hc.globalSingleDates.contains(d)) return true;
         return false;
     }
 
-    private static LocalDate nextWorkingDay(LocalDate d) {
+    private static boolean isFabHoliday(LocalDate d, String fabId, HolidayCalendar hc) {
+        if (fabId == null || hc == null) {
+            return isGlobalHoliday(d, hc);
+        }
+        String regionId = hc.fabToRegionId.get(fabId);
+        if (regionId == null) {
+            return isGlobalHoliday(d, hc);
+        }
+        Set<Integer> wset = hc.regionWeeklyDows.get(regionId);
+        Set<LocalDate> sset = hc.regionSingleDates.get(regionId);
+        int dow = d.getDayOfWeek().getValue();
+        if (wset != null && wset.contains(dow)) return true;
+        if (sset != null && sset.contains(d)) return true;
+        // fallback to global holidays
+        return isGlobalHoliday(d, hc);
+    }
+
+    private static LocalDate nextGlobalWorkingDay(LocalDate d, HolidayCalendar hc) {
         LocalDate nd = d.plusDays(1);
-        while (isHoliday(nd)) {
+        while (isGlobalHoliday(nd, hc)) {
             nd = nd.plusDays(1);
         }
         return nd;
     }
 
-    private static LocalDate advanceWorkingDays(LocalDate d, int n) {
-        LocalDate nd = d;
-        for (int i = 0; i < n; i++) {
-            nd = nextWorkingDay(nd);
+    private static LocalDate addRegionWorkingDays(LocalDate start, int days, String fabId, HolidayCalendar hc) {
+        LocalDate current = start;
+        int remaining = days;
+        while (remaining > 0) {
+            current = current.plusDays(1);
+            if (!isFabHoliday(current, fabId, hc)) {
+                remaining--;
+            }
         }
-        return nd;
+        return current;
     }
 
     private static LocalDate parseDate(Object s) {
@@ -89,7 +221,6 @@ public class IncrementalSchedulerRunner {
         }
     }
 
-
     private static void saveYaml(Path path, Map<String, Object> root) throws IOException {
         DumperOptions opts = new DumperOptions();
         opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
@@ -114,7 +245,6 @@ public class IncrementalSchedulerRunner {
 
     @SuppressWarnings("unchecked")
     private static boolean hasExistingAssignments(Map<String, Object> root) {
-        // root may be { schedule: { ... } } or flat
         Object schedObj = root.get("schedule");
         Map<String, Object> sched;
         if (schedObj instanceof Map) {
@@ -146,7 +276,7 @@ public class IncrementalSchedulerRunner {
         return "" + (char) ('A' + idx / 26) + (char) ('A' + idx % 26);
     }
 
-        @SuppressWarnings("unchecked")
+    @SuppressWarnings("unchecked")
     private static int[] extendWorkersIfNeeded(Map<String, Object> envRoot) {
         Map<String, Object> env = getOrCreateMap(envRoot, "environment");
 
@@ -183,6 +313,25 @@ public class IncrementalSchedulerRunner {
                 (List<Map<String, Object>>) env.getOrDefault("worker_company_list", new ArrayList<>());
         if (companyList.isEmpty()) throw new RuntimeException("EnvConfig has no worker_company_list");
 
+        // NEW: region IDs and customer_company IDs for suitability
+        List<Map<String, Object>> regionList =
+                (List<Map<String, Object>>) env.getOrDefault("region_list", new ArrayList<>());
+        if (regionList.isEmpty()) throw new RuntimeException("EnvConfig has no region_list");
+        List<String> regionIds = new ArrayList<>();
+        for (Map<String, Object> r : regionList) {
+            Object id = r.get("id");
+            if (id != null) regionIds.add(id.toString());
+        }
+
+        List<Map<String, Object>> customerList =
+                (List<Map<String, Object>>) env.getOrDefault("customer_company_list", new ArrayList<>());
+        if (customerList.isEmpty()) throw new RuntimeException("EnvConfig has no customer_company_list");
+        List<String> customerIds = new ArrayList<>();
+        for (Map<String, Object> c : customerList) {
+            Object id = c.get("id");
+            if (id != null) customerIds.add(id.toString());
+        }
+
         int added = 0;
         int skillMin = 3, skillMax = 6;
 
@@ -215,13 +364,38 @@ public class IncrementalSchedulerRunner {
                 skillMap.put(skillIds.get(k), skillLevels.get(k));
             }
 
+            // NEW: region suitability
+            Map<String, Object> regionSuitability = new LinkedHashMap<>();
+            for (String rid : regionIds) {
+                int lvl = weightedChoiceInt(rng, REGION_SUITABILITY_LIST, REGION_SUITABILITY_WEIGHTS);
+                regionSuitability.put(rid, lvl);
+            }
+
+            // NEW: customer_company suitability
+            Map<String, Object> customerSuitability = new LinkedHashMap<>();
+            for (String cid : customerIds) {
+                int lvl = weightedChoiceInt(rng, CUSTOMER_SUITABILITY_LIST, CUSTOMER_SUITABILITY_WEIGHTS);
+                customerSuitability.put(cid, lvl);
+            }
+
+            List<Map<String, Object>> fabSuitabilityMap = new ArrayList<>();
+            Map<String, Object> regionEntry = new LinkedHashMap<>();
+            regionEntry.put("kind", "region");
+            regionEntry.put("suitability", regionSuitability);
+            fabSuitabilityMap.add(regionEntry);
+
+            Map<String, Object> customerEntry = new LinkedHashMap<>();
+            customerEntry.put("kind", "customer_company");
+            customerEntry.put("suitability", customerSuitability);
+            fabSuitabilityMap.add(customerEntry);
+
             Map<String, Object> worker = new LinkedHashMap<>();
             worker.put("id", wid);
             worker.put("name", wname);
             worker.put("worker_company", company.get("id"));
             worker.put("is_manager", isManager);
             worker.put("skill_map", skillMap);
-            worker.put("fab_suitability_map", new ArrayList<>());
+            worker.put("fab_suitability_map", fabSuitabilityMap);
             worker.put("unavailable_dates", new ArrayList<>());
 
             workerList.add(worker);
@@ -231,7 +405,6 @@ public class IncrementalSchedulerRunner {
         env.put("worker_list", workerList);
         return new int[]{beforeN, added};
     }
-
 
     private static int weightedChoiceInt(Random rng, List<Integer> values, List<Double> weights) {
         double sum = 0.0;
@@ -319,7 +492,8 @@ public class IncrementalSchedulerRunner {
             Map<String, Object> workflow,
             String fabId,
             LocalDate startDay,
-            List<Object> worklength
+            List<Object> worklength,
+            HolidayCalendar holiday
     ) {
         String eqId = "e" + (eqIndex + 1);
         String name = "SU " + (1000 + eqIndex + 1) + "A";
@@ -331,8 +505,11 @@ public class IncrementalSchedulerRunner {
                     + " does not match number of phases " + phaseList.size());
         }
 
+        // Move module_start to the first working day for this fab's region
         LocalDate moduleStart = startDay;
-        while (isHoliday(moduleStart)) moduleStart = moduleStart.plusDays(1);
+        while (isFabHoliday(moduleStart, fabId, holiday)) {
+            moduleStart = moduleStart.plusDays(1);
+        }
 
         int cumulativeDays = 0;
         LocalDate finalEnd = moduleStart;
@@ -346,12 +523,12 @@ public class IncrementalSchedulerRunner {
 
             cumulativeDays += phaseDays;
 
-            // >>> FIX HERE: inclusive working-day window
+            // inclusive working-day window: start = moduleStart, length = cumulativeDays
             LocalDate phaseEnd;
             if (cumulativeDays <= 1) {
                 phaseEnd = moduleStart;
             } else {
-                phaseEnd = addWorkingDays(moduleStart, cumulativeDays - 1);
+                phaseEnd = addRegionWorkingDays(moduleStart, cumulativeDays - 1, fabId, holiday);
             }
 
             Map<String, Object> phaseTask =
@@ -371,24 +548,24 @@ public class IncrementalSchedulerRunner {
         return eqDict;
     }
 
-
-    private static LocalDate addWorkingDays(LocalDate start, int days) {
-        LocalDate current = start;
-        int remaining = days;
-        while (remaining > 0) {
-            current = current.plusDays(1);
-            if (!isHoliday(current)) remaining--;
-        }
-        return current;
-    }
-
     private static List<List<Object>> createWorklengthList() {
         // Python: return ([normal_worklength, vip_worklength], [0.8, 0.2])
-        // Here we just return the two lists; weights are fixed in code below.
         List<List<Object>> out = new ArrayList<>();
-        out.add(NORMAL_WORKLENGTH);
-        out.add(VIP_WORKLENGTH);
+        out.add((List<Object>) (List<?>) NORMAL_WORKLENGTH);
+        out.add((List<Object>) (List<?>) VIP_WORKLENGTH);
         return out;
+    }
+
+    private static int weightedIndex(Random rng, double[] weights) {
+        double sum = 0;
+        for (double w : weights) sum += w;
+        double r = rng.nextDouble() * sum;
+        double acc = 0;
+        for (int i = 0; i < weights.length; i++) {
+            acc += weights[i];
+            if (r <= acc) return i;
+        }
+        return weights.length - 1;
     }
 
     private static List<Map<String, Object>> createNewModules(
@@ -398,7 +575,8 @@ public class IncrementalSchedulerRunner {
             int numToAdd,
             LocalDate startDay,
             LocalDate[] lastEndHolder,
-            int moduleSeedOffset
+            int moduleSeedOffset,
+            HolidayCalendar holiday
     ) {
         if (numToAdd <= 0) {
             lastEndHolder[0] = startDay;
@@ -413,13 +591,13 @@ public class IncrementalSchedulerRunner {
         LocalDate lastEnd = startDay;
 
         for (int offset = 0; offset < numToAdd; offset++) {
-            // choose normal or vip
             int idx = weightedIndex(rng, worklengthWeights);
             List<Object> worklength = worklengthList.get(idx);
             String fabId = fabIds.get(rng.nextInt(fabIds.size()));
 
             int eqIdx = startIndex + offset;
-            Map<String, Object> eqDict = buildOneModule(eqIdx, workflow, fabId, startDay, worklength);
+            Map<String, Object> eqDict =
+                    buildOneModule(eqIdx, workflow, fabId, startDay, worklength, holiday);
             LocalDate eqEnd = (LocalDate) eqDict.remove("__END_DATE");
             modules.add(eqDict);
             if (eqEnd.isAfter(lastEnd)) lastEnd = eqEnd;
@@ -427,18 +605,6 @@ public class IncrementalSchedulerRunner {
 
         lastEndHolder[0] = lastEnd;
         return modules;
-    }
-
-    private static int weightedIndex(Random rng, double[] weights) {
-        double sum = 0;
-        for (double w : weights) sum += w;
-        double r = rng.nextDouble() * sum;
-        double acc = 0;
-        for (int i = 0; i < weights.length; i++) {
-            acc += weights[i];
-            if (r <= acc) return i;
-        }
-        return weights.length - 1;
     }
 
     @SuppressWarnings("unchecked")
@@ -455,7 +621,6 @@ public class IncrementalSchedulerRunner {
             Object sdRaw = a.get("start_date");
             if (sdRaw == null) {
                 String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
-                @SuppressWarnings("unchecked")
                 List<Map<String, Object>> wdList =
                         (List<Map<String, Object>>) a.getOrDefault(wdKey, new ArrayList<>());
                 if (!wdList.isEmpty()) {
@@ -560,7 +725,6 @@ public class IncrementalSchedulerRunner {
     public static void main(String[] args) throws Exception {
         Path projectRoot = findProjectRoot(Paths.get("").toAbsolutePath());
 
-        // use config paths (Strings) + project root
         Path envPath = projectRoot.resolve(ENV_PATH);
         Path schedPath = projectRoot.resolve(SCHEDULE_IN_PATH);
         Path schedOutPath = projectRoot.resolve(SCHEDULE_OUT_PATH);
@@ -576,9 +740,10 @@ public class IncrementalSchedulerRunner {
 
         // Load initial schedule to get plan_range
         Map<String, Object> envRoot = loadYaml(envPath);
+        HolidayCalendar holiday = buildHolidayCalendar(envRoot);
+
         Map<String, Object> schedRoot = loadYaml(schedPath);
         Map<String, Object> sched = getOrCreateMap(schedRoot, "schedule");
-        @SuppressWarnings("unchecked")
         Map<String, Object> planRange =
                 (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
 
@@ -598,12 +763,12 @@ public class IncrementalSchedulerRunner {
         // FIRST day of the first block = cutoff0 (first working day after lastStart0, or planStart)
         LocalDate cutoff0;
         if (lastStart0 != null) {
-            cutoff0 = nextWorkingDay(lastStart0);
+            cutoff0 = nextGlobalWorkingDay(lastStart0, holiday);
         } else {
             cutoff0 = planStart;
         }
-        // ensure cutoff0 itself is not a weekend
-        while (isWeekend(cutoff0)) {
+        // ensure cutoff0 itself is not holiday
+        while (isGlobalHoliday(cutoff0, holiday)) {
             cutoff0 = cutoff0.plusDays(1);
         }
 
@@ -615,40 +780,27 @@ public class IncrementalSchedulerRunner {
         int evalIndex = 0;
 
         while (true) {
-            if (current.isAfter(planEnd)) {
-                System.out.println("[DONE] Reached plan_end " + planEnd + ", stop.");
-                break;
-            }
-
-            // --------------------------------------------------
-            // 1) Build this block's working days [blockStart .. blockEnd]
-            // --------------------------------------------------
+            // 1) Build this block's working days [blockStart .. blockEnd] using global holidays
+            //    (NO limit by initial planEnd; we keep going until module target is reached)
             List<LocalDate> blockDays = new ArrayList<>();
             LocalDate d = current;
-            while (blockDays.size() < stepDays && !d.isAfter(planEnd)) {
-                if (!isWeekend(d)) {
+            while (blockDays.size() < stepDays) {
+                if (!isGlobalHoliday(d, holiday)) {
                     blockDays.add(d);
                 }
                 d = d.plusDays(1);
             }
 
-            if (blockDays.isEmpty()) {
-                System.out.println("[DONE] No working days left until plan_end " + planEnd + ", stop.");
-                break;
-            }
-
+            // stepDays >= 1, so blockDays should never be empty
             LocalDate blockStart = blockDays.get(0);
             LocalDate blockEnd   = blockDays.get(blockDays.size() - 1);
 
-            // --------------------------------------------------
             // 2) Load latest Env & Schedule each BLOCK
-            //    (REUSE variables, don't redeclare)
-            // --------------------------------------------------
             envRoot = loadYaml(envPath);
+            holiday = buildHolidayCalendar(envRoot); // rebuild in case Env changed
             schedRoot = loadYaml(schedPath);
             sched = getOrCreateMap(schedRoot, "schedule");
 
-            // figure existing modules & last_start / last_end
             Triple<List<Map<String, Object>>, LocalDate, LocalDate> triple =
                     collectExistingModules(schedRoot);
             List<Map<String, Object>> modulesBefore = triple.first;
@@ -656,8 +808,9 @@ public class IncrementalSchedulerRunner {
             LocalDate lastEndBefore   = triple.third;
             int beforeCount = modulesBefore.size();
 
-            // cutoff is still based on lastStartBefore
-            LocalDate cutoff = (lastStartBefore != null) ? nextWorkingDay(lastStartBefore) : planStart;
+            LocalDate cutoff = (lastStartBefore != null)
+                    ? nextGlobalWorkingDay(lastStartBefore, holiday)
+                    : planStart;
 
             System.out.println("\n==============================================");
             System.out.println("[BLOCK] " + blockStart + " .. " + blockEnd +
@@ -666,25 +819,19 @@ public class IncrementalSchedulerRunner {
             System.out.println("==============================================");
 
             // 3) update_schedule2.main() equivalent (workers, assignments, modules)
-            // --------------------------------------------------
-            // a) extend workers
             int[] workerCounts = extendWorkersIfNeeded(envRoot);
             int beforeWorkers  = workerCounts[0];
             int addedWorkers   = workerCounts[1];
             int afterWorkers   = beforeWorkers + addedWorkers;
 
-            // b) update assignments based on cutoff
             int[] assignCounts = updateAssignments(schedRoot, cutoff);
             int totalAssign    = assignCounts[0];
             int changedFixed   = assignCounts[1];
 
-            // c) initial schedule / initial_schedule flag
-            @SuppressWarnings("unchecked")
             List<Map<String, Object>> assignmentsNow =
                     (List<Map<String, Object>>) sched.getOrDefault("assignment_list", new ArrayList<>());
             boolean initialSchedule = assignmentsNow.isEmpty();
 
-            // d) incremental module adding (over ALL days in this block)
             triple = collectExistingModules(schedRoot);
             List<Map<String, Object>> modulesNow = triple.first;
             LocalDate lastStart = triple.second;
@@ -698,23 +845,10 @@ public class IncrementalSchedulerRunner {
 
             boolean hasAssignments = !assignmentsNow.isEmpty();
 
-            // --------------------------------------------------
             // First evaluation (evalIndex == 0)
-            //
-            // Spec:
-            //  1) assignment_list is EMPTY  -> initial full solve, NO new modules.
-            //  2) assignment_list has rows  -> behave like normal block
-            //     (add modules this block, then solve).
-            // --------------------------------------------------
             if (evalIndex == 0 && !hasAssignments) {
                 System.out.println("[INFO] First evaluation block with empty assignment_list: "
                         + "run initial full-horizon solve (no new modules, no cut-off).");
-
-                // IMPORTANT:
-                //  - Do NOT touch plan_range.start_date/end_date.
-                //  - Do NOT set cut_off_date here.
-                //    EmployeeSchedule will default cut_off_date = plan_start,
-                //    so no modules are considered "already finished".
 
                 schedRoot.put("schedule", sched);
 
@@ -723,7 +857,6 @@ public class IncrementalSchedulerRunner {
                 if (schedOutPath.equals(schedPath)) backupFile(schedPath);
                 saveYaml(schedOutPath, schedRoot);
 
-                // Initial solve for existing modules only (e.g., e1..e50)
                 runSolver(projectRoot, envPath, schedPath);
 
                 String outName = "Schedule_" +
@@ -732,25 +865,13 @@ public class IncrementalSchedulerRunner {
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
 
-                // After this, assignment_list is filled.
-                // Next blocks (evalIndex >= 1) will follow the normal incremental path:
-                //   - add modules for each EQ_EVAL_DAYS block
-                //   - set cut_off_date = blockStart
-                //   - run solver again.
-
                 current = blockEnd.plusDays(1);
-                while (isWeekend(current)) current = current.plusDays(1);
+                while (isGlobalHoliday(current, holiday)) current = current.plusDays(1);
                 evalIndex++;
                 continue;
             }
-            // If evalIndex == 0 && hasAssignments == true:
-            //   → we FALL THROUGH to the normal block logic below
-            //      (modules will be added in this first block, no gap).
 
-
-            // --------------------------------------------------
             // Inside this block: simulate arrivals PER DAY
-            // --------------------------------------------------
             LocalDate newLastEnd = lastEnd;
             int modulesAdded     = 0;
             int startIndex       = currentN;
@@ -761,13 +882,10 @@ public class IncrementalSchedulerRunner {
             double eqSigmaDay  = EQ_PER_DAYS_SIGMA;
             Random rngDay      = new Random(MODULE_SEED * 10007L + evalIndex);
 
-            // We only allow extending on days after initial cutoff rules
             for (LocalDate currentSimDay : blockDays) {
                 if (remaining <= 0) break;
 
                 boolean allowExtendToday = true;
-
-
                 if (!allowExtendToday) {
                     continue;
                 }
@@ -803,7 +921,8 @@ public class IncrementalSchedulerRunner {
                         modulesToday,
                         currentSimDay,
                         lastEndHolder,
-                        evalIndex * 1000 + modulesAdded   // offset for randomness
+                        evalIndex * 1000 + modulesAdded,
+                        holiday
                 );
                 newLastEnd = lastEndHolder[0];
 
@@ -817,17 +936,14 @@ public class IncrementalSchedulerRunner {
 
             // Append any new modules to workflow_task_list
             if (!newModules.isEmpty()) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> wfList =
+                List<Map<String, Object>> wfList2 =
                         (List<Map<String, Object>>) sched.getOrDefault("workflow_task_list", new ArrayList<>());
-                wfList.addAll(newModules);
-                sched.put("workflow_task_list", wfList);
+                wfList2.addAll(newModules);
+                sched.put("workflow_task_list", wfList2);
                 schedRoot.put("schedule", sched);
             }
 
-            // --------------------------------------------------
             // e) update plan_range (end_date only)
-            // --------------------------------------------------
             Map<String, Object> pr =
                     (Map<String, Object>) sched.getOrDefault("plan_range", new LinkedHashMap<>());
 
@@ -856,7 +972,7 @@ public class IncrementalSchedulerRunner {
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
 
                 current = blockEnd.plusDays(1);
-                while (isWeekend(current)) current = current.plusDays(1);
+                while (isGlobalHoliday(current, holiday)) current = current.plusDays(1);
                 evalIndex++;
                 continue;
             }
@@ -872,12 +988,11 @@ public class IncrementalSchedulerRunner {
             pr.put("end_date", ymd(endFinal));
             sched.put("plan_range", pr);
 
-            // IMPORTANT: cutoff date used by EmployeeSchedule = FIRST day of this block
+            // cutoff date used by EmployeeSchedule = FIRST day of this block
             sched.put("cut_off_date", ymd(blockStart));
 
             schedRoot.put("schedule", sched);
 
-            // write back env & schedule
             backupFile(envPath);
             saveYaml(envPath, envRoot);
             if (schedOutPath.equals(schedPath)) backupFile(schedPath);
@@ -891,7 +1006,6 @@ public class IncrementalSchedulerRunner {
             System.out.println("New plan_range: " + pr.get("start_date") + " .. " + pr.get("end_date"));
             System.out.println("cut_off_date for solver: " + ymd(blockStart));
 
-            // 3) run solver?
             boolean hasExistingAssignmentsNow = hasExistingAssignments(schedRoot);
 
             boolean runSolverNow =
@@ -907,31 +1021,27 @@ public class IncrementalSchedulerRunner {
                 System.out.println("[SKIP] No new modules in this block AND assignment_list already has rows -> skip solver/snapshot.");
             }
 
-            // stop if EQ_NUM reached
             int afterCount = currentN + modulesAdded;
             if (afterCount >= targetN) {
                 System.out.println("[DONE] target modules reached: " + afterCount + " / " + targetN + ".");
                 break;
             }
 
-            // Move to FIRST working day of next block
             current = blockEnd.plusDays(1);
-            while (isWeekend(current)) current = current.plusDays(1);
+            while (isGlobalHoliday(current, holiday)) current = current.plusDays(1);
             evalIndex++;
         }
 
         System.out.println("\n[DONE] Daily run finished (Java).");
     }
 
-
     private static void runSolver(Path projectRoot, Path envPath, Path schedPath) throws Exception {
         System.out.println("[RUN-JAVA] EmployeeSchedule.main(...)");
         EmployeeSchedule.main(new String[]{
-            envPath.toString().replace("\\", "/"),
-            schedPath.toString().replace("\\", "/")
+                envPath.toString().replace("\\", "/"),
+                schedPath.toString().replace("\\", "/")
         });
     }
-
 
     private static Path findProjectRoot(Path start) {
         Path p = start;
@@ -942,7 +1052,6 @@ public class IncrementalSchedulerRunner {
         throw new RuntimeException("Could not find pom.xml above " + start);
     }
 
-    // simple tuple helper
     private static class Triple<A, B, C> {
         final A first;
         final B second;

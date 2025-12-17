@@ -20,7 +20,19 @@ public class IncrementalConfig {
     public static final double MANAGER_RATE = 0.5;
     public static final int WORKER_COMPANY_NUM = 2;
 
+    // kept for fallback when region unavailable_dates are not set at all
     public static final boolean IS_SKIP_WEEKEND = true;
+
+    // levels: 0, 1, 2
+    public static final List<Integer> REGION_SUITABILITY_LIST =
+            Arrays.asList(0, 1, 2);
+    public static final List<Double> REGION_SUITABILITY_WEIGHTS =
+            Arrays.asList(0.2, 0.5, 0.3);
+
+    public static final List<Integer> CUSTOMER_SUITABILITY_LIST =
+            Arrays.asList(0, 1, 2);
+    public static final List<Double> CUSTOMER_SUITABILITY_WEIGHTS =
+            Arrays.asList(0.2, 0.5, 0.3);
 
     // ---- from update_config.py ----
     public static final int PLAN_RANGE_EXTRA_DAYS = 3;
@@ -31,7 +43,7 @@ public class IncrementalConfig {
     // how many working days per evaluation step (like EQ_EVAL_DAYS)
     public static final int EQ_EVAL_DAYS = 5;
 
-        // worklength patterns (from normal_worklength / vip_worklength in Python)
+    // worklength patterns (from normal_worklength / vip_worklength in Python)
     // Each inner list is: [ phase_total_days, [workload_days_per_operation...] ]
 
     public static final List<Object> NORMAL_WORKLENGTH = Arrays.asList(
@@ -47,8 +59,6 @@ public class IncrementalConfig {
             Arrays.asList(6,  Arrays.asList(15)),
             Arrays.asList(8,  Arrays.asList(12, 8))
     );
-
-
 
     // ---- file paths (relative to project root) ----
     public static final String ENV_PATH = "src/main/resource/EnvConfig.yaml";
