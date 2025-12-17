@@ -110,15 +110,33 @@ def create_workflow() -> WorkflowDef:
 class RegionDef:
     id: str
     name: str
+    weekly_weekdays: list[str]
+    single_days: list[str]
 
     def to_dict(self) -> dict:
+        unavailable: list[dict] = []
+
+        if self.weekly_weekdays:
+            unavailable.append({
+                "weekly": {
+                    "weekdays": InlineList(self.weekly_weekdays),
+                }
+            })
+
+        if self.single_days:
+            unavailable.append({
+                "single": {
+                    "days": self.single_days,
+                }
+            })
+
         return {
             "id": self.id,
             "name": self.name,
-            "max_stay_on": 1000,
-            "max_annual_stay": 1000,
-            "stay_off_interval": 1000,
-            "unavailable_dates": [],
+            "max_stay_on": 80,
+            "max_annual_stay": 240,
+            "stay_off_interval": 3,
+            "unavailable_dates": unavailable,
         }
 
 
@@ -138,8 +156,8 @@ class CompanyDef:
         return {
             "id": self.id,
             "name": self.name,
-            "annual_overtime_limit": 1000,
-            "monthly_overtime_limit": 1000,
+            "annual_overtime_limit": 360,
+            "monthly_overtime_limit": 40,
             "unavailable_dates": [],
         }
 
@@ -163,29 +181,34 @@ class FabDef:
 
 def create_area_map() -> tuple[dict[str, FabDef], dict[str, RegionDef], dict[str, CompanyDef]]:
     region_map: dict[str, RegionDef] = {
-        "r1": RegionDef("r1", "America"),
-        "r2": RegionDef("r1", "Germany"),
+        "r1": RegionDef(
+            id="r1",
+            name="America",
+            weekly_weekdays=["sat", "sun"],
+            single_days=["2025/09/10", "2025/10/10"],
+        ),
+        "r2": RegionDef(
+            id="r2",
+            name="Germany",
+            weekly_weekdays=[ "sun"],
+            single_days=[],
+        ),
+        "r3": RegionDef(
+            id="r3",
+            name="Taiwan",
+            weekly_weekdays=[],
+            single_days=["2025/09/10", "2025/09/20", "2025/10/10", "2025/10/20", "2025/11/10", "2025/11/20" ],
+        ),
     }
+
     company_map: dict[str, CompanyDef] = {
         "c1": CompanyDef("c1", "AAA"),
         "c2": CompanyDef("c2", "BBB"),
     }
 
-    # fab_num = 3
-    # fab_map: dict[str, FabDef] = {}
-    # region = next(iter(region_map.values()))
-    # company = next(iter(company_map.values()))
-    # for i in range(fab_num):
-    #     fab = FabDef(
-    #         id=f"f{i + 1}",
-    #         name=f"{company.name} Fab{i + 1}",
-    #         region=region,
-    #         company=company,
-    #     )
-    #     fab_map[fab.id] = fab
     fab_map: dict[str, FabDef] = {}
 
-    # ★ 全ての region × 全ての customer_company の組み合わせで Fab を作る
+    # ★ all region × all customer_company combinations
     fab_index = 1
     for region in region_map.values():
         for company in company_map.values():
@@ -202,7 +225,6 @@ def create_area_map() -> tuple[dict[str, FabDef], dict[str, RegionDef], dict[str
 
     return fab_map, region_map, company_map
 
-    return fab_map, region_map, company_map
 
 
 def create_worker_company_map() -> dict[str, CompanyDef]:
@@ -229,6 +251,8 @@ class WorkerDef:
     company: CompanyDef
     is_manager: bool
     skill_map: list[tuple[OperationDef, int]]
+    region_suitability: dict[str, int]
+    customer_suitability: dict[str, int]
 
     def to_dict(self) -> dict:
         return {
@@ -237,15 +261,27 @@ class WorkerDef:
             "worker_company": self.company.id,
             "is_manager": self.is_manager,
             "skill_map": InlineDict({op.id: lvl for (op, lvl) in self.skill_map}),
-            "fab_suitability_map": [],
+            "fab_suitability_map": [
+                {
+                    "kind": "region",
+                    "suitability": InlineDict(self.region_suitability),
+                },
+                {
+                    "kind": "customer_company",
+                    "suitability": InlineDict(self.customer_suitability),
+                },
+            ],
             "unavailable_dates": [],
         }
+
 
 
 def create_worker_list(
     worker_num: int,
     worker_company_map: dict[str, CompanyDef],
     workflow: WorkflowDef,
+    region_map: dict[str, RegionDef],
+    customer_company_map: dict[str, CompanyDef],
 ) -> list[WorkerDef]:
     # All operations are possible skills
     skill_list: list[OperationDef] = [
@@ -254,6 +290,8 @@ def create_worker_list(
     skill_num_range = (3, 6)
 
     company_list = list(worker_company_map.values())
+    region_ids = list(region_map.keys())
+    customer_ids = list(customer_company_map.keys())
 
     worker_list: list[WorkerDef] = []
     for i in range(worker_num):
@@ -278,16 +316,39 @@ def create_worker_list(
             k=1,
         )[0]
 
+        # NEW: generate suitability per region
+        region_suitability: dict[str, int] = {
+            rid: random.choices(
+                region_suitability_list,
+                region_suitability_weights,
+                k=1,
+            )[0]
+            for rid in region_ids
+        }
+
+        # NEW: generate suitability per customer_company
+        customer_suitability: dict[str, int] = {
+            cid: random.choices(
+                customer_suitability_list,
+                customer_suitability_weights,
+                k=1,
+            )[0]
+            for cid in customer_ids
+        }
+
         worker = WorkerDef(
             id=wid,
             name=name,
             company=company,
             is_manager=is_manager,
             skill_map=list(zip(skills, skill_levels)),
+            region_suitability=region_suitability,
+            customer_suitability=customer_suitability,
         )
         worker_list.append(worker)
 
     return worker_list
+
 
 
 # ---------------- Environment YAML writer ----------------
@@ -320,7 +381,14 @@ def write_environment_yaml(
     ]
 
     # FIX: key name "transite_day_map" (matches Java buildCalendars)
-    env_data["transite_day_map"] = []
+    env_data["transite_day_map"] = [
+        {"from": "r1", "to": "r2", "days": 3},
+        {"from": "r1", "to": "r3", "days": 4},
+        {"from": "r2", "to": "r1", "days": 3},
+        {"from": "r2", "to": "r3", "days": 4},
+        {"from": "r3", "to": "r1", "days": 4},
+        {"from": "r3", "to": "r2", "days": 4},
+    ]
 
     # FIX: we need worker_list here, not overriding workflow_list
     env_data["worker_list"] = [w.to_dict() for w in worker_list]
@@ -335,12 +403,38 @@ def write_environment_yaml(
 
 # ---------------- Schedule generation ----------------
 
-def is_holiday(day: date, _fab: FabDef | None) -> bool:
-    if is_skip_weekend:
-        # Saturday = 5, Sunday = 6
-        if day.weekday() in (5, 6):
-            return True
-        # TODO: fab-specific holidays if needed
+WEEKDAY_TAGS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def is_region_holiday(day: date, region: RegionDef) -> bool:
+    """Return True if this day is a holiday in the given region."""
+    # weekly (e.g. ["sat", "sun"])
+    weekday_tag = WEEKDAY_TAGS[day.weekday()]
+    if weekday_tag in region.weekly_weekdays:
+        return True
+
+    # single day (e.g. "2025/09/10")
+    day_str = day.strftime("%Y/%m/%d")
+    if day_str in region.single_days:
+        return True
+
+    return False
+
+def is_holiday(day: date, fab: FabDef | None, region_map: dict[str, RegionDef] | None = None) -> bool:
+    """
+    If fab is given  -> holiday is decided by that fab's region.
+    If fab is None   -> treat as 'global' day. We call it holiday only if
+                        ALL regions are holiday on that day (rare).
+    """
+    # Per-fab check (normal case: module windows, eq_start_date, etc.)
+    if fab is not None:
+        return is_region_holiday(day, fab.region)
+
+    # Global check (used for driving current_day in create_equipment_list)
+    if region_map is not None and len(region_map) > 0:
+        return all(is_region_holiday(day, r) for r in region_map.values())
+
+    # If no context, don't skip
     return False
 
 def add_working_days(day: date, days: int, fab: FabDef | None) -> date:
@@ -471,6 +565,7 @@ def create_worklength_list(
 def create_equipment_list(
     workflow: WorkflowDef,
     fab_map: dict[str, FabDef],
+    region_map: dict[str, RegionDef],
     eq_per_day: float,
     eq_per_day_sigma: float,
     eq_num: int,
@@ -494,7 +589,8 @@ def create_equipment_list(
             fab = random.choice(fab_list)
 
             eq_start_day = current_day
-            while is_holiday(eq_start_day, fab):
+            # Skip regional holidays for the chosen fab's region
+            while is_holiday(eq_start_day, fab, region_map):
                 eq_start_day = eq_start_day + timedelta(days=1)
 
             eq, eq_end_day = to_eq_dict(
@@ -521,7 +617,7 @@ def create_equipment_list(
         # move to next non-holiday day
         while True:
             current_day = current_day + timedelta(days=1)
-            if not is_holiday(current_day, None):
+            if not is_holiday(current_day, None, region_map):
                 break
 
         # add new eq_point for the next day (Poisson-ish)
@@ -573,7 +669,13 @@ def main():
     fab_map, region_map, customer_company_map = create_area_map()
     worker_company_map = create_worker_company_map()
 
-    worker_list = create_worker_list(WORKER_NUM, worker_company_map, workflow)
+    worker_list = create_worker_list(
+        WORKER_NUM,
+        worker_company_map,
+        workflow,
+        region_map,
+        customer_company_map,
+    )
 
     write_environment_yaml(
         "EnvConfig.yaml",
@@ -591,6 +693,7 @@ def main():
     equipment_list, end_day = create_equipment_list(
         workflow,
         fab_map,
+        region_map,
         EQ_PER_DAYS,
         EQ_PER_DAYS_SIGMA,
         EQ_NUM,
