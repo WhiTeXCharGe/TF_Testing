@@ -1,0 +1,87 @@
+============================================================
+Run at: 2025-12-19T18:38:21.914341100
+Stage1 duration: 00:26:37.561
+Stage2 duration: 01:00:00.236
+Final score: 0hard/0medium/-186694soft
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = 0hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-115614soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-9800soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/29250soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-4714soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-606soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/7180soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/2090soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-94480soft
+============================================================
+Run at: 2025-12-19T21:28:00.543979500
+Stage1 duration: 02:00:02.281
+Stage2 duration: 00:49:30.669
+Final score: -1072hard/0medium/-1137276soft
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = -171hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = -222hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = -100hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = -42hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = -224hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = -257hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = -54hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = -2hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-1032617soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-31054soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/73145soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-13054soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-11856soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/16550soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/82970soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-221360soft
+============================================================
+Run at: 2025-12-20T00:28:15.666862600
+Stage1 duration: 02:00:03.727
+Stage2 duration: 01:00:02.134
+Final score: -18941hard/0medium/-1412070soft
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = -948hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = -6502hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = -1206hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = -726hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = -2296hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = -2187hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = -4758hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = -318hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-1573043soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-32479soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/91040soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-17078soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-36240soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/22660soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/423710soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-290640soft
