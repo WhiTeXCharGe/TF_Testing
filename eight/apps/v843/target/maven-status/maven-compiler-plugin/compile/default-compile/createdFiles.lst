@@ -4,6 +4,7 @@ com\yourorg\scheduler\IncrementalSchedulerRunner$Triple.class
 com\yourorg\scheduler\EmployeeSchedule$EmployeeFact.class
 com\yourorg\scheduler\EmployeeSchedule$Calendars.class
 com\yourorg\scheduler\EmployeeSchedule$BuildOut.class
+com\yourorg\scheduler\EmployeeSchedule$InitialAssign.class
 com\yourorg\scheduler\EmployeeSchedule$OpDef.class
 com\yourorg\scheduler\EmployeeSchedule$ParsedEnv.class
 com\yourorg\scheduler\EmployeeSchedule$RunResult.class

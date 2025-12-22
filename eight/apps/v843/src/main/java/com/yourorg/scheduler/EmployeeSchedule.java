@@ -1437,6 +1437,13 @@ public class EmployeeSchedule {
         Map<String,OpDef> opdef; List<EmployeeFact> employees;
         Map<String, EmployeeFact> byWid;
     }
+
+    static class InitialAssign {
+    String module;
+    String opId;
+    Map<Integer,Integer> hoursByDay = new HashMap<>();
+    }
+
     static class ParsedSchedule {
         LocalDate planStart; LocalDate planEnd;
         List<DaySlot> daySlots; List<TaskWindow> windows;
@@ -1448,6 +1455,8 @@ public class EmployeeSchedule {
 
         //modules that still matter after cut-off
         Set<String> activeModules;
+
+        List<InitialAssign> initialRows;
     }
     static class FixedAssign {
         String module; String opId; String factory; String wid;
@@ -1562,15 +1571,11 @@ public class EmployeeSchedule {
                 safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
 
         int horizon = (int) (end.toEpochDay() - start.toEpochDay()) + 1;
-        List<DaySlot> days = new ArrayList<>();
-        for (int i = 0; i < horizon; i++) {
-            days.add(new DaySlot(i, start.plusDays(i)));
-        }
 
         List<TaskWindow> windows = new ArrayList<>();
         Map<String,Integer> required = new HashMap<>();
 
-        // NEW: track last end dayId per module
+        // Track last end dayId per module (for "finished module" trim)
         Map<String,Integer> moduleLastEnd = new HashMap<>();
 
         Object wfObj = s.get("workflow_task_list");
@@ -1628,22 +1633,21 @@ public class EmployeeSchedule {
         }
         int cutOffDayId = (int) (cutOffDate.toEpochDay() - start.toEpochDay());
 
-        // ---- Decide activeModules, using grace-gap x days ----
+        // ---- Decide activeModules using grace-gap x days ----
         Set<String> activeModules = new HashSet<>();
         if (TRIM_FINISHED_MODULES) {
-            int grace = MODULE_TRIM_GRACE_DAYS; // x
+            int grace = MODULE_TRIM_GRACE_DAYS; // x days of tolerance
 
             for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
                 String module = e.getKey();
                 int lastEndDayId = e.getValue();
 
                 // gap = how many days between module end and cutOff
-                // if gap > grace → treat as finished (trim)
-                // if gap <= grace → keep as active
                 int gap = cutOffDayId - lastEndDayId;
 
+                // if module ended long before cutOff, treat as finished (trim)
+                // if it ended close to or after cutOff, keep as active
                 if (gap <= grace) {
-                    // lastEnd is on/after (cutOff - grace)
                     activeModules.add(module);
                 }
             }
@@ -1667,9 +1671,11 @@ public class EmployeeSchedule {
             activeModules.addAll(moduleLastEnd.keySet());
         }
 
-        // ---- Read fixed assignments (only for active modules) ----
+        // ---- Read fixed + flexible assignments ----
         List<FixedAssign> fixedRows = new ArrayList<>();
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
+        List<InitialAssign> initialRows = new ArrayList<>();
+
         Object asgObj = s.get("assignment_list");
         List<Map<String,Object>> asgs = (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
 
@@ -1677,18 +1683,19 @@ public class EmployeeSchedule {
         Map<String,Integer> latestFixedEndAny     = new HashMap<>();
 
         for (Map<String,Object> a : asgs) {
-            String flex = safeStr(a.get("plan_flexibility"));
-            String opTask = safeStr(a.get("operation_task")); // e.g., e16p4o1
+            String flex = safeStr(a.get("plan_flexibility"));  // e.g. "Fixed" or "Flexible"
+            String opTask = safeStr(a.get("operation_task"));  // e.g. e16p4o1
             int idx = opTask.indexOf("p");
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
             String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
-            // NEW: ignore fixed rows for modules that ended before cut-off
+            // Ignore modules that are fully finished after trimming
             if (TRIM_FINISHED_MODULES && !activeModules.contains(module)) {
                 continue;
             }
 
-            boolean isFixed = "fixed".equalsIgnoreCase(flex);
+            boolean isFixed    = "fixed".equalsIgnoreCase(flex);
+            boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
             String phId = "";
             int phNum = 0;
@@ -1719,13 +1726,17 @@ public class EmployeeSchedule {
                 LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
                 int did = (int)(d.toEpochDay() - start.toEpochDay());
                 int h = parseInt(item.get("hour"), 0);
+
+                // always store by-day hours (for both fixed and flexible)
+                byDay.merge(did, h, Integer::sum);
+
                 if (isFixed) {
                     totalFixedHours += h;
-                    byDay.merge(did, h, Integer::sum);
                     latestFixedEndInRange.merge(module + "|" + phNum, did, Math::max);
                 }
             }
 
+            // fixed → hard background
             if (isFixed && totalFixedHours > 0) {
                 fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
@@ -1737,15 +1748,25 @@ public class EmployeeSchedule {
                 fa.factory = null; // will be inferred later
                 fixedRows.add(fa);
             }
+
+            // flexible → only used as initial (warm start), not fixed
+            if (isFlexible && !byDay.isEmpty()) {
+                InitialAssign ia = new InitialAssign();
+                ia.module = module;
+                ia.opId   = opId;
+                ia.hoursByDay.putAll(byDay);
+                initialRows.add(ia);
+            }
         }
 
         ParsedSchedule out = new ParsedSchedule();
         out.planStart = start; out.planEnd = end;
-        out.daySlots = days; out.windows = windows; out.requiredByKey = required;
+        out.windows = windows; out.requiredByKey = required;
         out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
-        out.activeModules = activeModules;  // store active set
+        out.activeModules = activeModules;
+        out.initialRows = initialRows;
 
-        // ---- Push phase windows based on fixed ends (even if outside horizon)
+        // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
             int prev = w.phaseNum - 1;
             if (prev <= 0) continue;
@@ -1761,8 +1782,7 @@ public class EmployeeSchedule {
         }
 
         // After pushing, some windows may have start > end (no free days left in horizon).
-        // For those, we effectively treat them as "no flexible workload left":
-        // set workloadDays = 0 so buildEntitiesSinglePass() will skip creating a BlockDecision.
+        // For those, we effectively treat them as "no flexible workload left".
         for (TaskWindow w : windows) {
             if (w.startDayId > w.endDayId) {
                 System.out.printf(
@@ -1774,8 +1794,39 @@ public class EmployeeSchedule {
             }
         }
 
+        // ---- Decide the earliest dayId we actually keep as DaySlot ----
+        int firstDayId = 0;
+        if (TRIM_FINISHED_MODULES) {
+            // Never earlier than the cut-off
+            firstDayId = Math.max(0, cutOffDayId);
+
+            // Also respect the first active flexible window (so we don't create days
+            // that are never used by any BlockDecision)
+            int minDynamicStart = Integer.MAX_VALUE;
+            for (TaskWindow w : windows) {
+                if (w.workloadDays <= 0) continue;
+                if (!activeModules.contains(w.module)) continue;
+                if (w.startDayId < minDynamicStart) {
+                    minDynamicStart = w.startDayId;
+                }
+            }
+            if (minDynamicStart != Integer.MAX_VALUE) {
+                firstDayId = Math.max(firstDayId, minDynamicStart);
+            }
+        }
+
+        // ---- Build DaySlots only from firstDayId .. horizon-1 ----
+        // IMPORTANT: DaySlot.id stays as the *global* dayId (0-based from original plan_start)
+        // so exporter + fixed-hours maps still work without any change.
+        List<DaySlot> days = new ArrayList<>();
+        for (int dayId = Math.max(0, firstDayId); dayId < horizon; dayId++) {
+            days.add(new DaySlot(dayId, start.plusDays(dayId)));
+        }
+        out.daySlots = days;
+
         return out;
     }
+
 
 
     // ---------------- Build entities for single pass ----------------
@@ -2051,6 +2102,74 @@ public class EmployeeSchedule {
             System.err.println("Failed to write solver_log.txt: " + e.getMessage());
         }
     }
+
+        static void applyInitialPlan(ParsedSchedule sch, List<BlockDecision> blocks) {
+        if (sch.initialRows == null || sch.initialRows.isEmpty()) return;
+
+        // Earliest day index that actually exists as a DaySlot (after trimming)
+        int minActiveDay = sch.daySlots.stream()
+                .mapToInt(d -> d.id)
+                .min()
+                .orElse(0);
+
+        // Group flexible rows by (module|opId)
+        Map<String, List<InitialAssign>> byKey = new HashMap<>();
+        for (InitialAssign ia : sch.initialRows) {
+            if (ia == null) continue;
+            if (sch.activeModules != null && !sch.activeModules.isEmpty()
+                    && !sch.activeModules.contains(ia.module)) {
+                continue;
+            }
+            byKey.computeIfAbsent(ia.module + "|" + ia.opId, k -> new ArrayList<>()).add(ia);
+        }
+        if (byKey.isEmpty()) return;
+
+        for (BlockDecision b : blocks) {
+            if (b == null || b.id == 0) continue; // skip dummy fixed block
+
+            List<InitialAssign> list = byKey.get(b.module + "|" + b.opId);
+            if (list == null || list.isEmpty()) continue;
+
+            List<Integer> days = new ArrayList<>();
+            int totalHours = 0;
+            for (InitialAssign ia : list) {
+                for (Map.Entry<Integer,Integer> e : ia.hoursByDay.entrySet()) {
+                    int dayId = e.getKey();
+                    if (dayId < minActiveDay) continue; // ignore very old days
+                    days.add(dayId);
+                    totalHours += e.getValue();
+                }
+            }
+            if (days.isEmpty()) continue;
+
+            Collections.sort(days);
+            int startDay = days.get(0);
+            int endDay   = days.get(days.size() - 1);
+
+            // Clamp the initial plan inside the legal window
+            startDay = Math.max(startDay, b.windowStart);
+            endDay   = Math.min(endDay,   b.windowEnd);
+            if (startDay > endDay) continue;
+
+            b.startDay = startDay;
+            b.days     = Math.max(1, endDay - startDay + 1);
+
+            // Choose hours close to average per-day usage, but inside allowed[]
+            if (b.allowed != null && !b.allowed.isEmpty()) {
+                int avgPerDay = totalHours / Math.max(1, days.size());
+                int best = b.allowed.get(0);
+                int bestDelta = Math.abs(best - avgPerDay);
+                for (int h : b.allowed) {
+                    int d = Math.abs(h - avgPerDay);
+                    if (d < bestDelta) {
+                        bestDelta = d;
+                        best = h;
+                    }
+                }
+                b.hours = best;
+            }
+        }
+    }
     // ---------------- Public API ----------------
 
     public static class RunResult { public SinglePassPlan plan; public LocalDate planStart; }
@@ -2066,7 +2185,7 @@ public class EmployeeSchedule {
         TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
-
+        applyInitialPlan(sch, built.blocks);
         // --------------------------------------------------
         // Build background fixed-hours/factories per (emp, day)
         // --------------------------------------------------
