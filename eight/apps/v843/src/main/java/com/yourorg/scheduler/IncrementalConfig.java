@@ -41,7 +41,7 @@ public class IncrementalConfig {
     public static final int MODULE_SEED = 123;
 
     // how many working days per evaluation step (like EQ_EVAL_DAYS)
-    public static final int EQ_EVAL_DAYS = 20;
+    public static final int EQ_EVAL_DAYS = 5;
 
     // worklength patterns (from normal_worklength / vip_worklength in Python)
     // Each inner list is: [ phase_total_days, [workload_days_per_operation...] ]

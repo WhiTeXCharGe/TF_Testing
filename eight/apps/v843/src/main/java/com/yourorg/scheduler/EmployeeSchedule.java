@@ -1445,18 +1445,26 @@ public class EmployeeSchedule {
     }
 
     static class ParsedSchedule {
-        LocalDate planStart; LocalDate planEnd;
-        List<DaySlot> daySlots; List<TaskWindow> windows;
+        LocalDate planStart;
+        LocalDate planEnd;
+
+        List<DaySlot> daySlots;
+        List<TaskWindow> windows;
         Map<String,Integer> requiredByKey;
 
         // Fixed assignments parsed from Schedule.yaml
         List<FixedAssign> fixedRows;
         Map<String,Integer> fixedHoursByKey;
 
-        //modules that still matter after cut-off
+        // modules that are still relevant after trim (for dynamic blocks / warm start)
         Set<String> activeModules;
 
+        // flexible warm-start rows
         List<InitialAssign> initialRows;
+
+        // for logging / debugging
+        int cutOffDayId;
+        LocalDate cutOffDate;
     }
     static class FixedAssign {
         String module; String opId; String factory; String wid;
@@ -1689,11 +1697,6 @@ public class EmployeeSchedule {
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
             String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
-            // Ignore modules that are fully finished after trimming
-            if (TRIM_FINISHED_MODULES && !activeModules.contains(module)) {
-                continue;
-            }
-
             boolean isFixed    = "fixed".equalsIgnoreCase(flex);
             boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
@@ -1714,6 +1717,7 @@ public class EmployeeSchedule {
             int eId = (ed == null) ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
             if (isFixed && eId >= Integer.MIN_VALUE) {
+                // last fixed end for (module, phase) anywhere
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
 
@@ -1732,11 +1736,13 @@ public class EmployeeSchedule {
 
                 if (isFixed) {
                     totalFixedHours += h;
+
+                    // last fixed end inside current plan_range for this phase
                     latestFixedEndInRange.merge(module + "|" + phNum, did, Math::max);
                 }
             }
 
-            // fixed → hard background
+            // fixed → hard background (used for OT, daily cap, one-factory-per-day, etc.)
             if (isFixed && totalFixedHours > 0) {
                 fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
@@ -1758,6 +1764,7 @@ public class EmployeeSchedule {
                 initialRows.add(ia);
             }
         }
+
 
         ParsedSchedule out = new ParsedSchedule();
         out.planStart = start; out.planEnd = end;
@@ -1823,6 +1830,9 @@ public class EmployeeSchedule {
             days.add(new DaySlot(dayId, start.plusDays(dayId)));
         }
         out.daySlots = days;
+        out.activeModules = activeModules;
+        out.cutOffDayId = cutOffDayId;
+        out.cutOffDate = cutOffDate;
 
         return out;
     }
@@ -2054,9 +2064,10 @@ public class EmployeeSchedule {
 
     // ---------------- Logging helper ----------------
 
-    static void appendSolveLog(
+        static void appendSolveLog(
             SolverFactory<SinglePassPlan> factoryStage2,
             SinglePassPlan best2,
+            ParsedSchedule sch,
             java.time.Duration stage1Duration,
             java.time.Duration stage2Duration) {
 
@@ -2067,27 +2078,111 @@ public class EmployeeSchedule {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND)) {
 
-            // Build SolutionManager and explanation
+            // SolutionManager + explanation
             SolutionManager<SinglePassPlan, HardMediumSoftScore> solutionManager =
                     SolutionManager.create(factoryStage2);
             ScoreExplanation<SinglePassPlan, HardMediumSoftScore> explanation =
                     solutionManager.explain(best2);
 
-            // Separator (no run count, just a bar)
+            // Separator
             bw.write("============================================================");
             bw.newLine();
             bw.write("Run at: " + java.time.LocalDateTime.now());
             bw.newLine();
+
+            // Basic timing and score
             bw.write("Stage1 duration: " + fmt(stage1Duration));
             bw.newLine();
             bw.write("Stage2 duration: " + fmt(stage2Duration));
             bw.newLine();
             bw.write("Final score: " + String.valueOf(best2.getScore()));
             bw.newLine();
+
+            // Plan and cut-off
+            bw.write("Plan range (plan_range): " + sch.planStart + " .. " + sch.planEnd);
+            bw.newLine();
+            if (sch.cutOffDate != null) {
+                bw.write("Cut-off date (cut_off_date): " + sch.cutOffDate +
+                        "  (cutOffDayId=" + sch.cutOffDayId + ")");
+            } else {
+                bw.write("Cut-off date (cut_off_date): [none]");
+            }
+            bw.newLine();
+
+            // DaySlot range actually used in solver
+            int minDayId = Integer.MAX_VALUE;
+            int maxDayId = Integer.MIN_VALUE;
+            LocalDate minDate = null;
+            LocalDate maxDate = null;
+            int dayCount = 0;
+
+            if (best2.days != null) {
+                for (DaySlot d : best2.days) {
+                    if (d == null) continue;
+                    dayCount++;
+                    if (d.id < minDayId) {
+                        minDayId = d.id;
+                        minDate = d.date;
+                    }
+                    if (d.id > maxDayId) {
+                        maxDayId = d.id;
+                        maxDate = d.date;
+                    }
+                }
+            }
+
+            if (dayCount > 0) {
+                bw.write("DaySlots in solver: id=" + minDayId + ".." + maxDayId +
+                        " (count=" + dayCount + "), dates=" + minDate + " .. " + maxDate);
+            } else {
+                bw.write("DaySlots in solver: [none]");
+            }
+            bw.newLine();
+
+            // Module sets
+            java.util.Set<String> activeMods =
+                    (sch.activeModules == null) ? new java.util.HashSet<>() :
+                            new java.util.TreeSet<>(sch.activeModules);
+
+            java.util.Set<String> dynamicBlockMods = new java.util.TreeSet<>();
+            if (best2.blocks != null) {
+                for (BlockDecision b : best2.blocks) {
+                    if (b == null) continue;
+                    // id 0 is the dummy fixed block
+                    if (b.id == 0) continue;
+                    if (b.module != null && !b.module.isBlank()) {
+                        dynamicBlockMods.add(b.module);
+                    }
+                }
+            }
+
+            java.util.Set<String> pinnedMods = new java.util.TreeSet<>();
+            if (best2.seats != null) {
+                for (CrewSeat s : best2.seats) {
+                    if (s == null) continue;
+                    if (!s.pinned) continue;
+                    if (s.module != null && !s.module.isBlank()) {
+                        pinnedMods.add(s.module);
+                    }
+                }
+            }
+
+            bw.write("Active modules by trim logic (gap <= " + MODULE_TRIM_GRACE_DAYS + " days): "
+                    + (activeMods.isEmpty() ? "[none]" : String.join(", ", activeMods)));
+            bw.newLine();
+
+            bw.write("Modules with dynamic blocks (BlockDecision.id > 0): "
+                    + (dynamicBlockMods.isEmpty() ? "[none]" : String.join(", ", dynamicBlockMods)));
+            bw.newLine();
+
+            bw.write("Modules with pinned seats (fixed assignments visible to constraints): "
+                    + (pinnedMods.isEmpty() ? "[none]" : String.join(", ", pinnedMods)));
+            bw.newLine();
+
             bw.write("Per-constraint scores:");
             bw.newLine();
 
-            // key of the map is already the constraint name
+            // Per-constraint scores
             explanation.getConstraintMatchTotalMap().forEach((constraintName, cmt) -> {
                 try {
                     bw.write("  " + constraintName + " = " + cmt.getScore());
@@ -2102,6 +2197,7 @@ public class EmployeeSchedule {
             System.err.println("Failed to write solver_log.txt: " + e.getMessage());
         }
     }
+
 
         static void applyInitialPlan(ParsedSchedule sch, List<BlockDecision> blocks) {
         if (sch.initialRows == null || sch.initialRows.isEmpty()) return;
@@ -2275,7 +2371,7 @@ public class EmployeeSchedule {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 120, 60);
+                "0hard/*medium/*soft", 240, 300);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2295,7 +2391,7 @@ public class EmployeeSchedule {
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
                 60  /* spentMinutes */,
-                60 /* unimprovedSeconds */);
+                300 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);
@@ -2319,7 +2415,7 @@ public class EmployeeSchedule {
                 String.valueOf(best2.getScore()));
 
         // Append log to file (score + durations + per-constraint score)
-        appendSolveLog(factoryStage2, best2, stage1Dur, stage2Dur);
+        appendSolveLog(factoryStage2, best2, sch, stage1Dur, stage2Dur);
 
         RunResult rr = new RunResult();
         rr.plan = best2; rr.planStart = sch.planStart;
