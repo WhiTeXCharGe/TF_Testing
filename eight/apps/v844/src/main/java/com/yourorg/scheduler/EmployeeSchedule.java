@@ -2049,6 +2049,7 @@ public class EmployeeSchedule {
         EntitySelectorConfig placerSel = new EntitySelectorConfig();
         placerSel.setEntityClass(entityClass);
         placer.setEntitySelectorConfig(placerSel);
+        ch.setEntityPlacerConfig(placer);
 
         // --- Move selector: only change vars on this entity type ---
         ChangeMoveSelectorConfig moveSel = new ChangeMoveSelectorConfig();
@@ -2056,15 +2057,11 @@ public class EmployeeSchedule {
         moveEntitySel.setEntityClass(entityClass);
         moveSel.setEntitySelectorConfig(moveEntitySel);
 
-        // Timefold/OptaPlanner style: attach moves to the *placer*, not the phase
-        placer.setMoveSelectorConfigList(List.of(moveSel));
-
-        // Register the placer on this CH phase
-        ch.setEntityPlacerConfig(placer);
+        // ★ Timefold API: use moveSelectorConfigList
+        ch.setMoveSelectorConfigList(List.of(moveSel));
 
         return ch;
     }
-
     static <S> SolverFactory<S> buildSolverFactory(
             Class<S> solutionClass,
             Class<?>[] entityClasses,
@@ -2105,18 +2102,18 @@ public class EmployeeSchedule {
 
         // ----- Phase 2: Local Search (only for BlockDecision) -----
         LocalSearchPhaseConfig lsPhase = new LocalSearchPhaseConfig();
+        lsPhase.setLocalSearchType(LocalSearchType.LATE_ACCEPTANCE);
 
-        // Late acceptance settings (explicit acceptor)
+        // Late acceptance settings
         LocalSearchAcceptorConfig acceptor = new LocalSearchAcceptorConfig();
         acceptor.setLateAcceptanceSize(200);
         lsPhase.setAcceptorConfig(acceptor);
 
-        // Only keep 1 accepted move
+        // Only keep 1 accepted move (same as before)
         LocalSearchForagerConfig forager = new LocalSearchForagerConfig();
         forager.setAcceptedCountLimit(1);
         lsPhase.setForagerConfig(forager);
 
-        // Entity selector + move selector as you already have
         EntitySelectorConfig lsEntitySelector = new EntitySelectorConfig();
         lsEntitySelector.setEntityClass(BlockDecision.class);
 
@@ -2124,8 +2121,7 @@ public class EmployeeSchedule {
         lsChangeMove.setEntitySelectorConfig(lsEntitySelector);
 
         // Timefold API: list instead of single config
-        lsPhase.setMoveSelectorConfig(lsChangeMove);
-
+        lsPhase.setMoveSelectorConfigList(List.of(lsChangeMove));
 
         // Register phases in order: CH(Block) -> CH(Seat) -> LS(Block)
         cfg.setPhaseConfigList(List.of(chBlocks, chSeats, lsPhase));
