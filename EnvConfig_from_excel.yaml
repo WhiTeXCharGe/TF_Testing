@@ -1,0 +1,285 @@
+environment:
+  workflow_list:
+  - id: wf_hist
+    name: Historic Onsite Work
+    phase_list:
+    - id: hist_p1
+      name: Historic Work Phase
+      operation_list:
+      - id: hist_op_generic
+        name: Generic Onsite Work
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+  - id: wf_tool
+    name: Taiwan Tool Install 2025
+    phase_list:
+    - id: tool_p1
+      name: Install
+      operation_list:
+      - id: f22op1
+        name: Power
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op2
+        name: Gas
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op3
+        name: Exh
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op4
+        name: Through Running
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op5
+        name: Diw
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op6
+        name: Drain Check
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op7
+        name: Chemi Sig TEST
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op8
+        name: Fire Extinguisher test
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op9
+        name: Diw Running
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op10
+        name: ISEP
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op11
+        name: Chemical
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op12
+        name: A1 Port Finish
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op13
+        name: NH4OH　Flushing
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op14
+        name: CIP175
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op15
+        name: Chemical Running
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op16
+        name: IPA suckback Valve V5.1交換
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op17
+        name: Acceptance 　　End　 （T1 End）
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op18
+        name: Release VQF　（FCCB）
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: f22op19
+        name: Eflow対応 P2
+        work_hours:
+        - 8
+        min_worker_num: 1
+        max_worker_num: 3
+  fab_list:
+  - id: fab_tw
+    name: TSMC Taiwan Fab
+    region: r_tw
+    customer_company: cust_tsmc
+    unavailable_dates: []
+  region_list:
+  - id: r_tw
+    name: Taiwan
+    max_stay_on: 180
+    max_annual_stay: 365
+    stay_off_interval: 0
+    unavailable_dates: []
+  customer_company_list:
+  - id: cust_tsmc
+    name: TSMC
+    unavailable_dates: []
+  worker_company_list:
+  - id: wc1
+    name: SCREEN SPE
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc2
+    name: TDH山高商会
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc3
+    name: ｲｰﾏｯｸｽ･ｻﾌﾟﾗｲ
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc4
+    name: ｸﾚｽﾄﾃｸﾉﾛｼﾞｰｽﾞ
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc5
+    name: ｺﾑｲﾉﾍﾞｰｼｮﾝ
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc6
+    name: 東洋ワーク
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc7
+    name: UTエイム
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  - id: wc8
+    name: ｱﾙﾃﾝｼﾞｬﾊﾟﾝ
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 45
+    unavailable_dates: []
+  transite_day_map: []
+  worker_list:
+  - id: w1
+    name: 石谷 元
+    worker_company: wc1
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w2
+    name: 三好 由次
+    worker_company: wc2
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w3
+    name: 八下田 広郎
+    worker_company: wc3
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w4
+    name: 藤原 靖生
+    worker_company: wc3
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w5
+    name: 谷口 章人
+    worker_company: wc3
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w6
+    name: 嶋村 健
+    worker_company: wc4
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w7
+    name: 青山 直人
+    worker_company: wc5
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w8
+    name: 古舘 竜次
+    worker_company: wc2
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w9
+    name: 荻田 晃大
+    worker_company: wc6
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w10
+    name: 名嘉真 ショーン
+    worker_company: wc7
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w11
+    name: 田澤 陽介
+    worker_company: wc8
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w12
+    name: 野村 浩之
+    worker_company: wc3
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+  - id: w13
+    name: 湯川 雅也
+    worker_company: wc3
+    is_manager: false
+    skill_map: {}
+    fab_suitability_map: []
+    unavailable_dates: []
