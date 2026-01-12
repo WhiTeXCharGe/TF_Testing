@@ -1,15 +1,19 @@
-import pandas as pd
-import yaml
+import re
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
+
+import pandas as pd
+import yaml
+from openpyxl import load_workbook
+
 
 # ============================================================
-# Small helpers
+# Helpers
 # ============================================================
 
 def _to_ymd(dt) -> str:
-    """Convert pandas/datetime to 'YYYY/MM/DD' string."""
+    """Convert pandas/datetime to 'YYYY/MM/DD'."""
     if isinstance(dt, pd.Timestamp):
         return dt.strftime("%Y/%m/%d")
     if isinstance(dt, datetime):
@@ -17,42 +21,152 @@ def _to_ymd(dt) -> str:
     return str(dt)
 
 
+def _norm(s: str) -> str:
+    """Normalize string for matching (trim, collapse spaces, lower)."""
+    if not isinstance(s, str):
+        return ""
+    s = s.replace("　", " ")
+    s = s.replace("（", "(").replace("）", ")")
+    return " ".join(s.split()).lower()
+
+
+def load_sheet_as_df(path: str, sheet_name: str) -> pd.DataFrame:
+    """
+    Load a sheet using openpyxl (read_only=False to avoid ReadOnlyWorksheet bug)
+    and convert it to a pandas DataFrame.
+    """
+    wb = load_workbook(path, data_only=True, read_only=False)
+    if sheet_name not in wb.sheetnames:
+        raise ValueError(f"Sheet '{sheet_name}' not found in {path}. Available: {wb.sheetnames}")
+    ws = wb[sheet_name]
+
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        rows.append(list(row))
+    df = pd.DataFrame(rows)
+    return df
+
+
 # ============================================================
-# SU_OTHER: workers + "historic" module tasks + sample assignments
+# Tool code extraction (e.g. 530N02716A, 830300179A, 852Z00771A)
+# ============================================================
+
+TOOLCODE_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}A")
+
+
+def extract_tool_code(s: str):
+    """
+    Extract tool code like 530N02716A, 830300179A, 852Z00771A from a string.
+    Returns the FIRST match if there are multiple (e.g. '530N01814A_852Z00771A').
+    """
+    if not isinstance(s, str):
+        return None
+    m = TOOLCODE_RE.search(s)
+    if m:
+        return m.group(0)
+    return None
+
+
+# ============================================================
+# F22 operation definitions (fixed)
+# ============================================================
+
+OPS_DEF = [
+    {"id": "f22p1o1", "name": "Power"},
+    {"id": "f22p1o2", "name": "Gas"},
+    {"id": "f22p1o3", "name": "Exh"},
+
+    {"id": "f22p2o1", "name": "Through Running"},
+    {"id": "f22p2o2", "name": "Diw"},
+    {"id": "f22p2o3", "name": "Drain Check"},
+    {"id": "f22p2o4", "name": "Chemi Sig TEST"},
+
+    {"id": "f22p3o1", "name": "Diw Running"},
+    {"id": "f22p3o2", "name": "ISEP"},
+    {"id": "f22p3o3", "name": "Chemical"},
+    {"id": "f22p3o4", "name": "A1 Port Finish"},
+
+    {"id": "f22p4o1", "name": "Chemical Running"},
+    {"id": "f22p4o2", "name": "Acceptance End (T1 End)"},
+    {"id": "f22p4o3", "name": "Release VQF (FCCB)"},
+]
+
+OPS_BY_ID = {op["id"]: op for op in OPS_DEF}
+
+PHASE1_IDS = ["f22p1o1", "f22p1o2", "f22p1o3"]
+PHASE2_IDS = ["f22p2o1", "f22p2o2", "f22p2o3", "f22p2o4"]
+PHASE3_IDS = ["f22p3o1", "f22p3o2", "f22p3o3", "f22p3o4"]
+PHASE4_IDS = ["f22p4o1", "f22p4o2", "f22p4o3"]
+
+OP_PHASE_INDEX = {}
+for op_id in PHASE1_IDS:
+    OP_PHASE_INDEX[op_id] = 1
+for op_id in PHASE2_IDS:
+    OP_PHASE_INDEX[op_id] = 2
+for op_id in PHASE3_IDS:
+    OP_PHASE_INDEX[op_id] = 3
+for op_id in PHASE4_IDS:
+    OP_PHASE_INDEX[op_id] = 4
+
+OPS_NAME_TO_ID = {
+    _norm("Power"): "f22p1o1",
+    _norm("Gas"): "f22p1o2",
+    _norm("Exh"): "f22p1o3",
+
+    _norm("Through Running"): "f22p2o1",
+    _norm("Diw"): "f22p2o2",
+    _norm("Drain Check"): "f22p2o3",
+    _norm("Chemi Sig TEST"): "f22p2o4",
+
+    _norm("Diw Running"): "f22p3o1",
+    _norm("ISEP"): "f22p3o2",
+    _norm("Chemical"): "f22p3o3",
+    _norm("A1 Port Finish"): "f22p3o4",
+
+    _norm("Chemical Running"): "f22p4o1",
+    _norm("Acceptance End (T1 End)"): "f22p4o2",
+    _norm("Acceptance 　　End　 （T1 End）"): "f22p4o2",  # full-width variant
+    _norm("Release VQF (FCCB)"): "f22p4o3",
+    _norm("Release VQF　（FCCB）"): "f22p4o3",            # full-width variant
+}
+
+
+# ============================================================
+# SU_Others: worker info + raw matrix for assignments
 # ============================================================
 
 def parse_su_others(path: str, sheet_name: str = "予定表_2024"):
-    xls = pd.ExcelFile(path)
-    df = xls.parse(sheet_name, header=None)
-
+    """
+    From 20251201_2 SU_Others.xlsm, build:
+      - worker_company_list
+      - worker_list
+      - plan_range (min/max date in header)
+      - df, date_row_idx, date_cols, worker_row_to_id (for assignments)
+    """
+    df = load_sheet_as_df(path, sheet_name)
     n_rows, n_cols = df.shape
 
-    # -------- locate date header row & date columns --------
+    # Date header row
     date_row_idx = None
-    for r in range(0, 5):
+    for r in range(0, min(5, n_rows)):
         row = df.iloc[r]
         if any(isinstance(v, (pd.Timestamp, datetime)) for v in row):
             date_row_idx = r
             break
     if date_row_idx is None:
-        raise RuntimeError("Could not find row with date headers in SU_Others.")
+        raise RuntimeError("Could not find date header row in SU_Others.")
 
     date_row = df.iloc[date_row_idx]
     date_cols = [c for c, v in enumerate(date_row) if isinstance(v, (pd.Timestamp, datetime))]
     if not date_cols:
         raise RuntimeError("Could not find any date columns in SU_Others.")
 
-    first_date_col = min(date_cols)
-    last_date_col = max(date_cols)
-
-    # In your file: 企業名/姓名 row is 2 rows below date row
     worker_start_row = date_row_idx + 2
 
-    # -------- worker_company_list & worker_list --------
-    worker_company_map = {}   # company_name -> id
+    worker_company_map = {}
     worker_company_list = []
     worker_list = []
-    worker_id_map = {}        # (company, name) -> worker_id
+    worker_row_to_id = {}
 
     def get_worker_company_id(company_name: str) -> str:
         company_name = str(company_name).strip()
@@ -68,123 +182,29 @@ def parse_su_others(path: str, sheet_name: str = "予定表_2024"):
             })
         return worker_company_map[company_name]
 
+    # Worker rows + row -> worker_id map
     for r in range(worker_start_row, n_rows):
         company = df.iat[r, 0]
         name = df.iat[r, 1]
 
-        # skip rows with no name
         if pd.isna(name):
             continue
 
         company_id = get_worker_company_id(company)
         wid = f"w{len(worker_list) + 1:03d}"
 
-        worker_id_map[(str(company).strip(), str(name).strip())] = wid
         worker_list.append({
             "id": wid,
             "name": str(name).strip(),
             "worker_company": company_id,
-            "is_manager": False,          # as requested
-            "skill_map": {},              # unknown for now
-            "fab_suitability_map": [],    # unknown for now
-            "unavailable_dates": [],      # unknown for now
+            "is_manager": False,
+            "skill_map": {},
+            "fab_suitability_map": [],
+            "unavailable_dates": [],
         })
+        worker_row_to_id[r] = wid
 
-    # -------- detect "historic" module codes (e.g. 530N02111A_TSMC12＿新規) --------
-    # We treat long strings with "N0" and "A" in the date area as module names.
-    hist_map_dates = defaultdict(set)
-
-    for r in range(worker_start_row - 2, n_rows):
-        for c in range(first_date_col, last_date_col + 1):
-            v = df.iat[r, c]
-            if isinstance(v, str):
-                text = v.strip()
-                if len(text) >= 15 and "N0" in text and "A" in text:
-                    dt = date_row[c]
-                    if isinstance(dt, (pd.Timestamp, datetime)):
-                        hist_map_dates[text].add(dt)
-
-    hist_tasks = []
-    for idx, (name, dates) in enumerate(hist_map_dates.items(), start=1):
-        sorted_dates = sorted(dates)
-        start_dt = sorted_dates[0]
-        end_dt = sorted_dates[-1]
-        hist_tasks.append({
-            "id": f"hist{idx}",
-            "name": name,
-            "workflow": "wf_hist",
-            "fab": "f_tw",
-            "phase_task_list": [
-                {
-                    "id": f"hist{idx}_p1",
-                    "name": "Historic Onsite Work",
-                    "phase": "hist_p1",
-                    "start_date": _to_ymd(start_dt),
-                    "end_date": _to_ymd(end_dt),
-                    "operation_task_list": [
-                        {
-                            "id": f"hist{idx}_op",
-                            "name": "Generic Historic Work",
-                            "operation": "hist_op_generic",
-                            "workload_days": len(sorted_dates),
-                        }
-                    ],
-                }
-            ],
-        })
-
-    # -------- sample assignment_list (attach workers to hist tasks) --------
-    # This is deliberately approximate: it checks which worker rows contain
-    # the module name string and uses those workers for that module.
-    assignments = []
-    hist_names = list(hist_map_dates.keys())
-    name_to_hist = {name: f"hist{idx+1}" for idx, name in enumerate(hist_names)}
-
-    for r in range(worker_start_row, n_rows):
-        company = df.iat[r, 0]
-        name = df.iat[r, 1]
-        if pd.isna(name):
-            continue
-
-        worker_key = (str(company).strip(), str(name).strip())
-        worker_id = worker_id_map.get(worker_key)
-        if not worker_id:
-            continue
-
-        found_hist = None
-        for c in range(first_date_col, last_date_col + 1):
-            v = df.iat[r, c]
-            if isinstance(v, str):
-                for hist_name in hist_names:
-                    if hist_name in v:
-                        found_hist = hist_name
-                        break
-            if found_hist:
-                break
-
-        if not found_hist:
-            continue
-
-        hist_id = name_to_hist[found_hist]
-        dates = sorted(hist_map_dates[found_hist])
-        if not dates:
-            continue
-
-        work_date_list = [{"hour": 8, "date": _to_ymd(d)} for d in dates]
-        assignments.append({
-            "worker": worker_id,
-            "operation_task": f"{hist_id}_op",
-            "start_date": _to_ymd(dates[0]),
-            "end_date": _to_ymd(dates[-1]),
-            "work_date_list": work_date_list,
-            "plan_flexibility": "Fixed",
-        })
-
-        # Ensure we generate at least 10 assignments, or one per hist task
-        if len(assignments) >= max(10, len(hist_tasks)):
-            break
-
-    # -------- plan_range from all date columns --------
+    # Plan range from date header
     all_dates = list(date_row[date_cols].dropna())
     all_dates.sort()
     plan_range = {
@@ -195,64 +215,65 @@ def parse_su_others(path: str, sheet_name: str = "予定表_2024"):
     return {
         "worker_company_list": worker_company_list,
         "worker_list": worker_list,
-        "hist_tasks": hist_tasks,
-        "assignments": assignments,
         "plan_range": plan_range,
+        "df": df,
+        "date_row_idx": date_row_idx,
+        "date_cols": date_cols,
+        "worker_start_row": worker_start_row,
+        "worker_row_to_id": worker_row_to_id,
     }
 
 
 # ============================================================
-# F22_Tool Schedule: operations + tool tasks
+# F22_Tool Schedule: 4-phase tool tasks + module/phase meta
 # ============================================================
 
 def parse_tool_schedule(path: str, sheet_name: str = "F22_Tool Schedule"):
-    xls = pd.ExcelFile(path)
-    df = xls.parse(sheet_name, header=None)
+    """
+    From 台湾出張者予定_2025latest.xlsx, 'F22_Tool Schedule':
+      - tool_tasks for schedule.workflow_task_list (all modules)
+      - date_list for plan_range
+      - module_to_phases: module_code -> list of phase meta (for assignments)
+    """
+    df = load_sheet_as_df(path, sheet_name)
     n_rows, n_cols = df.shape
 
-    # -------- find operation header row (Power, Gas, Exh, …) --------
-    op_row_idx = None
-    for r in range(0, 10):
+    # ---------- find header row & map columns -> operation ids ----------
+    header_row_idx = None
+    col_to_op_id = {}
+    for r in range(0, min(30, n_rows)):
         row = df.iloc[r]
-        non_empty = [v for v in row if isinstance(v, str) and v.strip()]
-        if len(non_empty) >= 5:
-            op_row_idx = r
+        tmp_map = {}
+        for c, v in enumerate(row):
+            if isinstance(v, str) and v.strip():
+                key = OPS_NAME_TO_ID.get(_norm(v))
+                if key:
+                    tmp_map[c] = key
+        if len(tmp_map) >= 3:
+            header_row_idx = r
+            col_to_op_id = tmp_map
             break
 
-    if op_row_idx is None:
+    if header_row_idx is None:
         raise RuntimeError("Could not find operation header row in F22_Tool Schedule.")
 
-    op_row = df.iloc[op_row_idx]
-    op_cols = [c for c, v in enumerate(op_row) if isinstance(v, str) and v.strip()]
-    op_names = [str(op_row[c]).strip() for c in op_cols]
-
-    # -------- operations for EnvConfig.workflow_list[wf_tool] --------
-    operations = []
-    op_id_map = {}
-    for idx, (col, name) in enumerate(zip(op_cols, op_names), start=1):
-        oid = f"f22op{idx}"
-        op_id_map[col] = oid
-        operations.append({
-            "id": oid,
-            "name": name,
-            "work_hours": [8],
-            "min_worker_num": 1,
-            "max_worker_num": 4,
-        })
-
-    # -------- create tool tasks from rows below header --------
     tool_tasks = []
+    module_to_phases = defaultdict(list)
     all_dates = []
+    task_counter = 1
 
-    for r in range(op_row_idx + 2, n_rows):
+    for r in range(header_row_idx + 2, n_rows):
         location = df.iat[r, 0]
         tsmc_tool = df.iat[r, 2]
         screen_tool = df.iat[r, 3]
 
-        if pd.isna(location) and pd.isna(tsmc_tool) and pd.isna(screen_tool):
+        # skip empty rows
+        if (pd.isna(location) or str(location).strip() == "") and \
+           (pd.isna(tsmc_tool) or str(tsmc_tool).strip() == "") and \
+           (pd.isna(screen_tool) or str(screen_tool).strip() == ""):
             continue
 
-        # Build readable name from SCREEN/TSMC tool
+        # name = SCREEN tool / TSMC tool
         name_parts = []
         for v in (screen_tool, tsmc_tool):
             if isinstance(v, str) and v.strip():
@@ -261,33 +282,89 @@ def parse_tool_schedule(path: str, sheet_name: str = "F22_Tool Schedule"):
             continue
         task_name = " / ".join(name_parts)
 
-        op_task_list = []
-        start_dates = []
-        end_dates = []
+        # module code (for linking with SU_Others; NOT written to YAML)
+        module_code = None
+        if isinstance(screen_tool, str):
+            module_code = extract_tool_code(screen_tool)
+        if not module_code and isinstance(tsmc_tool, str):
+            module_code = extract_tool_code(tsmc_tool)
 
-        for col in op_cols:
-            cell = df.iat[r, col]
-            if pd.isna(cell):
+        # ---------- pre-create all operations for each phase ----------
+        phase_ops = {
+            1: [
+                {
+                    "id": None,
+                    "name": OPS_BY_ID[op_id]["name"],
+                    "operation": op_id,
+                    "workload_days": "unknown",
+                }
+                for op_id in PHASE1_IDS
+            ],
+            2: [
+                {
+                    "id": None,
+                    "name": OPS_BY_ID[op_id]["name"],
+                    "operation": op_id,
+                    "workload_days": "unknown",
+                }
+                for op_id in PHASE2_IDS
+            ],
+            3: [
+                {
+                    "id": None,
+                    "name": OPS_BY_ID[op_id]["name"],
+                    "operation": op_id,
+                    "workload_days": "unknown",
+                }
+                for op_id in PHASE3_IDS
+            ],
+            4: [
+                {
+                    "id": None,
+                    "name": OPS_BY_ID[op_id]["name"],
+                    "operation": op_id,
+                    "workload_days": "unknown",
+                }
+                for op_id in PHASE4_IDS
+            ],
+        }
+
+        phase_dates = {1: [], 2: [], 3: [], 4: []}
+        row_dates = []
+
+        # ---------- parse dates from each operation column ----------
+        for c, op_id in col_to_op_id.items():
+            if c >= n_cols:
+                continue
+            cell = df.iat[r, c]
+
+            # blank cell -> we still keep the operation, just no dates
+            if cell is None or cell == "" or (isinstance(cell, float) and pd.isna(cell)):
                 continue
 
-            op_id = op_id_map[col]
-            start_dt = None
-            end_dt = None
+            start_dt = end_dt = None
 
-            if isinstance(cell, pd.Timestamp):
+            # Excel real date -> datetime or Timestamp
+            if isinstance(cell, (pd.Timestamp, datetime)):
                 start_dt = end_dt = cell
+
+            # String cases like "2025/1/6\n＞1/8" or "12/28\n>12/31"
             elif isinstance(cell, str):
                 text = cell.strip()
+                if not text:
+                    continue
+
                 if "\n" in text:
-                    # e.g. "2025/01/03\n>1/7"
                     first, second = text.split("\n", 1)
                     first = first.strip()
-                    second = second.strip().lstrip(">")
+                    second = second.strip().lstrip(">")  # handle "＞1/8" or ">1/8"
+
                     dt1 = pd.to_datetime(first, errors="coerce")
                     if isinstance(dt1, pd.Timestamp):
                         start_dt = dt1
                         dt2 = pd.to_datetime(second, errors="coerce")
                         if isinstance(dt2, pd.Timestamp):
+                            # if month/day only, inherit year from start
                             if dt2.year != dt1.year:
                                 dt2 = dt2.replace(year=dt1.year)
                             end_dt = dt2
@@ -298,54 +375,162 @@ def parse_tool_schedule(path: str, sheet_name: str = "F22_Tool Schedule"):
                     if isinstance(dt, pd.Timestamp):
                         start_dt = end_dt = dt
 
-            if start_dt is None or end_dt is None:
+            # If we still have no date, we *do not* drop the operation;
+            # it stays in phase_ops with unknown dates.
+            if start_dt is None:
                 continue
 
-            num_days = max(1, (end_dt.date() - start_dt.date()).days + 1)
-            op_task_list.append({
-                "id": f"f22_{len(tool_tasks)+1}_op_{op_id}",
-                "name": op_row[col],
-                "operation": op_id,
-                "workload_days": int(num_days),
+            phase_index = OP_PHASE_INDEX.get(op_id)
+            if not phase_index:
+                continue
+
+            phase_dates[phase_index].append(start_dt)
+            phase_dates[phase_index].append(end_dt or start_dt)
+
+            row_dates.append(start_dt)
+            row_dates.append(end_dt or start_dt)
+
+            all_dates.append(start_dt)
+            all_dates.append(end_dt or start_dt)
+
+        # Default range for the whole row (used as fallback)
+        row_dates = [d for d in row_dates if isinstance(d, (pd.Timestamp, datetime))]
+        row_start = min(row_dates) if row_dates else None
+        row_end = max(row_dates) if row_dates else None
+
+        task_id = f"f22_{task_counter}"
+        task_counter += 1
+        phase_task_list = []
+
+        # ---------- build phase_task_list: always P1–P4 ----------
+        for ph in (1, 2, 3, 4):
+            ops_list = phase_ops[ph]
+
+            # dates for this phase
+            dates = [d for d in phase_dates[ph] if isinstance(d, (pd.Timestamp, datetime))]
+            if dates:
+                phase_start = min(dates)
+                phase_end = max(dates)
+            elif row_start and row_end:
+                # no direct dates for this phase -> use row range
+                phase_start = row_start
+                phase_end = row_end
+            else:
+                # worst-case fallback;
+                phase_start = phase_end = pd.Timestamp("2025-01-01")
+
+            # give ids to each operation task
+            for idx, op_task in enumerate(ops_list, start=1):
+                op_task["id"] = f"{task_id}_p{ph}o{idx}"
+
+            phase_id = f"{task_id}_p{ph}"
+
+            phase_task_list.append({
+                "id": phase_id,
+                "name": f"Phase {ph}",
+                "phase": f"tool_p{ph}",
+                "start_date": _to_ymd(phase_start),
+                "end_date": _to_ymd(phase_end),
+                "operation_task_list": ops_list,
             })
-            start_dates.append(start_dt)
-            end_dates.append(end_dt)
 
-        if not op_task_list:
-            continue
-
-        task_start = min(start_dates)
-        task_end = max(end_dates)
-
-        all_dates.append(task_start)
-        all_dates.append(task_end)
+            if module_code:
+                module_to_phases[module_code].append({
+                    "phase_index": ph,
+                    "phase_id": phase_id,
+                    "start": phase_start,
+                    "end": phase_end,
+                    "ops": ops_list,
+                })
 
         tool_tasks.append({
-            "id": f"f22_{len(tool_tasks)+1}",
+            "id": task_id,
             "name": task_name,
             "workflow": "wf_tool",
             "fab": "f_tw",
-            "phase_task_list": [
-                {
-                    "id": f"f22_{len(tool_tasks)+1}_p1",
-                    "name": "Tool Setup",
-                    "phase": "tool_p1",
-                    "start_date": _to_ymd(task_start),
-                    "end_date": _to_ymd(task_end),
-                    "operation_task_list": op_task_list,
-                }
-            ],
+            "phase_task_list": phase_task_list,
+            "module_code": module_code,   # internal only, stripped before YAML
         })
 
     return {
-        "operations": operations,
         "tool_tasks": tool_tasks,
         "date_list": all_dates,
+        "module_to_phases": module_to_phases,
     }
 
 
 # ============================================================
-# Build EnvConfig + Schedule and dump YAML (wide output)
+# Build assignments (SU_Others x F22 via module code)
+# ============================================================
+
+def build_assignments(su_data: dict, tool_data: dict):
+    df = su_data["df"]
+    date_row_idx = su_data["date_row_idx"]
+    date_cols = su_data["date_cols"]
+    worker_row_to_id = su_data["worker_row_to_id"]
+
+    date_row = df.iloc[date_row_idx]
+    module_to_phases = tool_data["module_to_phases"]
+
+    # (worker_id, module_code) -> set of dates from SU_Others
+    worker_code_dates = defaultdict(set)
+
+    for r, wid in worker_row_to_id.items():
+        for c in date_cols:
+            date_val = date_row[c]
+            if not isinstance(date_val, (pd.Timestamp, datetime)):
+                continue
+
+            cell = df.iat[r, c]
+            if not isinstance(cell, str):
+                continue
+
+            code = extract_tool_code(cell)
+            if not code:
+                continue
+            if code not in module_to_phases:
+                continue
+
+            worker_code_dates[(wid, code)].add(date_val)
+
+    assignments = []
+
+    for (wid, code), dates in worker_code_dates.items():
+        phase_list = module_to_phases.get(code)
+        if not phase_list:
+            continue
+
+        for phase_meta in phase_list:
+            ps = phase_meta["start"]
+            pe = phase_meta["end"]
+            phase_id = phase_meta["phase_id"]
+
+            # Days this worker is on this module inside this phase window
+            intersection = sorted(d for d in dates if ps <= d <= pe)
+            if not intersection:
+                continue
+
+            # assignment is by PHASE (not operation)
+            op_task_id = phase_id
+
+            work_date_list = [
+                {"hour": 12, "date": _to_ymd(d)} for d in intersection
+            ]
+
+            assignments.append({
+                "worker": wid,
+                "operation_task": op_task_id,
+                "start_date": _to_ymd(intersection[0]),
+                "end_date": _to_ymd(intersection[-1]),
+                "work_date_list": work_date_list,
+                "plan_flexibility": "Fixed",
+            })
+
+    return assignments
+
+
+# ============================================================
+# Build EnvConfig + Schedule and dump YAML
 # ============================================================
 
 def build_env_and_schedule(
@@ -361,33 +546,61 @@ def build_env_and_schedule(
     environment = {
         "workflow_list": [
             {
-                "id": "wf_hist",
-                "name": "Historic Onsite Work",
-                "phase_list": [
-                    {
-                        "id": "hist_p1",
-                        "name": "Historic Phase",
-                        "operation_list": [
-                            {
-                                "id": "hist_op_generic",
-                                "name": "Generic Onsite Work",
-                                "work_hours": [8],
-                                "min_worker_num": 1,
-                                "max_worker_num": 4,
-                            }
-                        ],
-                    }
-                ],
-            },
-            {
                 "id": "wf_tool",
-                "name": "F22 Tool Schedule",
+                "name": "Taiwan Tool Install 2025",
                 "phase_list": [
                     {
                         "id": "tool_p1",
-                        "name": "Tool Phase",
-                        "operation_list": tool_data["operations"],
-                    }
+                        "name": "Phase 1",
+                        "operation_list": [
+                            {
+                                **OPS_BY_ID[op_id],
+                                "work_hours": [8],
+                                "min_worker_num": 1,
+                                "max_worker_num": 3,
+                            }
+                            for op_id in PHASE1_IDS
+                        ],
+                    },
+                    {
+                        "id": "tool_p2",
+                        "name": "Phase 2",
+                        "operation_list": [
+                            {
+                                **OPS_BY_ID[op_id],
+                                "work_hours": [8],
+                                "min_worker_num": 1,
+                                "max_worker_num": 3,
+                            }
+                            for op_id in PHASE2_IDS
+                        ],
+                    },
+                    {
+                        "id": "tool_p3",
+                        "name": "Phase 3",
+                        "operation_list": [
+                            {
+                                **OPS_BY_ID[op_id],
+                                "work_hours": [8],
+                                "min_worker_num": 1,
+                                "max_worker_num": 3,
+                            }
+                            for op_id in PHASE3_IDS
+                        ],
+                    },
+                    {
+                        "id": "tool_p4",
+                        "name": "Phase 4",
+                        "operation_list": [
+                            {
+                                **OPS_BY_ID[op_id],
+                                "work_hours": [8],
+                                "min_worker_num": 1,
+                                "max_worker_num": 3,
+                            }
+                            for op_id in PHASE4_IDS
+                        ],
+                    },
                 ],
             },
         ],
@@ -425,7 +638,6 @@ def build_env_and_schedule(
     }
 
     # ---------- SCHEDULE ----------
-    # Merge plan ranges from SU_Others + F22
     all_dates = []
     all_dates.append(pd.to_datetime(su_data["plan_range"]["start_date"]))
     all_dates.append(pd.to_datetime(su_data["plan_range"]["end_date"]))
@@ -441,20 +653,24 @@ def build_env_and_schedule(
     else:
         plan_range = su_data["plan_range"]
 
-    workflow_task_list = []
-    workflow_task_list.extend(su_data["hist_tasks"])
-    workflow_task_list.extend(tool_data["tool_tasks"])
+    # Remove internal module_code from workflow_task_list
+    tool_tasks_for_yaml = []
+    for t in tool_data["tool_tasks"]:
+        t_copy = dict(t)
+        t_copy.pop("module_code", None)
+        tool_tasks_for_yaml.append(t_copy)
+
+    assignments = build_assignments(su_data, tool_data)
 
     schedule = {
         "plan_range": plan_range,
-        "workflow_task_list": workflow_task_list,
-        "assignment_list": su_data["assignments"],
+        "workflow_task_list": tool_tasks_for_yaml,
+        "assignment_list": assignments,
     }
 
     env_root = {"environment": environment}
     sch_root = {"schedule": schedule}
 
-    # ---------- YAML dump with big line width and no anchors ----------
     class NoAliasDumper(yaml.SafeDumper):
         def ignore_aliases(self, data):
             return True
@@ -466,7 +682,7 @@ def build_env_and_schedule(
             Dumper=NoAliasDumper,
             sort_keys=False,
             allow_unicode=True,
-            width=4096,   # make lines very wide so it doesn't wrap too aggressively
+            width=4096,
         )
 
     with open(schedule_out, "w", encoding="utf-8") as f:
@@ -483,11 +699,10 @@ def build_env_and_schedule(
 
 
 # ============================================================
-# Example CLI entrypoint
+# Entrypoint
 # ============================================================
 
 if __name__ == "__main__":
-    # Update these paths to where your Excel files actually are
     su_file = "20251201_2 SU_Others.xlsm"
     tool_file = "20260105 台湾出張者予定_2025latest.xlsx"
 
@@ -498,4 +713,4 @@ if __name__ == "__main__":
         build_env_and_schedule(str(su_path), str(tool_path))
         print("EnvConfig_from_excel.yaml and Schedule_from_excel.yaml have been written.")
     else:
-        print("Please update su_file and tool_file paths at the bottom of this script.")
+        print("Please fix su_file / tool_file paths at the bottom of this script.")
