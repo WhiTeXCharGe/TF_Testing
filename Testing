@@ -1,0 +1,28 @@
+cell = ws.cell(row=r + 1, column=c + 1)
+fill = cell.fill
+
+# --- get rgb if possible (ARGB like FFFF0000) ---
+rgb = None
+if fill is not None and getattr(fill, "fgColor", None) is not None:
+    if getattr(fill.fgColor, "type", None) == "rgb":
+        rgb = fill.fgColor.rgb  # ex: "FFFF0000", "FFFFFFFF", sometimes "00FF0000"
+
+# --- red = unavailable ---
+is_red = rgb in ("FFFF0000", "00FF0000")
+if is_red:
+    unavailable_set.add(_to_ymd(dt))
+    continue  # red cell -> unavailable, never assignment
+
+# --- white = ignore completely (even if it has text) ---
+# treat "no fill" (default white) as white too
+pattern = getattr(fill, "patternType", None)  # None / "solid" / etc.
+has_visible_fill = (pattern not in (None, "none"))
+
+is_white = (not has_visible_fill) or (rgb in ("FFFFFFFF", "00FFFFFF", "00000000"))
+if is_white:
+    continue  # white cell -> ignore (no unavailable, no assignment)
+
+# --- normal non-red, non-white -> read text for assignment ---
+val = cell.value
+if isinstance(val, str) and val.strip():
+    worker_date_map[(wid, dt)] = val.strip()
