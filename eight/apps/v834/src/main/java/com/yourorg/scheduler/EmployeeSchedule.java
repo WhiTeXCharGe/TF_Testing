@@ -36,16 +36,6 @@ import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListVal
 import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.score.ScoreExplanation;
 
-import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristicPhaseConfig;
-import ai.timefold.solver.core.config.constructionheuristic.ConstructionHeuristicType;
-import ai.timefold.solver.core.config.localsearch.LocalSearchPhaseConfig;
-import ai.timefold.solver.core.config.localsearch.LocalSearchType;
-import ai.timefold.solver.core.config.localsearch.decider.acceptor.LocalSearchAcceptorConfig;
-import ai.timefold.solver.core.config.localsearch.decider.forager.LocalSearchForagerConfig;
-import ai.timefold.solver.core.config.heuristic.selector.entity.EntitySelectorConfig;
-import ai.timefold.solver.core.config.constructionheuristic.placer.QueuedEntityPlacerConfig;
-import ai.timefold.solver.core.config.heuristic.selector.move.generic.ChangeMoveSelectorConfig;
-
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -62,7 +52,7 @@ public class EmployeeSchedule {
     static Map<String, Object> loadYaml(String path) throws IOException {
         try (InputStream in = Files.newInputStream(Paths.get(path))) {
             LoaderOptions opts = new LoaderOptions();
-            opts.setCodePointLimit(10 * 1024 * 1024); // ≈ 5 MB
+            opts.setCodePointLimit(5 * 1024 * 1024); // ≈ 5 MB
 
             Yaml yaml = new Yaml(new SafeConstructor(opts));
             return yaml.load(in);
@@ -229,11 +219,16 @@ public class EmployeeSchedule {
         public int seatIndex;
         public boolean needManager;
 
-        public boolean pinned = false;
+        public boolean pinnedFixed = false;
+        public boolean warmPinned  = false;
         public String  pinnedWid = null;
         public Integer pinnedStart = null;
         public Integer pinnedDays  = null;
         public Integer pinnedHours = null;
+
+        public boolean isPinned() {
+            return pinnedFixed || warmPinned;
+        }
 
         // Computed candidates (filled once per solve stage)
         private List<EmployeeFact> candidateEmployees = List.of();
@@ -251,7 +246,7 @@ public class EmployeeSchedule {
         @ValueRangeProvider(id = "eligibleEmployeesForSeat")
         public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
             // Pinned → pin hard (or UNASSIGNED if you prefer; this doesn’t affect manager logic)
-            if (pinned && pinnedWid != null) {
+            if (pinnedFixed && pinnedWid != null) {
                 for (EmployeeFact e : candidateEmployees) {
                     if (e != null && pinnedWid.equals(e.wid)) {
                         return new ListValueRange<>(List.of(e));
@@ -558,7 +553,7 @@ public class EmployeeSchedule {
         Map<String,Object> root;
         try (InputStream in = Files.newInputStream(Paths.get(envPath))) {
             LoaderOptions opts = new LoaderOptions();
-            opts.setCodePointLimit(10 * 1024 * 1024);
+            opts.setCodePointLimit(5 * 1024 * 1024);
             Yaml yaml = new Yaml(new SafeConstructor(opts));
             root = yaml.load(in);
         }
@@ -771,7 +766,7 @@ public class EmployeeSchedule {
         }
 
         private static boolean seatCoversDayAndWorking(DaySlot d, CrewSeat s, BlockDecision b) {
-            final boolean pinned = s.pinned;
+            final boolean pinned = s.pinnedFixed;
             final Integer start = pinned ? s.pinnedStart : b.startDay;
             final Integer days  = pinned ? s.pinnedDays  : b.days;
             if (start == null || days == null || days <= 0) return false;
@@ -864,7 +859,7 @@ public class EmployeeSchedule {
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter((s, b) -> !isUnassigned(s.employee))
                 .filter((s, b) -> {
-                    final boolean pinned = s.pinned;
+                    final boolean pinned = s.pinnedFixed;
                     final Integer start = pinned ? s.pinnedStart : b.startDay;
                     final Integer days  = pinned ? s.pinnedDays  : b.days;
                     if (start == null || days == null || days <= 0) return false;
@@ -883,7 +878,7 @@ public class EmployeeSchedule {
 
         Constraint pinnedRespected(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> s.pinned)
+                .filter(s -> s.pinnedFixed)
                 .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
                 .penalize(HardMediumSoftScore.ONE_HARD)
                 .asConstraint("seat-pinned-respected");
@@ -894,7 +889,7 @@ public class EmployeeSchedule {
                 .join(f.forEach(CrewSeat.class),
                     // NEW: ignore unassigned AND pinned; fixed fabs are taken from FIXED_FACTORIES_BY_EMP_DAY
                     Joiners.filtering((DaySlot d, CrewSeat s) ->
-                        !isUnassigned(s.employee) && !s.pinned))
+                        !isUnassigned(s.employee) && !s.pinnedFixed))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
@@ -941,7 +936,7 @@ public class EmployeeSchedule {
                 .join(f.forEach(CrewSeat.class),
                     // NEW: ignore pinned, hours come from FIXED_HOURS_BY_EMP_DAY instead
                     Joiners.filtering((DaySlot d, CrewSeat s) ->
-                        !isUnassigned(s.employee) && !s.pinned))
+                        !isUnassigned(s.employee) && !s.pinnedFixed))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
@@ -1152,7 +1147,7 @@ public class EmployeeSchedule {
                         d.date.getYear()
                     ),
                     ConstraintCollectors.sum((d, s, b) -> {
-                        if (s.pinned) {
+                        if (s.pinnedFixed) {
                             // hours for fixed part are loaded from FIXED_ANNUAL_OT_BY_EMP_YEAR
                             return 0;
                         }
@@ -1215,7 +1210,7 @@ public class EmployeeSchedule {
                         d.date.getMonthValue()
                     ),
                     ConstraintCollectors.sum((d, s, b) -> {
-                        if (s.pinned) {
+                        if (s.pinnedFixed) {
                             // hours for fixed part are loaded from FIXED_MONTHLY_OT_BY_EMP_YM
                             return 0;
                         }
@@ -1358,7 +1353,7 @@ public class EmployeeSchedule {
                 .groupBy((d, s, b) -> s.employee.id,
                          ConstraintCollectors.sum((d, s, b) ->
                              // fixed hours are loaded from FIXED_TOTAL_HOURS_BY_EMP
-                             s.pinned ? 0 : b.chosenHours()))
+                             s.pinnedFixed ? 0 : b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_SOFT, (empId, dynTot) -> {
                     int fixedTot = FIXED_TOTAL_HOURS_BY_EMP.getOrDefault(empId, 0);
                     int total = dynTot + fixedTot;
@@ -1465,7 +1460,8 @@ public class EmployeeSchedule {
         // Fixed assignments parsed from Schedule.yaml
         List<FixedAssign> fixedRows;
         Map<String,Integer> fixedHoursByKey;
-
+        List<FlexibleAssign> flexibleRows;
+        Map<String,Integer>  flexibleHoursByKey;
         // modules that are still relevant after trim (for dynamic blocks / warm start)
         Set<String> activeModules;
 
@@ -1483,47 +1479,39 @@ public class EmployeeSchedule {
         String phaseId; int phaseNum;
     }
 
+    static class FlexibleAssign {
+        String module; String opId; String factory; String wid;
+        Map<Integer,Integer> hoursByDay = new HashMap<>();
+        String phaseId; int phaseNum;
+    }
+
     @SuppressWarnings("unchecked")
     static ParsedEnv parseEnv(String envPath) throws IOException {
         Map<String,Object> root = loadYaml(envPath);
         Map<String,Object> env = (Map<String,Object>) root.getOrDefault("environment", root);
 
         Map<String,OpDef> opdef = new HashMap<>();
-        List<Map<String,Object>> wfl =
-                (List<Map<String,Object>>) env.getOrDefault("workflow_list", List.of());
-        // v9.1.1: read ALL workflows, not just the first one
-        for (Map<String,Object> wf0 : wfl) {
-            if (wf0 == null) continue;
-            List<Map<String,Object>> phases =
-                    (List<Map<String,Object>>) wf0.getOrDefault("phase_list", List.of());
+        List<Map<String,Object>> wfl = (List<Map<String,Object>>) env.getOrDefault("workflow_list", List.of());
+        if (!wfl.isEmpty()) {
+            Map<String,Object> wf0 = wfl.get(0);
+            List<Map<String,Object>> phases = (List<Map<String,Object>>) wf0.getOrDefault("phase_list", List.of());
             for (Map<String,Object> ph : phases) {
                 String phId = safeStr(ph.get("id"));
-                int    phNum = phaseNumFromId(phId);
-                List<Map<String,Object>> ops =
-                        (List<Map<String,Object>>) ph.getOrDefault("operation_list", List.of());
+                int phNum = phaseNumFromId(phId);
+                List<Map<String,Object>> ops = (List<Map<String,Object>>) ph.getOrDefault("operation_list", List.of());
                 for (Map<String,Object> op : ops) {
                     String opId = safeStr(op.get("id"));
-                    if (opId.isEmpty()) continue;
-
-                    List<Object> hrs =
-                            (List<Object>) op.getOrDefault("work_hours", List.of(8));
-                    List<Integer> allowed = hrs.isEmpty()
-                            ? List.of(8)
-                            : hrs.stream().map(x -> parseInt(x, 8))
-                                .sorted().collect(Collectors.toList());
-
+                    List<Object> hrs = (List<Object>) op.getOrDefault("work_hours", List.of(8));
+                    List<Integer> allowed = hrs.isEmpty() ? List.of(8)
+                            : hrs.stream().map(x -> parseInt(x,8)).sorted().collect(Collectors.toList());
                     OpDef od = new OpDef();
-                    od.phaseId  = phId;
-                    od.phaseNum = phNum;
-                    od.allowed  = allowed;
-                    od.min      = parseInt(op.get("min_worker_num"), 1);
-                    od.max      = parseInt(op.get("max_worker_num"), 999_999);
-
+                    od.phaseId = phId; od.phaseNum = phNum; od.allowed = allowed;
+                    od.min = parseInt(op.get("min_worker_num"), 1);
+                    od.max = parseInt(op.get("max_worker_num"), 999_999);
                     opdef.put(opId, od);
                 }
             }
         }
-
 
         List<EmployeeFact> employees = new ArrayList<>();
         employees.add(new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, ""));
@@ -1595,16 +1583,12 @@ public class EmployeeSchedule {
     @SuppressWarnings("unchecked")
     static ParsedSchedule parseSchedule(String schedPath, Map<String,OpDef> opdef) throws IOException {
         Map<String,Object> root = loadYaml(schedPath);
-        Map<String,Object> s    = (Map<String,Object>) root.getOrDefault("schedule", root);
+        Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
 
         LocalDate start = LocalDate.parse(
-                safeStr(((Map<String,Object>) s.get("plan_range")).get("start_date"))
-                        .replace("-", "/"),
-                DF);
+                safeStr(((Map<String,Object>)s.get("plan_range")).get("start_date")).replace("-", "/"), DF);
         LocalDate end   = LocalDate.parse(
-                safeStr(((Map<String,Object>) s.get("plan_range")).get("end_date"))
-                        .replace("-", "/"),
-                DF);
+                safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
 
         int horizon = (int) (end.toEpochDay() - start.toEpochDay()) + 1;
 
@@ -1615,68 +1599,32 @@ public class EmployeeSchedule {
         Map<String,Integer> moduleLastEnd = new HashMap<>();
 
         Object wfObj = s.get("workflow_task_list");
-        List<Map<String,Object>> wfTasks =
-                (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
-
-        // ----------------------------------------------------------------
-        // v9.1.1:
-        //  - Only workflow == "wf_tool" is scheduled dynamically.
-        //  - Other workflow tasks are ignored for TaskWindow/BlockDecision
-        //    (but their fixed assignments are still read later).
-        // ----------------------------------------------------------------
+        List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
         for (Map<String,Object> wf : wfTasks) {
-            if (wf == null) continue;
-
-            String module     = safeStr(wf.get("id"));
-            String fab        = safeStr(wf.get("fab"));
-            String workflowId = safeStr(wf.get("workflow"));
-
-            boolean isToolWorkflow =
-                    workflowId.isEmpty() || "wf_tool".equals(workflowId);
-
+            String module = safeStr(wf.get("id"));
+            String fab = safeStr(wf.get("fab"));
             Object phasesObj = wf.get("phase_task_list");
-            List<Map<String,Object>> phases =
-                    (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
-
+            List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
             for (Map<String,Object> ph : phases) {
-                if (ph == null) continue;
-
                 String phId = safeStr(ph.get("phase"));
-                int    phNum = phaseNumFromId(phId);
-
-                LocalDate pStart = LocalDate.parse(
-                        safeStr(ph.get("start_date")).replace("-", "/"), DF);
-                LocalDate pEnd   = LocalDate.parse(
-                        safeStr(ph.get("end_date")).replace("-", "/"), DF);
-
+                int phNum = phaseNumFromId(phId);
+                LocalDate pStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                LocalDate pEnd   = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
                 int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
 
-                // Remember latest REAL end per module (for trim logic),
-                // even if this workflow is not scheduled.
+                // remember the latest end per module (even if before horizon)
                 moduleLastEnd.merge(module, endId, Math::max);
 
-                // If this is not wf_tool, we don't create windows.
-                if (!isToolWorkflow) {
-                    continue;
-                }
-
                 Object opsObj = ph.get("operation_task_list");
-                List<Map<String,Object>> opTasks =
-                        (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
-
+                List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
-                    if (ot == null) continue;
-
                     String opId = safeStr(ot.get("operation"));
-                    if (opId.isEmpty()) continue;
-
                     int workloadDays = parseInt(ot.get("workload_days"), 0);
 
                     OpDef od = opdef.get(opId);
                     if (od == null) {
-                        throw new IllegalArgumentException(
-                                "operation " + opId + " missing in EnvConfig (wf_tool)");
+                        throw new IllegalArgumentException("operation " + opId + " missing in EnvConfig");
                     }
 
                     int baseline = (od.allowed.size() == 1 && od.allowed.get(0) == 4) ? 4 : 8;
@@ -1684,16 +1632,10 @@ public class EmployeeSchedule {
                     required.merge(module + "|" + opId, req, Integer::sum);
 
                     TaskWindow tw = new TaskWindow();
-                    tw.module       = module;
-                    tw.factory      = fab;
-                    tw.phaseId      = phId;
-                    tw.phaseNum     = phNum;
-                    tw.opId         = opId;
-                    tw.startDayId   = startId;
-                    tw.endDayId     = endId;
-                    tw.allowed      = od.allowed;
-                    tw.minHeads     = od.min;
-                    tw.maxHeads     = od.max;
+                    tw.module = module; tw.factory = fab;
+                    tw.phaseId = phId; tw.phaseNum = phNum;
+                    tw.opId = opId; tw.startDayId = startId; tw.endDayId = endId;
+                    tw.allowed = od.allowed; tw.minHeads = od.min; tw.maxHeads = od.max;
                     tw.workloadDays = workloadDays;
                     windows.add(tw);
                 }
@@ -1717,8 +1659,8 @@ public class EmployeeSchedule {
             int grace = MODULE_TRIM_GRACE_DAYS; // x days of tolerance
 
             for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
-                String moduleKey    = e.getKey();
-                int    lastEndDayId = e.getValue();
+                String module = e.getKey();
+                int lastEndDayId = e.getValue();
 
                 // gap = how many days between module end and cutOff
                 int gap = cutOffDayId - lastEndDayId;
@@ -1726,7 +1668,7 @@ public class EmployeeSchedule {
                 // if module ended long before cutOff, treat as finished (trim)
                 // if it ended close to or after cutOff, keep as active
                 if (gap <= grace) {
-                    activeModules.add(moduleKey);
+                    activeModules.add(module);
                 }
             }
 
@@ -1754,69 +1696,54 @@ public class EmployeeSchedule {
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
         List<InitialAssign> initialRows = new ArrayList<>();
 
+        List<FlexibleAssign> flexibleRows = new ArrayList<>();
+        Map<String,Integer> flexibleHoursByKey = new HashMap<>();
         Object asgObj = s.get("assignment_list");
-        List<Map<String,Object>> asgs =
-                (asgObj instanceof List)
-                        ? (List<Map<String,Object>>) asgObj
-                        : List.of();
+        List<Map<String,Object>> asgs = (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
 
         Map<String,Integer> latestFixedEndInRange = new HashMap<>();
         Map<String,Integer> latestFixedEndAny     = new HashMap<>();
 
         for (Map<String,Object> a : asgs) {
-            if (a == null) continue;
-
-            String flex   = safeStr(a.get("plan_flexibility"));  // "Fixed" or "Flexible"
-            String opTask = safeStr(a.get("operation_task"));    // e.g. e16p4o1
+            String flex = safeStr(a.get("plan_flexibility"));  // e.g. "Fixed" or "Flexible"
+            String opTask = safeStr(a.get("operation_task"));  // e.g. e16p4o1
             int idx = opTask.indexOf("p");
             String module = (idx > 0) ? opTask.substring(0, idx) : opTask;
-            String opId   = (idx > 0) ? opTask.substring(idx)    : "";
+            String opId   = (idx > 0) ? opTask.substring(idx) : "";
 
             boolean isFixed    = "fixed".equalsIgnoreCase(flex);
             boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
-            String phId  = "";
-            int    phNum = 0;
+            String phId = "";
+            int phNum = 0;
             try {
                 String pPart = opId.split("o", 2)[0];
-                phId  = pPart;
-                phNum = phaseNumFromId(pPart);
+                phId = pPart; phNum = phaseNumFromId(pPart);
             } catch (Exception ignore) {}
 
             String wid = safeStr(a.get("worker"));
 
-            LocalDate sd = (a.get("start_date") == null)
-                    ? null
-                    : LocalDate.parse(
-                            safeStr(a.get("start_date")).replace("-", "/"), DF);
-            LocalDate ed = (a.get("end_date") == null)
-                    ? null
-                    : LocalDate.parse(
-                            safeStr(a.get("end_date")).replace("-", "/"), DF);
-
-            int sId = (sd == null) ? -1 : (int) (sd.toEpochDay() - start.toEpochDay());
-            int eId = (ed == null) ? -1 : (int) (ed.toEpochDay() - start.toEpochDay());
+            LocalDate sd = a.get("start_date") == null ? null :
+                    LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+            LocalDate ed = a.get("end_date")   == null ? null :
+                    LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+            int sId = (sd == null) ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
+            int eId = (ed == null) ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
             if (isFixed && eId >= Integer.MIN_VALUE) {
                 // last fixed end for (module, phase) anywhere
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
 
-            String wdKey =
-                    a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
-            List<Map<String,Object>> wdl =
-                    (a.get(wdKey) instanceof List)
-                            ? (List<Map<String,Object>>) a.get(wdKey)
-                            : List.of();
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            List<Map<String,Object>> wdl = (a.get(wdKey) instanceof List) ? (List<Map<String,Object>>) a.get(wdKey) : List.of();
 
             Map<Integer,Integer> byDay = new HashMap<>();
             int totalFixedHours = 0;
             for (Map<String,Object> item : wdl) {
-                if (item == null) continue;
-                LocalDate d = LocalDate.parse(
-                        safeStr(item.get("date")).replace("-", "/"), DF);
-                int did = (int) (d.toEpochDay() - start.toEpochDay());
-                int h   = parseInt(item.get("hour"), 0);
+                LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
+                int did = (int)(d.toEpochDay() - start.toEpochDay());
+                int h = parseInt(item.get("hour"), 0);
 
                 // always store by-day hours (for both fixed and flexible)
                 byDay.merge(did, h, Integer::sum);
@@ -1829,26 +1756,38 @@ public class EmployeeSchedule {
                 }
             }
 
-            // fixed → hard background
+            // fixed → hard background (used for OT, daily cap, one-factory-per-day, etc.)
             if (isFixed && totalFixedHours > 0) {
                 fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
             if (isFixed && !byDay.isEmpty()) {
                 FixedAssign fa = new FixedAssign();
-                fa.module     = module;
-                fa.opId       = opId;
-                fa.wid        = wid;
-                fa.startDayId = sId;
-                fa.endDayId   = eId;
-                fa.hoursByDay = byDay;
-                fa.phaseId    = phId;
-                fa.phaseNum   = phNum;
-                fa.factory    = null; // will be inferred later for wf_tool
+                fa.module = module; fa.opId = opId; fa.wid = wid;
+                fa.startDayId = sId; fa.endDayId = eId;
+                fa.hoursByDay = byDay; fa.phaseId = phId; fa.phaseNum = phNum;
+                fa.factory = null; // will be inferred later
                 fixedRows.add(fa);
             }
 
-            // flexible → only used as initial (warm start), not fixed
+            // inside loop for each assignment a:
             if (isFlexible && !byDay.isEmpty()) {
+                FlexibleAssign fa = new FlexibleAssign();
+                fa.module = module;
+                fa.opId   = opId;
+                fa.wid    = wid;
+                fa.hoursByDay.putAll(byDay);
+                fa.phaseId = phId;
+                fa.phaseNum = phNum;
+                // factory filled later same as fixed
+                fa.factory = null;
+                flexibleRows.add(fa);
+
+                int tot = byDay.values().stream().mapToInt(Integer::intValue).sum();
+                if (tot > 0) {
+                    flexibleHoursByKey.merge(module + "|" + opId, tot, Integer::sum);
+                }
+
+                // (optional) keep initialRows if you still want block timing warm-start:
                 InitialAssign ia = new InitialAssign();
                 ia.module = module;
                 ia.opId   = opId;
@@ -1857,67 +1796,55 @@ public class EmployeeSchedule {
             }
         }
 
-        ParsedSchedule out = new ParsedSchedule();
-        out.planStart      = start;
-        out.planEnd        = end;
-        out.windows        = windows;
-        out.requiredByKey  = required;
-        out.fixedRows      = fixedRows;
-        out.fixedHoursByKey = fixedHoursByKey;
-        out.activeModules   = activeModules;
-        out.initialRows     = initialRows;
 
+        ParsedSchedule out = new ParsedSchedule();
+        out.planStart = start; out.planEnd = end;
+        out.windows = windows; out.requiredByKey = required;
+        out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+        out.activeModules = activeModules;
+        out.initialRows = initialRows;
+        out.flexibleRows = flexibleRows;
+        out.flexibleHoursByKey = flexibleHoursByKey;
+
+        out.activeModules = activeModules;
+        out.initialRows = initialRows;
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
             int prev = w.phaseNum - 1;
             if (prev <= 0) continue;
             Integer inRangeEnd = latestFixedEndInRange.get(w.module + "|" + prev);
             Integer anyEnd     = latestFixedEndAny.get(w.module + "|" + prev);
-            Integer endPrev    = null;
+            Integer endPrev = null;
             if (inRangeEnd != null && anyEnd != null) endPrev = Math.max(inRangeEnd, anyEnd);
-            else if (inRangeEnd != null)             endPrev = inRangeEnd;
-            else if (anyEnd != null)                 endPrev = anyEnd;
-
+            else if (inRangeEnd != null) endPrev = inRangeEnd;
+            else if (anyEnd != null) endPrev = anyEnd;
             if (endPrev != null) {
                 w.startDayId = Math.max(w.startDayId, endPrev + 1);
             }
         }
 
-        // After pushing, some windows may have start > end (no free days left).
+        // After pushing, some windows may have start > end (no free days left in horizon).
+        // For those, we effectively treat them as "no flexible workload left".
         for (TaskWindow w : windows) {
             if (w.startDayId > w.endDayId) {
                 System.out.printf(
-                        "[WARN] Collapsed window for module=%s phase=%s op=%s (startDayId=%d > endDayId=%d). " +
-                        "Marking workloadDays=0 so this block is not scheduled.%n",
-                        w.module, w.phaseId, w.opId, w.startDayId, w.endDayId
+                    "[WARN] Collapsed window for module=%s phase=%s op=%s (startDayId=%d > endDayId=%d). " +
+                    "Marking workloadDays=0 so this block is not scheduled.%n",
+                    w.module, w.phaseId, w.opId, w.startDayId, w.endDayId
                 );
                 w.workloadDays = 0;
             }
         }
 
-        // v9.1.1: Clamp all windows to the current plan_range horizon
-        int lastDayId = horizon - 1;
-        for (TaskWindow w : windows) {
-            if (w.startDayId < 0)       w.startDayId = 0;
-            if (w.endDayId   > lastDayId) w.endDayId = lastDayId;
-            if (w.startDayId > w.endDayId) {
-                System.out.printf(
-                        "[WARN] Window outside horizon for module=%s phase=%s op=%s; workloadDays -> 0%n",
-                        w.module, w.phaseId, w.opId
-                );
-                w.workloadDays = 0;
-            }
-        }
-
-        // After trimming finished modules, but before building DaySlots
+        // ---- Decide the earliest dayId we actually keep as DaySlot ----
         if (TRIM_FINISHED_MODULES) {
-            // Ensure no dynamic window can start before the cut-off date.
             for (TaskWindow w : windows) {
                 w.startDayId = Math.max(w.startDayId, cutOffDayId);
                 if (w.startDayId > w.endDayId) {
+                    //no room left in horizon
                     System.out.printf(
-                            "[WARN] Window fully before cut_off_date for module=%s phase=%s op=%s; workloadDays -> 0%n",
-                            w.module, w.phaseId, w.opId
+                        "[WARN] WIndow fully before cut_off_date for module %s, phase %s op=%s; workloadDays -> 0%n",
+                        w.module, w.phaseId, w.opId
                     );
                     w.workloadDays = 0;
                 }
@@ -1927,18 +1854,19 @@ public class EmployeeSchedule {
         int firstDayId = Math.max(0, cutOffDayId);
 
         // ---- Build DaySlots only from firstDayId .. horizon-1 ----
+        // IMPORTANT: DaySlot.id stays as the *global* dayId (0-based from original plan_start)
+        // so exporter + fixed-hours maps still work without any change.
         List<DaySlot> days = new ArrayList<>();
-        for (int dayId = firstDayId; dayId < horizon; dayId++) {
+        for (int dayId = Math.max(0, firstDayId); dayId < horizon; dayId++) {
             days.add(new DaySlot(dayId, start.plusDays(dayId)));
         }
-        out.daySlots   = days;
+        out.daySlots = days;
         out.activeModules = activeModules;
-        out.cutOffDayId   = cutOffDayId;
-        out.cutOffDate    = cutOffDate;
+        out.cutOffDayId = cutOffDayId;
+        out.cutOffDate = cutOffDate;
 
         return out;
     }
-
 
 
 
@@ -1989,7 +1917,8 @@ public class EmployeeSchedule {
             int baseline = (w.allowed.size()==1 && w.allowed.get(0)==4) ? 4 : 8;
             int totalReq = w.workloadDays * baseline;
             int fixed = sch.fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
-            int req = Math.max(0, totalReq - fixed);
+            int flex  = sch.flexibleHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
+            int req = Math.max(0, totalReq - fixed - flex);
 
             if (req == 0) continue;
 
@@ -2043,12 +1972,49 @@ public class EmployeeSchedule {
             cs.seatIndex = 0;
             cs.needManager = false;
 
-            cs.pinned = true;
+            cs.pinnedFixed = true;
             cs.pinnedWid = fa.wid;
             int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(fa.startDayId);
             int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(fa.startDayId);
             cs.pinnedStart = minDid;
             cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+            cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
+
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            cs.employee = ef;
+
+            seats.add(cs);
+        }
+        // ---- warm-pinned seats (flexible assignments) ----
+        for (FlexibleAssign fa : sch.flexibleRows) {
+            String factory = moduleToFactory.getOrDefault(fa.module, fa.factory);
+
+            CrewSeat cs = new CrewSeat();
+            cs.id = sid++;
+
+            // attach to dummy block (id=0) is OK because pinnedStart/days control coverage
+            cs.blockId = fixedBlock.id; // 0
+
+            cs.module = fa.module;
+            cs.factory = factory;
+            cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
+            cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
+            cs.opId = fa.opId;
+            cs.seatIndex = 0;
+            cs.needManager = false;
+
+            // IMPORTANT:
+            cs.pinnedFixed = false;    // NOT fixed forever
+            cs.warmPinned  = true;     // Stage1 pinned (we will turn this off before Stage2)
+
+            cs.pinnedWid = fa.wid;
+            int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(0);
+            int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(0);
+            cs.pinnedStart = minDid;
+            cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+
+            // crude but consistent with your fixed logic
             cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
 
             EmployeeFact ef = env.byWid.get(fa.wid);
@@ -2077,7 +2043,7 @@ public class EmployeeSchedule {
 
         for (CrewSeat s : seats) {
             // Pinned seats → restrict to the pinned worker in value range
-            if (s.pinned) {
+            if (s.isPinned()) {
                 EmployeeFact pinnedEmp = null;
                 for (EmployeeFact e : employees) {
                     if (e != null && s.pinnedWid != null && s.pinnedWid.equals(e.wid)) { pinnedEmp = e; break; }
@@ -2134,57 +2100,24 @@ public class EmployeeSchedule {
         }
     }
 
+
     // ---------------- Solver builder ----------------
 
-    private static ConstructionHeuristicPhaseConfig buildChForEntity(Class<?> entityClass) {
-        ConstructionHeuristicPhaseConfig ch = new ConstructionHeuristicPhaseConfig();
-        // ❌ REMOVE this line:
-        // ch.setConstructionHeuristicType(ConstructionHeuristicType.FIRST_FIT);
-
-        // --- Entity placer: only place this entity type ---
-        QueuedEntityPlacerConfig placer = new QueuedEntityPlacerConfig();
-        EntitySelectorConfig placerSel = new EntitySelectorConfig();
-        placerSel.setEntityClass(entityClass);
-        placer.setEntitySelectorConfig(placerSel);
-
-        // --- Move selector: only change vars on this entity type ---
-        ChangeMoveSelectorConfig moveSel = new ChangeMoveSelectorConfig();
-        EntitySelectorConfig moveEntitySel = new EntitySelectorConfig();
-        moveEntitySel.setEntityClass(entityClass);
-        moveSel.setEntitySelectorConfig(moveEntitySel);
-
-        // Attach moves to the placer (Timefold style)
-        placer.setMoveSelectorConfigList(List.of(moveSel));
-
-        // Register the placer on this CH phase
-        ch.setEntityPlacerConfig(placer);
-
-        return ch;
-    }
-
-
-
-    static <S> SolverFactory<S> buildSolverFactory(
-            Class<S> solutionClass,
-            Class<?>[] entityClasses,
-            Class<? extends ConstraintProvider> providerClass,
-            String bestScoreLimit,
-            Integer spentMinutes,
-            Integer unimprovedSeconds) {
-
+    static <S> SolverFactory<S> buildSolverFactory(Class<S> solutionClass,
+                                                Class<?>[] entityClasses,
+                                                Class<? extends ConstraintProvider> providerClass,
+                                                String bestScoreLimit,
+                                                Integer spentMinutes,
+                                                Integer unimprovedSeconds) {
         SolverConfig cfg = new SolverConfig();
         cfg.withSolutionClass(solutionClass);
         cfg.withEntityClasses(entityClasses);
         cfg.withScoreDirectorFactory(
-                new ScoreDirectorFactoryConfig()
-                        .withConstraintProviderClass(providerClass)
+                new ScoreDirectorFactoryConfig().withConstraintProviderClass(providerClass)
         );
 
-        // ----- Termination config -----
         TerminationConfig term = new TerminationConfig();
-        if (bestScoreLimit != null) {
-            term.setBestScoreLimit(bestScoreLimit);
-        }
+        if (bestScoreLimit != null) term.setBestScoreLimit(bestScoreLimit);
         if (spentMinutes != null && spentMinutes > 0) {
             term.setSpentLimit(java.time.Duration.ofMinutes(spentMinutes));
         }
@@ -2192,36 +2125,6 @@ public class EmployeeSchedule {
             term.setUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedSeconds));
         }
         cfg.withTerminationConfig(term);
-
-        // ===== PHASE 0: Construction Heuristic for BlockDecision =====
-        ConstructionHeuristicPhaseConfig chBlocks = buildChForEntity(BlockDecision.class);
-
-        // ===== PHASE 1: Construction Heuristic for CrewSeat =====
-        ConstructionHeuristicPhaseConfig chSeats = buildChForEntity(CrewSeat.class);
-
-        // ===== PHASE 2: Local Search, tweaking only BlockDecision =====
-        LocalSearchPhaseConfig ls = new LocalSearchPhaseConfig();
-
-        LocalSearchAcceptorConfig acceptor = new LocalSearchAcceptorConfig();
-        acceptor.setLateAcceptanceSize(200);
-        ls.setAcceptorConfig(acceptor);
-
-        LocalSearchForagerConfig forager = new LocalSearchForagerConfig();
-        forager.setAcceptedCountLimit(1);
-        ls.setForagerConfig(forager);
-
-        // LS should only move BlockDecision (keep CrewSeat assignments stable)
-        EntitySelectorConfig lsEntitySelector = new EntitySelectorConfig();
-        lsEntitySelector.setEntityClass(BlockDecision.class);
-
-        ChangeMoveSelectorConfig lsChangeMove = new ChangeMoveSelectorConfig();
-        lsChangeMove.setEntitySelectorConfig(lsEntitySelector);
-
-        ls.setMoveSelectorConfig(lsChangeMove);
-
-        // Final phase list: 0 = CH(BlockDecision), 1 = CH(CrewSeat), 2 = LS
-        cfg.setPhaseConfigList(List.of(chBlocks, chSeats, ls));
-
 
         return SolverFactory.create(cfg);
     }
@@ -2326,7 +2229,7 @@ public class EmployeeSchedule {
             if (best2.seats != null) {
                 for (CrewSeat s : best2.seats) {
                     if (s == null) continue;
-                    if (!s.pinned) continue;
+                    if (!s.pinnedFixed) continue;
                     if (s.module != null && !s.module.isBlank()) {
                         pinnedMods.add(s.module);
                     }
@@ -2448,49 +2351,6 @@ public class EmployeeSchedule {
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
         applyInitialPlan(sch, built.blocks);
-
-        // --------------------------------------------------
-        // Ensure ALL BlockDecision planning vars are non-null
-        // before handing the solution to the solver.
-        // --------------------------------------------------
-        for (BlockDecision b : built.blocks) {
-            // Dummy fixed block (id = 0) still needs non-null vars
-            if (b.id == 0) {
-                if (b.startDay == null) {
-                    // use earliest DaySlot in the trimmed horizon
-                    int firstDayId = sch.daySlots.isEmpty() ? 0 : sch.daySlots.get(0).id;
-                    b.startDay = firstDayId;
-                }
-                if (b.days == null) {
-                    // cover entire horizon at least
-                    int horizonDays = Math.max(1, sch.daySlots.size());
-                    b.days = horizonDays;
-                }
-                if (b.hours == null) {
-                    b.hours = 8; // safe default
-                }
-                continue;
-            }
-
-            // Normal dynamic blocks
-            if (b.startDay == null) {
-                b.startDay = b.windowStart;
-            }
-            if (b.days == null) {
-                int len = b.windowEnd - b.windowStart + 1;
-                b.days = Math.max(1, len);
-            }
-            if (b.hours == null) {
-                if (b.allowed == null || b.allowed.isEmpty()) {
-                    b.hours = 8;
-                } else {
-                    b.hours = b.allowed.stream()
-                            .mapToInt(Integer::intValue)
-                            .min()
-                            .orElse(8);
-                }
-            }
-        }
         // --------------------------------------------------
         // Build background fixed-hours/factories per (emp, day)
         // --------------------------------------------------
@@ -2580,7 +2440,7 @@ public class EmployeeSchedule {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 240, 300);
+                "0hard/*medium/*soft", 240, 60);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2600,7 +2460,7 @@ public class EmployeeSchedule {
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
                 60  /* spentMinutes */,
-                300 /* unimprovedSeconds */);
+                60 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);

@@ -1,3 +1,4 @@
+com\yourorg\scheduler\EmployeeSchedule$FlexibleAssign.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$HoursStrength.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision.class
 com\yourorg\scheduler\EmployeeSchedule$EmployeeFact.class

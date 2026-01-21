@@ -124,7 +124,7 @@ public class ExportSchedule {
                 if (s == null || EmployeeSchedule.isUnassigned(s.employee)) continue;
 
                 // Skip pinned seats entirely — they came from Fixed rows
-                if (s.pinned) continue;
+                if (s.pinnedFixed) continue;
 
                 String module = s.module;
                 String opId   = s.opId;
