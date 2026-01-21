@@ -219,11 +219,16 @@ public class EmployeeSchedule {
         public int seatIndex;
         public boolean needManager;
 
-        public boolean pinned = false;
+        public boolean pinnedFixed = false;
+        public boolean warmPinned  = false;
         public String  pinnedWid = null;
         public Integer pinnedStart = null;
         public Integer pinnedDays  = null;
         public Integer pinnedHours = null;
+
+        public boolean isPinned() {
+            return pinnedFixed || warmPinned;
+        }
 
         // Computed candidates (filled once per solve stage)
         private List<EmployeeFact> candidateEmployees = List.of();
@@ -241,7 +246,7 @@ public class EmployeeSchedule {
         @ValueRangeProvider(id = "eligibleEmployeesForSeat")
         public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
             // Pinned → pin hard (or UNASSIGNED if you prefer; this doesn’t affect manager logic)
-            if (pinned && pinnedWid != null) {
+            if (pinnedFixed && pinnedWid != null) {
                 for (EmployeeFact e : candidateEmployees) {
                     if (e != null && pinnedWid.equals(e.wid)) {
                         return new ListValueRange<>(List.of(e));
@@ -761,7 +766,7 @@ public class EmployeeSchedule {
         }
 
         private static boolean seatCoversDayAndWorking(DaySlot d, CrewSeat s, BlockDecision b) {
-            final boolean pinned = s.pinned;
+            final boolean pinned = s.pinnedFixed;
             final Integer start = pinned ? s.pinnedStart : b.startDay;
             final Integer days  = pinned ? s.pinnedDays  : b.days;
             if (start == null || days == null || days <= 0) return false;
@@ -854,7 +859,7 @@ public class EmployeeSchedule {
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter((s, b) -> !isUnassigned(s.employee))
                 .filter((s, b) -> {
-                    final boolean pinned = s.pinned;
+                    final boolean pinned = s.pinnedFixed;
                     final Integer start = pinned ? s.pinnedStart : b.startDay;
                     final Integer days  = pinned ? s.pinnedDays  : b.days;
                     if (start == null || days == null || days <= 0) return false;
@@ -873,7 +878,7 @@ public class EmployeeSchedule {
 
         Constraint pinnedRespected(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> s.pinned)
+                .filter(s -> s.pinnedFixed)
                 .filter(s -> s.employee == null || s.employee.wid == null || !s.employee.wid.equals(s.pinnedWid))
                 .penalize(HardMediumSoftScore.ONE_HARD)
                 .asConstraint("seat-pinned-respected");
@@ -884,7 +889,7 @@ public class EmployeeSchedule {
                 .join(f.forEach(CrewSeat.class),
                     // NEW: ignore unassigned AND pinned; fixed fabs are taken from FIXED_FACTORIES_BY_EMP_DAY
                     Joiners.filtering((DaySlot d, CrewSeat s) ->
-                        !isUnassigned(s.employee) && !s.pinned))
+                        !isUnassigned(s.employee) && !s.pinnedFixed))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
@@ -931,7 +936,7 @@ public class EmployeeSchedule {
                 .join(f.forEach(CrewSeat.class),
                     // NEW: ignore pinned, hours come from FIXED_HOURS_BY_EMP_DAY instead
                     Joiners.filtering((DaySlot d, CrewSeat s) ->
-                        !isUnassigned(s.employee) && !s.pinned))
+                        !isUnassigned(s.employee) && !s.pinnedFixed))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
@@ -1142,7 +1147,7 @@ public class EmployeeSchedule {
                         d.date.getYear()
                     ),
                     ConstraintCollectors.sum((d, s, b) -> {
-                        if (s.pinned) {
+                        if (s.pinnedFixed) {
                             // hours for fixed part are loaded from FIXED_ANNUAL_OT_BY_EMP_YEAR
                             return 0;
                         }
@@ -1205,7 +1210,7 @@ public class EmployeeSchedule {
                         d.date.getMonthValue()
                     ),
                     ConstraintCollectors.sum((d, s, b) -> {
-                        if (s.pinned) {
+                        if (s.pinnedFixed) {
                             // hours for fixed part are loaded from FIXED_MONTHLY_OT_BY_EMP_YM
                             return 0;
                         }
@@ -1348,7 +1353,7 @@ public class EmployeeSchedule {
                 .groupBy((d, s, b) -> s.employee.id,
                          ConstraintCollectors.sum((d, s, b) ->
                              // fixed hours are loaded from FIXED_TOTAL_HOURS_BY_EMP
-                             s.pinned ? 0 : b.chosenHours()))
+                             s.pinnedFixed ? 0 : b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_SOFT, (empId, dynTot) -> {
                     int fixedTot = FIXED_TOTAL_HOURS_BY_EMP.getOrDefault(empId, 0);
                     int total = dynTot + fixedTot;
@@ -1455,7 +1460,8 @@ public class EmployeeSchedule {
         // Fixed assignments parsed from Schedule.yaml
         List<FixedAssign> fixedRows;
         Map<String,Integer> fixedHoursByKey;
-
+        List<FlexibleAssign> flexibleRows;
+        Map<String,Integer>  flexibleHoursByKey;
         // modules that are still relevant after trim (for dynamic blocks / warm start)
         Set<String> activeModules;
 
@@ -1469,6 +1475,12 @@ public class EmployeeSchedule {
     static class FixedAssign {
         String module; String opId; String factory; String wid;
         int startDayId; int endDayId;
+        Map<Integer,Integer> hoursByDay = new HashMap<>();
+        String phaseId; int phaseNum;
+    }
+
+    static class FlexibleAssign {
+        String module; String opId; String factory; String wid;
         Map<Integer,Integer> hoursByDay = new HashMap<>();
         String phaseId; int phaseNum;
     }
@@ -1684,6 +1696,8 @@ public class EmployeeSchedule {
         Map<String,Integer> fixedHoursByKey = new HashMap<>();
         List<InitialAssign> initialRows = new ArrayList<>();
 
+        List<FlexibleAssign> flexibleRows = new ArrayList<>();
+        Map<String,Integer> flexibleHoursByKey = new HashMap<>();
         Object asgObj = s.get("assignment_list");
         List<Map<String,Object>> asgs = (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
 
@@ -1755,8 +1769,25 @@ public class EmployeeSchedule {
                 fixedRows.add(fa);
             }
 
-            // flexible → only used as initial (warm start), not fixed
+            // inside loop for each assignment a:
             if (isFlexible && !byDay.isEmpty()) {
+                FlexibleAssign fa = new FlexibleAssign();
+                fa.module = module;
+                fa.opId   = opId;
+                fa.wid    = wid;
+                fa.hoursByDay.putAll(byDay);
+                fa.phaseId = phId;
+                fa.phaseNum = phNum;
+                // factory filled later same as fixed
+                fa.factory = null;
+                flexibleRows.add(fa);
+
+                int tot = byDay.values().stream().mapToInt(Integer::intValue).sum();
+                if (tot > 0) {
+                    flexibleHoursByKey.merge(module + "|" + opId, tot, Integer::sum);
+                }
+
+                // (optional) keep initialRows if you still want block timing warm-start:
                 InitialAssign ia = new InitialAssign();
                 ia.module = module;
                 ia.opId   = opId;
@@ -1772,7 +1803,11 @@ public class EmployeeSchedule {
         out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
         out.activeModules = activeModules;
         out.initialRows = initialRows;
+        out.flexibleRows = flexibleRows;
+        out.flexibleHoursByKey = flexibleHoursByKey;
 
+        out.activeModules = activeModules;
+        out.initialRows = initialRows;
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
             int prev = w.phaseNum - 1;
@@ -1802,25 +1837,21 @@ public class EmployeeSchedule {
         }
 
         // ---- Decide the earliest dayId we actually keep as DaySlot ----
-        int firstDayId = 0;
         if (TRIM_FINISHED_MODULES) {
-            // Never earlier than the cut-off
-            firstDayId = Math.max(0, cutOffDayId);
-
-            // Also respect the first active flexible window (so we don't create days
-            // that are never used by any BlockDecision)
-            int minDynamicStart = Integer.MAX_VALUE;
             for (TaskWindow w : windows) {
-                if (w.workloadDays <= 0) continue;
-                if (!activeModules.contains(w.module)) continue;
-                if (w.startDayId < minDynamicStart) {
-                    minDynamicStart = w.startDayId;
+                w.startDayId = Math.max(w.startDayId, cutOffDayId);
+                if (w.startDayId > w.endDayId) {
+                    //no room left in horizon
+                    System.out.printf(
+                        "[WARN] WIndow fully before cut_off_date for module %s, phase %s op=%s; workloadDays -> 0%n",
+                        w.module, w.phaseId, w.opId
+                    );
+                    w.workloadDays = 0;
                 }
             }
-            if (minDynamicStart != Integer.MAX_VALUE) {
-                firstDayId = Math.max(firstDayId, minDynamicStart);
-            }
         }
+
+        int firstDayId = Math.max(0, cutOffDayId);
 
         // ---- Build DaySlots only from firstDayId .. horizon-1 ----
         // IMPORTANT: DaySlot.id stays as the *global* dayId (0-based from original plan_start)
@@ -1886,7 +1917,8 @@ public class EmployeeSchedule {
             int baseline = (w.allowed.size()==1 && w.allowed.get(0)==4) ? 4 : 8;
             int totalReq = w.workloadDays * baseline;
             int fixed = sch.fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
-            int req = Math.max(0, totalReq - fixed);
+            int flex  = sch.flexibleHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
+            int req = Math.max(0, totalReq - fixed - flex);
 
             if (req == 0) continue;
 
@@ -1940,12 +1972,49 @@ public class EmployeeSchedule {
             cs.seatIndex = 0;
             cs.needManager = false;
 
-            cs.pinned = true;
+            cs.pinnedFixed = true;
             cs.pinnedWid = fa.wid;
             int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(fa.startDayId);
             int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(fa.startDayId);
             cs.pinnedStart = minDid;
             cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+            cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
+
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            cs.employee = ef;
+
+            seats.add(cs);
+        }
+        // ---- warm-pinned seats (flexible assignments) ----
+        for (FlexibleAssign fa : sch.flexibleRows) {
+            String factory = moduleToFactory.getOrDefault(fa.module, fa.factory);
+
+            CrewSeat cs = new CrewSeat();
+            cs.id = sid++;
+
+            // attach to dummy block (id=0) is OK because pinnedStart/days control coverage
+            cs.blockId = fixedBlock.id; // 0
+
+            cs.module = fa.module;
+            cs.factory = factory;
+            cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
+            cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
+            cs.opId = fa.opId;
+            cs.seatIndex = 0;
+            cs.needManager = false;
+
+            // IMPORTANT:
+            cs.pinnedFixed = false;    // NOT fixed forever
+            cs.warmPinned  = true;     // Stage1 pinned (we will turn this off before Stage2)
+
+            cs.pinnedWid = fa.wid;
+            int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(0);
+            int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(0);
+            cs.pinnedStart = minDid;
+            cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+
+            // crude but consistent with your fixed logic
             cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
 
             EmployeeFact ef = env.byWid.get(fa.wid);
@@ -1974,7 +2043,7 @@ public class EmployeeSchedule {
 
         for (CrewSeat s : seats) {
             // Pinned seats → restrict to the pinned worker in value range
-            if (s.pinned) {
+            if (s.isPinned()) {
                 EmployeeFact pinnedEmp = null;
                 for (EmployeeFact e : employees) {
                     if (e != null && s.pinnedWid != null && s.pinnedWid.equals(e.wid)) { pinnedEmp = e; break; }
@@ -2160,7 +2229,7 @@ public class EmployeeSchedule {
             if (best2.seats != null) {
                 for (CrewSeat s : best2.seats) {
                     if (s == null) continue;
-                    if (!s.pinned) continue;
+                    if (!s.pinnedFixed) continue;
                     if (s.module != null && !s.module.isBlank()) {
                         pinnedMods.add(s.module);
                     }
@@ -2371,7 +2440,7 @@ public class EmployeeSchedule {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 240, 300);
+                "0hard/*medium/*soft", 1, 60);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2390,8 +2459,8 @@ public class EmployeeSchedule {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                60  /* spentMinutes */,
-                300 /* unimprovedSeconds */);
+                1  /* spentMinutes */,
+                60 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);

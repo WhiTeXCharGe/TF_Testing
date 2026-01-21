@@ -865,8 +865,8 @@ public class IncrementalSchedulerRunner {
                 Files.copy(schedPath, outPath, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[OUT] Wrote " + projectRoot.relativize(outPath));
 
-                current = blockEnd.plusDays(1);
-                while (isGlobalHoliday(current, holiday)) current = current.plusDays(1);
+                // current = blockEnd.plusDays(1);
+                // while (isGlobalHoliday(current, holiday)) current = current.plusDays(1);
                 evalIndex++;
                 continue;
             }

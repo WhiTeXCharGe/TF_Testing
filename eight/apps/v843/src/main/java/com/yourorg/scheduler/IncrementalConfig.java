@@ -10,7 +10,7 @@ public class IncrementalConfig {
 
     public static final double EQ_PER_DAYS = 2.5;
     public static final double EQ_PER_DAYS_SIGMA = 2.5;
-    public static final int EQ_NUM = 600;           // total modules target
+    public static final int EQ_NUM = 50;           // total modules target
 
     public static final List<Integer> SKILL_LEVEL_LIST =
             Arrays.asList(1, 2, 3, 4, 5);
