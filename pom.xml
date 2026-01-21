@@ -1,0 +1,28 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.yourorg</groupId>
+  <artifactId>eight-parent</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <timefold.version>1.27.0</timefold.version>
+    <snakeyaml.version>2.2</snakeyaml.version>
+  </properties>
+
+  <!-- If you want to pin plugin versions for all children, you can add pluginManagement here -->
+
+  <modules>
+    <module>apps/v811</module>
+    <module>apps/v812</module>
+    <module>apps/v821</module>
+    <module>apps/v822</module>
+    <module>apps/v831</module>
+    <module>apps/v832</module>
+  </modules>
+</project>
