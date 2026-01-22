@@ -1,0 +1,282 @@
+You’re **already computing** `pinnedStart / pinnedDays / pinnedHours` correctly for Flexible… but your **constraints (and likely your exporter logic later) only treat `pinnedFixed` as “pinned”**.
+
+So your **warmPinned** flexible seats end up behaving like “not pinned”, and because they are attached to the **dummy block (id=0)** (which has **no startDay/days**), they collapse to “plan start + 1 day” behavior in downstream logic.
+
+### ✅ Functions you must fix (full code)
+
+1. `seatCoversDayAndWorking(...)` (must use `s.isPinned()` not `s.pinnedFixed`)
+2. `employeeAvailableAllDays(...)` (same reason)
+3. `pinnedRespected(...)` (should also enforce warmPinned in stage1)
+4. `buildEntitiesSinglePass(...)` (also infer factory for flexible rows + fix dummy block windowStart/windowEnd)
+
+Below are **full replacements**.
+
+---
+
+## 1) Replace `seatCoversDayAndWorking(...)` (FULL)
+
+```java
+private static boolean seatCoversDayAndWorking(DaySlot d, CrewSeat s, BlockDecision b) {
+    // FIX: warmPinned must behave like pinned during Stage1
+    final boolean pinned = s.isPinned(); // was: s.pinnedFixed
+
+    final Integer start = pinned ? s.pinnedStart : (b == null ? null : b.startDay);
+    final Integer days  = pinned ? s.pinnedDays  : (b == null ? null : b.days);
+
+    if (start == null || days == null || days <= 0) return false;
+
+    return start <= d.id && d.id <= (start + days - 1) && isWorkingDay(d.id, s.factory);
+}
+```
+
+---
+
+## 2) Replace `employeeAvailableAllDays(...)` (FULL)
+
+```java
+Constraint employeeAvailableAllDays(ConstraintFactory f) {
+    return f.forEach(CrewSeat.class)
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> !isUnassigned(s.employee))
+        .filter((s, b) -> {
+            // FIX: warmPinned span must be used
+            final boolean pinned = s.isPinned(); // was: s.pinnedFixed
+            final Integer start = pinned ? s.pinnedStart : b.startDay;
+            final Integer days  = pinned ? s.pinnedDays  : b.days;
+
+            if (start == null || days == null || days <= 0) return false;
+
+            Set<Integer> off = CAL.workerOffByWid.getOrDefault(s.employee.wid, Set.of());
+            for (int di = 0; di < days; di++) {
+                int did = start + di;
+                if (!isWorkingDay(did, s.factory)) continue;
+                if (off.contains(did)) return true; // violation
+            }
+            return false;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD)
+        .asConstraint("seat-worker-available-all-days");
+}
+```
+
+---
+
+## 3) Replace `pinnedRespected(...)` (FULL)
+
+```java
+Constraint pinnedRespected(ConstraintFactory f) {
+    return f.forEach(CrewSeat.class)
+        // FIX: enforce both fixed pinned and warm pinned during Stage1
+        .filter(CrewSeat::isPinned) // was: .filter(s -> s.pinnedFixed)
+        .filter(s -> s.pinnedWid != null)
+        .filter(s -> s.employee == null
+                || s.employee.wid == null
+                || !s.employee.wid.equals(s.pinnedWid))
+        .penalize(HardMediumSoftScore.ONE_HARD)
+        .asConstraint("seat-pinned-respected");
+}
+```
+
+---
+
+## 4) Replace `buildEntitiesSinglePass(...)` (FULL)
+
+This fixes **two important bugs**:
+
+* **Flexible rows did NOT get factory inferred** (so they may behave weirdly in working-day logic)
+* Dummy block `windowEnd` was wrong when DaySlots are trimmed (size-1 != max dayId)
+
+```java
+static BuildOut buildEntitiesSinglePass(ParsedSchedule sch, ParsedEnv env) {
+    Map<String, TaskWindow> keyToWin = new HashMap<>();
+    Map<String, List<TaskWindow>> moduleWins = new HashMap<>();
+    for (TaskWindow w : sch.windows) {
+        keyToWin.putIfAbsent(w.module + "|" + w.opId, w);
+        moduleWins.computeIfAbsent(w.module, k -> new ArrayList<>()).add(w);
+    }
+
+    // Infer factory for BOTH fixed and flexible rows
+    for (FixedAssign fa : sch.fixedRows) {
+        List<TaskWindow> ws = moduleWins.getOrDefault(fa.module, List.of());
+        if (!ws.isEmpty()) fa.factory = ws.get(0).factory;
+    }
+    for (FlexibleAssign fa : sch.flexibleRows) {
+        List<TaskWindow> ws = moduleWins.getOrDefault(fa.module, List.of());
+        if (!ws.isEmpty()) fa.factory = ws.get(0).factory;
+    }
+
+    List<BlockDecision> blocks = new ArrayList<>();
+    List<CrewSeat> seats = new ArrayList<>();
+
+    // ---- dummy block for all pinned seats ----
+    int minDayId = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
+    int maxDayId = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
+
+    BlockDecision fixedBlock = new BlockDecision();
+    fixedBlock.id = 0;
+    fixedBlock.module = "__FIXED__";
+    fixedBlock.factory = null;
+    fixedBlock.phaseId = "";
+    fixedBlock.phaseNum = 0;
+    fixedBlock.opId = "__FIXED__";
+
+    // FIX: windowStart/windowEnd must be GLOBAL dayIds, not size-1
+    fixedBlock.windowStart = minDayId;
+    fixedBlock.windowEnd   = maxDayId;
+
+    fixedBlock.requiredHours = 0;
+    fixedBlock.allowed = List.of(8);
+    fixedBlock.minHeads = 0;
+    fixedBlock.maxHeads = 0;
+    blocks.add(fixedBlock);
+
+    int bid = 1;
+    int sid = 1;
+
+    // ---- dynamic block creation ----
+    for (TaskWindow w : sch.windows) {
+        int baseline = (w.allowed.size() == 1 && w.allowed.get(0) == 4) ? 4 : 8;
+        int totalReq = w.workloadDays * baseline;
+        int fixed = sch.fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
+        int flex  = sch.flexibleHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
+        int req = Math.max(0, totalReq - fixed - flex);
+
+        if (req == 0) continue;
+
+        BlockDecision b = new BlockDecision();
+        b.id = bid++;
+        b.module = w.module; b.factory = w.factory;
+        b.phaseId = w.phaseId; b.phaseNum = w.phaseNum;
+        b.opId = w.opId;
+        b.windowStart = w.startDayId; b.windowEnd = w.endDayId;
+        b.requiredHours = req;
+        b.allowed = new ArrayList<>(w.allowed);
+        b.minHeads = w.minHeads; b.maxHeads = w.maxHeads;
+        blocks.add(b);
+
+        for (int sidx = 0; sidx < Math.max(1, w.maxHeads); sidx++) {
+            CrewSeat cs = new CrewSeat();
+            cs.id = sid++;
+            cs.blockId = b.id;
+            cs.module = w.module; cs.factory = w.factory;
+            cs.phaseId = w.phaseId; cs.phaseNum = w.phaseNum;
+            cs.opId = w.opId;
+            cs.seatIndex = sidx;
+            cs.needManager = (sidx == 0);
+            cs.employee = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            seats.add(cs);
+        }
+    }
+
+    Map<String,String> moduleToFactory = new HashMap<>();
+    Map<String,String> moduleOpToPhase = new HashMap<>();
+    Map<String,Integer> moduleOpToPhaseNum = new HashMap<>();
+    for (TaskWindow w : sch.windows) {
+        moduleToFactory.put(w.module, w.factory);
+        moduleOpToPhase.put(w.module + "|" + w.opId, w.phaseId);
+        moduleOpToPhaseNum.put(w.module + "|" + w.opId, w.phaseNum);
+    }
+
+    // ---- pinned seats (fixed assignments) ----
+    for (FixedAssign fa : sch.fixedRows) {
+        String factory = moduleToFactory.getOrDefault(fa.module, fa.factory);
+
+        CrewSeat cs = new CrewSeat();
+        cs.id = sid++;
+        cs.blockId = fixedBlock.id; // 0
+
+        cs.module = fa.module; cs.factory = factory;
+        cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
+        cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
+        cs.opId = fa.opId;
+        cs.seatIndex = 0;
+        cs.needManager = false;
+
+        cs.pinnedFixed = true;
+        cs.pinnedWid = fa.wid;
+
+        int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(fixedBlock.windowStart);
+        int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(minDid);
+
+        cs.pinnedStart = minDid;
+        cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+        cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
+
+        EmployeeFact ef = env.byWid.get(fa.wid);
+        if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+        cs.employee = ef;
+
+        seats.add(cs);
+    }
+
+    // ---- warm-pinned seats (flexible assignments) ----
+    for (FlexibleAssign fa : sch.flexibleRows) {
+        String factory = moduleToFactory.getOrDefault(fa.module, fa.factory);
+
+        CrewSeat cs = new CrewSeat();
+        cs.id = sid++;
+        cs.blockId = fixedBlock.id; // 0
+
+        cs.module = fa.module;
+        cs.factory = factory;
+        cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
+        cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
+        cs.opId = fa.opId;
+        cs.seatIndex = 0;
+        cs.needManager = false;
+
+        cs.pinnedFixed = false;
+        cs.warmPinned  = true;
+
+        cs.pinnedWid = fa.wid;
+
+        int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(fixedBlock.windowStart);
+        int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(minDid);
+
+        cs.pinnedStart = minDid;
+        cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+        cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
+
+        EmployeeFact ef = env.byWid.get(fa.wid);
+        if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+        cs.employee = ef;
+
+        seats.add(cs);
+    }
+
+    BuildOut out = new BuildOut();
+    out.blocks = blocks; out.seats = seats;
+    return out;
+}
+```
+
+---
+
+### One more critical thing (you mentioned it, but it’s NOT implemented)
+
+You wrote: *“we will turn warmPinned off before Stage2”* — but your code **never does it**, so flexible stays pinned forever.
+
+Put this **between Stage1 and Stage2**:
+
+```java
+// ---- Release warm pins before Stage2 ----
+if (best1.seats != null) {
+    for (CrewSeat s : best1.seats) {
+        if (s != null && s.warmPinned) {
+            s.warmPinned = false;
+            // optionally clear these so it becomes fully free:
+            s.pinnedWid = null;
+            s.pinnedStart = null;
+            s.pinnedDays = null;
+            s.pinnedHours = null;
+        }
+    }
+}
+```
+
+If you want: “Stage2 may change employee, but keep dates/hours as a hint”, then don’t clear pinnedStart/days/hours—only set `warmPinned=false`.
+
+---
+
+If after these fixes your **export still writes 09/01 only**, then the remaining bug is in `ExportSchedule.overwriteScheduleWithAssignments(...)` (it’s probably reading `block.startDay` for blockId=0). If you paste that exporter function, I’ll point to the exact line and return the full corrected function too.
