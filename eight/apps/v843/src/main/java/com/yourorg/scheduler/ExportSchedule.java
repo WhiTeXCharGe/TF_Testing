@@ -11,7 +11,7 @@ import org.yaml.snakeyaml.Yaml;
 
 public class ExportSchedule {
 
-    @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked")
     public static void overwriteScheduleWithAssignments(
             EmployeeSchedule.SinglePassPlan plan,
             LocalDate planStart,
@@ -30,7 +30,6 @@ public class ExportSchedule {
         //   { plan_range: ..., workflow_task_list: ..., assignment_list: ... }
         Map<String,Object> sched = (Map<String,Object>) root.get("schedule");
         if (sched == null || sched.isEmpty()) {
-            // treat the root as the schedule section
             sched = root;
         }
 
@@ -39,8 +38,8 @@ public class ExportSchedule {
             if (EmployeeSchedule.CAL == null || EmployeeSchedule.CAL.weekends.isEmpty()) {
                 Map<String,Object> pr = (Map<String,Object>) sched.get("plan_range");
                 LocalDate planEnd = LocalDate.parse(
-                    String.valueOf(pr.get("end_date")).replace("-", "/"),
-                    EmployeeSchedule.DF
+                        String.valueOf(pr.get("end_date")).replace("-", "/"),
+                        EmployeeSchedule.DF
                 );
                 EmployeeSchedule.buildCalendars(envPath, planStart, planEnd);
             }
@@ -49,110 +48,179 @@ public class ExportSchedule {
         // ---- Build (module, op) -> operation_task_id map ----
         Map<String,String> opTaskId = new HashMap<>();
         List<Map<String,Object>> wfList =
-            (List<Map<String,Object>>) sched.getOrDefault("workflow_task_list", List.of());
+                (List<Map<String,Object>>) sched.getOrDefault("workflow_task_list", List.of());
+
         for (Map<String,Object> wf : wfList) {
             String module = String.valueOf(wf.get("id"));
             List<Map<String,Object>> phases =
-                (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of());
+                    (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of());
+
             for (Map<String,Object> ph : phases) {
                 List<Map<String,Object>> ops =
-                    (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of());
+                        (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of());
+
                 for (Map<String,Object> ot : ops) {
-                    String op = String.valueOf(ot.get("operation"));
-                    String otId = String.valueOf(ot.get("id"));
+                    String op   = String.valueOf(ot.get("operation")); // e.g. p2o2
+                    String otId = String.valueOf(ot.get("id"));        // e.g. e1p2o2
                     opTaskId.put(module + "|" + op, otId);
                 }
             }
         }
 
-        // ---- Original fixed rows preserved ----
+        // ---- Original assignment list ----
         Object assignmentObj = sched.get("assignment_list");
-        List<Map<String,Object>> original;
-        if (assignmentObj instanceof List) {
-            original = (List<Map<String,Object>>) assignmentObj;
-        } else {
-            original = new ArrayList<>();
-        }
+        List<Map<String,Object>> original =
+                (assignmentObj instanceof List)
+                        ? (List<Map<String,Object>>) assignmentObj
+                        : new ArrayList<>();
 
+        // Preserve original fixed + original flexible
         List<Map<String,Object>> preservedFixed = new ArrayList<>();
+        List<Map<String,Object>> preservedFlexible = new ArrayList<>();
+
         for (Map<String,Object> a : original) {
+            if (a == null) continue;
             String flex = String.valueOf(a.getOrDefault("plan_flexibility", "Flexible"));
-            if ("fixed".equalsIgnoreCase(flex)) preservedFixed.add(a);
+            if ("fixed".equalsIgnoreCase(flex)) {
+                preservedFixed.add(a);
+            } else {
+                preservedFlexible.add(a);
+            }
         }
 
-        // Build a mask of fixed dates per (worker, operation_task) so exporter won't duplicate them
+        // ---- Detect "stage1 only" situation (warmPinned still exists) ----
+        boolean hasWarmPinned = false;
+        if (plan != null && plan.seats != null) {
+            for (EmployeeSchedule.CrewSeat s : plan.seats) {
+                if (s != null && s.warmPinned && s.pinnedWid != null) {
+                    hasWarmPinned = true;
+                    break;
+                }
+            }
+        }
+
+        // If stage1 only: DO NOT overwrite flexible rows at all
+        if (hasWarmPinned) {
+            List<Map<String,Object>> merged = new ArrayList<>();
+            merged.addAll(preservedFixed);
+            merged.addAll(preservedFlexible);
+
+            sched.put("assignment_list", merged);
+
+            DumperOptions opt = new DumperOptions();
+            opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            opt.setPrettyFlow(true);
+            Yaml yaml = new Yaml(opt);
+            try (Writer out = Files.newBufferedWriter(Paths.get(schedPath))) {
+                yaml.dump(root, out);
+            }
+
+            System.out.println(
+                    "Stage1-only detected (warmPinned exists). Kept original assignments as-is."
+                            + " | fixed=" + preservedFixed.size()
+                            + " | flexible=" + preservedFlexible.size()
+            );
+            return;
+        }
+
+        // ---- Build a mask of fixed dates per (worker, operation_task_id) so exporter won't duplicate them ----
         Map<String, Set<Integer>> fixedMask = new HashMap<>();
 
-        for (Map<String, Object> a : original) {
-            String flex = String.valueOf(a.getOrDefault("plan_flexibility", "Flexible"));
-            if (!"fixed".equalsIgnoreCase(flex)) continue;
+        for (Map<String, Object> a : preservedFixed) {
+            if (a == null) continue;
 
-            String wid   = String.valueOf(a.get("worker"));
-            String task  = String.valueOf(a.get("operation_task"));
+            String wid  = String.valueOf(a.get("worker"));
+            String task = String.valueOf(a.get("operation_task")); // operation_task_id (e.g. e1p2o2)
             if (wid == null || task == null) continue;
 
-            // Some files have the typo "work_date_lsit"
             String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
             List<Map<String, Object>> wdl =
-                (List<Map<String, Object>>) a.getOrDefault(wdKey, List.of());
+                    (List<Map<String, Object>>) a.getOrDefault(wdKey, List.of());
 
             Set<Integer> set = fixedMask.computeIfAbsent(wid + "|" + task, k -> new HashSet<>());
             for (Map<String, Object> item : wdl) {
+                if (item == null) continue;
                 String dateStr = String.valueOf(item.get("date"));
                 Integer did = EmployeeSchedule.dayIdFromDate(planStart, dateStr);
                 if (did != null) set.add(did);
             }
         }
 
-        // ---- Index facts ----
+        // ---- Index blocks by id ----
         Map<Integer, EmployeeSchedule.BlockDecision> blockById = new HashMap<>();
-        if (plan.blocks != null) {
-            for (EmployeeSchedule.BlockDecision b : plan.blocks) blockById.put(b.id, b);
+        if (plan != null && plan.blocks != null) {
+            for (EmployeeSchedule.BlockDecision b : plan.blocks) {
+                if (b != null) blockById.put(b.id, b);
+            }
         }
+
         DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
-        // ---- Build flexible rows from solved seats ----
+        // ---- Build NEW flexible rows from solved seats (final run) ----
         List<Map<String,Object>> newFlex = new ArrayList<>();
-        if (plan.seats != null) {
+
+        if (plan != null && plan.seats != null) {
             for (EmployeeSchedule.CrewSeat s : plan.seats) {
                 if (s == null || EmployeeSchedule.isUnassigned(s.employee)) continue;
 
-                // Skip pinned seats entirely — they came from Fixed rows
+                // Skip fixed pinned seats (they come from original fixed rows)
                 if (s.pinnedFixed) continue;
 
                 String module = s.module;
-                String opId   = s.opId;
-                String taskId = opTaskId.get(module + "|" + opId);
-                if (taskId == null) continue;
-
-                Map<Integer,Integer> byDay = new TreeMap<>();
+                String opId   = s.opId; // p2o2
+                String taskId = opTaskId.get(module + "|" + opId); // e1p2o2
+                if (taskId == null || "null".equals(taskId)) continue;
 
                 EmployeeSchedule.BlockDecision b = blockById.get(s.blockId);
-                if (b != null && b.startDay != null && b.days != null && b.days > 0) {
-                    // IMPORTANT: use the solver’s chosen hours, not autoHours()
+
+                // Build work map once
+                Map<Integer,Integer> byDay = new TreeMap<>();
+
+                // Case A: warmPinned schedule on dummy block (blockId=0) => use pinned span
+                if (s.warmPinned && s.blockId == 0
+                        && s.pinnedStart != null && s.pinnedDays != null && s.pinnedDays > 0) {
+
+                    int h = (s.pinnedHours != null) ? s.pinnedHours : 8;
+
+                    for (int i = 0; i < s.pinnedDays; i++) {
+                        int did = s.pinnedStart + i;
+                        if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
+                        byDay.merge(did, h, Integer::sum);
+                    }
+
+                // Case B: normal seat attached to a real block => use block span
+                } else if (b != null && b.startDay != null && b.days != null && b.days > 0) {
+
                     int h = (b.hours != null) ? b.hours : b.chosenHours();
+
                     for (int i = 0; i < b.days; i++) {
                         int did = b.startDay + i;
                         if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
                         byDay.merge(did, h, Integer::sum);
                     }
+
+                } else {
+                    // No usable span -> skip
+                    continue;
                 }
 
-                // Remove dates that are already fixed for (worker, opTask)
+                // Remove dates that are already fixed for (worker, taskId)
                 Set<Integer> mask = fixedMask.get(s.employee.wid + "|" + taskId);
                 if (mask != null && !mask.isEmpty()) {
                     byDay.keySet().removeAll(mask);
                 }
+
                 if (byDay.isEmpty()) continue;
 
                 int firstIdx = ((TreeMap<Integer,Integer>)byDay).firstKey();
                 int lastIdx  = ((TreeMap<Integer,Integer>)byDay).lastKey();
 
+                // build work_date_list
                 List<Map<String,Object>> work = new ArrayList<>();
                 for (Map.Entry<Integer,Integer> e : byDay.entrySet()) {
                     work.add(Map.of(
-                        "date", planStart.plusDays(e.getKey()).format(DF),
-                        "hour", e.getValue()
+                            "date", planStart.plusDays(e.getKey()).format(DF),
+                            "hour", e.getValue()
                     ));
                 }
 
@@ -164,13 +232,15 @@ public class ExportSchedule {
                 row.put("work_date_list", work);
                 row.put("plan_flexibility", "Flexible");
                 newFlex.add(row);
+
             }
         }
 
-        // ---- Write back ----
+        // ---- Write back: fixed preserved + NEW flexible (overwrite old flexible) ----
         List<Map<String,Object>> merged = new ArrayList<>();
         merged.addAll(preservedFixed);
         merged.addAll(newFlex);
+
         sched.put("assignment_list", merged);
 
         DumperOptions opt = new DumperOptions();
@@ -182,9 +252,11 @@ public class ExportSchedule {
         }
 
         System.out.println(
-            "Overwrote " + schedPath +
-            " | new flexible rows=" + newFlex.size() +
-            " | preserved fixed rows=" + preservedFixed.size()
+                "Overwrote " + schedPath
+                        + " | new flexible rows=" + newFlex.size()
+                        + " | preserved fixed rows=" + preservedFixed.size()
+                        + " | (old flexible overwritten because warmPinned not present)"
         );
     }
+
 }
