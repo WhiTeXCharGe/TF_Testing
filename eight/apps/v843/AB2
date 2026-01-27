@@ -1,0 +1,441 @@
+Got it. The biggest win is: **stop doing `DaySlot × CrewSeat × BlockDecision` joins**. Those explode when horizon grows.
+
+Instead, generate “worked dayIds” **per seat** by *flattening the seat span*, so the stream only produces tuples for days that seat actually works.
+
+Below are optimized versions for:
+
+* `dailyCap12h`
+* `oneFactoryPerEmpPerDay`
+* `dailyHeadCapacityByOp`
+* `regionTransitGap`
+* `regionStayMaxOn`
+* `regionAnnualStayMax`
+
+…and the small helper you need.
+
+---
+
+## 0) Key helper: “iterate only working days inside the span”
+
+Add this inside `EmployeeSchedule` (same class as constraints), so constraints can call it.
+
+```java
+static Iterable<Integer> workingDayIdsIterable(Integer start, Integer days, String factory) {
+    if (start == null || days == null || days <= 0) return List.of();
+    final int s = start;
+    final int e = start + days - 1;
+
+    // Lazy iterator: no list allocation, skips closed days.
+    return () -> new java.util.Iterator<>() {
+        int cur = s;
+        Integer next = null;
+
+        private void pull() {
+            while (next == null && cur <= e) {
+                int d = cur++;
+                if (isWorkingDay(d, factory)) {
+                    next = d;
+                    return;
+                }
+            }
+        }
+
+        @Override public boolean hasNext() {
+            pull();
+            return next != null;
+        }
+        @Override public Integer next() {
+            pull();
+            Integer out = next;
+            next = null;
+            return out;
+        }
+    };
+}
+```
+
+Also add a **fast way to get seat timing** (use pinned span if pinned):
+
+```java
+static Integer seatStart(CrewSeat s, BlockDecision b) {
+    return s.isPinned() ? s.pinnedStart : (b == null ? null : b.startDay);
+}
+static Integer seatDays(CrewSeat s, BlockDecision b) {
+    return s.isPinned() ? s.pinnedDays : (b == null ? null : b.days);
+}
+```
+
+---
+
+## 1) dailyCap12h (optimized)
+
+No DaySlot join. We flatten days from each (seat, block).
+
+```java
+Constraint dailyCap12h(ConstraintFactory f) {
+    var seatBlockDay = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        // IMPORTANT: ignore pinnedFixed in "dynamic hours" sum; fixed part comes from FIXED_HOURS_BY_EMP_DAY
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory));
+
+    return seatBlockDay
+        .groupBy(
+            (s, b, dayId) -> Arrays.asList(s.employee.id, dayId),
+            ConstraintCollectors.sum((s, b, dayId) -> b.chosenHours())
+        )
+        .filter((key, dynHours) -> {
+            int empId = (int) key.get(0);
+            int dayId = (int) key.get(1);
+            int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                .getOrDefault(empId, Collections.emptyMap())
+                .getOrDefault(dayId, 0);
+            return dynHours + fixedHours > DAILY_CAP;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, dynHours) -> {
+            int empId = (int) key.get(0);
+            int dayId = (int) key.get(1);
+            int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                .getOrDefault(empId, Collections.emptyMap())
+                .getOrDefault(dayId, 0);
+            return (dynHours + fixedHours) - DAILY_CAP;
+        })
+        .asConstraint("seat-daily-cap-12h");
+}
+```
+
+**Why faster:** complexity becomes proportional to “(assigned seats) × (days they work)”, not “all dayslots × all seats”.
+
+---
+
+## 2) oneFactoryPerEmpPerDay (optimized)
+
+Same flatten trick, group by (emp, day), collect dynamic factories, then union with fixed factories.
+
+```java
+Constraint oneFactoryPerEmpPerDay(ConstraintFactory f) {
+    var seatBlockDay = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        // ignore pinnedFixed in dynamic set; fixed fabs come from FIXED_FACTORIES_BY_EMP_DAY
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory));
+
+    return seatBlockDay
+        .groupBy(
+            (s, b, dayId) -> Arrays.asList(s.employee.id, dayId),
+            ConstraintCollectors.toSet((s, b, dayId) -> s.factory)
+        )
+        .filter((key, dynFabs) -> {
+            int empId = (int) key.get(0);
+            int dayId = (int) key.get(1);
+
+            Set<String> fixedFabs = FIXED_FACTORIES_BY_EMP_DAY
+                .getOrDefault(empId, Collections.emptyMap())
+                .getOrDefault(dayId, Collections.emptySet());
+
+            if (fixedFabs.isEmpty()) return dynFabs.size() > 1;
+
+            Set<String> all = new HashSet<>(dynFabs);
+            all.addAll(fixedFabs);
+            return all.size() > 1;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, dynFabs) -> {
+            int empId = (int) key.get(0);
+            int dayId = (int) key.get(1);
+
+            Set<String> fixedFabs = FIXED_FACTORIES_BY_EMP_DAY
+                .getOrDefault(empId, Collections.emptyMap())
+                .getOrDefault(dayId, Collections.emptySet());
+
+            Set<String> all = new HashSet<>(dynFabs);
+            all.addAll(fixedFabs);
+            return all.size() - 1;
+        })
+        .asConstraint("seat-one-factory-per-emp-day");
+}
+```
+
+---
+
+## 3) dailyHeadCapacityByOp (optimized)
+
+This one is huge in your current code. Flatten and count by (day, op).
+
+Also: **don’t include pinnedFixed seats here** unless you also want fixed work to consume head-cap.
+Most real models *should* include fixed, but for speed you can precompute a fixedHead map and add it.
+
+### A) Dynamic-only + add fixed count map (fastest)
+
+First build `FIXED_HEADS_BY_OP_DAY` once in `solveFromYaml()` (similar to FIXED_HOURS_BY_EMP_DAY), then constraint becomes cheap.
+
+**Add global map:**
+
+```java
+static Map<Integer, Map<String, Integer>> FIXED_HEADS_BY_DAY_OP = new HashMap<>();
+```
+
+**Build it once (after parsing fixedRows, you already know opId/dayId):**
+
+```java
+FIXED_HEADS_BY_DAY_OP.clear();
+for (FixedAssign fa : sch.fixedRows) {
+    // If fixed assignment hoursByDay has >0, it counts as 1 head that day for that op.
+    for (var e : fa.hoursByDay.entrySet()) {
+        int dayId = e.getKey();
+        int h = e.getValue();
+        if (h <= 0) continue;
+        // Optional: only count if working day at that factory
+        String factory = fa.factory;
+        if (!isWorkingDay(dayId, factory)) continue;
+
+        FIXED_HEADS_BY_DAY_OP
+            .computeIfAbsent(dayId, k -> new HashMap<>())
+            .merge(fa.opId, 1, Integer::sum);
+    }
+}
+```
+
+**Constraint:**
+
+```java
+Constraint dailyHeadCapacityByOp(ConstraintFactory f) {
+    var seatBlockDay = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        // dynamic only
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory));
+
+    return seatBlockDay
+        .groupBy(
+            (s, b, dayId) -> dayId,
+            (s, b, dayId) -> s.opId,
+            ConstraintCollectors.sum((s, b, dayId) -> 1)
+        )
+        .filter((dayId, opId, dynHeads) -> {
+            int fixed = FIXED_HEADS_BY_DAY_OP
+                .getOrDefault(dayId, Collections.emptyMap())
+                .getOrDefault(opId, 0);
+            int total = dynHeads + fixed;
+            return total > OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE);
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (dayId, opId, dynHeads) -> {
+            int fixed = FIXED_HEADS_BY_DAY_OP
+                .getOrDefault(dayId, Collections.emptyMap())
+                .getOrDefault(opId, 0);
+            int cap = OP_CAPACITY.getOrDefault(opId, Integer.MAX_VALUE);
+            return (dynHeads + fixed) - cap;
+        })
+        .asConstraint("daily-head-capacity-by-op");
+}
+```
+
+---
+
+## 4) Region constraints: don’t build EmpDay by joining all DaySlots
+
+Use the same flatten trick to produce (emp, dayId, region) only where they actually work.
+
+### Shared stream for region work-days (dynamic + fixed optional)
+
+Here I show **dynamic-only**. If you want fixed included, do the same “precompute fixed region days” trick like for heads.
+
+```java
+static final class EmpRegionDay {
+    final int empId;
+    final String regionId;
+    final int dayId;
+    EmpRegionDay(int empId, String regionId, int dayId) {
+        this.empId = empId; this.regionId = regionId; this.dayId = dayId;
+    }
+    int empId() { return empId; }
+    String regionId() { return regionId; }
+    int dayId() { return dayId; }
+}
+```
+
+### 4.1) regionTransitGap (optimized)
+
+Your old version does Uni↔Uni join across all emp-days, which can still be heavy.
+But first, at least generate emp-days without DaySlot join:
+
+```java
+Constraint regionTransitGap(ConstraintFactory f) {
+    var empDayUni = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory))
+        .map((s, b, dayId) -> new EmpDay(s.employee.id, dayId, s.factory));
+
+    return empDayUni
+        .join(empDayUni,
+            Joiners.equal(EmpDay::empId, EmpDay::empId),
+            Joiners.lessThan(EmpDay::dayId, EmpDay::dayId))
+        .filter((a, b) -> {
+            String r1 = CAL.regionOfFab(a.factory());
+            String r2 = CAL.regionOfFab(b.factory());
+            int need = CAL.transitDays(r1, r2);
+            if (need <= 0) return false;
+            int delta = b.dayId() - a.dayId();
+            return delta <= need;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (a, b) -> {
+            String r1 = CAL.regionOfFab(a.factory());
+            String r2 = CAL.regionOfFab(b.factory());
+            int need  = CAL.transitDays(r1, r2);
+            int delta = b.dayId() - a.dayId();
+            return Math.max(1, need - delta + 1);
+        })
+        .asConstraint("emp-region-transit-gap");
+}
+```
+
+**Even faster (recommended)**: add a filter to only compare nearby days (within max transit days), otherwise it’s still O(N²) per employee. If your max transit is, say, <= 7, do this:
+
+```java
+// replace Joiners.lessThan with:
+Joiners.lessThan(EmpDay::dayId, EmpDay::dayId),
+Joiners.filtering((a,b) -> (b.dayId() - a.dayId()) <= 10) // set to maxTransitDays+some buffer
+```
+
+You can compute `MAX_TRANSIT_DAYS` once from CAL.transitDays maps.
+
+---
+
+### 4.2) regionStayMaxOn (optimized)
+
+This one becomes much cheaper once day lists are built from flatten stream.
+
+```java
+Constraint regionStayMaxOn(ConstraintFactory f) {
+    var empRegionDays = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory))
+        .groupBy(
+            (s, b, dayId) -> Arrays.asList(s.employee.id, CAL.regionOfFab(s.factory)),
+            ConstraintCollectors.toList((s, b, dayId) -> dayId)
+        )
+        .filter((key, dayList) -> key.get(1) != null);
+
+    return empRegionDays
+        .filter((key, dayList) -> {
+            String regionId = (String) key.get(1);
+            int maxOn  = CAL.maxStayOn(regionId);
+            int offInt = CAL.stayOffInterval(regionId);
+            if (maxOn == Integer.MAX_VALUE) return false;
+            int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+            return maxSpan > maxOn;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, dayList) -> {
+            String regionId = (String) key.get(1);
+            int maxOn  = CAL.maxStayOn(regionId);
+            int offInt = CAL.stayOffInterval(regionId);
+            int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+            return Math.max(1, maxSpan - maxOn);
+        })
+        .asConstraint("emp-region-stay-max-on");
+}
+```
+
+### 4.3) regionAnnualStayMax (optimized)
+
+Same idea:
+
+```java
+Constraint regionAnnualStayMax(ConstraintFactory f) {
+    var empRegionDays = f.forEach(CrewSeat.class)
+        .filter(s -> !isUnassigned(s.employee))
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> seatStart(s,b) != null && seatDays(s,b) != null && seatDays(s,b) > 0)
+        .filter((s, b) -> !s.pinnedFixed)
+        .flattenLast((s, b) -> workingDayIdsIterable(seatStart(s,b), seatDays(s,b), s.factory))
+        .groupBy(
+            (s, b, dayId) -> Arrays.asList(s.employee.id, CAL.regionOfFab(s.factory)),
+            ConstraintCollectors.toList((s, b, dayId) -> dayId)
+        )
+        .filter((key, dayList) -> key.get(1) != null);
+
+    return empRegionDays
+        .filter((key, dayList) -> {
+            String regionId = (String) key.get(1);
+            int maxAnnual = CAL.annualMaxStay(regionId);
+            int offInt    = CAL.stayOffInterval(regionId);
+            if (maxAnnual == Integer.MAX_VALUE) return false;
+            int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
+            return totalSpan > maxAnnual;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, dayList) -> {
+            String regionId = (String) key.get(1);
+            int maxAnnual = CAL.annualMaxStay(regionId);
+            int offInt    = CAL.stayOffInterval(regionId);
+            int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
+            return Math.max(1, totalSpan - maxAnnual);
+        })
+        .asConstraint("emp-region-annual-stay-max");
+}
+```
+
+---
+
+## 5) Extra speed wins (you should do these too)
+
+### A) Reduce number of seats created
+
+Right now you always create `w.maxHeads` seats, which can be huge. Create an upper bound that’s “enough to cover requiredHours”, not maxHeads.
+
+Example inside `buildEntitiesSinglePass` when creating seats:
+
+```java
+int minAllowed = (w.allowed == null || w.allowed.isEmpty()) ? 8 : w.allowed.stream().mapToInt(x->x).min().orElse(8);
+int maxAllowed = (w.allowed == null || w.allowed.isEmpty()) ? 8 : w.allowed.stream().mapToInt(x->x).max().orElse(8);
+
+// estimate working days if fully spanning window (worst-case conservative)
+int estD = workingDaysCount(w.startDayId, Math.max(1, w.endDayId - w.startDayId + 1), w.factory);
+estD = Math.max(1, estD);
+
+// seats needed if everyone works max hours:
+int minSeatsToCover = (int) Math.ceil(req / (double)(maxAllowed * estD));
+minSeatsToCover = Math.max(w.minHeads, minSeatsToCover);
+
+// cap by maxHeads
+int seatCount = Math.min(w.maxHeads, minSeatsToCover);
+
+// create only seatCount
+for (int sidx = 0; sidx < seatCount; sidx++) { ... }
+```
+
+This alone often gives a massive speedup.
+
+### B) Fix a bug: monthlyOvertimeLimit ignores warmPinned
+
+In `monthlyOvertimeLimit`, you currently do:
+
+```java
+if (s.pinnedFixed) return 0;
+```
+
+But stage1 has warmPinned seats too. Make it:
+
+```java
+if (s.pinnedFixed || s.warmPinned) return 0;
+```
+
+---
+
+If you paste your current `ConstraintProvider` class into the next message, I can rewrite it fully in-place (only the constraints you keep) so it compiles cleanly without you manually merging pieces.
