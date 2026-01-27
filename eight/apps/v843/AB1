@@ -1,0 +1,360 @@
+Yeah, your instinct is **correct**: the biggest slowdown is not “Timefold searching from dayId=1”, it’s that several constraints currently do **DaySlot × Seat (× Block)** joins (and one does **EmpDay × EmpDay**), which explodes when horizon grows.
+
+You already trimmed `DaySlot` using `cut_off_dayId` ✅ — so the next win is:
+
+1. **Stop using `forEach(DaySlot)` in constraints that don’t truly need per-day accuracy** (OT, total hours, soft total hour balance).
+2. **Replace “per-day expansion” with “interval math”** using `(startDay, days, chosenHours, factory)` from the seat/block.
+3. **Fix the worst constraint: `regionTransitGap`** (currently O(N²) join on EmpDay pairs).
+
+Below are concrete refactors you can paste in.
+
+---
+
+## 1) Important: Stage1 “fixed flexible” → Stage2 movable hours/OT
+
+You asked:
+
+> phase 1 flexible was fixed and unfinished in phase 2 … total hour/overtime should count again before phase 2
+
+✅ Your current code already does that correctly **IF** you only exclude `pinnedFixed` (true fixed) from “dynamic” totals.
+
+But right now, some constraints exclude both `pinnedFixed || warmPinned`:
+
+```java
+if (s.pinnedFixed || s.warmPinned) return 0;
+```
+
+That’s OK in stage1, **but in stage2 you set `warmPinned=false`**, so the seat starts counting again automatically.
+
+So the “count again” part is fine — the performance part is what needs refactor.
+
+---
+
+## 2) BIG WIN: Remove DaySlot join from these constraints
+
+These are currently expensive:
+
+* `annualOvertimeLimit`
+* `monthlyOvertimeLimit`
+* `softBalanceTotalHours`
+
+They all do: `forEach(DaySlot).join(CrewSeat).join(BlockDecision).filter(seatCoversDay...)`
+
+Replace with **seat interval contribution**:
+
+### Add these helpers (near other helpers)
+
+```java
+static Integer seatStart(CrewSeat s, BlockDecision b) {
+    boolean pinned = s.isPinned();
+    return pinned ? s.pinnedStart : (b == null ? null : b.startDay);
+}
+static Integer seatDays(CrewSeat s, BlockDecision b) {
+    boolean pinned = s.isPinned();
+    return pinned ? s.pinnedDays : (b == null ? null : b.days);
+}
+
+// Count WORKING days for this seat-span (fab closures respected via isWorkingDay)
+static int seatWorkingDays(CrewSeat s, BlockDecision b) {
+    Integer st = seatStart(s, b);
+    Integer dy = seatDays(s, b);
+    if (st == null || dy == null || dy <= 0) return 0;
+    return workingDaysCount(st, dy, s.factory);
+}
+
+// Total hours contributed by this seat in its span
+static int seatTotalHours(CrewSeat s, BlockDecision b) {
+    if (b == null) return 0;
+    if (s.pinnedFixed) return 0; // fixed schedule already in FIXED_TOTAL_HOURS_BY_EMP
+    int wd = seatWorkingDays(s, b);
+    return wd * b.chosenHours();
+}
+
+// Total overtime hours contributed by this seat in its span (simple, not split by month/year)
+static int seatTotalOvertime(CrewSeat s, BlockDecision b) {
+    if (b == null) return 0;
+    if (s.pinnedFixed) return 0;
+    int otPerDay = Math.max(0, b.chosenHours() - SinglePassConstraints.BASE_HOURS_PER_DAY);
+    int wd = seatWorkingDays(s, b);
+    return wd * otPerDay;
+}
+```
+
+### Replace `softBalanceTotalHours` with interval version
+
+```java
+Constraint softBalanceTotalHours(ConstraintFactory f) {
+    return f.forEach(CrewSeat.class)
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> !isUnassigned(s.employee))
+        .groupBy((s, b) -> s.employee.id,
+                 ConstraintCollectors.sum((s, b) -> seatTotalHours(s, b)))
+        .penalize(HardMediumSoftScore.ONE_SOFT, (empId, dynTot) -> {
+            int fixedTot = FIXED_TOTAL_HOURS_BY_EMP.getOrDefault(empId, 0);
+            int total = dynTot + fixedTot;
+            return (int) Math.abs(total - TARGET_HOURS_PER_EMP);
+        })
+        .asConstraint("soft-balance-total-hours");
+}
+```
+
+✅ This removes `DaySlot` entirely from total-hours balancing.
+
+---
+
+## 3) OT split by month/year without DaySlot×Seat explosion
+
+For OT limits you **must split by year/month** (because a block span can cross boundaries).
+But you still don’t need `forEach(DaySlot)` globally — do the day-walk **only per seat span**.
+
+### Add a helper that computes OT per Year/Month for one seat
+
+```java
+static void addSeatOtByYm(
+    Map<Integer, Integer> ymToOt,
+    CrewSeat s, BlockDecision b,
+    LocalDate planStart
+) {
+    if (b == null) return;
+    if (s.pinnedFixed) return;
+
+    Integer st = seatStart(s, b);
+    Integer dy = seatDays(s, b);
+    if (st == null || dy == null || dy <= 0) return;
+
+    int otPerDay = Math.max(0, b.chosenHours() - SinglePassConstraints.BASE_HOURS_PER_DAY);
+    if (otPerDay == 0) return;
+
+    int end = st + dy - 1;
+    for (int dayId = st; dayId <= end; dayId++) {
+        if (!isWorkingDay(dayId, s.factory)) continue;
+        LocalDate d = planStart.plusDays(dayId);
+        int ym = d.getYear() * 100 + d.getMonthValue();
+        ymToOt.merge(ym, otPerDay, Integer::sum);
+    }
+}
+```
+
+### Monthly OT constraint (interval-based)
+
+```java
+Constraint monthlyOvertimeLimit(ConstraintFactory f) {
+    return f.forEach(CrewSeat.class)
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> !isUnassigned(s.employee))
+        .groupBy(
+            (s, b) -> Arrays.asList(s.employee.id, company(s.employee)),
+            ConstraintCollectors.toList((s, b) -> new Object[]{s, b})
+        )
+        .filter((key, pairs) -> {
+            int empId = (int) key.get(0);
+            String companyId = (String) key.get(1);
+            if (companyId == null || companyId.isBlank()) return false;
+
+            int limit = CAL.monthlyOtLimit(companyId);
+            if (limit == Integer.MAX_VALUE) return false;
+
+            Map<Integer,Integer> dynYmOt = new HashMap<>();
+            for (Object[] pair : pairs) {
+                CrewSeat s = (CrewSeat) pair[0];
+                BlockDecision b = (BlockDecision) pair[1];
+                addSeatOtByYm(dynYmOt, s, b, /*planStart*/ /* NEED ACCESS */ null);
+            }
+            // NOTE: we need planStart. See note below.
+            return false;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, pairs) -> 1)
+        .asConstraint("emp-monthly-overtime-limit");
+}
+```
+
+⚠️ ConstraintProvider currently doesn’t have `planStart`.
+Easy fix: store it in a static like you already do with `CAL` and `TARGET_HOURS_PER_EMP`:
+
+### Add global
+
+```java
+static LocalDate PLAN_START = null;
+```
+
+### In `solveFromYaml` after parsing schedule:
+
+```java
+PLAN_START = sch.planStart;
+```
+
+Then use `PLAN_START` in the helper.
+
+Now implement full monthly constraint:
+
+```java
+Constraint monthlyOvertimeLimit(ConstraintFactory f) {
+    return f.forEach(CrewSeat.class)
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> !isUnassigned(s.employee))
+        .groupBy(
+            (s, b) -> Arrays.asList(s.employee.id, company(s.employee)),
+            ConstraintCollectors.toList((s, b) -> new Object[]{s, b})
+        )
+        .filter((key, pairs) -> {
+            int empId = (int) key.get(0);
+            String companyId = (String) key.get(1);
+            if (companyId == null || companyId.isBlank()) return false;
+
+            int limit = CAL.monthlyOtLimit(companyId);
+            if (limit == Integer.MAX_VALUE) return false;
+
+            Map<Integer,Integer> dynYmOt = new HashMap<>();
+            for (Object[] pair : pairs) {
+                addSeatOtByYm(dynYmOt, (CrewSeat)pair[0], (BlockDecision)pair[1], PLAN_START);
+            }
+
+            // check any month exceed (dyn + fixed)
+            for (var e : dynYmOt.entrySet()) {
+                int ym = e.getKey();
+                int dyn = e.getValue();
+                int fixed = FIXED_MONTHLY_OT_BY_EMP_YM
+                    .getOrDefault(empId, Collections.emptyMap())
+                    .getOrDefault(ym, 0);
+                if (dyn + fixed > limit) return true;
+            }
+            return false;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (key, pairs) -> {
+            int empId = (int) key.get(0);
+            String companyId = (String) key.get(1);
+            int limit = CAL.monthlyOtLimit(companyId);
+
+            Map<Integer,Integer> dynYmOt = new HashMap<>();
+            for (Object[] pair : pairs) {
+                addSeatOtByYm(dynYmOt, (CrewSeat)pair[0], (BlockDecision)pair[1], PLAN_START);
+            }
+
+            int worstOver = 0;
+            for (var e : dynYmOt.entrySet()) {
+                int ym = e.getKey();
+                int dyn = e.getValue();
+                int fixed = FIXED_MONTHLY_OT_BY_EMP_YM
+                    .getOrDefault(empId, Collections.emptyMap())
+                    .getOrDefault(ym, 0);
+                worstOver = Math.max(worstOver, (dyn + fixed) - limit);
+            }
+            return Math.max(1, worstOver);
+        })
+        .asConstraint("emp-monthly-overtime-limit");
+}
+```
+
+Do the same for annual OT (simpler: year instead of ym).
+This removes the global DaySlot join, and only iterates days **inside each assigned span**.
+
+---
+
+## 4) The WORST constraint: `regionTransitGap` (currently very expensive)
+
+Your current approach:
+
+* build `EmpDay` from DaySlot × Seat × Block
+* then join `empDayUni` with itself using `lessThan(dayId)` ⇒ **O(M²)** pairs
+
+Refactor it to interval-to-interval comparison:
+
+### Create interval record
+
+```java
+static final class EmpInterval {
+    final int empId;
+    final int start;
+    final int end;
+    final String factory;
+    EmpInterval(int empId, int start, int end, String factory) {
+        this.empId = empId; this.start = start; this.end = end; this.factory = factory;
+    }
+}
+```
+
+### Interval-based region transit constraint
+
+```java
+Constraint regionTransitGap(ConstraintFactory f) {
+    var intervals = f.forEach(CrewSeat.class)
+        .join(f.forEach(BlockDecision.class),
+            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        .filter((s, b) -> !isUnassigned(s.employee))
+        .map((s, b) -> {
+            Integer st = seatStart(s, b);
+            Integer dy = seatDays(s, b);
+            if (st == null || dy == null || dy <= 0) return null;
+            int end = st + dy - 1;
+            return new EmpInterval(s.employee.id, st, end, s.factory);
+        })
+        .filter(Objects::nonNull);
+
+    return intervals
+        .join(intervals,
+            Joiners.equal(i -> i.empId, i -> i.empId),
+            Joiners.lessThan(i -> i.end, i -> i.start)   // A finishes before B starts
+        )
+        .filter((a, b) -> {
+            String r1 = CAL.regionOfFab(a.factory);
+            String r2 = CAL.regionOfFab(b.factory);
+            int need = CAL.transitDays(r1, r2);
+            if (need <= 0) return false;
+
+            int gap = b.start - a.end; // days between end->start (inclusive-ish)
+            return gap <= need;
+        })
+        .penalize(HardMediumSoftScore.ONE_HARD, (a, b) -> {
+            String r1 = CAL.regionOfFab(a.factory);
+            String r2 = CAL.regionOfFab(b.factory);
+            int need = CAL.transitDays(r1, r2);
+            int gap = b.start - a.end;
+            return Math.max(1, need - gap + 1);
+        })
+        .asConstraint("emp-region-transit-gap");
+}
+```
+
+✅ This avoids DaySlot expansion *and* avoids EmpDay×EmpDay at day granularity.
+
+---
+
+## 5) Micro fix: clamp pinned fixed span to active day range
+
+Even with trimmed DaySlots, you can reduce work by clamping fixed spans so they don’t cover huge ranges:
+
+In pinned-seat build:
+
+```java
+int minActiveDay = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
+
+int minDid = fa.hoursByDay.keySet().stream().min(Integer::compareTo).orElse(minActiveDay);
+int maxDid = fa.hoursByDay.keySet().stream().max(Integer::compareTo).orElse(minDid);
+
+// clamp to active range
+minDid = Math.max(minDid, minActiveDay);
+maxDid = Math.max(maxDid, minDid);
+
+cs.pinnedStart = minDid;
+cs.pinnedDays  = Math.max(1, maxDid - minDid + 1);
+```
+
+This keeps fixed seats from “stretching” into irrelevant past.
+
+---
+
+## 6) About “dailyHeadCapacityByOp: do we need it?”
+
+If your `OP_CAPACITY` is “number of skilled employees” then this constraint can be redundant or even harmful (it can add lots of hard checks). But whether you can remove it depends on your business rule:
+
+* If it’s truly “max parallel workers allowed for this op” → keep.
+* If it’s just “how many employees exist” → usually unnecessary.
+
+A safe compromise: **only enforce it for ops that define a real cap** (from EnvConfig), otherwise skip.
+
+---
+
+If you want, I can also point to the top 2–3 constraints that are still heavy *after* these refactors (usually `dailyCap12h`, `oneFactoryPerEmpPerDay`, and region stay ones) and show how to further reduce them — but the changes above are the big “make it scale to large horizon” step.
