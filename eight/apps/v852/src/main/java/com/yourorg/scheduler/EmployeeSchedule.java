@@ -36,6 +36,7 @@ import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListVal
 import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.score.ScoreExplanation;
 import ai.timefold.solver.core.api.domain.entity.PlanningPin;
+import ai.timefold.solver.core.config.solver.EnvironmentMode;
 
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -836,10 +837,16 @@ public class EmployeeSchedule {
                 }
 
                 if (seg.region != null && !seg.region.isBlank()) {
-                    regionByDay.putIfAbsent(dayId, seg.region);
+                    // ORDER-INDEPENDENT: always keep the “smallest” region id
+                    regionByDay.merge(dayId, seg.region, (oldR, newR) -> {
+                        if (oldR == null || oldR.isBlank()) return newR;
+                        if (newR == null || newR.isBlank()) return oldR;
+                        return (oldR.compareTo(newR) <= 0) ? oldR : newR;
+                    });
                 }
             }
         }
+
 
         private static int computeMaxSpan(List<Integer> days, int offInterval) {
             if (days == null || days.isEmpty()) return 0;
@@ -2284,7 +2291,12 @@ public class EmployeeSchedule {
         cfg.withScoreDirectorFactory(
                 new ScoreDirectorFactoryConfig().withConstraintProviderClass(providerClass)
         );
+        cfg.withEnvironmentMode(EnvironmentMode.FULL_ASSERT);
 
+        ScoreDirectorFactoryConfig sdf = new ScoreDirectorFactoryConfig()
+            .withConstraintProviderClass(providerClass);
+        // sdf.setConstraintMatchPolicy(ConstraintMatchPolicy.ENABLED);  // enable matches
+        cfg.withScoreDirectorFactory(sdf);
         TerminationConfig term = new TerminationConfig();
         if (bestScoreLimit != null) term.setBestScoreLimit(bestScoreLimit);
         if (spentMinutes != null && spentMinutes > 0) {
