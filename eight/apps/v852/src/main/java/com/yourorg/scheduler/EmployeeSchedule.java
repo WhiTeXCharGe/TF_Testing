@@ -227,14 +227,10 @@ public class EmployeeSchedule {
         public Integer pinnedHours = null;
 
         @PlanningPin
-        public boolean isPinned() { return pinnedFixed; }  // <-- IMPORTANT: only fixed pins now
+        public boolean isPinned() { return pinnedFixed; }  // only fixed pins
 
-        // Computed candidates (filled once)
+        // candidates (filled once)
         private List<EmployeeFact> candidateEmployees = List.of();
-
-        // make this public so we can safely assign it outside too
-        public static final EmployeeFact UNASSIGNED =
-            new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
 
         public CrewSeat() {}
 
@@ -245,6 +241,7 @@ public class EmployeeSchedule {
 
         @ValueRangeProvider(id = "eligibleEmployeesForSeat")
         public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
+
             // Fixed pinned → only that worker (or UNASSIGNED if missing)
             if (pinnedFixed && pinnedWid != null) {
                 for (EmployeeFact e : candidateEmployees) {
@@ -252,22 +249,24 @@ public class EmployeeSchedule {
                         return new ListValueRange<>(List.of(e));
                     }
                 }
-                return new ListValueRange<>(List.of(UNASSIGNED));
+                return new ListValueRange<>(List.of(EmployeeSchedule.UNASSIGNED_EMP));
             }
 
             List<EmployeeFact> base = (candidateEmployees == null) ? List.of() : candidateEmployees;
 
             if (needManager) {
-                // STRICT manager-only
+                // STRICT manager-only (no UNASSIGNED)
                 base = base.stream().filter(emp -> emp != null && emp.isManager).toList();
                 return new ListValueRange<>(base);
             } else {
                 // Always allow leaving it empty
-                if (base.isEmpty()) return new ListValueRange<>(List.of(UNASSIGNED));
+                if (base.isEmpty()) {
+                    return new ListValueRange<>(List.of(EmployeeSchedule.UNASSIGNED_EMP));
+                }
 
                 // include UNASSIGNED + all candidates
                 List<EmployeeFact> withU = new ArrayList<>(base.size() + 1);
-                withU.add(UNASSIGNED);
+                withU.add(EmployeeSchedule.UNASSIGNED_EMP);
                 withU.addAll(base);
                 return new ListValueRange<>(withU);
             }
@@ -276,6 +275,7 @@ public class EmployeeSchedule {
         @PlanningVariable(valueRangeProviderRefs = "eligibleEmployeesForSeat")
         public EmployeeFact employee;
     }
+
 
 
     @PlanningSolution
@@ -303,10 +303,11 @@ public class EmployeeSchedule {
 
     static final int DAILY_CAP = 12;
     static double TARGET_HOURS_PER_EMP = 0.0;
-
+    public static final EmployeeFact UNASSIGNED_EMP =
+        new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
     static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
     static final Map<String,Double>  OP_AVG_SKILL = new HashMap<>();
-
+    
     static Map<Integer, EmployeeFact> EMP_BY_ID = new HashMap<>();
 
     // fixed schedule background (built once per solveFromYaml)
@@ -383,7 +384,7 @@ public class EmployeeSchedule {
         Map<String, Map<String, Integer>> transitDays = new HashMap<>(); // fromRegion -> (toRegion -> days)
         Map<String, Integer> regionStayMaxOn = new HashMap<>();
         Map<String, Integer> regionStayOffInterval = new HashMap<>();
-
+        
         //  annual-stay per region
         Map<String, Integer> regionAnnualMaxStay = new HashMap<>();
 
@@ -1681,7 +1682,7 @@ public class EmployeeSchedule {
         }
 
         List<EmployeeFact> employees = new ArrayList<>();
-        employees.add(new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, ""));
+        employees.add(UNASSIGNED_EMP);
         List<Map<String,Object>> workers = (List<Map<String,Object>>) env.getOrDefault("worker_list", List.of());
         int eid = 1;
         Map<String, EmployeeFact> byWid = new HashMap<>();
@@ -2119,7 +2120,7 @@ public class EmployeeSchedule {
                 cs.opId = w.opId;
                 cs.seatIndex = sidx;
                 cs.needManager = (sidx == 0);
-                cs.employee = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+                cs.employee = UNASSIGNED_EMP;
                 seats.add(cs);
             }
         }
@@ -2159,7 +2160,7 @@ public class EmployeeSchedule {
             cs.pinnedHours = fa.hoursByDay.values().stream().max(Integer::compareTo).orElse(8);
 
             EmployeeFact ef = env.byWid.get(fa.wid);
-            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            if (ef == null) ef = UNASSIGNED_EMP;
             cs.employee = ef;
 
             seats.add(cs);
@@ -2577,7 +2578,7 @@ public class EmployeeSchedule {
         for (CrewSeat s : seats) {
             if (s == null) continue;
             if (!s.needManager) {
-                if (s.employee == null) s.employee = CrewSeat.UNASSIGNED;
+                if (s.employee == null) s.employee = UNASSIGNED_EMP;
                 continue;
             }
             // needManager seat: employee must be a manager candidate
@@ -2605,6 +2606,13 @@ public class EmployeeSchedule {
 
     public static RunResult solveFromYaml(String envPath, String schedPath) throws IOException {
         ParsedEnv env = parseEnv(envPath);
+
+        // safety: ensure env.employees[0] is the singleton UNASSIGNED_EMP
+        if (env.employees == null) env.employees = new ArrayList<>();
+        if (env.employees.isEmpty() || env.employees.get(0) != UNASSIGNED_EMP) {
+            env.employees.removeIf(e -> e != null && e.id == 0);
+            env.employees.add(0, UNASSIGNED_EMP);
+        }
         EMP_BY_ID.clear();
         for (EmployeeFact e : env.employees) {
             if (e != null) EMP_BY_ID.put(e.id, e);
@@ -2618,7 +2626,11 @@ public class EmployeeSchedule {
         TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
+        
         applyInitialPlan(sch, built.blocks);
+
+        fillSeatCandidatesSinglePass(built.seats, built.blocks, env.employees);
+        
         applyInitialEmployees(sch, env, built.seats);
         // ---------------- Build WorkSeg baselines ----------------
         PLAN_START = sch.planStart;
@@ -2703,7 +2715,6 @@ public class EmployeeSchedule {
         }
 
         
-        fillSeatCandidatesSinglePass(built.seats, built.blocks, env.employees);
         SinglePassPlan p = new SinglePassPlan();
         p.days = sch.daySlots;
         p.employees = env.employees;
