@@ -1,0 +1,272 @@
+============================================================
+Run at: 2026-01-26T10:31:58.921757500
+Stage1 duration: 00:05:01.452
+Stage2 duration: 00:10:00.075
+Final score: 0hard/0medium/-64563soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-03
+Cut-off date (cut_off_date): 2025-09-01  (cutOffDayId=0)
+DaySlots in solver: id=0..63 (count=64), dates=2025-09-01 .. 2025-11-03
+Active modules by trim logic (gap <= 6 days): e1, e10, e2, e3, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e2, e3, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): [none]
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = 0hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-38488soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-6898soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/10200soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-1519soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-228soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/2640soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/850soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-31120soft
+============================================================
+Run at: 2026-01-26T10:56:39.876220800
+Stage1 duration: 00:14:39.856
+Stage2 duration: 00:10:00.167
+Final score: 0hard/0medium/-15250soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-10
+Cut-off date (cut_off_date): 2025-09-09  (cutOffDayId=8)
+DaySlots in solver: id=8..70 (count=63), dates=2025-09-09 .. 2025-11-10
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e3, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, e23
+Modules with pinned seats (fixed assignments visible to constraints): e1, e2, e3, e4, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = 0hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-53645soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-6262soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/14055soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-2250soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-4548soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/5430soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/72450soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-40480soft
+============================================================
+Run at: 2026-01-26T11:21:47.877603700
+Stage1 duration: 00:20:01.121
+Stage2 duration: 00:01:00.259
+Final score: -812hard/0medium/-163670soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-14
+Cut-off date (cut_off_date): 2025-09-16  (cutOffDayId=15)
+DaySlots in solver: id=15..74 (count=60), dates=2025-09-16 .. 2025-11-14
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e2, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e11, e12, e13, e14, e15, e16, e18, e19, e2, e20, e21, e23, e3, e4, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = -120hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = -232hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = -76hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = -18hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = -41hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = -200hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = -118hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = -7hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-284467soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-12890soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/18045soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-3363soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-12060soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/7430soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/185155soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-61520soft
+============================================================
+Run at: 2026-01-26T12:42:30.948648700
+Stage1 duration: 00:20:00.851
+Stage2 duration: 00:01:00.231
+Final score: -182hard/0medium/-519089soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-14
+Cut-off date (cut_off_date): 2025-09-16  (cutOffDayId=15)
+DaySlots in solver: id=15..74 (count=60), dates=2025-09-16 .. 2025-11-14
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e11, e12, e13, e14, e15, e16, e18, e19, e2, e20, e21, e23, e3, e4, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = -20hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = -94hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = -25hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = -39hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = -4hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-461555soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-16410soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/27635soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-4983soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-5061soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/7340soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/26425soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-92480soft
+============================================================
+Run at: 2026-01-26T14:05:33.809836300
+Stage1 duration: 00:04:49.031
+Stage2 duration: 00:05:00.097
+Final score: 0hard/0medium/-66254soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-03
+Cut-off date (cut_off_date): 2025-09-01  (cutOffDayId=0)
+DaySlots in solver: id=0..63 (count=64), dates=2025-09-01 .. 2025-11-03
+Active modules by trim logic (gap <= 6 days): e1, e10, e2, e3, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e2, e3, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): [none]
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = 0hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-38508soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-7194soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/9380soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-1613soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-189soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/2370soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/620soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-31120soft
+============================================================
+Run at: 2026-01-26T14:17:11.971480800
+Stage1 duration: 00:01:00.769
+Stage2 duration: 00:01:00.182
+Final score: -1929hard/0medium/-330663soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-07
+Cut-off date (cut_off_date): 2025-09-09  (cutOffDayId=8)
+DaySlots in solver: id=8..67 (count=60), dates=2025-09-09 .. 2025-11-07
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e3, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e3, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e2, e3, e4, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = -128hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = -530hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = -460hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = -6hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = -90hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = -517hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = -186hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = -12hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-285034soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-12186soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/15980soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-2946soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-1047soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/4310soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/6020soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-55760soft
+============================================================
+Run at: 2026-01-26T14:30:30.892045500
+Stage1 duration: 00:07:32.210
+Stage2 duration: 00:01:00.199
+Final score: 0hard/0medium/-164020soft
+Plan range (plan_range): 2025-09-01 .. 2025-11-07
+Cut-off date (cut_off_date): 2025-09-09  (cutOffDayId=8)
+DaySlots in solver: id=8..67 (count=60), dates=2025-09-09 .. 2025-11-07
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e3, e4, e5, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e3, e4, e5, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e2, e3, e4, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-hours-in-allowed = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-no-underfill = 0hard/0medium/0soft
+  com.yourorg.scheduler/block-overfill-at-most-one-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/daily-head-capacity-by-op = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-annual-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-monthly-overtime-limit = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-annual-stay-max = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-stay-max-on = 0hard/0medium/0soft
+  com.yourorg.scheduler/emp-region-transit-gap = 0hard/0medium/0soft
+  com.yourorg.scheduler/phase-order = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-daily-cap-12h = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-one-factory-per-emp-day = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-pinned-respected = 0hard/0medium/0soft
+  com.yourorg.scheduler/seat-worker-available-all-days = 0hard/0medium/0soft
+  com.yourorg.scheduler/soft-balance-block-avg-skill = 0hard/0medium/-122879soft
+  com.yourorg.scheduler/soft-balance-total-hours = 0hard/0medium/-10222soft
+  com.yourorg.scheduler/soft-continuous-region-stay = 0hard/0medium/17110soft
+  com.yourorg.scheduler/soft-earlier-start = 0hard/0medium/-2889soft
+  com.yourorg.scheduler/soft-encourage-skill-variety = 0hard/0medium/-1050soft
+  com.yourorg.scheduler/soft-fab-preference = 0hard/0medium/4270soft
+  com.yourorg.scheduler/soft-same-company-pairs = 0hard/0medium/6120soft
+  com.yourorg.scheduler/soft-smaller-hours = 0hard/0medium/-54480soft
+============================================================
+Run at: 2026-01-30T12:32:22.695185100
+Stage1 duration: 00:30:00.524
+Stage2 duration: 00:01:00.148
+Final score: -2831hard/0medium/-566039soft
+Plan range (plan_range): 2025-09-01 .. 2025-12-04
+Cut-off date (cut_off_date): 2025-10-02  (cutOffDayId=31)
+DaySlots in solver: id=31..90 (count=60), dates=2025-10-02 .. 2025-11-30
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e47, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window score=-401hard/0medium/0soft matches=109
+  com.yourorg.scheduler/block-hours-in-allowed score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-no-underfill score=-710hard/0medium/0soft matches=49
+  com.yourorg.scheduler/block-overfill-at-most-one-day score=-296hard/0medium/0soft matches=21
+  com.yourorg.scheduler/phase-order score=-602hard/0medium/0soft matches=89
+  com.yourorg.scheduler/seat-daily-cap-12h score=-734hard/0medium/0soft matches=118
+  com.yourorg.scheduler/seat-one-factory-per-emp-day score=-88hard/0medium/0soft matches=88
+  com.yourorg.scheduler/seat-worker-available-all-days score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/soft-balance-block-avg-skill score=0hard/0medium/-708463soft matches=367
+  com.yourorg.scheduler/soft-balance-total-hours score=0hard/0medium/-27753soft matches=390
+  com.yourorg.scheduler/soft-earlier-start score=0hard/0medium/-7641soft matches=362
+  com.yourorg.scheduler/soft-encourage-skill-variety score=0hard/0medium/-35412soft matches=274
+  com.yourorg.scheduler/soft-fab-preference score=0hard/0medium/13250soft matches=1606
+  com.yourorg.scheduler/soft-same-company-pairs score=0hard/0medium/343500soft matches=363
+  com.yourorg.scheduler/soft-smaller-hours score=0hard/0medium/-143520soft matches=362
