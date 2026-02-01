@@ -1,3 +1,4 @@
+com\yourorg\scheduler\EmployeeSchedule$FlexibleAssign.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$HoursStrength.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision.class
 com\yourorg\scheduler\EmployeeSchedule$EmployeeFact.class
@@ -15,6 +16,7 @@ com\yourorg\scheduler\EmployeeSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$StartDayStrength.class
 com\yourorg\scheduler\EmployeeSchedule$SinglePassConstraints.class
 com\yourorg\scheduler\ExportSchedule.class
+com\yourorg\scheduler\EmployeeSchedule$OpTaskMeta.class
 com\yourorg\scheduler\EmployeeSchedule$SinglePassPlan.class
 com\yourorg\scheduler\EmployeeSchedule$CrewSeat.class
 com\yourorg\scheduler\EmployeeSchedule$TaskWindow.class
