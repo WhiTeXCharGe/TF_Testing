@@ -130,7 +130,17 @@ OPS_NAME_TO_ID = {
     _norm("Release VQF　（FCCB）"): "f22p4o3",            # full-width variant
 }
 
+# ------------------------------------------------------------
+# Tool phase meta (generic across f20/f21/f22/etc)
+# ------------------------------------------------------------
+TOOL_PHASE_META = {
+    1: {"phase_id": "tool_p1", "phase_name": "Module Setup",   "op_id": "p1", "op_name": "Module Setup"},
+    2: {"phase_id": "tool_p2", "phase_name": "Hardware Setup", "op_id": "p2", "op_name": "Hardware Setup"},
+    3: {"phase_id": "tool_p3", "phase_name": "Function Setup", "op_id": "p3", "op_name": "Function Setup"},
+    4: {"phase_id": "tool_p4", "phase_name": "Utility",        "op_id": "p4", "op_name": "Utility"},
+}
 
+PHASE_NUM_RE = re.compile(r"_p([1-4])$")
 # ============================================================
 # SU_Others: worker info + raw matrix for assignments (UPDATED)
 # ============================================================
@@ -304,8 +314,12 @@ def parse_su_others(path: str, sheet_names=("予定表_2024", "予定表_2025"))
 
     worker_list = []
     for acc in worker_acc.values():
+        # Base skills only; tool skills (p1..p4) will be filled later from assignments
         skill_map = {
-            "f22p1": 1, "f22p2": 1, "f22p3": 1, "f22p4": 1,
+            "p1": 0,
+            "p2": 0,
+            "p3": 0,
+            "p4": 0,
             "other_op": 1,
             "personal_business_op": 1,
         }
@@ -470,7 +484,7 @@ def parse_tool_schedule(path: str, sheet_name: str = "F22_Tool Schedule"):
         row_start = min(row_dates) if row_dates else None
         row_end = max(row_dates) if row_dates else None
 
-        task_id = f"f22_{task_counter}"
+        task_id = f"e{task_counter}"
         task_counter += 1
 
         row_phase_meta = []  # collect per-phase meta for this ONE row
@@ -525,22 +539,23 @@ def parse_tool_schedule(path: str, sheet_name: str = "F22_Tool Schedule"):
             # inclusive days: (end - start) + 1
             workload_days = int((phase_end - phase_start).days) + 1
 
+            meta_info = TOOL_PHASE_META[ph]
+
             phase_task_list.append({
                 "id": phase_id,
-                "name": f"Phase {ph}",
-                "phase": f"tool_p{ph}",
+                "name": meta_info["phase_name"],
+                "phase": meta_info["phase_id"],
                 "start_date": _to_ymd(phase_start),
                 "end_date": _to_ymd(phase_end),
                 "operation_task_list": [
                     {
                         "id": phase_id,
-                        "name": f"Phase {ph}",
-                        "operation": f"f22p{ph}",
+                        "name": meta_info["phase_name"],
+                        "operation": meta_info["op_id"],   # p1/p2/p3/p4
                         "workload_days": workload_days,
                     }
                 ],
             })
-
             if module_code:
                 module_to_phases[module_code].append({
                     "phase_index": ph,
@@ -746,6 +761,37 @@ def build_assignments(su_data: dict, tool_data: dict):
 # ============================================================
 # Build EnvConfig + Schedule and dump YAML
 # ============================================================
+def apply_tool_skills_from_assignments(worker_list, assignments, tool_phase_ids):
+    """
+    Ensure each worker has keys: p1..p4, other_op, personal_business_op
+    and set p1..p4 = 1 if they appear in tool assignments.
+    """
+    seen = defaultdict(set)
+
+    for a in assignments:
+        op_task = a.get("operation_task")
+        wid = a.get("worker")
+        if not op_task or not wid:
+            continue
+        if op_task in tool_phase_ids:
+            m = PHASE_NUM_RE.search(op_task)
+            if m:
+                seen[wid].add(f"p{m.group(1)}")
+
+    for w in worker_list:
+        sm = w.setdefault("skill_map", {})
+
+        # guarantee keys exist
+        for k in ("p1", "p2", "p3", "p4", "other_op", "personal_business_op"):
+            sm.setdefault(k, 0)
+
+        # always available (your rule)
+        sm["other_op"] = 1
+        sm["personal_business_op"] = 1
+
+        # set tool skills from observed assignments
+        for k in seen.get(w["id"], set()):
+            sm[k] = 1
 
 def build_env_and_schedule(
     su_others_path: str,
@@ -759,28 +805,26 @@ def build_env_and_schedule(
     # ---------- ENVIRONMENT ----------
     wf_tool_phases = []
     for ph in (1, 2, 3, 4):
-        wf_tool_phases.append(
-            {
-                "id": f"tool_p{ph}",
-                "name": f"Phase {ph}",
-                "operation_list": [
-                    {
-                        # Aggregated operation per phase: f22p1, f22p2, f22p3, f22p4
-                        "id": f"f22p{ph}",
-                        "name": f"F22 Phase {ph}",  # you can change names if you want
-                        "work_hours": [8],          # or [4, 8, 12] later
-                        "min_worker_num": 1,
-                        "max_worker_num": 3,
-                    }
-                ],
-            }
-        )
+        meta = TOOL_PHASE_META[ph]
+        wf_tool_phases.append({
+            "id": meta["phase_id"],          # tool_p1..tool_p4
+            "name": meta["phase_name"],      # Module Setup, ...
+            "operation_list": [
+                {
+                    "id": meta["op_id"],     # p1..p4
+                    "name": meta["op_name"],
+                    "work_hours": [8],
+                    "min_worker_num": 1,
+                    "max_worker_num": 3,
+                }
+            ],
+        })
 
     environment = {
         "workflow_list": [
             {
                 "id": "wf_tool",
-                "name": "Taiwan Tool Install 2025",
+                "name": "Tool Install",
                 "phase_list": wf_tool_phases,
             },
             {
@@ -881,7 +925,16 @@ def build_env_and_schedule(
         tool_tasks_for_yaml.append(t_copy)
 
     assignments, misc_tasks, personal_tasks = build_assignments(su_data, tool_data)
+    # collect all tool phase ids (e1_p1, e1_p2, ...)
+    tool_phase_ids = set()
+    for t in tool_data["tool_tasks"]:
+        for pt in t.get("phase_task_list", []):
+            pid = pt.get("id")
+            if pid:
+                tool_phase_ids.add(pid)
 
+    # fill p1..p4 skills based on tool assignments
+    apply_tool_skills_from_assignments(su_data["worker_list"], assignments, tool_phase_ids)
     schedule = {
     "plan_range": plan_range,
     "workflow_task_list": tool_tasks_for_yaml + misc_tasks + personal_tasks,
