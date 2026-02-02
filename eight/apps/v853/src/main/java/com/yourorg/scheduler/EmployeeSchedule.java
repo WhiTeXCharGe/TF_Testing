@@ -53,7 +53,7 @@ public class EmployeeSchedule {
     static Map<String, Object> loadYaml(String path) throws IOException {
         try (InputStream in = Files.newInputStream(Paths.get(path))) {
             LoaderOptions opts = new LoaderOptions();
-            opts.setCodePointLimit(5 * 1024 * 1024); // ≈ 5 MB
+            opts.setCodePointLimit(10 * 1024 * 1024); // ≈ 5 MB
 
             Yaml yaml = new Yaml(new SafeConstructor(opts));
             return yaml.load(in);
@@ -569,7 +569,7 @@ public class EmployeeSchedule {
         Map<String,Object> root;
         try (InputStream in = Files.newInputStream(Paths.get(envPath))) {
             LoaderOptions opts = new LoaderOptions();
-            opts.setCodePointLimit(5 * 1024 * 1024);
+            opts.setCodePointLimit(10 * 1024 * 1024);
             Yaml yaml = new Yaml(new SafeConstructor(opts));
             root = yaml.load(in);
         }
@@ -771,6 +771,8 @@ public class EmployeeSchedule {
         }
 
         // ---------- Production from staffed seats ----------
+        static final int UNDERFILL_MULT = 1_000_000; // huge so it dominates other hard constraints
+
         Constraint noUnderfillByBlock(ConstraintFactory f) {
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
@@ -792,7 +794,8 @@ public class EmployeeSchedule {
                         int hours = b.chosenHours();
                         int staffed = staffedCountForBlock(seats);
                         int prod = staffed * hours * Math.max(0, D);
-                        return b.requiredHours - prod;
+                        int gap = b.requiredHours - prod;
+                        return gap * UNDERFILL_MULT;
                     })
                 .asConstraint("block-no-underfill");
         }

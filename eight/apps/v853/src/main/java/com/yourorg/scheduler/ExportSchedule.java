@@ -21,7 +21,10 @@ public class ExportSchedule {
         // ---- Load YAML ----
         Map<String,Object> root;
         try (InputStream in = Files.newInputStream(Paths.get(schedPath))) {
-            root = new Yaml().load(in);
+            LoaderOptions opts = new LoaderOptions();
+            opts.setCodePointLimit(10 * 1024 * 1024); // 10 MB
+            Yaml yaml = new Yaml(new SafeConstructor(opts));
+            root = yaml.load(in);
         }
 
         // Support both:
