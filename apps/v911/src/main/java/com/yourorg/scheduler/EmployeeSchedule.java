@@ -119,6 +119,10 @@ public class EmployeeSchedule {
             if (skills != null) this.skills = new HashMap<>(skills);
             this.isManager = isManager; this.workerCompany = company;
         }
+        // last fixed assignment info (latest fixed day in history)
+        public int histLastFixedDayId = Integer.MIN_VALUE;  // -inf means none
+        public String histLastFixedRegion = null;
+        public String histLastFixedFactory = null;
     }
 
     public static class TaskWindow {
@@ -784,8 +788,12 @@ static class OpTaskMeta {
         }
 
         // ---------- Production from staffed seats ----------
-        static final int UNDERFILL_MULT = 1_000_000; // huge so it dominates other hard constraints
-
+        static final int UNDERFILL_MULT = 1_000; // huge so it dominates other hard constraints
+        private static int clampToInt(long v) {
+            if (v > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+            if (v < Integer.MIN_VALUE) return Integer.MIN_VALUE;
+            return (int) v;
+        }
         Constraint noUnderfillByBlock(ConstraintFactory f) {
             var perBlock = f.forEach(BlockDecision.class)
                 .join(f.forEach(CrewSeat.class),
@@ -808,7 +816,7 @@ static class OpTaskMeta {
                         int staffed = staffedCountForBlock(seats);
                         int prod = staffed * hours * Math.max(0, D);
                         int gap = b.requiredHours - prod;
-                        return gap * UNDERFILL_MULT;
+                        return clampToInt((long) gap * (long) UNDERFILL_MULT);
                     })
                 .asConstraint("block-no-underfill");
         }
@@ -945,51 +953,78 @@ static class OpTaskMeta {
                 .asConstraint("seat-daily-cap-12h");
         }
         // Helper record for Uni↔Uni join
-        static final class EmpDay {
-            final int empId;
+        static final class EmpDayRegion {
+            final EmployeeFact emp;
             final int dayId;
-            final String factory;
-            EmpDay(int e, int d, String f) { empId = e; dayId = d; factory = f; }
-            int empId() { return empId; }
-            int dayId() { return dayId; }
-            String factory() { return factory; }
+            final String region;
+            EmpDayRegion(EmployeeFact e, int d, String r) { emp = e; dayId = d; region = r; }
         }
 
-        // ---- Region transit (map Tri -> Uni then join Uni↔Uni)
         Constraint regionTransitGap(ConstraintFactory f) {
-            var empDayUni = f.forEach(DaySlot.class)
+
+            // Collect dynamic worked days per employee (only the part solver is deciding)
+            var dyn = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
-                    Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
+                    Joiners.filtering((DaySlot d, CrewSeat s) ->
+                        !isUnassigned(s.employee)
+                        && !s.pinnedFixed   // fixed already in history
+                ))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .groupBy((d, s, b) -> s.employee.id,
-                         (d, s, b) -> d.id,
-                         (d, s, b) -> s.factory)
-                .map((empId, dayId, factory) -> new EmpDay(empId, dayId, factory));
-
-            return empDayUni
-                .join(empDayUni,
-                    Joiners.equal(EmpDay::empId, EmpDay::empId),
-                    Joiners.lessThan(EmpDay::dayId, EmpDay::dayId))
-                .filter((a, b) -> {
-                    String r1 = CAL.regionOfFab(a.factory());
-                    String r2 = CAL.regionOfFab(b.factory());
-                    int need = CAL.transitDays(r1, r2);
-                    if (need <= 0) return false;
-                    int delta = b.dayId() - a.dayId();
-                    return delta <= need;
+                .map((d, s, b) -> {
+                    String r = CAL.regionOfFab(s.factory);
+                    return new EmpDayRegion(s.employee, d.id, r);
                 })
-                .penalize(HardMediumSoftScore.ONE_HARD,
-                    (a, b) -> {
-                        String r1 = CAL.regionOfFab(a.factory());
-                        String r2 = CAL.regionOfFab(b.factory());
-                        int need  = CAL.transitDays(r1, r2);
-                        int delta = b.dayId() - a.dayId();
-                        return Math.max(1, need - delta + 1);
-                    })
-                .asConstraint("emp-region-transit-gap");
+                .filter(x -> x.region != null && !x.region.isBlank())
+                .groupBy(x -> x.emp, ConstraintCollectors.toList(x -> x));
+
+            return dyn
+                .filter((emp, list) -> emp != null && emp.id != 0
+                        && emp.histLastFixedDayId != Integer.MIN_VALUE
+                        && emp.histLastFixedRegion != null
+                        && !emp.histLastFixedRegion.isBlank()
+                        && list != null && !list.isEmpty()
+                )
+                .filter((emp, list) -> {
+                    // earliest dynamic day
+                    int earliestDay = Integer.MAX_VALUE;
+                    String earliestRegion = null;
+                    for (EmpDayRegion x : list) {
+                        if (x.dayId < earliestDay) {
+                            earliestDay = x.dayId;
+                            earliestRegion = x.region;
+                        }
+                    }
+                    if (earliestRegion == null) return false;
+
+                    // same region => OK
+                    if (earliestRegion.equals(emp.histLastFixedRegion)) return false;
+
+                    int need = CAL.transitDays(emp.histLastFixedRegion, earliestRegion);
+                    if (need <= 0) return false;
+
+                    // violation if new day is too soon
+                    return earliestDay <= emp.histLastFixedDayId + need;
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD, (emp, list) -> {
+                    int earliestDay = Integer.MAX_VALUE;
+                    String earliestRegion = null;
+                    for (EmpDayRegion x : list) {
+                        if (x.dayId < earliestDay) {
+                            earliestDay = x.dayId;
+                            earliestRegion = x.region;
+                        }
+                    }
+                    if (earliestRegion == null) return 0;
+
+                    int need = CAL.transitDays(emp.histLastFixedRegion, earliestRegion);
+                    int earliestLegal = emp.histLastFixedDayId + need + 1;
+                    return Math.max(1, earliestLegal - earliestDay);
+                })
+                .asConstraint("emp-region-transit-gap-history");
         }
+
 
         private static int maxSegmentSpanWithBreak(List<Integer> dayList, int offInterval) {
             if (dayList == null || dayList.isEmpty()) return 0;
@@ -2033,6 +2068,29 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
             seats.add(cs);
         }
 
+        // fill last fixed day+region for transit rule
+        for (FixedAssign fa : sch.fixedRows) {
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null || ef.id == 0) continue;
+
+            if (fa.factory == null || fa.factory.isBlank()) continue;
+
+            String region = CAL.regionOfFab(fa.factory);
+            if (region == null || region.isBlank()) continue;
+
+            for (var ent : fa.hoursByDay.entrySet()) {
+                int dayId = ent.getKey();
+                int h     = ent.getValue();
+                if (h <= 0) continue;
+
+                // pick the latest dayId
+                if (dayId > ef.histLastFixedDayId) {
+                    ef.histLastFixedDayId = dayId;
+                    ef.histLastFixedFactory = fa.factory;
+                    ef.histLastFixedRegion  = region;
+                }
+            }
+        }
         BuildOut out = new BuildOut();
         out.blocks = blocks; out.seats = seats;
         return out;
