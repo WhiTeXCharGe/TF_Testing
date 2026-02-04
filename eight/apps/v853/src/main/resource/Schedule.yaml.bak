@@ -1,7 +1,7 @@
 schedule:
   plan_range:
     start_date: 2025/09/01
-    end_date: 2025/12/12
+    end_date: 2025/12/04
   workflow_task_list:
   - id: e1
     name: SU 1001A
@@ -4087,799 +4087,6 @@ schedule:
         operation: p4o1
         workload_days: 12
       - id: e67p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e68
-    name: SU 1068A
-    workflow: workflow
-    fab: f1
-    phase_task_list:
-    - id: e68p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/10
-      end_date: 2025/10/30
-      operation_task_list:
-      - id: e68p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e68p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e68p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e68p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/10
-      end_date: 2025/11/17
-      operation_task_list:
-      - id: e68p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e68p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e68p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/10
-      end_date: 2025/11/25
-      operation_task_list:
-      - id: e68p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e68p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/10
-      end_date: 2025/12/04
-      operation_task_list:
-      - id: e68p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e68p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e69
-    name: SU 1069A
-    workflow: workflow
-    fab: f1
-    phase_task_list:
-    - id: e69p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/10
-      end_date: 2025/10/30
-      operation_task_list:
-      - id: e69p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e69p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e69p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e69p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/10
-      end_date: 2025/11/17
-      operation_task_list:
-      - id: e69p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e69p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e69p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/10
-      end_date: 2025/11/25
-      operation_task_list:
-      - id: e69p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e69p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/10
-      end_date: 2025/12/04
-      operation_task_list:
-      - id: e69p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e69p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e70
-    name: SU 1070A
-    workflow: workflow
-    fab: f3
-    phase_task_list:
-    - id: e70p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/31
-      operation_task_list:
-      - id: e70p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e70p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e70p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e70p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/18
-      operation_task_list:
-      - id: e70p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e70p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e70p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/26
-      operation_task_list:
-      - id: e70p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e70p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/05
-      operation_task_list:
-      - id: e70p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e70p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e71
-    name: SU 1071A
-    workflow: workflow
-    fab: f6
-    phase_task_list:
-    - id: e71p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/28
-      operation_task_list:
-      - id: e71p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e71p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e71p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e71p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/11
-      operation_task_list:
-      - id: e71p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e71p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e71p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/19
-      operation_task_list:
-      - id: e71p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e71p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/01
-      operation_task_list:
-      - id: e71p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e71p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e72
-    name: SU 1072A
-    workflow: workflow
-    fab: f5
-    phase_task_list:
-    - id: e72p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/31
-      operation_task_list:
-      - id: e72p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e72p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e72p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e72p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/18
-      operation_task_list:
-      - id: e72p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e72p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e72p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/26
-      operation_task_list:
-      - id: e72p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e72p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/05
-      operation_task_list:
-      - id: e72p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e72p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e73
-    name: SU 1073A
-    workflow: workflow
-    fab: f3
-    phase_task_list:
-    - id: e73p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/31
-      operation_task_list:
-      - id: e73p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e73p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e73p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e73p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/18
-      operation_task_list:
-      - id: e73p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e73p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e73p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/26
-      operation_task_list:
-      - id: e73p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e73p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/05
-      operation_task_list:
-      - id: e73p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e73p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e74
-    name: SU 1074A
-    workflow: workflow
-    fab: f2
-    phase_task_list:
-    - id: e74p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/31
-      operation_task_list:
-      - id: e74p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e74p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e74p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e74p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/18
-      operation_task_list:
-      - id: e74p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e74p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e74p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/26
-      operation_task_list:
-      - id: e74p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e74p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/05
-      operation_task_list:
-      - id: e74p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e74p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e75
-    name: SU 1075A
-    workflow: workflow
-    fab: f2
-    phase_task_list:
-    - id: e75p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/13
-      end_date: 2025/10/31
-      operation_task_list:
-      - id: e75p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e75p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e75p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e75p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/13
-      end_date: 2025/11/18
-      operation_task_list:
-      - id: e75p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e75p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e75p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/13
-      end_date: 2025/11/26
-      operation_task_list:
-      - id: e75p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e75p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/13
-      end_date: 2025/12/05
-      operation_task_list:
-      - id: e75p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e75p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e76
-    name: SU 1076A
-    workflow: workflow
-    fab: f2
-    phase_task_list:
-    - id: e76p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/14
-      end_date: 2025/11/03
-      operation_task_list:
-      - id: e76p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e76p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e76p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e76p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/14
-      end_date: 2025/11/19
-      operation_task_list:
-      - id: e76p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e76p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e76p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/14
-      end_date: 2025/11/27
-      operation_task_list:
-      - id: e76p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e76p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/14
-      end_date: 2025/12/08
-      operation_task_list:
-      - id: e76p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e76p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e77
-    name: SU 1077A
-    workflow: workflow
-    fab: f6
-    phase_task_list:
-    - id: e77p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/14
-      end_date: 2025/11/03
-      operation_task_list:
-      - id: e77p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e77p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e77p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e77p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/14
-      end_date: 2025/11/19
-      operation_task_list:
-      - id: e77p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e77p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e77p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/14
-      end_date: 2025/11/27
-      operation_task_list:
-      - id: e77p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e77p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/14
-      end_date: 2025/12/08
-      operation_task_list:
-      - id: e77p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e77p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e78
-    name: SU 1078A
-    workflow: workflow
-    fab: f4
-    phase_task_list:
-    - id: e78p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/15
-      end_date: 2025/11/04
-      operation_task_list:
-      - id: e78p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e78p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e78p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e78p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/15
-      end_date: 2025/11/20
-      operation_task_list:
-      - id: e78p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e78p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e78p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/15
-      end_date: 2025/11/28
-      operation_task_list:
-      - id: e78p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e78p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/15
-      end_date: 2025/12/09
-      operation_task_list:
-      - id: e78p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e78p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e79
-    name: SU 1079A
-    workflow: workflow
-    fab: f3
-    phase_task_list:
-    - id: e79p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/15
-      end_date: 2025/11/04
-      operation_task_list:
-      - id: e79p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e79p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e79p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e79p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/15
-      end_date: 2025/11/20
-      operation_task_list:
-      - id: e79p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e79p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e79p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/15
-      end_date: 2025/11/28
-      operation_task_list:
-      - id: e79p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e79p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/15
-      end_date: 2025/12/09
-      operation_task_list:
-      - id: e79p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e79p4o2
-        name: Mech
-        operation: p4o2
-        workload_days: 8
-  - id: e80
-    name: SU 1080A
-    workflow: workflow
-    fab: f2
-    phase_task_list:
-    - id: e80p1
-      name: Module Setup
-      phase: p1
-      start_date: 2025/10/15
-      end_date: 2025/10/30
-      operation_task_list:
-      - id: e80p1o1
-        name: Heavy
-        operation: p1o1
-        workload_days: 30
-      - id: e80p1o2
-        name: Mech
-        operation: p1o2
-        workload_days: 20
-      - id: e80p1o3
-        name: Elec
-        operation: p1o3
-        workload_days: 20
-    - id: e80p2
-      name: Hardware Setup
-      phase: p2
-      start_date: 2025/10/15
-      end_date: 2025/11/13
-      operation_task_list:
-      - id: e80p2o1
-        name: Mech
-        operation: p2o1
-        workload_days: 30
-      - id: e80p2o2
-        name: Elec
-        operation: p2o2
-        workload_days: 25
-    - id: e80p3
-      name: Function Setup
-      phase: p3
-      start_date: 2025/10/15
-      end_date: 2025/11/21
-      operation_task_list:
-      - id: e80p3o1
-        name: QC
-        operation: p3o1
-        workload_days: 15
-    - id: e80p4
-      name: Acceptance Inspection
-      phase: p4
-      start_date: 2025/10/15
-      end_date: 2025/12/03
-      operation_task_list:
-      - id: e80p4o1
-        name: QC
-        operation: p4o1
-        workload_days: 12
-      - id: e80p4o2
         name: Mech
         operation: p4o2
         workload_days: 8
@@ -15415,7 +14622,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w87
     operation_task: e1p4o1
     start_date: 2025/10/03
@@ -15427,7 +14634,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w63
     operation_task: e1p4o1
     start_date: 2025/10/03
@@ -15439,7 +14646,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w326
     operation_task: e1p4o2
     start_date: 2025/10/09
@@ -15525,7 +14732,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w383
     operation_task: e2p4o1
     start_date: 2025/10/07
@@ -15539,7 +14746,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w186
     operation_task: e2p4o1
     start_date: 2025/10/07
@@ -15553,7 +14760,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w282
     operation_task: e2p4o2
     start_date: 2025/10/02
@@ -15563,7 +14770,7 @@ schedule:
       hour: 12
     - date: 2025/10/03
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w21
     operation_task: e2p4o2
     start_date: 2025/10/02
@@ -15573,7 +14780,7 @@ schedule:
       hour: 12
     - date: 2025/10/03
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w50
     operation_task: e2p4o2
     start_date: 2025/10/02
@@ -15583,7 +14790,7 @@ schedule:
       hour: 12
     - date: 2025/10/03
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w50
     operation_task: e3p3o1
     start_date: 2025/10/06
@@ -15597,7 +14804,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w214
     operation_task: e3p3o1
     start_date: 2025/10/06
@@ -15611,7 +14818,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w310
     operation_task: e3p3o1
     start_date: 2025/10/06
@@ -15625,7 +14832,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w196
     operation_task: e3p4o1
     start_date: 2025/10/13
@@ -15723,7 +14930,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w72
     operation_task: e4p3o1
     start_date: 2025/10/07
@@ -15737,7 +14944,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w125
     operation_task: e4p3o1
     start_date: 2025/10/07
@@ -15751,7 +14958,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w98
     operation_task: e4p4o1
     start_date: 2025/10/24
@@ -15837,7 +15044,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w14
     operation_task: e5p4o1
     start_date: 2025/10/07
@@ -15851,7 +15058,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w178
     operation_task: e5p4o1
     start_date: 2025/10/07
@@ -15865,7 +15072,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w35
     operation_task: e5p4o2
     start_date: 2025/10/20
@@ -15915,7 +15122,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w357
     operation_task: e6p3o1
     start_date: 2025/10/07
@@ -15929,7 +15136,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w259
     operation_task: e6p3o1
     start_date: 2025/10/07
@@ -15943,7 +15150,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w376
     operation_task: e6p4o1
     start_date: 2025/10/15
@@ -16151,7 +15358,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w300
     operation_task: e8p3o1
     start_date: 2025/10/06
@@ -16167,7 +15374,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w265
     operation_task: e8p3o1
     start_date: 2025/10/06
@@ -16183,7 +15390,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w236
     operation_task: e8p4o1
     start_date: 2025/10/27
@@ -16321,7 +15528,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w364
     operation_task: e9p4o1
     start_date: 2025/10/03
@@ -16333,7 +15540,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w17
     operation_task: e9p4o1
     start_date: 2025/10/03
@@ -16345,7 +15552,7 @@ schedule:
       hour: 12
     - date: 2025/10/07
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w396
     operation_task: e9p4o2
     start_date: 2025/10/20
@@ -16749,7 +15956,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w241
     operation_task: e13p3o1
     start_date: 2025/10/07
@@ -16763,7 +15970,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w69
     operation_task: e13p3o1
     start_date: 2025/10/07
@@ -16777,7 +15984,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w106
     operation_task: e13p4o1
     start_date: 2025/10/14
@@ -16863,7 +16070,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w210
     operation_task: e14p3o1
     start_date: 2025/10/06
@@ -16877,7 +16084,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w322
     operation_task: e14p3o1
     start_date: 2025/10/06
@@ -16891,7 +16098,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w254
     operation_task: e14p4o1
     start_date: 2025/10/22
@@ -17103,7 +16310,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w15
     operation_task: e16p3o1
     start_date: 2025/10/07
@@ -17117,7 +16324,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w365
     operation_task: e16p3o1
     start_date: 2025/10/07
@@ -17131,7 +16338,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w151
     operation_task: e16p4o1
     start_date: 2025/10/29
@@ -17219,7 +16426,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w393
     operation_task: e17p3o1
     start_date: 2025/10/06
@@ -17235,7 +16442,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w85
     operation_task: e17p3o1
     start_date: 2025/10/06
@@ -17251,7 +16458,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w398
     operation_task: e17p4o1
     start_date: 2025/10/20
@@ -17607,7 +16814,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w82
     operation_task: e20p3o1
     start_date: 2025/10/07
@@ -17621,7 +16828,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w78
     operation_task: e20p3o1
     start_date: 2025/10/07
@@ -17635,7 +16842,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w309
     operation_task: e20p4o1
     start_date: 2025/10/23
@@ -17775,7 +16982,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w22
     operation_task: e21p4o1
     start_date: 2025/10/06
@@ -17789,7 +16996,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w24
     operation_task: e21p4o1
     start_date: 2025/10/06
@@ -17803,7 +17010,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w71
     operation_task: e21p4o2
     start_date: 2025/11/03
@@ -17861,7 +17068,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w102
     operation_task: e22p3o1
     start_date: 2025/10/06
@@ -17877,7 +17084,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w32
     operation_task: e22p3o1
     start_date: 2025/10/06
@@ -17893,7 +17100,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w273
     operation_task: e22p4o1
     start_date: 2025/10/24
@@ -18375,7 +17582,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w61
     operation_task: e25p2o1
     start_date: 2025/10/06
@@ -18395,7 +17602,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w228
     operation_task: e25p2o1
     start_date: 2025/10/06
@@ -18415,7 +17622,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w231
     operation_task: e25p2o2
     start_date: 2025/10/03
@@ -18433,7 +17640,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w118
     operation_task: e25p2o2
     start_date: 2025/10/03
@@ -18451,7 +17658,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w134
     operation_task: e25p2o2
     start_date: 2025/10/03
@@ -18469,7 +17676,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w341
     operation_task: e25p3o1
     start_date: 2025/10/13
@@ -18577,7 +17784,7 @@ schedule:
       hour: 10
     - date: 2025/10/08
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w216
     operation_task: e25p4o2
     start_date: 2025/10/06
@@ -18589,7 +17796,7 @@ schedule:
       hour: 10
     - date: 2025/10/08
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w172
     operation_task: e25p4o2
     start_date: 2025/10/06
@@ -18601,7 +17808,7 @@ schedule:
       hour: 10
     - date: 2025/10/08
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w177
     operation_task: e26p3o1
     start_date: 2025/10/22
@@ -18761,7 +17968,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w391
     operation_task: e27p2o1
     start_date: 2025/10/03
@@ -18789,7 +17996,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w114
     operation_task: e27p2o1
     start_date: 2025/10/03
@@ -18817,7 +18024,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w91
     operation_task: e27p2o2
     start_date: 2025/10/06
@@ -18837,7 +18044,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w25
     operation_task: e27p2o2
     start_date: 2025/10/06
@@ -18857,7 +18064,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w315
     operation_task: e27p2o2
     start_date: 2025/10/06
@@ -18877,7 +18084,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w353
     operation_task: e27p3o1
     start_date: 2025/10/20
@@ -19341,7 +18548,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w141
     operation_task: e29p2o2
     start_date: 2025/10/06
@@ -19361,7 +18568,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w386
     operation_task: e29p2o2
     start_date: 2025/10/06
@@ -19381,7 +18588,7 @@ schedule:
       hour: 10
     - date: 2025/10/14
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w365
     operation_task: e29p3o1
     start_date: 2025/10/13
@@ -19863,7 +19070,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w173
     operation_task: e31p2o2
     start_date: 2025/10/06
@@ -19883,7 +19090,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w98
     operation_task: e31p2o2
     start_date: 2025/10/06
@@ -19903,7 +19110,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w129
     operation_task: e31p3o1
     start_date: 2025/10/27
@@ -20297,7 +19504,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w136
     operation_task: e33p2o1
     start_date: 2025/10/06
@@ -20319,7 +19526,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w184
     operation_task: e33p2o1
     start_date: 2025/10/06
@@ -20341,7 +19548,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w300
     operation_task: e33p2o2
     start_date: 2025/10/08
@@ -20557,7 +19764,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w240
     operation_task: e34p2o1
     start_date: 2025/10/07
@@ -20581,7 +19788,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w319
     operation_task: e34p2o1
     start_date: 2025/10/07
@@ -20605,7 +19812,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w45
     operation_task: e34p2o2
     start_date: 2025/10/17
@@ -21539,7 +20746,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w182
     operation_task: e38p1o3
     start_date: 2025/10/06
@@ -21555,7 +20762,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w68
     operation_task: e38p1o3
     start_date: 2025/10/06
@@ -21571,7 +20778,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w1
     operation_task: e38p2o1
     start_date: 2025/10/29
@@ -21831,7 +21038,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w349
     operation_task: e39p2o1
     start_date: 2025/10/06
@@ -21857,7 +21064,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w235
     operation_task: e39p2o1
     start_date: 2025/10/06
@@ -21883,7 +21090,7 @@ schedule:
       hour: 8
     - date: 2025/10/17
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w368
     operation_task: e39p2o2
     start_date: 2025/10/16
@@ -22085,7 +21292,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w353
     operation_task: e40p1o3
     start_date: 2025/10/06
@@ -22101,7 +21308,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w266
     operation_task: e40p1o3
     start_date: 2025/10/06
@@ -22117,7 +21324,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w255
     operation_task: e40p2o1
     start_date: 2025/10/06
@@ -22139,7 +21346,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w238
     operation_task: e40p2o1
     start_date: 2025/10/06
@@ -22161,7 +21368,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w180
     operation_task: e40p2o1
     start_date: 2025/10/06
@@ -22183,7 +21390,7 @@ schedule:
       hour: 10
     - date: 2025/10/15
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w136
     operation_task: e40p2o2
     start_date: 2025/10/14
@@ -22715,7 +21922,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w261
     operation_task: e42p1o3
     start_date: 2025/10/06
@@ -22731,7 +21938,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w368
     operation_task: e42p1o3
     start_date: 2025/10/06
@@ -22747,7 +21954,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w105
     operation_task: e42p2o1
     start_date: 2025/10/23
@@ -23005,7 +22212,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w341
     operation_task: e43p1o2
     start_date: 2025/10/02
@@ -23023,7 +22230,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w133
     operation_task: e43p1o2
     start_date: 2025/10/02
@@ -23041,7 +22248,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w5
     operation_task: e43p1o3
     start_date: 2025/10/09
@@ -23385,7 +22592,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w311
     operation_task: e44p1o2
     start_date: 2025/10/02
@@ -23405,7 +22612,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w172
     operation_task: e44p1o2
     start_date: 2025/10/02
@@ -23425,7 +22632,7 @@ schedule:
       hour: 8
     - date: 2025/10/10
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w129
     operation_task: e44p1o3
     start_date: 2025/10/06
@@ -23441,7 +22648,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w329
     operation_task: e44p1o3
     start_date: 2025/10/06
@@ -23457,7 +22664,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w149
     operation_task: e44p1o3
     start_date: 2025/10/06
@@ -23473,7 +22680,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w111
     operation_task: e44p2o1
     start_date: 2025/10/23
@@ -24153,7 +23360,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w222
     operation_task: e46p1o1
     start_date: 2025/10/02
@@ -24173,7 +23380,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w58
     operation_task: e46p1o1
     start_date: 2025/10/02
@@ -24193,7 +23400,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w97
     operation_task: e46p1o2
     start_date: 2025/10/06
@@ -24211,7 +23418,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w104
     operation_task: e46p1o2
     start_date: 2025/10/06
@@ -24229,7 +23436,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w229
     operation_task: e46p1o2
     start_date: 2025/10/06
@@ -24247,7 +23454,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w168
     operation_task: e46p1o3
     start_date: 2025/10/06
@@ -24263,7 +23470,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w296
     operation_task: e46p1o3
     start_date: 2025/10/06
@@ -24279,7 +23486,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w224
     operation_task: e46p1o3
     start_date: 2025/10/06
@@ -24295,7 +23502,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w316
     operation_task: e46p2o1
     start_date: 2025/10/30
@@ -24599,7 +23806,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w312
     operation_task: e47p1o3
     start_date: 2025/10/06
@@ -24615,7 +23822,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w263
     operation_task: e47p1o3
     start_date: 2025/10/06
@@ -24631,7 +23838,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w33
     operation_task: e47p2o1
     start_date: 2025/10/17
@@ -25283,7 +24490,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w162
     operation_task: e49p1o1
     start_date: 2025/10/02
@@ -25305,7 +24512,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w34
     operation_task: e49p1o1
     start_date: 2025/10/02
@@ -25327,7 +24534,7 @@ schedule:
       hour: 10
     - date: 2025/10/13
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w12
     operation_task: e49p1o2
     start_date: 2025/10/20
@@ -25407,7 +24614,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w367
     operation_task: e49p1o3
     start_date: 2025/10/02
@@ -25427,7 +24634,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w124
     operation_task: e49p1o3
     start_date: 2025/10/02
@@ -25447,7 +24654,7 @@ schedule:
       hour: 10
     - date: 2025/10/10
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w251
     operation_task: e49p2o1
     start_date: 2025/10/10
@@ -25593,7 +24800,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w204
     operation_task: e49p3o1
     start_date: 2025/10/06
@@ -25607,7 +24814,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w52
     operation_task: e49p3o1
     start_date: 2025/10/06
@@ -25621,7 +24828,7 @@ schedule:
       hour: 10
     - date: 2025/10/09
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w273
     operation_task: e49p4o1
     start_date: 2025/11/10
@@ -25835,7 +25042,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w119
     operation_task: e50p1o3
     start_date: 2025/10/06
@@ -25851,7 +25058,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w112
     operation_task: e50p1o3
     start_date: 2025/10/06
@@ -25867,7 +25074,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w52
     operation_task: e50p2o1
     start_date: 2025/10/17
@@ -26157,7 +25364,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w153
     operation_task: e51p1o1
     start_date: 2025/10/06
@@ -26177,7 +25384,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w363
     operation_task: e51p1o1
     start_date: 2025/10/06
@@ -26197,7 +25404,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w62
     operation_task: e51p1o2
     start_date: 2025/10/10
@@ -26663,7 +25870,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w123
     operation_task: e52p1o2
     start_date: 2025/10/06
@@ -26679,7 +25886,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w355
     operation_task: e52p1o2
     start_date: 2025/10/06
@@ -26695,7 +25902,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w382
     operation_task: e52p1o3
     start_date: 2025/10/02
@@ -26711,7 +25918,7 @@ schedule:
       hour: 12
     - date: 2025/10/08
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w189
     operation_task: e52p1o3
     start_date: 2025/10/02
@@ -26727,7 +25934,7 @@ schedule:
       hour: 12
     - date: 2025/10/08
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w236
     operation_task: e52p1o3
     start_date: 2025/10/02
@@ -26743,7 +25950,7 @@ schedule:
       hour: 12
     - date: 2025/10/08
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w167
     operation_task: e52p2o1
     start_date: 2025/10/28
@@ -27125,7 +26332,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w28
     operation_task: e53p1o3
     start_date: 2025/10/06
@@ -27141,7 +26348,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w366
     operation_task: e53p1o3
     start_date: 2025/10/06
@@ -27157,7 +26364,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w188
     operation_task: e53p2o1
     start_date: 2025/10/29
@@ -27441,7 +26648,7 @@ schedule:
       hour: 12
     - date: 2025/10/15
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w308
     operation_task: e54p1o1
     start_date: 2025/10/07
@@ -27461,7 +26668,7 @@ schedule:
       hour: 12
     - date: 2025/10/15
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w166
     operation_task: e54p1o1
     start_date: 2025/10/07
@@ -27481,7 +26688,7 @@ schedule:
       hour: 12
     - date: 2025/10/15
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w209
     operation_task: e54p1o2
     start_date: 2025/10/09
@@ -27917,7 +27124,7 @@ schedule:
       hour: 12
     - date: 2025/10/13
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w156
     operation_task: e55p1o2
     start_date: 2025/10/07
@@ -27933,7 +27140,7 @@ schedule:
       hour: 12
     - date: 2025/10/13
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w121
     operation_task: e55p1o2
     start_date: 2025/10/07
@@ -27949,7 +27156,7 @@ schedule:
       hour: 12
     - date: 2025/10/13
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w163
     operation_task: e55p1o3
     start_date: 2025/10/03
@@ -27965,7 +27172,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w193
     operation_task: e55p1o3
     start_date: 2025/10/03
@@ -27981,7 +27188,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w20
     operation_task: e55p1o3
     start_date: 2025/10/03
@@ -27997,7 +27204,7 @@ schedule:
       hour: 12
     - date: 2025/10/09
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w311
     operation_task: e55p2o1
     start_date: 2025/10/20
@@ -28281,7 +27488,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w3
     operation_task: e56p1o1
     start_date: 2025/10/02
@@ -28301,7 +27508,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w49
     operation_task: e56p1o1
     start_date: 2025/10/02
@@ -28321,7 +27528,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w268
     operation_task: e56p1o2
     start_date: 2025/10/16
@@ -28829,7 +28036,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w234
     operation_task: e57p1o3
     start_date: 2025/10/06
@@ -28845,7 +28052,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w359
     operation_task: e57p1o3
     start_date: 2025/10/06
@@ -28861,7 +28068,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w288
     operation_task: e57p2o1
     start_date: 2025/10/27
@@ -29185,7 +28392,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w177
     operation_task: e58p1o2
     start_date: 2025/10/03
@@ -29203,7 +28410,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w347
     operation_task: e58p1o2
     start_date: 2025/10/03
@@ -29221,7 +28428,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w70
     operation_task: e58p1o3
     start_date: 2025/10/10
@@ -30045,7 +29252,7 @@ schedule:
       hour: 8
     - date: 2025/10/14
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w4
     operation_task: e60p1o2
     start_date: 2025/10/06
@@ -30065,7 +29272,7 @@ schedule:
       hour: 8
     - date: 2025/10/14
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w83
     operation_task: e60p1o2
     start_date: 2025/10/06
@@ -30085,7 +29292,7 @@ schedule:
       hour: 8
     - date: 2025/10/14
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w64
     operation_task: e60p1o3
     start_date: 2025/10/06
@@ -30101,7 +29308,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w140
     operation_task: e60p1o3
     start_date: 2025/10/06
@@ -30117,7 +29324,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w40
     operation_task: e60p1o3
     start_date: 2025/10/06
@@ -30133,7 +29340,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w396
     operation_task: e60p2o1
     start_date: 2025/10/24
@@ -30413,7 +29620,7 @@ schedule:
       hour: 10
     - date: 2025/10/16
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w335
     operation_task: e61p1o1
     start_date: 2025/10/07
@@ -30435,7 +29642,7 @@ schedule:
       hour: 10
     - date: 2025/10/16
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w342
     operation_task: e61p1o1
     start_date: 2025/10/07
@@ -30457,7 +29664,7 @@ schedule:
       hour: 10
     - date: 2025/10/16
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w300
     operation_task: e61p1o2
     start_date: 2025/10/13
@@ -30533,7 +29740,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w399
     operation_task: e61p1o3
     start_date: 2025/10/06
@@ -30549,7 +29756,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w48
     operation_task: e61p1o3
     start_date: 2025/10/06
@@ -30565,7 +29772,7 @@ schedule:
       hour: 12
     - date: 2025/10/10
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w136
     operation_task: e61p2o1
     start_date: 2025/10/27
@@ -31269,7 +30476,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w2
     operation_task: e63p1o1
     start_date: 2025/10/06
@@ -31289,7 +30496,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w74
     operation_task: e63p1o1
     start_date: 2025/10/06
@@ -31309,7 +30516,7 @@ schedule:
       hour: 12
     - date: 2025/10/14
       hour: 12
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w115
     operation_task: e63p1o2
     start_date: 2025/10/20
@@ -32113,7 +31320,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w51
     operation_task: e65p1o1
     start_date: 2025/10/07
@@ -32137,7 +31344,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w225
     operation_task: e65p1o1
     start_date: 2025/10/07
@@ -32161,7 +31368,7 @@ schedule:
       hour: 10
     - date: 2025/10/17
       hour: 10
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w227
     operation_task: e65p1o2
     start_date: 2025/10/20
@@ -32651,7 +31858,7 @@ schedule:
       hour: 8
     - date: 2025/10/15
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w379
     operation_task: e66p1o3
     start_date: 2025/10/06
@@ -32673,7 +31880,7 @@ schedule:
       hour: 8
     - date: 2025/10/15
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w88
     operation_task: e66p1o3
     start_date: 2025/10/06
@@ -32695,7 +31902,7 @@ schedule:
       hour: 8
     - date: 2025/10/15
       hour: 8
-    plan_flexibility: Fixed
+    plan_flexibility: Flexible
   - worker: w199
     operation_task: e66p2o1
     start_date: 2025/11/10
@@ -33392,4 +32599,4 @@ schedule:
     - date: 2025/11/27
       hour: 8
     plan_flexibility: Flexible
-  cut_off_date: 2025/10/09
+  cut_off_date: 2025/10/02

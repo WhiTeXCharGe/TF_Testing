@@ -270,3 +270,57 @@ Per-constraint scores:
   com.yourorg.scheduler/soft-fab-preference score=0hard/0medium/13250soft matches=1606
   com.yourorg.scheduler/soft-same-company-pairs score=0hard/0medium/343500soft matches=363
   com.yourorg.scheduler/soft-smaller-hours score=0hard/0medium/-143520soft matches=362
+============================================================
+Run at: 2026-02-04T21:31:00.550568800
+Stage1 duration: 00:00:19.258
+Stage2 duration: 00:01:00.167
+Final score: 2146832356hard/0medium/-601371soft
+Plan range (plan_range): 2025-09-01 .. 2025-12-04
+Cut-off date (cut_off_date): 2025-10-02  (cutOffDayId=31)
+DaySlots in solver: id=31..90 (count=60), dates=2025-10-02 .. 2025-11-30
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e47, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window score=-347hard/0medium/0soft matches=76
+  com.yourorg.scheduler/block-hours-in-allowed score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-no-underfill score=2146836480hard/0medium/0soft matches=204
+  com.yourorg.scheduler/block-overfill-at-most-one-day score=-1034hard/0medium/0soft matches=37
+  com.yourorg.scheduler/phase-order score=-1056hard/0medium/0soft matches=129
+  com.yourorg.scheduler/seat-daily-cap-12h score=-1498hard/0medium/0soft matches=237
+  com.yourorg.scheduler/seat-one-factory-per-emp-day score=-189hard/0medium/0soft matches=181
+  com.yourorg.scheduler/seat-worker-available-all-days score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/soft-balance-block-avg-skill score=0hard/0medium/-754747soft matches=353
+  com.yourorg.scheduler/soft-balance-total-hours score=0hard/0medium/-23004soft matches=371
+  com.yourorg.scheduler/soft-earlier-start score=0hard/0medium/-6867soft matches=362
+  com.yourorg.scheduler/soft-encourage-skill-variety score=0hard/0medium/-35253soft matches=251
+  com.yourorg.scheduler/soft-fab-preference score=0hard/0medium/11950soft matches=1479
+  com.yourorg.scheduler/soft-same-company-pairs score=0hard/0medium/343030soft matches=305
+  com.yourorg.scheduler/soft-smaller-hours score=0hard/0medium/-136480soft matches=362
+============================================================
+Run at: 2026-02-04T22:06:42.749991500
+Stage1 duration: 00:30:00.607
+Stage2 duration: 00:01:00.230
+Final score: -2783hard/0medium/-580617soft
+Plan range (plan_range): 2025-09-01 .. 2025-12-04
+Cut-off date (cut_off_date): 2025-10-02  (cutOffDayId=31)
+DaySlots in solver: id=31..90 (count=60), dates=2025-10-02 .. 2025-11-30
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e51, e52, e53, e54, e55, e56, e57, e58, e59, e6, e60, e61, e62, e63, e64, e65, e66, e67, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e47, e5, e6, e7, e8, e9
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window score=-348hard/0medium/0soft matches=104
+  com.yourorg.scheduler/block-hours-in-allowed score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-no-underfill score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-overfill-at-most-one-day score=-544hard/0medium/0soft matches=39
+  com.yourorg.scheduler/phase-order score=-578hard/0medium/0soft matches=100
+  com.yourorg.scheduler/seat-daily-cap-12h score=-1194hard/0medium/0soft matches=168
+  com.yourorg.scheduler/seat-one-factory-per-emp-day score=-119hard/0medium/0soft matches=118
+  com.yourorg.scheduler/seat-worker-available-all-days score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/soft-balance-block-avg-skill score=0hard/0medium/-719373soft matches=367
+  com.yourorg.scheduler/soft-balance-total-hours score=0hard/0medium/-28196soft matches=392
+  com.yourorg.scheduler/soft-earlier-start score=0hard/0medium/-7533soft matches=362
+  com.yourorg.scheduler/soft-encourage-skill-variety score=0hard/0medium/-35475soft matches=293
+  com.yourorg.scheduler/soft-fab-preference score=0hard/0medium/12830soft matches=1606
+  com.yourorg.scheduler/soft-same-company-pairs score=0hard/0medium/343210soft matches=363
+  com.yourorg.scheduler/soft-smaller-hours score=0hard/0medium/-146080soft matches=362

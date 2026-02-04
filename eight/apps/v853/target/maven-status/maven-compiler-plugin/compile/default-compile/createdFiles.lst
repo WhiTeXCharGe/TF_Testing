@@ -14,9 +14,9 @@ com\yourorg\scheduler\ExportSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$CrewSeat.class
 com\yourorg\scheduler\EmployeeSchedule$FlexibleAssign.class
 com\yourorg\scheduler\EmployeeSchedule$OpDef.class
+com\yourorg\scheduler\EmployeeSchedule$SinglePassConstraints$EmpDayRegion.class
 com\yourorg\scheduler\EmployeeSchedule$DaySlot.class
 com\yourorg\scheduler\IncrementalSchedulerRunner.class
-com\yourorg\scheduler\EmployeeSchedule$SinglePassConstraints$EmpDay.class
 com\yourorg\scheduler\EmployeeSchedule$FixedAssign.class
 com\yourorg\scheduler\EmployeeSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$StartDayStrength.class
