@@ -27,6 +27,10 @@
 import os
 import math
 import yaml
+try:
+    from yaml import CSafeLoader as _YamlLoader
+except Exception:
+    _YamlLoader = None
 from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 from collections import defaultdict, Counter
@@ -93,13 +97,38 @@ def _to_int_or_default(v, default=0):
 
 def has_skill_for_assignment(skills: dict, module_id: str, op_id: str) -> bool:
     """
-    Support both styles of skill_map keys:
-      - 'p1o1'   (operation id only)
-      - 'm1p1o1' (module + operation id)
+    Support multiple skill_map key styles.
     Returns True if the worker has a positive skill level for this op.
+
+    Supported keys (checked in this order):
+      1) op_id only                    -> e.g. 'p1', 'p1o1', 'other_op'
+      2) module_id + op_id             -> e.g. 'f22_3p1o1'
+      3) module base + op_id           -> e.g. 'f22p1o1'  (when module_id like 'f22_3')
     """
     if not skills:
         return False
+
+    # 1) Plain op id
+    lvl = skills.get(op_id)
+    if _to_int_or_default(lvl, 0) > 0:
+        return True
+
+    # 2) Module + op id (exact)
+    if module_id:
+        key2 = f"{module_id}{op_id}"
+        lvl2 = skills.get(key2)
+        if _to_int_or_default(lvl2, 0) > 0:
+            return True
+
+        # 3) Module base (before first underscore) + op id
+        base = str(module_id).split("_")[0]
+        if base and base != module_id:
+            key3 = f"{base}{op_id}"
+            lvl3 = skills.get(key3)
+            if _to_int_or_default(lvl3, 0) > 0:
+                return True
+
+    return False
 
     # 1) Plain op id, e.g. 'p1o1'
     lvl = skills.get(op_id)
@@ -151,7 +180,7 @@ def compute_preference_score(region_level, company_level, max_level=PREF_MAX_LEV
 # ------------------------------- LOADERS -------------------------------
 def load_env(env_path):
     with open(env_path, "r", encoding="utf-8") as f:
-        env = yaml.safe_load(f)
+        env = (yaml.load(f, Loader=_YamlLoader) if _YamlLoader else yaml.safe_load(f))
     env = env.get("environment", {})
 
     workflows = {w["id"]: w for w in env.get("workflow_list", [])}
@@ -186,7 +215,7 @@ def load_env(env_path):
 
 def load_schedule(path):
     with open(path, "r", encoding="utf-8") as f:
-        s = yaml.safe_load(f)
+        s = (yaml.load(f, Loader=_YamlLoader) if _YamlLoader else yaml.safe_load(f))
     s = s.get("schedule", s)
 
     plan_start = _d(s["plan_range"]["start_date"])
@@ -1470,6 +1499,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left", vertical="center", wrap_text=True)
     thin   = Side(style="thin", color="999999")
+    border_thin = Border(top=thin, bottom=thin, left=thin, right=thin)
 
     ws = wb.create_sheet("Tasks x Dates")
 
@@ -1477,7 +1507,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
     headers = ["module", "module_name", "fab_id", "fab_name", "region", "customer", "task","manager",
                "required_hours", "assigned_hours"]
     for col, h in enumerate(headers, start=1):
-        c = ws.cell(row=1, column=col, value=h); c.font = bold; c.alignment = center
+        c = ws.cell(row=1, column=col, value=h); c.font = bold
 
     # date columns
     dates = []
@@ -1487,7 +1517,7 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
 
     for j, dt in enumerate(dates, start=len(headers)+1):
         c = ws.cell(row=1, column=j, value=dt.isoformat())
-        c.font = bold; c.alignment = center
+        c.font = bold
         ws.column_dimensions[get_column_letter(j)].width = 28  # a bit wider for ★ tags
 
     widths = [8, 18, 8, 14, 12, 10, 18, 18, 16, 16]
@@ -1557,8 +1587,6 @@ def write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, 
             txt = " | ".join(sorted(maps["tde"].get((m_id, op_id, dt), [])))
 
             c = ws.cell(row=r_idx, column=j, value=txt)
-            c.alignment = center
-            c.border = Border(top=thin, bottom=thin, left=thin, right=thin)
 
             # ----- GREY OUT fab/region/customer unavailable (no global weekend) -----
             is_closed = (
@@ -1690,7 +1718,7 @@ def write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios, cal):
 
         for j, dt in enumerate(dates, start=len(base_headers)+1):
             txt = " | ".join(sorted(maps["edt"].get((comp, wname, dt), [])))
-            c = ws.cell(row=i, column=j, value=txt); c.alignment = center
+            c = ws.cell(row=i, column=j, value=txt)
 
             # ----- GREY OUT only personal unavailable dates (no weekend / no company-off) -----
             personal_off = bool(wid) and (dt in cal["worker_off"].get(wid, set()))
@@ -2376,7 +2404,22 @@ def write_sheet_breaches_plan(wb, vios):
     bold = Font(bold=True)
     ws = wb.create_sheet("Breaches (Plan)")
 
-    row = 1
+    # ---- Summary counts (top) ----
+    summary = [
+        ("Phase window breaches", len(vios.get("tbl_window", []) or [])),
+        ("Phase ordering breaches", len(vios.get("tbl_order", []) or [])),
+        ("Unavailable breaches (Tasks)", len(vios.get("tbl_unavail_task", []) or [])),
+    ]
+
+    ws.cell(row=1, column=1, value="Breach counts (rows)").font = bold
+    ws.cell(row=2, column=1, value="category").font = bold
+    ws.cell(row=2, column=2, value="count").font = bold
+    for i, (k, v) in enumerate(summary, start=3):
+        ws.cell(row=i, column=1, value=k)
+        ws.cell(row=i, column=2, value=int(v))
+
+    # Leave some space, then start the detailed lists
+    row = 3 + len(summary) + 2
     def write_table(title, headers, rows):
         nonlocal row
         ws.cell(row=row, column=1, value=title).font = bold
@@ -2417,7 +2460,28 @@ def write_sheet_breaches_employee(wb, vios):
     bold = Font(bold=True)
     ws = wb.create_sheet("Breaches (Employees)")
 
-    row = 1
+    # ---- Summary counts (top) ----
+    summary = [
+        ("Skill mismatches", len(vios.get("tbl_skill", []) or [])),
+        ("Staffing min/max breaches", len(vios.get("tbl_minmax", []) or [])),
+        ("Tasks with no manager", len(vios.get("tbl_no_manager", []) or [])),
+        ("Unavailable breaches (Employees)", len(vios.get("tbl_unavail_emp", []) or [])),
+        ("Region overstay", len(vios.get("tbl_overstay", []) or [])),
+        ("Region change gap", len(vios.get("tbl_move_gap", []) or [])),
+        ("Overtime limit breaches (monthly)", len(vios.get("tbl_ot_month", []) or [])),
+        ("Overtime limit breaches (annual)", len(vios.get("tbl_ot_annual", []) or [])),
+        ("Preference breaches (suitability level 0)", len(vios.get("tbl_pref_breach", []) or [])),
+    ]
+
+    ws.cell(row=1, column=1, value="Breach counts (rows)").font = bold
+    ws.cell(row=2, column=1, value="category").font = bold
+    ws.cell(row=2, column=2, value="count").font = bold
+    for i, (k, v) in enumerate(summary, start=3):
+        ws.cell(row=i, column=1, value=k)
+        ws.cell(row=i, column=2, value=int(v))
+
+    # Leave some space, then start the detailed lists
+    row = 3 + len(summary) + 2
     def write_table(title, headers, rows):
         nonlocal row
         ws.cell(row=row, column=1, value=title).font = bold
@@ -2528,7 +2592,7 @@ def write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios):
     # Header
     base_headers = ["company", "employee"]
     for i, h in enumerate(base_headers, start=1):
-        c = ws.cell(row=1, column=i, value=h); c.font = bold; c.alignment = center
+        c = ws.cell(row=1, column=i, value=h); c.font = bold
 
     # Dates row
     dates = []
@@ -2538,7 +2602,7 @@ def write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios):
 
     for j, dt in enumerate(dates, start=len(base_headers)+1):
         c = ws.cell(row=1, column=j, value=dt.strftime("%Y-%m-%d"))
-        c.font = bold; c.alignment = center
+        c.font = bold
         ws.column_dimensions[get_column_letter(j)].width = 10
 
     ws.column_dimensions["A"].width = 14
@@ -2621,22 +2685,23 @@ def main():
     write_sheet_tasks_dates(wb, plan_start, plan_end, env, maps, modules, vios, req_task, cal)
     # ===== SHEET 2 =====
     write_sheet_employees_dates(wb, plan_start, plan_end, env, maps, vios, cal)
-    # # ===== SHEET 3: Dashboard (Plan) =====
-    # write_sheet_dashboard_plan(
-    #     wb, plan_start, plan_end, env, maps,
-    #     modules, assignments, assignment_blocks, req_module
-    # )
-    # # ===== SHEET 4: Dashboard (Employees) =====
-    # write_sheet_dashboard_employees(
-    #     wb, plan_start, plan_end, env, maps,
-    #     modules, assignments, assignment_blocks, req_module, vios
-    # )
-    # # ===== SHEET 5: Breaches (Plan) =====
-    # write_sheet_breaches_plan(wb, vios)
-    # # ===== SHEET 6: Breaches (Employees) =====
-    # write_sheet_breaches_employee(wb, vios)
-    # # ===== SHEET 7: Moving plan =====
-    # write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios)
+
+    # ===== SHEET 3: Dashboard (Plan) =====
+    write_sheet_dashboard_plan(
+        wb, plan_start, plan_end, env, maps,
+        modules, assignments, assignment_blocks, req_module
+    )
+    # ===== SHEET 4: Dashboard (Employees) =====
+    write_sheet_dashboard_employees(
+        wb, plan_start, plan_end, env, maps,
+        modules, assignments, assignment_blocks, req_module, vios
+    )
+    # ===== SHEET 5: Breaches (Plan) =====
+    write_sheet_breaches_plan(wb, vios)
+    # ===== SHEET 6: Breaches (Employees) =====
+    write_sheet_breaches_employee(wb, vios)
+    # ===== SHEET 7: Moving plan =====
+    write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios)
 
     wb.save(args.out)
     print(f"Wrote Excel: {os.path.abspath(args.out)}")
