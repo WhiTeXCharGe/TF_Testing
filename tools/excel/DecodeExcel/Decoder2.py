@@ -28,7 +28,7 @@
 #              - workers come from スキル集計 only
 #              - tasks come from 新規製番リスト only
 #              - assignment_list is empty
-READ_ALL_DATA = False
+READ_ALL_DATA = True
 #
 # 2) DATE_RANGE:
 #    - None: include all tasks and all SU_Others dates
@@ -38,13 +38,14 @@ READ_ALL_DATA = False
 #
 # Example:
 #   DATE_RANGE = "2026/01/01-2026/03/31"
-DATE_RANGE = "2026/01/01-2026/06/30"
+DATE_RANGE = None
 # ---------------------------------------------------------------------
 
 import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+import unicodedata
 
 import pandas as pd
 import yaml
@@ -120,6 +121,23 @@ def load_sheet_as_df(path: str, sheet_name: str) -> pd.DataFrame:
     ws = wb[sheet_name]
     rows = [list(r) for r in ws.iter_rows(values_only=True)]
     return pd.DataFrame(rows)
+
+_WS_RE = re.compile(r"\s+")
+_ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\ufeff"}
+
+def _clean_text(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = s.replace("　", " ")
+    for z in _ZERO_WIDTH:
+        s = s.replace(z, "")
+    return s
+
+def _norm_name(s: str) -> str:
+    s = _clean_text(s)
+    s = _WS_RE.sub("", s).strip()   # remove ALL spaces
+    return s
 
 
 # ============================================================
@@ -260,18 +278,21 @@ def parse_su_others(path: str, sheet_names=("予定表_2024", "予定表_2025"),
             company_str = "" if company is None else str(company).strip()
             name_str = str(name).strip()
 
+
             free_slot = row_cells[4].value if len(row_cells) >= 5 else None
             is_manager = bool(isinstance(free_slot, str) and "責" in free_slot)
 
-            key = (company_str, name_str)
+            # MERGE BY NAME ONLY (ignore company)
+            key = _norm_name(name_str)
             if key not in worker_key_to_id:
                 wid = f"w{len(worker_key_to_id) + 1:03d}"
                 worker_key_to_id[key] = wid
                 company_id = get_worker_company_id(company_str)
+
                 worker_acc[key] = {
                     "id": wid,
                     "name": name_str,
-                    "worker_company": company_id,
+                    "worker_company": company_id,   # keep the FIRST seen company from SU_Others
                     "is_manager": is_manager,
                     "unavailable_set": set(),
                 }
@@ -558,10 +579,11 @@ def parse_skill_excel(path: str, sheet_name: str = "Sheet1"):
         p2_lvl = _skill_level(df.iat[r, p2_total], df.iat[r, p2_min])
         p3_lvl = _skill_level(df.iat[r, p3_total], df.iat[r, p3_min])
 
-        key = (_norm(comp_s), _norm(name_s))
+        key = _norm_name(name_s)   # NAME ONLY
         skill_levels[key] = {"p1": p1_lvl, "p2": p2_lvl, "p3": p3_lvl, "p4": p3_lvl}
         if key not in people_meta:
-            people_meta[key] = {"company": comp_s, "name": name_s}
+            people_meta[key] = {"company": comp_s, "name": name_s}  # just for display / append worker
+
 
     return skill_levels, people_meta
 
@@ -691,6 +713,59 @@ def build_env_and_schedule_v2(
                 "fab_suitability_map": [],
                 "unavailable_dates": [],
             })
+    # ---------- merge workers from skill excel into SU_Others workers ----------
+    # key = (norm(company), norm(name))
+    wc_id_to_name = {wc["id"]: wc["name"] for wc in worker_company_list}
+    wc_name_to_id = {wc["name"]: wc["id"] for wc in worker_company_list}
+
+    def get_or_create_wc_id(company_name: str) -> str:
+        company_name = str(company_name).strip() if isinstance(company_name, str) else ""
+        if company_name not in wc_name_to_id:
+            cid = f"wc{len(wc_name_to_id) + 1}"
+            wc_name_to_id[company_name] = cid
+            worker_company_list.append({
+                "id": cid,
+                "name": company_name,
+                "annual_overtime_limit": 360,
+                "monthly_overtime_limit": 40,
+                "unavailable_dates": [],
+            })
+            wc_id_to_name[cid] = company_name
+        return wc_name_to_id[company_name]
+
+    # build SU_Others worker index
+    worker_by_key = {}
+    for w in worker_list:
+        key = _norm_name(w["name"])
+        worker_by_key[key] = w
+
+    # append workers that exist only in スキル集計
+    next_worker_num = 1
+    if worker_list:
+        # worker ids are like w001
+        try:
+            next_worker_num = max(int(w["id"][1:]) for w in worker_list) + 1
+        except Exception:
+            next_worker_num = len(worker_list) + 1
+
+    for key, meta in skill_people.items():   # key is already normalized name
+        if key in worker_by_key:
+            continue
+
+        cid = get_or_create_wc_id(meta["company"])  # company only used for new worker creation
+        new_w = {
+            "id": f"w{next_worker_num:03d}",
+            "name": meta["name"],        # original display name
+            "worker_company": cid,
+            "is_manager": False,
+            "skill_map": {},
+            "fab_suitability_map": [],
+            "unavailable_dates": [],
+        }
+        next_worker_num += 1
+        worker_list.append(new_w)
+        worker_by_key[key] = new_w
+
 
     # ---------- customer/region/fab lists from task csv ----------
     customer_name_to_id = {"OTHER": "c_other"}
@@ -704,7 +779,8 @@ def build_env_and_schedule_v2(
         "max_stay_on": 90,
         "max_annual_stay": 240,
         "stay_off_interval": 3,
-        "unavailable_dates": [{"weekly": {"weekdays": ["sat", "sun"]}}],
+        "unavailable_dates": [],
+        # "unavailable_dates": [{"weekly": {"weekdays": ["sat", "sun"]}}],
     }]
     fab_list = [{"id": "f_other", "name": "Other", "region": "r_other", "customer_company": "c_other", "unavailable_dates": []}]
 
@@ -749,6 +825,21 @@ def build_env_and_schedule_v2(
         fid = get_fab_id(t.get("fab_name"), t.get("country"), t.get("customer"))
         t["fab"] = fid
 
+    def build_transite_day_map(region_list, days_default: int = 1):
+        """
+        Create all ordered pairs (from != to) for region transit gap.
+        days is always days_default.
+        """
+        region_ids = [r["id"] for r in region_list if r.get("id")]
+        out = []
+        for fr in region_ids:
+            for to in region_ids:
+                if fr == to:
+                    continue
+                out.append({"from": fr, "to": to, "days": days_default})
+        return out
+    
+    transite_day_map = build_transite_day_map(region_list, days_default=1)
     # ---------- environment ----------
     environment = {
         "workflow_list": [
@@ -768,7 +859,7 @@ def build_env_and_schedule_v2(
                 "phase_list": [{
                     "id": "other_p1",
                     "name": "Other work",
-                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 3}],
+                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 8}],
                 }],
             },
             {
@@ -777,7 +868,7 @@ def build_env_and_schedule_v2(
                 "phase_list": [{
                     "id": "pb_p1",
                     "name": "Personal Business",
-                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 1}],
+                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 8}],
                 }],
             },
         ],
@@ -785,8 +876,8 @@ def build_env_and_schedule_v2(
         "region_list": region_list,
         "customer_company_list": customer_company_list,
         "worker_company_list": worker_company_list,
+        "transite_day_map": transite_day_map,
         "worker_list": worker_list,
-        "transite_day_map": [],
     }
 
     # ---------- assignments ----------
@@ -797,26 +888,35 @@ def build_env_and_schedule_v2(
     else:
         assignments, misc_tasks, personal_tasks, inferred_worker_phase = [], [], [], defaultdict(set)
 
-    # ---------- fill skills ----------
+    # ---------- fill skills (merge by max) ----------
     wc_id_to_name = {wc["id"]: wc["name"] for wc in worker_company_list}
 
-    workers_with_skill_excel = set()
+    # init base
     for w in environment["worker_list"]:
-        w["skill_map"] = {"p1": 0, "p2": 0, "p3": 0, "p4": 0, "other_op": 1, "personal_business_op": 1}
-        key = (_norm(wc_id_to_name.get(w["worker_company"], "")), _norm(w["name"]))
-        if key in skill_levels:
-            w["skill_map"].update(skill_levels[key])
-            workers_with_skill_excel.add(w["id"])
+        w["skill_map"] = {
+            "p1": 0, "p2": 0, "p3": 0, "p4": 0,
+            "other_op": 1, "personal_business_op": 1
+        }
 
+    # inferred from SU_Others (min 1)
     for wid, ops in inferred_worker_phase.items():
-        if wid in workers_with_skill_excel:
+        w = next((x for x in environment["worker_list"] if x["id"] == wid), None)
+        if not w:
             continue
         for op in ops:
             if op in ("p1", "p2", "p3", "p4"):
-                # minimum inferred level is 1
-                w = next((x for x in environment["worker_list"] if x["id"] == wid), None)
-                if w:
-                    w["skill_map"][op] = max(w["skill_map"].get(op, 0), 1)
+                w["skill_map"][op] = max(w["skill_map"].get(op, 0), 1)
+
+    # merge skill excel by MAX
+    for w in environment["worker_list"]:
+        key = _norm_name(w["name"])
+        excel_map = skill_levels.get(key)
+        if not excel_map:
+            continue
+        for op in ("p1", "p2", "p3", "p4"):
+            w["skill_map"][op] = max(int(w["skill_map"].get(op, 0)), int(excel_map.get(op, 0)))
+
+
 
     # ---------- plan_range ----------
     all_dates = [d for d in task_data["date_list"] if isinstance(d, pd.Timestamp)]
