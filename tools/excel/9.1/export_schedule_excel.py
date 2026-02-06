@@ -454,6 +454,28 @@ def build_op_task_index(modules):
                     "op_name": ot.get("name", "") or ot.get("operation", ""),
                 }
     return idx
+
+
+def parse_op_task_ids(op_task: str, op_task_index: dict):
+    """Return (module_id, op_id) for an operation_task string, robust across dataset formats."""
+    if not op_task:
+        return ("", "")
+    meta = op_task_index.get(op_task) if op_task_index else None
+    if meta:
+        return (meta.get("m_id", "") or "", meta.get("op_id", "") or "")
+    # Fallbacks:
+    # - dataset9 style: 'f22_3_p3' -> module 'f22_3', op 'f22p3' or 'p3'
+    m = re.match(r"^(.*)_p(\d+)$", str(op_task))
+    if m:
+        mid = m.group(1)
+        op = f"{mid.split('_')[0]}p{m.group(2)}"  # best-effort
+        return (mid, op)
+    # - legacy style without underscores: 'm1p1o1' -> split at first 'p'
+    s = str(op_task)
+    i = s.find("p")
+    if i > 0:
+        return (s[:i], s[i:])
+    return (s, "")
 # ---------------------------- AGGREGATIONS -----------------------------
 def build_maps(env, modules, assignments):
     workers   = env["workers"]
@@ -712,8 +734,7 @@ def build_preference_match_rows(env, modules, assignments, maps):
     for a in assignments:
         wid     = a["worker"]
         op_task = a["operation_task"]
-        idx     = op_task.find("p")
-        m_id    = op_task[:idx] if idx > 0 else op_task
+        m_id, _op_id = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
 
         meta   = mod_meta_cols.get(m_id, {}) or {}
         fab_id = meta.get("fab_id")
@@ -1197,17 +1218,13 @@ def build_blocks_quality(modules, assignments, assignment_blocks, env, maps):
     for a in assignments:
         wid = a["worker"]
         op_task = a["operation_task"]
-        idx = op_task.find("p")
-        m_id = op_task[:idx] if idx > 0 else op_task
-        op_id = op_task[idx:] if idx > 0 else ""
+        m_id, op_id = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
         per_w_mop_day_hours[(wid, m_id, op_id, a["date"])] = a["hours"]
 
     # Collate blocks from assignment_blocks
     # group key
     def blk_key(wid, op_task, start_date, end_date):
-        idx = op_task.find("p")
-        m_id = op_task[:idx] if idx > 0 else op_task
-        op_id = op_task[idx:] if idx > 0 else ""
+        m_id, op_id = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
         # infer hours: take hours on the first work date if present; else 8
         hours = 8
         wdates = []
@@ -1371,8 +1388,7 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
     # Helper: get region for an assignment (via module -> fab -> region)
     def region_for_assignment(a):
         op_task = a["operation_task"]
-        idx = op_task.find("p")
-        m_id = op_task[:idx] if idx > 0 else op_task
+        m_id, _op = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
         meta = maps["mod_meta_cols"].get(m_id, {})
         fab_id = meta.get("fab_id")
         rid = cal["fab_region"].get(fab_id)
@@ -1791,8 +1807,7 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
     assigned_by_module = defaultdict(int)
     for a in assignments:
         op_task = a["operation_task"]
-        idx = op_task.find("p")
-        m_id = op_task[:idx] if idx > 0 else op_task
+        m_id, _op = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
         assigned_by_module[m_id] += a["hours"]
 
     total_req = sum(req_module.values())
@@ -1824,8 +1839,7 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
     last_assigned_by_module = {}
     for a in assignments:
         op_task = a["operation_task"]
-        idx = op_task.find("p")
-        m_id_a = op_task[:idx] if idx > 0 else op_task
+        m_id_a, _op = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
         prev = last_assigned_by_module.get(m_id_a)
         if prev is None or a["date"] > prev:
             last_assigned_by_module[m_id_a] = a["date"]
@@ -2250,9 +2264,7 @@ def write_sheet_dashboard_employees(
     for a in assignments:
         wid = a["worker"]
         op_task = a["operation_task"]
-        idx = op_task.find("p")
-        m_id = op_task[:idx] if idx > 0 else op_task
-        op_id = op_task[idx:] if idx > 0 else ""
+        m_id, op_id = parse_op_task_ids(op_task, maps.get("op_task_index", {}))
 
         key = (wid, op_id)
         agg = per_emp_task[key]
