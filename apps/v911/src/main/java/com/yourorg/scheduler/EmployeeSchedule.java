@@ -333,7 +333,7 @@ static class OpTaskMeta {
 
     static final int DAILY_CAP = 12;
     static double TARGET_HOURS_PER_EMP = 0.0;
-
+    static final int REQUIRED_HOURS_PER_WORKLOAD_DAY = 10;
     static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
     static final Map<String,Double>  OP_AVG_SKILL = new HashMap<>();
 
@@ -721,7 +721,7 @@ static class OpTaskMeta {
                 employeeAvailableAllDays(f),
                 oneFactoryPerEmpPerDay(f),
                 dailyCap12h(f),
-                // regionTransitGap(f), 
+                regionTransitGap(f), 
                 // regionStayMaxOn(f), 
                 // regionAnnualStayMax(f),
                 // annualOvertimeLimit(f),  
@@ -1637,39 +1637,40 @@ for (Map<String,Object> wf : wfl) {
                 List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
 
-String opTaskId = safeStr(ot.get("id"));
-String opId = safeStr(ot.get("operation"));
-if (opId.isBlank()) opId = safeStr(ot.get("operation_id"));
+                    String opTaskId = safeStr(ot.get("id"));
+                    String opId = safeStr(ot.get("operation"));
+                    if (opId.isBlank()) opId = safeStr(ot.get("operation_id"));
 
-if (!opTaskId.isBlank()) {
-    OpTaskMeta m = new OpTaskMeta();
-    m.module = module;
-    m.workflowId = workflowId;
-    m.factory = fab;
-    m.opId = opId;
-    m.phaseId = phId;
-    m.phaseNum = phNum;
-    opTaskMeta.put(opTaskId, m);
-}
-                    int workloadDays = parseInt(ot.get("workload_days"), 0);
+                    if (!opTaskId.isBlank()) {
+                        OpTaskMeta m = new OpTaskMeta();
+                        m.module = module;
+                        m.workflowId = workflowId;
+                        m.factory = fab;
+                        m.opId = opId;
+                        m.phaseId = phId;
+                        m.phaseNum = phNum;
+                        opTaskMeta.put(opTaskId, m);
+                    }
+                                        int workloadDays = parseInt(ot.get("workload_days"), 0);
 
 
-OpDef od = null;
-if (!workflowId.isBlank()) {
-    od = opdef.get(workflowId + "|" + opId);
-}
-if (od == null) {
-    od = opdef.get(opId);
-}
-if (od == null) {
-    throw new IllegalArgumentException(
-            "operation " + opId + " (workflow=" + workflowId + ") missing in EnvConfig");
-}
+                    OpDef od = null;
+                    if (!workflowId.isBlank()) {
+                        od = opdef.get(workflowId + "|" + opId);
+                    }
+                    if (od == null) {
+                        od = opdef.get(opId);
+                    }
+                    if (od == null) {
+                        throw new IllegalArgumentException(
+                                "operation " + opId + " (workflow=" + workflowId + ") missing in EnvConfig");
+                    }
+                    int baseline = (od.allowed.size() == 1 && od.allowed.get(0) == 4)
+                            ? 4
+                            : REQUIRED_HOURS_PER_WORKLOAD_DAY;
 
-                    int baseline = (od.allowed.size() == 1 && od.allowed.get(0) == 4) ? 4 : 8;
                     int req = workloadDays * baseline;
                     required.merge(module + "|" + opId, req, Integer::sum);
-
                     TaskWindow tw = new TaskWindow();
                     tw.module = module; tw.workflowId = workflowId; tw.factory = fab;
                     tw.phaseId = phId; tw.phaseNum = phNum;
@@ -1995,7 +1996,10 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
         // ---- dynamic block creation ----
         for (TaskWindow w : sch.windows) {
-            int baseline = (w.allowed.size() == 1 && w.allowed.get(0) == 4) ? 4 : 8;
+            int baseline = (w.allowed.size() == 1 && w.allowed.get(0) == 4)
+                    ? 4
+                    : REQUIRED_HOURS_PER_WORKLOAD_DAY;
+
             int totalReq = w.workloadDays * baseline;
             int fixed = sch.fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
             int req = Math.max(0, totalReq - fixed);
