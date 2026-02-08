@@ -38,7 +38,7 @@ READ_ALL_DATA = True
 #
 # Example:
 #   DATE_RANGE = "2026/01/01-2026/03/31"
-DATE_RANGE = None
+DATE_RANGE = "2025/07/01-2026/06/30"
 # ---------------------------------------------------------------------
 
 import re
@@ -210,8 +210,8 @@ def _find_date_header_ws(ws, max_scan_rows=12):
             return r, date_cols, dt_by_col
     raise RuntimeError("Could not find date header row in SU_Others.")
 
-
-def parse_su_others(path: str, sheet_names=("予定表_2024", "予定表_2025"), date_filter=None):
+# scan for the sheet name "予定表_2024", "予定表_2025"
+def parse_su_others(path: str, sheet_names=("予定表_2025",), date_filter=None):
     """Parse SU_Others. If date_filter is set, only reads date columns within the range."""
     wb = load_workbook(path, data_only=True, read_only=False)
     used_sheets = [s for s in sheet_names if s in wb.sheetnames]
@@ -600,46 +600,82 @@ def build_assignments(su_data: dict, task_data: dict, date_filter=None):
     f_start, f_end = date_filter if date_filter else (None, None)
 
     known_assign_map = defaultdict(list)
-    misc_label_dates = defaultdict(set)
-    misc_worker_label_dates = defaultdict(list)
 
-    personal_label_dates = defaultdict(set)
-    personal_worker_label_dates = defaultdict(list)
+    # --- misc ("other") buckets ---
+    misc_label_dates = defaultdict(set)          # label -> set(dt)
+    misc_worker_label_dates = defaultdict(list)  # (wid,label) -> [dt...]
 
+    # --- personal business buckets ---
+    personal_label_dates = defaultdict(set)          # label -> set(dt)
+    personal_worker_label_dates = defaultdict(list)  # (wid,label) -> [dt...]
+
+    # for skill inference
     inferred_worker_phase = defaultdict(set)
 
+    # --------------------------
+    # 1) NORMAL CELLS
+    # --------------------------
     for (wid, dt), text in worker_date_map.items():
         if f_start is not None and f_end is not None and (dt < f_start or dt > f_end):
             continue
 
         code = extract_tool_code(text)
+
+        # tool-code matches 新規製番リスト (task list)
         if code and code in code_to_phases:
+            matched = False
             for phase_meta in code_to_phases[code]:
                 ps = phase_meta["start"]
                 pe = phase_meta["end"]
                 if ps <= dt <= pe:
                     known_assign_map[(wid, phase_meta["phase_id"])].append(dt)
-                    inferred_worker_phase[wid].add(phase_meta["operation"])
+                    inferred_worker_phase[wid].add(phase_meta["operation"])  # p1..p4
+                    matched = True
                     break
-        else:
-            label = text.strip()
-            misc_label_dates[label].add(dt)
-            misc_worker_label_dates[(wid, label)].append(dt)
+            if matched:
+                continue
 
+        # otherwise: treat as "other" (misc)
+        label = text.strip() if isinstance(text, str) else ""
+        if not label:
+            label = "other"
+        misc_label_dates[label].add(dt)
+        misc_worker_label_dates[(wid, label)].append(dt)
+
+    # --------------------------
+    # 2) GREY CELLS = Personal Business
+    # --------------------------
     for (wid, dt), text in worker_personal_map.items():
         if f_start is not None and f_end is not None and (dt < f_start or dt > f_end):
             continue
+
         label = text.strip() if isinstance(text, str) and text.strip() else "personal_business"
         personal_label_dates[label].add(dt)
         personal_worker_label_dates[(wid, label)].append(dt)
 
+    # --------------------------
+    # 3) TOOL ASSIGNMENTS (Flexible)
+    # --------------------------
     assignments = []
 
+    # Option B: phase_id -> total worker-days (1 worker x 1 day = 1)
+    phase_workerday_count = defaultdict(int)
+
+    # compute worker-days per phase (unique dates per worker)
+    tmp_phase_to_worker_dates = defaultdict(set)  # (phase_id, wid) -> set(dt)
+    for (wid, phase_id), dates in known_assign_map.items():
+        for d in dates:
+            tmp_phase_to_worker_dates[(phase_id, wid)].add(d)
+
+    for (phase_id, wid), dset in tmp_phase_to_worker_dates.items():
+        phase_workerday_count[phase_id] += len(dset)
+
+    # IMPORTANT: restore tool assignments creation
     for (wid, phase_id), dates in known_assign_map.items():
         uniq_dates = sorted(set(dates))
         if not uniq_dates:
             continue
-        work_date_list = [{"hour": 12, "date": _to_ymd(d)} for d in uniq_dates]
+        work_date_list = [{"hour": 10, "date": _to_ymd(d)} for d in uniq_dates]
         assignments.append({
             "worker": wid,
             "operation_task": phase_id,
@@ -649,11 +685,124 @@ def build_assignments(su_data: dict, task_data: dict, date_filter=None):
             "plan_flexibility": "Flexible",
         })
 
-    # In this Decoder2, misc/personal tasks exist only when we read SU_Others
-    # (kept same behavior as before)
+    # --------------------------
+    # 4) BUILD MISC ("OTHER") WORKFLOW TASKS + FIXED ASSIGNMENTS
+    # --------------------------
     misc_tasks = []
+    misc_label_to_phase = {}
+    misc_counter = 1
+
+    for label, dates in misc_label_dates.items():
+        if not dates:
+            continue
+        start = min(dates)
+        end = max(dates)
+        task_id = f"misc_{misc_counter}"
+        misc_counter += 1
+        phase_id = f"{task_id}_p1"
+        misc_label_to_phase[label] = {"phase_id": phase_id, "start": start, "end": end}
+
+        workload_days = int((end - start).days) + 1
+
+        misc_tasks.append({
+            "id": task_id,
+            "name": label,
+            "workflow": "wf_other",
+            "fab": None,
+            "phase_task_list": [{
+                "id": phase_id,
+                "name": "Other work",
+                "phase": "other_p1",
+                "start_date": _to_ymd(start),
+                "end_date": _to_ymd(end),
+                "operation_task_list": [{
+                    "id": phase_id,
+                    "name": "Other work",
+                    "operation": "other_op",
+                    "workload_days": workload_days,
+                }],
+            }],
+        })
+
+    for (wid, label), dates in misc_worker_label_dates.items():
+        uniq_dates = sorted(set(dates))
+        if not uniq_dates:
+            continue
+        meta = misc_label_to_phase.get(label)
+        if not meta:
+            continue
+        phase_id = meta["phase_id"]
+        work_date_list = [{"hour": 10, "date": _to_ymd(d)} for d in uniq_dates]
+        assignments.append({
+            "worker": wid,
+            "operation_task": phase_id,
+            "start_date": _to_ymd(uniq_dates[0]),
+            "end_date": _to_ymd(uniq_dates[-1]),
+            "work_date_list": work_date_list,
+            "plan_flexibility": "Fixed",
+        })
+
+    # --------------------------
+    # 5) BUILD PERSONAL BUSINESS TASKS + FIXED ASSIGNMENTS
+    # --------------------------
     personal_tasks = []
-    return assignments, misc_tasks, personal_tasks, inferred_worker_phase
+    pb_label_to_phase = {}
+    pb_counter = 1
+
+    for label, dates in personal_label_dates.items():
+        if not dates:
+            continue
+        start = min(dates)
+        end = max(dates)
+        task_id = f"pb_{pb_counter}"
+        pb_counter += 1
+        phase_id = f"{task_id}_p1"
+        pb_label_to_phase[label] = {"phase_id": phase_id, "start": start, "end": end}
+
+        workload_days = int((end - start).days) + 1
+
+        personal_tasks.append({
+            "id": task_id,
+            "name": label,
+            "workflow": "wf_personal_business",
+            "fab": None,
+            "phase_task_list": [{
+                "id": phase_id,
+                "name": "Personal Business",
+                "phase": "pb_p1",
+                "start_date": _to_ymd(start),
+                "end_date": _to_ymd(end),
+                "operation_task_list": [{
+                    "id": phase_id,
+                    "name": "Personal Business",
+                    "operation": "personal_business_op",
+                    "workload_days": workload_days,
+                }],
+            }],
+        })
+
+    for (wid, label), dates in personal_worker_label_dates.items():
+        uniq_dates = sorted(set(dates))
+        if not uniq_dates:
+            continue
+        meta = pb_label_to_phase.get(label)
+        if not meta:
+            continue
+        phase_id = meta["phase_id"]
+        work_date_list = [{"hour": 10, "date": _to_ymd(d)} for d in uniq_dates]
+        assignments.append({
+            "worker": wid,
+            "operation_task": phase_id,
+            "start_date": _to_ymd(uniq_dates[0]),
+            "end_date": _to_ymd(uniq_dates[-1]),
+            "work_date_list": work_date_list,
+            "plan_flexibility": "Fixed",
+        })
+
+    # IMPORTANT: return must be here (outside loops)
+    return assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count
+
+
 
 
 # ============================================================
@@ -803,7 +952,8 @@ def build_env_and_schedule_v2(
                 "max_stay_on": 90,
                 "max_annual_stay": 240,
                 "stay_off_interval": 3,
-                "unavailable_dates": [{"weekly": {"weekdays": ["sat", "sun"]}}],
+                "unavailable_dates": [],
+                # "unavailable_dates": [{"weekly": {"weekdays": ["sat", "sun"]}}],
             })
         return region_name_to_id[nm]
 
@@ -847,10 +997,10 @@ def build_env_and_schedule_v2(
                 "id": "wf_tool",
                 "name": "Tool Install",
                 "phase_list": [
-                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 3}]},
+                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
+                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
+                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
+                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
                 ],
             },
             {
@@ -859,16 +1009,16 @@ def build_env_and_schedule_v2(
                 "phase_list": [{
                     "id": "other_p1",
                     "name": "Other work",
-                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 8}],
+                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 8}],
                 }],
             },
             {
                 "id": "wf_personal_business",
-                "name": "Personal Business (from SU_Others grey cells)",
+                "name": "Personal Business",
                 "phase_list": [{
                     "id": "pb_p1",
                     "name": "Personal Business",
-                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [8], "min_worker_num": 1, "max_worker_num": 8}],
+                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 8}],
                 }],
             },
         ],
@@ -882,11 +1032,12 @@ def build_env_and_schedule_v2(
 
     # ---------- assignments ----------
     if read_all_data and su_data is not None:
-        assignments, misc_tasks, personal_tasks, inferred_worker_phase = build_assignments(
+        assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count = build_assignments(
             su_data, task_data, date_filter=date_filter if f_start is not None else None
         )
     else:
-        assignments, misc_tasks, personal_tasks, inferred_worker_phase = [], [], [], defaultdict(set)
+        assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count = [], [], [], defaultdict(set), defaultdict(int)
+
 
     # ---------- fill skills (merge by max) ----------
     wc_id_to_name = {wc["id"]: wc["name"] for wc in worker_company_list}
@@ -936,6 +1087,19 @@ def build_env_and_schedule_v2(
         for k in ("module_code", "customer", "country", "fab_name"):
             t2.pop(k, None)
         tool_tasks_for_yaml.append(t2)
+    # ---------------------------------------------------------
+    # workload_days = max(optionA(window days), optionB(worker-days))
+    # Only applies to wf_tool phases (eN_p1..p4)
+    # ---------------------------------------------------------
+    for t in tool_tasks_for_yaml:
+        if t.get("workflow") != "wf_tool":
+            continue
+        for pt in t.get("phase_task_list", []):
+            phase_id = pt.get("id")  # this is "eN_pX"
+            b = int(phase_workerday_count.get(phase_id, 0))  # Option B
+            for ot in pt.get("operation_task_list", []):
+                a = int(ot.get("workload_days", 0))  # Option A (already computed from window)
+                ot["workload_days"] = max(a, b)
 
     schedule = {
         "plan_range": plan_range,
