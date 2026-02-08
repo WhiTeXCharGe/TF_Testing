@@ -8,6 +8,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
@@ -74,10 +76,20 @@ public class EmployeeSchedule {
         if (o == null) return def;
         try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return def; }
     }
+    static final Pattern PHASE_NUM_PAT = Pattern.compile("p(\\d+)", Pattern.CASE_INSENSITIVE);
+
     static int phaseNumFromId(String pid) {
         if (pid == null) return 0;
-        try { return Integer.parseInt(pid.trim().toLowerCase().replace("p","")); }
-        catch (Exception e) { return 0; }
+        String t = pid.trim();
+        Matcher m = PHASE_NUM_PAT.matcher(t);
+
+        int last = 0;
+        while (m.find()) {
+            try {
+                last = Integer.parseInt(m.group(1));
+            } catch (Exception ignore) {}
+        }
+        return last; // 0 if not found
     }
 
     static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -759,7 +771,8 @@ static class OpTaskMeta {
 
         Constraint phaseOrder(ConstraintFactory f) {
             return f.forEach(BlockDecision.class)
-                .join(f.forEach(BlockDecision.class),
+                .filter(a -> a.phaseNum > 0)
+                .join(f.forEach(BlockDecision.class).filter(b -> b.phaseNum > 0),
                     Joiners.equal((BlockDecision a) -> a.module, (BlockDecision b) -> b.module),
                     Joiners.equal((BlockDecision a) -> a.phaseNum + 1, (BlockDecision b) -> b.phaseNum))
                 .filter((a,b) -> a.startDay != null && a.days != null && b.startDay != null
