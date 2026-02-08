@@ -1664,8 +1664,8 @@ for (Map<String,Object> wf : wfl) {
                         m.phaseNum = phNum;
                         opTaskMeta.put(opTaskId, m);
                     }
-                                        int workloadDays = parseInt(ot.get("workload_days"), 0);
 
+                    int workloadDays = parseInt(ot.get("workload_days"), 0);
 
                     OpDef od = null;
                     if (!workflowId.isBlank()) {
@@ -1684,6 +1684,7 @@ for (Map<String,Object> wf : wfl) {
 
                     int req = workloadDays * baseline;
                     required.merge(module + "|" + opId, req, Integer::sum);
+
                     TaskWindow tw = new TaskWindow();
                     tw.module = module; tw.workflowId = workflowId; tw.factory = fab;
                     tw.phaseId = phId; tw.phaseNum = phNum;
@@ -1696,51 +1697,41 @@ for (Map<String,Object> wf : wfl) {
         }
 
         // ---- Determine cut-off date ----
-        // If "cut_off_date" exists in schedule, use it; otherwise use plan_range.start_date
         LocalDate cutOffDate;
         Object cutOffObj = s.get("cut_off_date");
         if (cutOffObj != null) {
             cutOffDate = LocalDate.parse(safeStr(cutOffObj).replace("-", "/"), DF);
         } else {
-            cutOffDate = start; // default: anything that ends before plan_start is "finished"
+            cutOffDate = start;
         }
         int cutOffDayId = (int) (cutOffDate.toEpochDay() - start.toEpochDay());
 
         // ---- Decide activeModules using grace-gap x days ----
         Set<String> activeModules = new HashSet<>();
         if (TRIM_FINISHED_MODULES) {
-            int grace = MODULE_TRIM_GRACE_DAYS; // x days of tolerance
+            int grace = MODULE_TRIM_GRACE_DAYS;
 
             for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
                 String module = e.getKey();
                 int lastEndDayId = e.getValue();
-
-                // gap = how many days between module end and cutOff
                 int gap = cutOffDayId - lastEndDayId;
-
-                // if module ended long before cutOff, treat as finished (trim)
-                // if it ended close to or after cutOff, keep as active
                 if (gap <= grace) {
                     activeModules.add(module);
                 }
             }
 
-            // Edge case: if none pass the rule, keep everything
             if (activeModules.isEmpty()) {
                 activeModules.addAll(moduleLastEnd.keySet());
             }
 
-            // remove windows for modules that are already fully finished
             windows.removeIf(w -> !activeModules.contains(w.module));
 
-            // remove requiredByKey entries for finished modules
             required.entrySet().removeIf(e -> {
                 String key = e.getKey();
                 String mod = key.contains("|") ? key.substring(0, key.indexOf('|')) : key;
                 return !activeModules.contains(mod);
             });
         } else {
-            // No trimming → treat all modules as active
             activeModules.addAll(moduleLastEnd.keySet());
         }
 
@@ -1758,50 +1749,52 @@ for (Map<String,Object> wf : wfl) {
         Map<String,Integer> latestFixedEndAny     = new HashMap<>();
 
         for (Map<String,Object> a : asgs) {
-            String flex = safeStr(a.get("plan_flexibility"));  // e.g. "Fixed" or "Flexible"
+            String flex = safeStr(a.get("plan_flexibility"));
             String opTask = safeStr(a.get("operation_task"));
-OpTaskMeta meta = opTaskMeta.get(opTask);
+            OpTaskMeta meta = opTaskMeta.get(opTask);
 
-String module;
-String opId;
-String phId;
-int phNum;
+            String module;
+            String opId;
+            String phId;
+            int phNum;
 
-if (meta != null) {
-    module = meta.module;
-    opId   = meta.opId;
-    phId   = meta.phaseId;
-    phNum  = meta.phaseNum;
-} else {
-    // Fallback for legacy/unknown formats:
-    //  - e16p4o1  (legacy)
-    //  - e1_p1    (new underscore style: module_op)
-    //  - any other string that still contains a "p..." phase marker
-    String tmp = opTask;
+            if (meta != null) {
+                module = meta.module;
+                opId   = meta.opId;
+                phId   = meta.phaseId;
+                phNum  = meta.phaseNum;
+            } else {
+                // =========================
+                // FIX POINT IS RIGHT HERE ✅
+                // =========================
+                // Fallback for legacy/unknown formats:
+                // - e16p4o1
+                // - misc_608_p1  (module contains underscores)
+                // MUST split by LAST underscore, not first.
+                String tmp = opTask;
 
-    if (tmp.contains("_")) {
-        int us = tmp.indexOf('_');
-        module = (us > 0) ? tmp.substring(0, us) : tmp;
-        opId   = (us > 0 && us + 1 < tmp.length()) ? tmp.substring(us + 1) : "";
-    } else {
-        int idx = tmp.indexOf("p");
-        module = (idx > 0) ? tmp.substring(0, idx) : tmp;
-        opId   = (idx > 0) ? tmp.substring(idx) : "";
-    }
+                if (tmp.contains("_")) {
+                    int us = tmp.lastIndexOf('_'); // ✅ use LAST underscore
+                    module = (us > 0) ? tmp.substring(0, us) : tmp;
+                    opId   = (us > 0 && us + 1 < tmp.length()) ? tmp.substring(us + 1) : "";
+                } else {
+                    int idx = tmp.toLowerCase(Locale.ROOT).indexOf("p");
+                    module = (idx > 0) ? tmp.substring(0, idx) : tmp;
+                    opId   = (idx > 0) ? tmp.substring(idx) : "";
+                }
 
-    // clean module separators (e.g. "e1_" -> "e1")
-    while (module.endsWith("_") || module.endsWith("-")) {
-        module = module.substring(0, module.length() - 1);
-    }
+                while (module.endsWith("_") || module.endsWith("-")) {
+                    module = module.substring(0, module.length() - 1);
+                }
 
-    String pPart = opId;
-    try { pPart = opId.split("o", 2)[0]; } catch (Exception ignore) {}
-    phId = pPart;
-    phNum = phaseNumFromId(pPart);
-}
+                String pPart = opId;
+                try { pPart = opId.split("o", 2)[0]; } catch (Exception ignore) {}
+                phId  = pPart;
+                phNum = phaseNumFromId(pPart);
+            }
 
-boolean isFixed    = "fixed".equalsIgnoreCase(flex);
-boolean isFlexible = "flexible".equalsIgnoreCase(flex);
+            boolean isFixed    = "fixed".equalsIgnoreCase(flex);
+            boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
             String wid = safeStr(a.get("worker"));
 
@@ -1812,8 +1805,7 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
             int sId = (sd == null) ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
             int eId = (ed == null) ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
-            if (isFixed && eId >= Integer.MIN_VALUE) {
-                // last fixed end for (module, phase) anywhere
+            if (isFixed) {
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
 
@@ -1827,18 +1819,14 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
                 int did = (int)(d.toEpochDay() - start.toEpochDay());
                 int h = parseInt(item.get("hour"), 0);
 
-                // always store by-day hours (for both fixed and flexible)
                 byDay.merge(did, h, Integer::sum);
 
                 if (isFixed) {
                     totalFixedHours += h;
-
-                    // last fixed end inside current plan_range for this phase
                     latestFixedEndInRange.merge(module + "|" + phNum, did, Math::max);
                 }
             }
 
-            // fixed → hard background (used for OT, daily cap, one-factory-per-day, etc.)
             if (isFixed && totalFixedHours > 0) {
                 fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
@@ -1847,7 +1835,7 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
                 fa.module = module; fa.opId = opId; fa.wid = wid;
                 fa.startDayId = sId; fa.endDayId = eId;
                 fa.hoursByDay = byDay; fa.phaseId = phId; fa.phaseNum = phNum;
-                fa.factory = (meta != null) ? meta.factory : null; // will be inferred if missing
+                fa.factory = (meta != null) ? meta.factory : null;
                 fixedRows.add(fa);
             }
 
@@ -1884,9 +1872,6 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
         out.flexibleRows = flexibleRows;
         out.flexibleHoursByKey = flexibleHoursByKey;
 
-        out.activeModules = activeModules;
-        out.initialRows = initialRows;
-
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
             int prev = w.phaseNum - 1;
@@ -1902,7 +1887,6 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
             }
         }
 
-        // After pushing, some windows may have start > end (no free days left in horizon).
         for (TaskWindow w : windows) {
             if (w.startDayId > w.endDayId) {
                 System.out.printf(
@@ -1914,7 +1898,6 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
             }
         }
 
-        // ---- Decide the earliest dayId we actually keep as DaySlot ----
         if (TRIM_FINISHED_MODULES) {
             for (TaskWindow w : windows) {
                 w.startDayId = Math.max(w.startDayId, cutOffDayId);
@@ -1930,29 +1913,21 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
 
         int firstDayId = Math.max(0, cutOffDayId);
 
-        // ============================================================
-        // ROLLING HORIZON DAY SLOTS (NEW)
-        // ============================================================
-        // Only create DaySlots for a limited window after cutOffDayId.
-        // This prevents DaySlot count from growing forever when plan_end grows.
-        final int ROLLING_HORIZON_DAYS = 60; // tune: 30 / 60 / 90
-
+        final int ROLLING_HORIZON_DAYS = 60;
         int lastDayId = Math.min(horizon - 1, firstDayId + ROLLING_HORIZON_DAYS - 1);
 
-        // ---- Build DaySlots only from firstDayId .. lastDayId ----
-        // IMPORTANT: DaySlot.id stays as the *global* dayId (0-based from plan_start)
         List<DaySlot> days = new ArrayList<>();
         for (int dayId = Math.max(0, firstDayId); dayId <= lastDayId; dayId++) {
             days.add(new DaySlot(dayId, start.plusDays(dayId)));
         }
         out.daySlots = days;
 
-        out.activeModules = activeModules;
         out.cutOffDayId = cutOffDayId;
         out.cutOffDate = cutOffDate;
 
         return out;
     }
+
 
         // ---------------- Build entities for single pass ----------------
 
@@ -2607,7 +2582,7 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 30, 60);
+                "0hard/*medium/*soft", 240, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2645,8 +2620,8 @@ boolean isFlexible = "flexible".equalsIgnoreCase(flex);
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                1  /* spentMinutes */,
-                60 /* unimprovedSeconds */);
+                240  /* spentMinutes */,
+                3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);
