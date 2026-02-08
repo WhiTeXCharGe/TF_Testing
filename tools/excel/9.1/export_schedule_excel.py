@@ -69,7 +69,7 @@ BALANCE_K = 25.0  # higher = stricter penalty per dev from op_avg_skill
 # 0..PREF_MAX_LEVEL levels, 0 = NG, higher = more preferred
 PREF_MAX_LEVEL = 3
 
-
+WORK_HOURS_PER_DAY = 10
 # ------------------------------ UTILITIES ------------------------------
 def _d(s):
     """Parse 'YYYY/MM/DD' or 'YYYY-MM-DD' to date."""
@@ -800,23 +800,34 @@ def build_preference_match_rows(env, modules, assignments, maps):
     return rows
 
 # ----------------------- REQUIRED HOURS (task/module) ------------------
-def compute_required_hours_task_module(modules):
+def compute_required_hours_task_module(modules, hours_per_day=WORK_HOURS_PER_DAY):
     """Return:
-       - req_task[(m_id, op_id)] = workload_days * 8
+       - req_task[(m_id, op_id)] = workload_days * hours_per_day
        - req_module[m_id]        = sum of its tasks
     """
     req_task   = defaultdict(int)
     req_module = defaultdict(int)
+
+    # safety: ensure int and >0
+    try:
+        hpd = int(hours_per_day)
+    except Exception:
+        hpd = 8
+    if hpd <= 0:
+        hpd = 8
+
     for m in modules:
         m_id = m["id"]
         total_days = 0
         for ph in m.get("phase_task_list", []):
             for ot in ph.get("operation_task_list", []):
                 days = int(ot.get("workload_days", 0))
-                req_task[(m_id, ot["operation"])] += days * 8
+                req_task[(m_id, ot["operation"])] += days * hpd
                 total_days += days
-        req_module[m_id] = total_days * 8
+        req_module[m_id] = total_days * hpd
+
     return req_task, req_module
+
 
 # --------------------------- VIOLATION DETECTION -----------------------
 def detect_violations(env, modules, assignments, maps, cal, plan_start=None, plan_end=None):
