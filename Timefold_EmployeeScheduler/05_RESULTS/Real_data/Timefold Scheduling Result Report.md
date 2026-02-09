@@ -161,6 +161,32 @@ However:
 
 Other work and personal business use dedicated fixed workflows.
 
+
+---
+
+## 6.2 Workload Calculation Method 
+
+The workload of each 工程 is determined by taking the **maximum** of two different calculations.
+
+### Option A — Window-based workload
+
+This is the traditional method.
+
+`workload = end_date - start_date + 1`
+
+Meaning: If a phase lasts 5 calendar days, the required workload is 5.  
+
+### Option B — Actual worker assignment workload  This method uses historical SU_Others data.  Rule:
+
+1 worker working 1 day = 1 workload
+
+`Example:  - p1: 01–06   - Worker A works 03–06 → contributes 4   - Total = 4`
+### Final workload rule
+
+- final_workload = max(Option A, Option B)
+
+`Purpose:  - Prevent underestimation of manpower when historical data shows heavier effort. - Keep minimum duration requirement from planning window.`
+
 ---
 
 ## 7. Skill Map Construction (Detailed)
@@ -269,52 +295,59 @@ For each worker and each 工程:
 
 ---
 
+## 8.1 Solver Calculation Time
+
+The total solver runtime for this experiment was **8 hours**, divided into two stages:
+
+- **Phase 1 – Fix flexible assignments:** 4 hours  
+  The solver focuses on stabilizing the base plan and resolving feasibility.
+
+- **Phase 2 – Optimization:** 4 hours  
+  The solver improves balance, allocation quality, and soft constraint satisfaction.
+
+---
+
 ## 9. Solver Result Summary
 
-- **Timefold score result:**
-    
-    - Hard score: **0** (no hard constraint violation)
-        
-- **Excel analysis results:**
-    
-    - Phase order breaches: **411**
-        
-    - Tasks with no manager: **497**
+- Phase order breaches: **111**
+- Tasks with no manager: **397**
+- Region transit gap: **1680**
+- Block no underfill: **20**
         
 
 ---
 
 ## 10. Result Interpretation and Known Issues
 
-### 10.1 Phase order breaches
+### 10.1 Phase order
 
-- Decoder currently assumes all 工程 start on their defined dates.
-    
-- 工程 must finish before the next 工程 starts.
-    
-- In 新規製番リスト, some 製番 have:
-    
-    - 工程3 start date earlier than 工程2
-        
-- This causes:
-    
-    - Very short or 1-day workloads
-        
-    - Apparent phase-order violations in Excel
-        
-- These are **data consistency issues**, not solver infeasibility.
-    
+Most violations are caused by inconsistencies in 新規製番リスト,  
+for example later 工程 having earlier start dates than previous ones.
 
+---
 ### 10.2 Tasks with no manager
 
-- These mainly come from fixed **“other” tasks**.
-    
-- Since they are:
-    
-    - Fixed
-        
-    - Not adjustable by the solver
-        
-- The solver cannot inject managers into them.
-    
-- Therefore, they appear as counted violations in Excel but are expected.
+These are primarily from fixed **other** tasks.
+
+Because they are fixed, the solver cannot add managers.
+
+They are therefore expected in Excel output.
+
+---
+
+### 10.3 Region transit gap
+
+This occurs when workers are scheduled across regions without enough buffer days.
+
+The solver respects the rule, but historical fixed assignments may still produce visible counts.
+
+---
+
+### 10.4 Block no underfill
+
+A small number of blocks remain under the required staffing level.
+
+This usually happens when:
+
+- available workers are limited  
+- or skill requirements are tight
