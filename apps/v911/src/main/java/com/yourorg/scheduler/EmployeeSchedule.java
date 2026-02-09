@@ -965,7 +965,8 @@ static class OpTaskMeta {
                 })
                 .asConstraint("seat-daily-cap-12h");
         }
-        // Helper record for Uni↔Uni join
+
+        // Helper record
         static final class EmpDayRegion {
             final EmployeeFact emp;
             final int dayId;
@@ -975,69 +976,112 @@ static class OpTaskMeta {
 
         Constraint regionTransitGap(ConstraintFactory f) {
 
-            // Collect dynamic worked days per employee (only the part solver is deciding)
-            var dyn = f.forEach(DaySlot.class)
+            // Build (emp, dayId, region) for all assigned work in the horizon.
+            // Includes pinnedFixed and dynamic; excludes UNASSIGNED.
+            var worked = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
-                    Joiners.filtering((DaySlot d, CrewSeat s) ->
-                        !isUnassigned(s.employee)
-                        && !s.pinnedFixed   // fixed already in history
-                ))
+                    Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .map((d, s, b) -> {
-                    String r = CAL.regionOfFab(s.factory);
-                    return new EmpDayRegion(s.employee, d.id, r);
-                })
+                .map((d, s, b) -> new EmpDayRegion(s.employee, d.id, CAL.regionOfFab(s.factory)))
                 .filter(x -> x.region != null && !x.region.isBlank())
                 .groupBy(x -> x.emp, ConstraintCollectors.toList(x -> x));
 
-            return dyn
-                .filter((emp, list) -> emp != null && emp.id != 0
-                        && emp.histLastFixedDayId != Integer.MIN_VALUE
-                        && emp.histLastFixedRegion != null
-                        && !emp.histLastFixedRegion.isBlank()
-                        && list != null && !list.isEmpty()
-                )
+            return worked
+                .filter((emp, list) -> emp != null && emp.id != 0 && list != null && !list.isEmpty())
                 .filter((emp, list) -> {
-                    // earliest dynamic day
-                    int earliestDay = Integer.MAX_VALUE;
-                    String earliestRegion = null;
-                    for (EmpDayRegion x : list) {
-                        if (x.dayId < earliestDay) {
-                            earliestDay = x.dayId;
-                            earliestRegion = x.region;
-                        }
+                    // Return true if there is ANY violation
+                    // (we compute exact penalty in the penalize() part)
+                    List<EmpDayRegion> ds = new ArrayList<>(list);
+                    ds.sort(Comparator.comparingInt(x -> x.dayId));
+
+                    // Optional: seed with last fixed history if it is before the horizon
+                    int minDay = ds.get(0).dayId;
+                    int prevDay = Integer.MIN_VALUE;
+                    String prevRegion = null;
+
+                    if (emp.histLastFixedDayId != Integer.MIN_VALUE
+                            && emp.histLastFixedRegion != null
+                            && !emp.histLastFixedRegion.isBlank()
+                            && emp.histLastFixedDayId < minDay) {
+                        prevDay = emp.histLastFixedDayId;
+                        prevRegion = emp.histLastFixedRegion;
                     }
-                    if (earliestRegion == null) return false;
 
-                    // same region => OK
-                    if (earliestRegion.equals(emp.histLastFixedRegion)) return false;
+                    // Deduplicate per day (if any), keeping first region for that day.
+                    int i = 0;
+                    while (i < ds.size()) {
+                        int day = ds.get(i).dayId;
+                        String region = ds.get(i).region;
 
-                    int need = CAL.transitDays(emp.histLastFixedRegion, earliestRegion);
-                    if (need <= 0) return false;
+                        // skip all entries for same day
+                        int j = i + 1;
+                        while (j < ds.size() && ds.get(j).dayId == day) j++;
 
-                    // violation if new day is too soon
-                    return earliestDay <= emp.histLastFixedDayId + need;
+                        if (prevRegion != null && region != null && !region.equals(prevRegion)) {
+                            int need = CAL.transitDays(prevRegion, region);
+                            if (need > 0) {
+                                // must have at least (need) empty days between prevDay and day
+                                // meaning day >= prevDay + need + 1
+                                if (day <= prevDay + need) {
+                                    return true;
+                                }
+                            }
+                        }
+
+                        prevDay = day;
+                        prevRegion = region;
+                        i = j;
+                    }
+                    return false;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD, (emp, list) -> {
-                    int earliestDay = Integer.MAX_VALUE;
-                    String earliestRegion = null;
-                    for (EmpDayRegion x : list) {
-                        if (x.dayId < earliestDay) {
-                            earliestDay = x.dayId;
-                            earliestRegion = x.region;
-                        }
+                    // Penalty = total number of "missing gap days" across transitions
+                    List<EmpDayRegion> ds = new ArrayList<>(list);
+                    ds.sort(Comparator.comparingInt(x -> x.dayId));
+
+                    int minDay = ds.get(0).dayId;
+                    int prevDay = Integer.MIN_VALUE;
+                    String prevRegion = null;
+
+                    if (emp.histLastFixedDayId != Integer.MIN_VALUE
+                            && emp.histLastFixedRegion != null
+                            && !emp.histLastFixedRegion.isBlank()
+                            && emp.histLastFixedDayId < minDay) {
+                        prevDay = emp.histLastFixedDayId;
+                        prevRegion = emp.histLastFixedRegion;
                     }
-                    if (earliestRegion == null) return 0;
 
-                    int need = CAL.transitDays(emp.histLastFixedRegion, earliestRegion);
-                    int earliestLegal = emp.histLastFixedDayId + need + 1;
-                    return Math.max(1, earliestLegal - earliestDay);
+                    int penalty = 0;
+
+                    int i = 0;
+                    while (i < ds.size()) {
+                        int day = ds.get(i).dayId;
+                        String region = ds.get(i).region;
+
+                        int j = i + 1;
+                        while (j < ds.size() && ds.get(j).dayId == day) j++;
+
+                        if (prevRegion != null && region != null && !region.equals(prevRegion)) {
+                            int need = CAL.transitDays(prevRegion, region);
+                            if (need > 0) {
+                                int earliestLegal = prevDay + need + 1;
+                                if (day < earliestLegal) {
+                                    penalty += (earliestLegal - day);
+                                }
+                            }
+                        }
+
+                        prevDay = day;
+                        prevRegion = region;
+                        i = j;
+                    }
+
+                    return Math.max(1, penalty);
                 })
-                .asConstraint("emp-region-transit-gap-history");
+                .asConstraint("emp-region-transit-gap");
         }
-
 
         private static int maxSegmentSpanWithBreak(List<Integer> dayList, int offInterval) {
             if (dayList == null || dayList.isEmpty()) return 0;
@@ -2582,7 +2626,7 @@ for (Map<String,Object> wf : wfl) {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 240, 3600);
+                "0hard/*medium/*soft", 5, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2620,7 +2664,7 @@ for (Map<String,Object> wf : wfl) {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                240  /* spentMinutes */,
+                5  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
