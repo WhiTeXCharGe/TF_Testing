@@ -35,6 +35,15 @@ WORKLOAD_USE_WINDOW_DAYS = False
 
 # Transformation log filename
 TRANSFORMATION_LOG = "TransformationLog.txt"
+
+# If SU_Others actual span is completely outside the planned window
+# by more than this many days, cut the module from 新規製番リスト
+CUT_DISTANCE_DAYS = 365
+
+# If planned module has NO SU_Others match after cutting:
+# A) False => keep module in Schedule.yaml (no shift), workload will be 0 and show in WORKLOAD WARNING
+# B) True  => skip module entirely (do not write to Schedule.yaml, and do not show in WORKLOAD WARNING)
+SKIP_MODULE_IF_NO_SU_MATCH = True  # Option A default
 # ---------------------------------------------------------------------
 
 import re
@@ -131,6 +140,33 @@ def load_sheet_as_df_with_header(path: str, sheet_name: str, header_row: int = 0
     df.columns = headers
     df = df.reset_index(drop=True)
     return df
+
+def _planned_actual_gap_days(planned_start, planned_end, actual_start, actual_end) -> int:
+    """
+    If actual overlaps planned -> gap=0.
+    If actual is fully before planned -> gap = planned_start - actual_end
+    If actual is fully after planned -> gap = actual_start - planned_end
+    """
+    if planned_start is None or planned_end is None or actual_start is None or actual_end is None:
+        return 0
+    if actual_end < planned_start:
+        return int((planned_start - actual_end).days)
+    if actual_start > planned_end:
+        return int((actual_start - planned_end).days)
+    return 0
+
+def _remember_original_text(su_data: dict, wid: str, dt: pd.Timestamp, old_text: str, new_text: str):
+    """
+    Remember original SU cell text so we can restore it in outputs (Schedule.yaml / log),
+    while keeping the internal modified text for matching logic.
+    """
+    m = su_data.setdefault("su_outlier_original_text", {})
+    # key includes wid+date (enough because 1 cell = 1 text)
+    k = (wid, _to_ymd(dt))
+    # store only once (keep earliest/original)
+    if k not in m:
+        m[k] = {"old": old_text, "new": new_text}
+
 
 # ============================================================
 # Code extraction from SU_Others cell text
@@ -312,6 +348,236 @@ def parse_su_others(path: str, sheet_names=("予定表_2025",), date_filter=None
         "worker_personal_map": worker_personal_map,
     }
 
+
+# ============================================================
+# SU_Others outlier-cell cut (prevent horizontal drag-fill drift)
+# ============================================================
+
+def _break_tool_code(code: str) -> str:
+    """Change a valid tool code string so extract_tool_code() won't match it."""
+    if not isinstance(code, str) or len(code) < 2:
+        return "OUTLIER"
+    # Our TOOLCODE_RE ends with 'A'. Flip last char to 'X' to break the pattern.
+    return code[:-1] + "X"
+
+
+def _cluster_by_date_gap(sorted_dates, gap_days: int):
+    """Cluster sorted pd.Timestamp dates by allowing up to gap_days between adjacent dates."""
+    clusters = []
+    cur = []
+    for d in sorted_dates:
+        if not cur:
+            cur = [d]
+            continue
+        if (d - cur[-1]).days <= gap_days:
+            cur.append(d)
+        else:
+            clusters.append(cur)
+            cur = [d]
+    if cur:
+        clusters.append(cur)
+    return clusters
+
+
+def cut_su_outlier_cells(
+    su_data: dict,
+    cluster_gap_days: int = 7,
+    keep_top_clusters: int = 1,
+    far_gap_days: int = 60,
+    small_cluster_max_unique_days: int = 7,
+    cut_module_if_total_cells_leq: int = 4,
+    planned_meta: dict | None = None,
+    cut_if_far_from_planned_days: int = 180,
+):
+    """
+    Some modules appear in SU_Others as one long continuous period, but also have
+    a few isolated cells months later (often caused by Excel horizontal drag-fill
+    mistakes). Those isolated cells can make shifting explode (first..last spans months).
+
+    Strategy:
+      - For each tool code, cluster all occurrence dates by gap<=cluster_gap_days
+      - Keep only the largest cluster (by worker-day count, then date count, then earliest)
+      - Rewrite all occurrences outside kept clusters by breaking the code string
+        so extract_tool_code() will NOT match -> they become "other" tasks.
+
+    Returns a list of correction records for TransformationLog.
+    """
+    if not su_data:
+        return []
+
+    worker_date_map = su_data.get("worker_date_map", {})
+    if not worker_date_map:
+        return []
+
+    # Gather occurrences
+    code_to_occ = defaultdict(list)  # code -> list of (dt, wid, text)
+    for (wid, dt), text in list(worker_date_map.items()):
+        code = extract_tool_code(text)
+        if not code:
+            continue
+        code_to_occ[code].append((dt, wid, text))
+
+    def _longest_consecutive_run(dts_sorted):
+        """Longest run where each next day is previous + 1 day."""
+        if not dts_sorted:
+            return 0
+        best = 1
+        cur = 1
+        for i in range(1, len(dts_sorted)):
+            if dts_sorted[i] == dts_sorted[i - 1] + pd.Timedelta(days=1):
+                cur += 1
+                if cur > best:
+                    best = cur
+            else:
+                cur = 1
+        return best
+
+    corrections = []
+
+    for code, occ in code_to_occ.items():
+        # ------------------------------------------------------------
+        # (Example: planned ends Mar, but SU has tail in Oct -> cut tail)
+        # ------------------------------------------------------------
+        if planned_meta is not None and code in planned_meta:
+            pstart = planned_meta[code].get("overall_start")
+            pend = planned_meta[code].get("overall_end")
+
+            if pstart is not None and pend is not None:
+                broken = _break_tool_code(code)
+
+                for dt, wid, text in occ:
+                    # distance from planned window (0 if inside)
+                    dist = _planned_actual_gap_days(pstart, pend, dt, dt)
+
+                    if dist <= int(cut_if_far_from_planned_days):
+                        continue
+                    if not isinstance(text, str):
+                        continue
+
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": f"planned-window far cut: {dist}d away (> {cut_if_far_from_planned_days})",
+                    })
+
+        # ------------------------------------------------------------
+        # Extra rule: if the whole module appears only a few times in SU_Others,
+        # it is too unreliable -> cut everything to dummy "other".
+        # (Example: only 2 scattered cells)
+        # ------------------------------------------------------------
+        if len(occ) <= int(cut_module_if_total_cells_leq):
+            broken = _break_tool_code(code)
+            for dt, wid, text in occ:
+                if not isinstance(text, str):
+                    continue
+                old = text
+                new = old.replace(code, broken, 1)
+                if new == old:
+                    continue
+
+                _remember_original_text(su_data, wid, dt, old, new)
+                worker_date_map[(wid, dt)] = new
+                corrections.append({
+                    "wid": wid,
+                    "date": _to_ymd(dt),
+                    "code": code,
+                    "text": old,
+                    "reason": f"module cut: total SU_Others cells <= {cut_module_if_total_cells_leq}",
+                })
+            continue
+
+        if len(occ) <= 1:
+            continue
+
+        # Unique dates for clustering
+        dates = sorted(set([x[0] for x in occ]))
+        if len(dates) <= 1:
+            continue
+
+        clusters = _cluster_by_date_gap(dates, gap_days=cluster_gap_days)
+        if len(clusters) <= 1:
+            continue
+
+        # Score each cluster by worker-days in that date set
+        date_to_count = defaultdict(int)
+        for dt, _wid, _text in occ:
+            date_to_count[dt] += 1
+
+        scored = []
+        for cl in clusters:
+            worker_days = sum(date_to_count[d] for d in cl)
+            scored.append((worker_days, len(cl), cl[0], cl))
+        scored.sort(key=lambda t: (t[0], t[1], -int(t[2].timestamp())), reverse=True)
+
+        # Start by keeping the top clusters (usually 1 main cluster).
+        keep_n = max(1, int(keep_top_clusters))
+        kept = [t[3] for t in scored[:keep_n]]
+        main_cl = scored[0][3]
+        main_start = main_cl[0]
+        main_end = main_cl[-1]
+
+        kept_dates = set()
+        for cl in kept:
+            kept_dates.update(cl)
+
+        # IMPORTANT: We do NOT always delete every other cluster.
+        # We cut only clusters that look like "drag-fill noise":
+        #   - no consecutive run (e.g., 1-day here and there)
+        #   - or a small cluster very far away from the main cluster
+        for _worker_days, _uniq_days, _cl_start, cl in scored[keep_n:]:
+            run = _longest_consecutive_run(cl)
+            # distance between this cluster and the main cluster (0 if overlaps)
+            if cl[-1] < main_start:
+                gap = int((main_start - cl[-1]).days)
+            elif cl[0] > main_end:
+                gap = int((cl[0] - main_end).days)
+            else:
+                gap = 0
+
+            cut = False
+            if run < 2:
+                cut = True
+            elif gap >= int(far_gap_days) and len(cl) <= int(small_cluster_max_unique_days):
+                cut = True
+
+            if not cut:
+                kept_dates.update(cl)
+
+        # Rewrite occurrences not in kept dates
+        broken = _break_tool_code(code)
+        for dt, wid, text in occ:
+            if dt in kept_dates:
+                continue
+            if not isinstance(text, str):
+                continue
+            old = text
+            new = old.replace(code, broken, 1)
+            if new == old:
+                continue
+
+            _remember_original_text(su_data, wid, dt, old, new)
+            worker_date_map[(wid, dt)] = new
+            corrections.append({
+                "wid": wid,
+                "date": _to_ymd(dt),
+                "code": code,
+                "text": old,
+                "reason": f"outlier cluster cut (run<2 or far-gap); cluster_gap={cluster_gap_days}d",
+            })
+
+    # attach for optional downstream use
+    su_data["su_outlier_corrections"] = corrections
+    return corrections
+
 # ============================================================
 # Task list from 新規製番リスト (sheet "CSV") + planned ratios
 # ============================================================
@@ -476,6 +742,8 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None):
       code_to_shifted_phases[code] = list of phase dicts for assignment mapping
       extras for logging
     """
+    orig_map = su_data.get("su_outlier_original_text", {}) if su_data else {}
+
     shifted_meta = {}
     code_to_shifted_phases = defaultdict(list)
 
@@ -485,7 +753,11 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None):
         for (wid, dt), text in su_data["worker_date_map"].items():
             code = extract_tool_code(text)
             if code:
-                code_occ[code].append((dt, wid, text))
+                disp = text
+                k = (wid, _to_ymd(dt))
+                if k in orig_map:
+                    disp = orig_map[k]["old"]
+                code_occ[code].append((dt, wid, disp))
 
     for code, meta in planned_meta.items():
         # default (no shift)
@@ -650,6 +922,7 @@ def build_assignments_v3(
     valid_code_set: set,
     date_filter=None
 ):
+    orig_map = su_data.get("su_outlier_original_text", {})  # (wid, ymd) -> {old,new}
     worker_date_map = su_data["worker_date_map"]
     worker_personal_map = su_data["worker_personal_map"]
     f_start, f_end = date_filter if date_filter else (None, None)
@@ -671,7 +944,10 @@ def build_assignments_v3(
     for (wid, dt), text in worker_date_map.items():
         if f_start is not None and f_end is not None and (dt < f_start or dt > f_end):
             continue
-
+        # restore original text for label/other-task creation and for output assignment labels
+        k = (wid, _to_ymd(dt))
+        if k in orig_map:
+            text = orig_map[k]["old"]
         code = extract_tool_code(text)
 
         if code and (code in valid_code_set) and (code in shifted_code_to_phases):
@@ -861,8 +1137,10 @@ def write_transformation_log(
     cut_rows: list,
     shifted_meta: dict,
     worker_id_to_name: dict,
-    workload_zero_phase_ids: list,
+    workload_zero_phase_info: list,
     dummy_tool_labels: dict,
+    su_outlier_corrections: list | None = None,
+    outlier_cut_summary: dict | None = None,
 ):
     lines = []
     lines.append("Decoder3 Transformation Log")
@@ -875,6 +1153,28 @@ def write_transformation_log(
     else:
         for code, reason in cut_rows:
             lines.append(f"- {code}: {reason}")
+    lines.append("")
+
+    # SU_Others outlier cells cut (pre-shift)
+    lines.append("---------------------- SU_OTHERS OUTLIER CELLS CUT ----------------------")
+    if not su_outlier_corrections:
+        lines.append("(none)")
+    else:
+        by_code = defaultdict(list)
+        for rec in su_outlier_corrections:
+            by_code[rec.get("code", "?")].append(rec)
+        for code in sorted(by_code.keys()):
+            lines.append(f"module: {code}")
+            recs = sorted(by_code[code], key=lambda r: (r.get("date", ""), r.get("wid", "")))
+            for rec in recs[:2000]:
+                wid = rec.get("wid", "?")
+                nm = worker_id_to_name.get(wid, wid)
+                lines.append(f"  - {rec.get('date')} / {wid}({nm})")
+                lines.append(f"      {rec.get('text')}")
+                lines.append(f"      reason: {rec.get('reason')}")
+            if len(recs) > 2000:
+                lines.append(f"  ... ({len(recs)-2000} more)")
+            lines.append("")
     lines.append("")
 
     # SHIFTING DATE
@@ -918,17 +1218,20 @@ def write_transformation_log(
 
     # workerday == 0
     lines.append("---------------------- WORKLOAD WARNING (worker-days == 0) ----------------------")
-    if not workload_zero_phase_ids:
+    if not workload_zero_phase_info:
         lines.append("(none)")
     else:
-        for pid in workload_zero_phase_ids:
-            lines.append(f"- phase_id: {pid} (no assigned worker-days in SU_Others after shifting)")
+        for pid, mod in workload_zero_phase_info:
+            if mod:
+                lines.append(f"- phase_id: {pid} / module: {mod} (no assigned worker-days in SU_Others after shifting)")
+            else:
+                lines.append(f"- phase_id: {pid} (no assigned worker-days in SU_Others after shifting)")
     lines.append("")
 
-    # dummy tool codes
-    lines.append("---------------------- DUMMY MODULES (SU_Others tool-code not in 新規製番リスト) ----------------------")
+    lines.append("---------------------- DUMMY MODULES ----------------------")
+    lines.append("(1) SU_Others tool-code not in 新規製番リスト:")
     if not dummy_tool_labels:
-        lines.append("(none)")
+        lines.append("  (none)")
     else:
         for code in sorted(dummy_tool_labels.keys()):
             labels = sorted(dummy_tool_labels[code])
@@ -937,7 +1240,18 @@ def write_transformation_log(
                 lines.append(f"    - {lb}")
             if len(labels) > 50:
                 lines.append(f"    ... ({len(labels)-50} more)")
+
     lines.append("")
+    lines.append("(2) SU_Others outlier-cut modules (tool-code intentionally broken -> treated as dummy 'other'):")
+    if not outlier_cut_summary:
+        lines.append("  (none)")
+    else:
+        for code in sorted(outlier_cut_summary.keys()):
+            lines.append(f"- {code}:")
+            for txt in outlier_cut_summary[code][:20]:
+                lines.append(f"    - {txt}")
+    lines.append("")
+
 
     Path(out_path).write_text("\n".join(lines), encoding="utf-8")
 
@@ -969,8 +1283,36 @@ def build_env_and_schedule_decoder3(
     skill_levels, skill_people = parse_skill_excel(skill_excel_path)
 
     # 3) SU_Others
+    su_outlier_corrections = []
     if read_all_data:
         su_data = parse_su_others(su_others_path, date_filter=date_filter if f_start is not None else None)
+
+        # Human error defense: horizontal drag-fill sometimes leaves a valid tool-code
+        # in an isolated/non-contiguous cluster far away from the main work period.
+        # Those cells should become dummy "other" so shifting uses the real span.
+        su_outlier_corrections = cut_su_outlier_cells(
+            su_data,
+            cluster_gap_days=7,
+            far_gap_days=60,
+            small_cluster_max_unique_days=7,
+            cut_module_if_total_cells_leq=4,
+            planned_meta=planned_meta,
+            cut_if_far_from_planned_days=180
+        )
+
+        # Summarize outlier-cut modules so they appear in CUT OUT + DUMMY MODULES sections
+        outlier_cut_summary = defaultdict(list)  # code -> list of sample original texts
+        for rec in su_outlier_corrections:
+            code = rec.get("code")
+            txt = rec.get("text")  # original text (A version)
+            if code and txt:
+                if len(outlier_cut_summary[code]) < 20:   # keep small sample
+                    outlier_cut_summary[code].append(txt)
+
+        # Also show these in CUT OUT section (as requested)
+        for code in sorted(outlier_cut_summary.keys()):
+            cut_rows.append((code, "SU_Others OUTLIER CUT: occurrences were converted to dummy 'other' (Fixed)"))
+
         worker_company_list = su_data["worker_company_list"]
         worker_list = su_data["worker_list"]
     else:
@@ -1055,6 +1397,51 @@ def build_env_and_schedule_decoder3(
 
     # 5) Build shifted meta using SU_Others
     shifted_meta, code_to_shifted_phases_simple, _code_occ = build_shifted_meta(planned_meta, su_data if read_all_data else None)
+    
+    # 5.25) OPTION B: if SU_Others NOT FOUND -> skip module entirely (do not output in Schedule.yaml)
+    # This also prevents it from appearing in WORKLOAD WARNING because tool tasks won't exist.
+    if SKIP_MODULE_IF_NO_SU_MATCH:
+        no_su_codes = [code for code, m in shifted_meta.items() if not m.get("had_su_match")]
+        if no_su_codes:
+            for code in no_su_codes:
+                # log it like "CUT OUT" so everyone sees why it's missing
+                cut_rows.append((code, "SKIPPED: SU_Others NOT FOUND (no shift); module omitted from Schedule.yaml"))
+
+                # remove from planned_meta + shifted_meta so it never becomes a tool task
+                planned_meta.pop(code, None)
+                shifted_meta.pop(code, None)
+
+            # recompute valid_code_set and valid_codes list
+            valid_code_set = set(planned_meta.keys())
+            task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
+
+    # 5.5) EXTRA CUT: actual span too far from planned window
+    cut_due_to_distance = []
+    if read_all_data and su_data is not None:
+        for code, m in list(shifted_meta.items()):
+            if not m.get("had_su_match"):
+                continue
+
+            plan = m["plan"]
+            gap = _planned_actual_gap_days(
+                plan["overall_start"], plan["overall_end"],
+                m["actual_first"], m["actual_last"]
+            )
+
+            if gap > CUT_DISTANCE_DAYS:
+                cut_due_to_distance.append((code, gap))
+
+        if cut_due_to_distance:
+            for code, gap in cut_due_to_distance:
+                cut_rows.append((code, f"actual span is outside planned window by {gap} days (> {CUT_DISTANCE_DAYS})"))
+
+                # remove it so it behaves like "not listed"
+                planned_meta.pop(code, None)
+                shifted_meta.pop(code, None)
+
+            # recompute valid_code_set and valid_codes list
+            valid_code_set = set(planned_meta.keys())
+            task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
 
     # 6) Build tool tasks + code_to_phases (for assignments) with shifted windows
     tool_tasks = []
@@ -1284,8 +1671,17 @@ def build_env_and_schedule_decoder3(
             t2.pop(k, None)
         tool_tasks_for_yaml.append(t2)
 
+    # Map phase_id (eN_pX) -> module code (task name)
+    phase_id_to_module_code = {}
+    for t in tool_tasks_for_yaml:
+        mod = t.get("name", "")
+        for pt in t.get("phase_task_list", []):
+            pid = pt.get("id")
+            if pid:
+                phase_id_to_module_code[pid] = mod
+
     # 12) workload_days overwrite + collect workerday==0 warnings
-    workload_zero_phase_ids = []
+    workload_zero_phase_info = []
     for t in tool_tasks_for_yaml:
         if t.get("workflow") != "wf_tool":
             continue
@@ -1293,7 +1689,7 @@ def build_env_and_schedule_decoder3(
             phase_id = pt.get("id")  # eN_pX
             b = int(phase_workerday_count.get(phase_id, 0))
             if b == 0:
-                workload_zero_phase_ids.append(phase_id)
+                workload_zero_phase_info.append((phase_id, phase_id_to_module_code.get(phase_id, "")))
             for ot in pt.get("operation_task_list", []):
                 a = int(ot.get("workload_days", 0))
                 if workload_use_window_days:
@@ -1328,8 +1724,10 @@ def build_env_and_schedule_decoder3(
         cut_rows=cut_rows,
         shifted_meta=shifted_meta,
         worker_id_to_name=worker_id_to_name,
-        workload_zero_phase_ids=sorted(set(workload_zero_phase_ids)),
+        workload_zero_phase_info=sorted(set(workload_zero_phase_info)),
         dummy_tool_labels=dummy_tool_labels,
+        su_outlier_corrections=su_outlier_corrections,
+        outlier_cut_summary=outlier_cut_summary,
     )
 
     return env_root, sch_root, shifted_meta
