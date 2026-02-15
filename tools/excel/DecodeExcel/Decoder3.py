@@ -385,7 +385,8 @@ def cut_su_outlier_cells(
     keep_top_clusters: int = 1,
     far_gap_days: int = 60,
     small_cluster_max_unique_days: int = 7,
-    cut_module_if_total_cells_leq: int = 4,
+    cut_module_if_total_cells_lt: int = 4,
+    cut_module_if_unique_days_lt: int = 4,
     planned_meta: dict | None = None,
     cut_if_far_from_planned_days: int = 180,
 ):
@@ -395,10 +396,13 @@ def cut_su_outlier_cells(
     mistakes). Those isolated cells can make shifting explode (first..last spans months).
 
     Strategy:
-      - For each tool code, cluster all occurrence dates by gap<=cluster_gap_days
-      - Keep only the largest cluster (by worker-day count, then date count, then earliest)
-      - Rewrite all occurrences outside kept clusters by breaking the code string
-        so extract_tool_code() will NOT match -> they become "other" tasks.
+      - (Optional) If planned window exists: cut SU cells too far from planned window
+      - If module has too few UNIQUE work days OR too few total cells: cut everything to dummy
+      - Otherwise: cluster occurrence dates by gap<=cluster_gap_days
+          * Keep top cluster(s) (largest by worker-days, then uniq days, then earliest)
+          * Consider keeping additional clusters unless they look like drag-fill noise
+      - NEW: After deciding kept_dates, if remaining evidence is too small (days/cells),
+             cut the whole module to dummy (prevents "100 cells -> after cut only 1 day -> still shifted")
 
     Returns a list of correction records for TransformationLog.
     """
@@ -434,6 +438,27 @@ def cut_su_outlier_cells(
 
     corrections = []
 
+    def _cut_all_occurrences(code: str, occ_list: list, reason: str):
+        """Break tool-code for ALL occurrences => they become dummy 'other'."""
+        broken = _break_tool_code(code)
+        for dt, wid, text in occ_list:
+            if not isinstance(text, str):
+                continue
+            old = text
+            new = old.replace(code, broken, 1)
+            if new == old:
+                continue
+
+            _remember_original_text(su_data, wid, dt, old, new)
+            worker_date_map[(wid, dt)] = new
+            corrections.append({
+                "wid": wid,
+                "date": _to_ymd(dt),
+                "code": code,
+                "text": old,
+                "reason": reason,
+            })
+
     for code, occ in code_to_occ.items():
         # ------------------------------------------------------------
         # (Example: planned ends Mar, but SU has tail in Oct -> cut tail)
@@ -446,9 +471,7 @@ def cut_su_outlier_cells(
                 broken = _break_tool_code(code)
 
                 for dt, wid, text in occ:
-                    # distance from planned window (0 if inside)
                     dist = _planned_actual_gap_days(pstart, pend, dt, dt)
-
                     if dist <= int(cut_if_far_from_planned_days):
                         continue
                     if not isinstance(text, str):
@@ -458,7 +481,7 @@ def cut_su_outlier_cells(
                     new = old.replace(code, broken, 1)
                     if new == old:
                         continue
-                    
+
                     _remember_original_text(su_data, wid, dt, old, new)
                     worker_date_map[(wid, dt)] = new
                     corrections.append({
@@ -470,29 +493,28 @@ def cut_su_outlier_cells(
                     })
 
         # ------------------------------------------------------------
-        # Extra rule: if the whole module appears only a few times in SU_Others,
-        # it is too unreliable -> cut everything to dummy "other".
-        # (Example: only 2 scattered cells)
+        # Pre-check A: too few UNIQUE work days (before clustering)
         # ------------------------------------------------------------
-        if len(occ) <= int(cut_module_if_total_cells_leq):
-            broken = _break_tool_code(code)
-            for dt, wid, text in occ:
-                if not isinstance(text, str):
-                    continue
-                old = text
-                new = old.replace(code, broken, 1)
-                if new == old:
-                    continue
+        uniq_days_pre = sorted(set([x[0] for x in occ]))
+        if len(uniq_days_pre) < int(cut_module_if_unique_days_lt):
+            _cut_all_occurrences(
+                code,
+                occ,
+                f"module cut: unique SU_Others work days < {cut_module_if_unique_days_lt} "
+                f"(unique_days={len(uniq_days_pre)})",
+            )
+            continue
 
-                _remember_original_text(su_data, wid, dt, old, new)
-                worker_date_map[(wid, dt)] = new
-                corrections.append({
-                    "wid": wid,
-                    "date": _to_ymd(dt),
-                    "code": code,
-                    "text": old,
-                    "reason": f"module cut: total SU_Others cells <= {cut_module_if_total_cells_leq}",
-                })
+        # ------------------------------------------------------------
+        # Pre-check B: too few total worker-day cells (before clustering)
+        # ------------------------------------------------------------
+        if len(occ) < int(cut_module_if_total_cells_lt):
+            _cut_all_occurrences(
+                code,
+                occ,
+                f"module cut: total SU_Others cells < {cut_module_if_total_cells_lt} "
+                f"(cells={len(occ)})",
+            )
             continue
 
         if len(occ) <= 1:
@@ -535,6 +557,7 @@ def cut_su_outlier_cells(
         #   - or a small cluster very far away from the main cluster
         for _worker_days, _uniq_days, _cl_start, cl in scored[keep_n:]:
             run = _longest_consecutive_run(cl)
+
             # distance between this cluster and the main cluster (0 if overlaps)
             if cl[-1] < main_start:
                 gap = int((main_start - cl[-1]).days)
@@ -552,6 +575,24 @@ def cut_su_outlier_cells(
             if not cut:
                 kept_dates.update(cl)
 
+        # ------------------------------------------------------------
+        # NEW: POST-CUT VALIDATION (your issue)
+        # If remaining kept_dates evidence is too small => cut whole module.
+        # Prevent: "had many -> cut most -> left 1 day -> still shifted"
+        # ------------------------------------------------------------
+        remaining_unique_days = len(kept_dates)
+        remaining_cells = sum(1 for (dt, _wid, _txt) in occ if dt in kept_dates)
+
+        if (remaining_unique_days < int(cut_module_if_unique_days_lt)) or (remaining_cells < int(cut_module_if_total_cells_lt)):
+            _cut_all_occurrences(
+                code,
+                occ,
+                f"module cut AFTER outlier-cut: remaining evidence too small "
+                f"(unique_days={remaining_unique_days}, cells={remaining_cells}) "
+                f"< thresholds (days<{cut_module_if_unique_days_lt} or cells<{cut_module_if_total_cells_lt})",
+            )
+            continue
+
         # Rewrite occurrences not in kept dates
         broken = _break_tool_code(code)
         for dt, wid, text in occ:
@@ -559,6 +600,7 @@ def cut_su_outlier_cells(
                 continue
             if not isinstance(text, str):
                 continue
+
             old = text
             new = old.replace(code, broken, 1)
             if new == old:
@@ -577,6 +619,7 @@ def cut_su_outlier_cells(
     # attach for optional downstream use
     su_data["su_outlier_corrections"] = corrections
     return corrections
+
 
 # ============================================================
 # Task list from 新規製番リスト (sheet "CSV") + planned ratios
@@ -704,35 +747,73 @@ def _allocate_phase_lengths(actual_total_days: int, planned_phase_len: dict):
     Allocate integer lengths for phases 1..4 so that:
       - sum(lengths) == actual_total_days
       - ratios follow planned_phase_len proportions
-    Uses floor + largest remainder; allows zeros if actual_total_days is very small.
+      - if actual_total_days >= 4: each phase gets at least 1 day
     """
-    phs = [1,2,3,4]
-    total_planned = sum(max(0,int(planned_phase_len.get(ph,0))) for ph in phs)
+    phs = [1, 2, 3, 4]
+
+    # Defensive
+    if actual_total_days <= 0:
+        return {1: 1, 2: 1, 3: 1, 4: 1}
+
+    total_planned = sum(max(0, int(planned_phase_len.get(ph, 0))) for ph in phs)
     if total_planned <= 0:
-        # fallback: equal split
+        # equal-ish split fallback
         base = actual_total_days // 4
-        rem = actual_total_days - base*4
+        rem = actual_total_days - base * 4
         out = {1: base, 2: base, 3: base, 4: base}
         for i in range(rem):
             out[phs[i]] += 1
+        # enforce min-1 if possible
+        if actual_total_days >= 4:
+            for ph in phs:
+                if out[ph] == 0:
+                    out[ph] = 1
+        # re-balance sum (just in case)
+        s = sum(out.values())
+        out[4] += (actual_total_days - s)
         return out
 
-    raw = {ph: (actual_total_days * (planned_phase_len.get(ph,0)/total_planned)) for ph in phs}
+    # ---- base proportional allocation (floor + remainder) ----
+    raw = {ph: (actual_total_days * (planned_phase_len.get(ph, 0) / total_planned)) for ph in phs}
     flo = {ph: int(math.floor(raw[ph])) for ph in phs}
     s = sum(flo.values())
     rem = actual_total_days - s
 
-    # distribute remainder by fractional part
-    frac = sorted(phs, key=lambda ph: (raw[ph]-flo[ph]), reverse=True)
+    frac = sorted(phs, key=lambda ph: (raw[ph] - flo[ph]), reverse=True)
     out = dict(flo)
     for i in range(rem):
         out[frac[i % len(frac)]] += 1
 
-    # if rounding caused negative/overflow, fix defensively
+    # Adjust last phase if drift
     s2 = sum(out.values())
     if s2 != actual_total_days:
-        # adjust last phase
         out[4] += (actual_total_days - s2)
+
+    # ---- NEW: enforce min 1 day per phase if possible ----
+    if actual_total_days >= 4:
+        zeros = [ph for ph in phs if out.get(ph, 0) <= 0]
+        if zeros:
+            # donors: phases that can spare days (must stay >= 1)
+            def pick_donor():
+                donors = [p for p in phs if out.get(p, 0) > 1]
+                if not donors:
+                    return None
+                # steal from the largest allocation first
+                donors.sort(key=lambda p: out[p], reverse=True)
+                return donors[0]
+
+            for z in zeros:
+                donor = pick_donor()
+                if donor is None:
+                    break  # should not happen when actual_total_days>=4, but stay safe
+                out[donor] -= 1
+                out[z] = 1
+
+            # re-check sum (keep invariant)
+            s3 = sum(out.values())
+            if s3 != actual_total_days:
+                out[4] += (actual_total_days - s3)
+
     return out
 
 def build_shifted_meta(planned_meta: dict, su_data: dict | None):
@@ -1295,7 +1376,8 @@ def build_env_and_schedule_decoder3(
             cluster_gap_days=7,
             far_gap_days=60,
             small_cluster_max_unique_days=7,
-            cut_module_if_total_cells_leq=4,
+            cut_module_if_unique_days_lt=4,
+            cut_module_if_total_cells_lt=4,
             planned_meta=planned_meta,
             cut_if_far_from_planned_days=180
         )
