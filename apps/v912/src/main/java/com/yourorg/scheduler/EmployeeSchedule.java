@@ -801,7 +801,7 @@ static class OpTaskMeta {
         }
 
         // ---------- Production from staffed seats ----------
-        static final int UNDERFILL_MULT = 1_000; // huge so it dominates other hard constraints
+        static final int UNDERFILL_MULT = 10; // huge so it dominates other hard constraints
         private static int clampToInt(long v) {
             if (v > Integer.MAX_VALUE) return Integer.MAX_VALUE;
             if (v < Integer.MIN_VALUE) return Integer.MIN_VALUE;
@@ -2567,73 +2567,44 @@ for (Map<String,Object> wf : wfl) {
                 }
             }
         }
-        // ----  aggregate fixed totals and overtime ----
+        // ----  aggregate fixed totals and overtime (HORIZON ONLY) ----
         FIXED_TOTAL_HOURS_BY_EMP.clear();
         FIXED_ANNUAL_OT_BY_EMP_YEAR.clear();
         FIXED_MONTHLY_OT_BY_EMP_YM.clear();
 
-        for (Map.Entry<Integer, Integer> e : fa.hoursByDay.entrySet()) {
-            int dayId = e.getKey();
-            int h     = e.getValue();
-            if (h <= 0) continue;
+        for (FixedAssign fa : sch.fixedRows) {
+            EmployeeFact ef = env.byWid.get(fa.wid);
+            if (ef == null || ef.id == 0) continue;
 
-            if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+            int empId = ef.id;
 
-            FIXED_TOTAL_HOURS_BY_EMP.merge(empId, h, Integer::sum);
+            for (Map.Entry<Integer, Integer> e : fa.hoursByDay.entrySet()) {
+                int dayId = e.getKey();
+                int h     = e.getValue();
+                if (h <= 0) continue;
 
-            LocalDate d  = sch.planStart.plusDays(dayId);
-            int year     = d.getYear();
-            int month    = d.getMonthValue();
-            int ym       = year * 100 + month;
+                if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
 
-            int ot = Math.max(0, h - SinglePassConstraints.BASE_HOURS_PER_DAY);
+                // total fixed hours per employee
+                FIXED_TOTAL_HOURS_BY_EMP.merge(empId, h, Integer::sum);
 
-            FIXED_ANNUAL_OT_BY_EMP_YEAR
-                .computeIfAbsent(empId, k -> new HashMap<>())
-                .merge(year, ot, Integer::sum);
+                // overtime maps (if you use these constraints later)
+                LocalDate d  = sch.planStart.plusDays(dayId);
+                int year     = d.getYear();
+                int month    = d.getMonthValue();
+                int ym       = year * 100 + month;
 
-            FIXED_MONTHLY_OT_BY_EMP_YM
-                .computeIfAbsent(empId, k -> new HashMap<>())
-                .merge(ym, ot, Integer::sum);
+                int ot = Math.max(0, h - SinglePassConstraints.BASE_HOURS_PER_DAY);
+
+                FIXED_ANNUAL_OT_BY_EMP_YEAR
+                    .computeIfAbsent(empId, k -> new HashMap<>())
+                    .merge(year, ot, Integer::sum);
+
+                FIXED_MONTHLY_OT_BY_EMP_YM
+                    .computeIfAbsent(empId, k -> new HashMap<>())
+                    .merge(ym, ot, Integer::sum);
+            }
         }
-// // ----  aggregate fixed totals and overtime (HORIZON ONLY) ----
-// FIXED_TOTAL_HOURS_BY_EMP.clear();
-// FIXED_ANNUAL_OT_BY_EMP_YEAR.clear();
-// FIXED_MONTHLY_OT_BY_EMP_YM.clear();
-
-// for (FixedAssign fa : sch.fixedRows) {
-//     EmployeeFact ef = env.byWid.get(fa.wid);
-//     if (ef == null || ef.id == 0) continue;
-
-//     int empId = ef.id;
-
-//     for (Map.Entry<Integer, Integer> e : fa.hoursByDay.entrySet()) {
-//         int dayId = e.getKey();
-//         int h     = e.getValue();
-//         if (h <= 0) continue;
-
-//         if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
-
-//         // total fixed hours per employee
-//         FIXED_TOTAL_HOURS_BY_EMP.merge(empId, h, Integer::sum);
-
-//         // overtime maps (if you use these constraints later)
-//         LocalDate d  = sch.planStart.plusDays(dayId);
-//         int year     = d.getYear();
-//         int month    = d.getMonthValue();
-//         int ym       = year * 100 + month;
-
-//         int ot = Math.max(0, h - SinglePassConstraints.BASE_HOURS_PER_DAY);
-
-//         FIXED_ANNUAL_OT_BY_EMP_YEAR
-//             .computeIfAbsent(empId, k -> new HashMap<>())
-//             .merge(year, ot, Integer::sum);
-
-//         FIXED_MONTHLY_OT_BY_EMP_YM
-//             .computeIfAbsent(empId, k -> new HashMap<>())
-//             .merge(ym, ot, Integer::sum);
-//     }
-// }
 
 
         fillSeatCandidatesSinglePass(built.seats, built.blocks, env.employees);
@@ -2652,7 +2623,7 @@ for (Map<String,Object> wf : wfl) {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 5, 3600);
+                "0hard/*medium/*soft", 240, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2690,7 +2661,7 @@ for (Map<String,Object> wf : wfl) {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                5  /* spentMinutes */,
+                240  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
