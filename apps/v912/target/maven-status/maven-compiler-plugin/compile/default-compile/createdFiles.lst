@@ -1,6 +1,7 @@
 com\yourorg\scheduler\EmployeeSchedule$FlexibleAssign.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$HoursStrength.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision.class
+com\yourorg\scheduler\EmployeeSchedule$SinglePassConstraints$EmpDayKey.class
 com\yourorg\scheduler\EmployeeSchedule$EmployeeFact.class
 com\yourorg\scheduler\EmployeeSchedule$Calendars.class
 com\yourorg\scheduler\EmployeeSchedule$BuildOut.class

@@ -374,6 +374,9 @@ static class OpTaskMeta {
     static String company(EmployeeFact e) { return e == null ? "" : (e.workerCompany == null ? "" : e.workerCompany); }
     static double avgSkill(String opId) { return OP_AVG_SKILL.getOrDefault(opId, 3.0); }
 
+    // fixed task-count per employee per day (counts tasks, not hours)
+    static Map<Integer, Map<Integer, Integer>> FIXED_TASKCOUNT_BY_EMP_DAY = new HashMap<>();
+
     static int regionPref(EmployeeFact e, String regionId) {
         if (e == null || regionId == null || regionId.isBlank()) return 1;
         return e.regionPreference.getOrDefault(regionId, 1);
@@ -731,7 +734,8 @@ static class OpTaskMeta {
 
                 // seat-level hard rules
                 employeeAvailableAllDays(f),
-                oneFactoryPerEmpPerDay(f),
+                // oneFactoryPerEmpPerDay(f),
+                oneTaskPerEmpPerDay(f),
                 dailyCap12h(f),
                 regionTransitGap(f), 
                 // regionStayMaxOn(f), 
@@ -889,48 +893,89 @@ static class OpTaskMeta {
                 .asConstraint("seat-worker-available-all-days");
         }
 
-        Constraint oneFactoryPerEmpPerDay(ConstraintFactory f) {
+        // Constraint oneFactoryPerEmpPerDay(ConstraintFactory f) {
+        //     return f.forEach(DaySlot.class)
+        //         .join(f.forEach(CrewSeat.class),
+        //             //  ignore unassigned AND pinned; fixed fabs are taken from FIXED_FACTORIES_BY_EMP_DAY
+        //             Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee) && !s.isPinned()))
+        //         .join(f.forEach(BlockDecision.class),
+        //             Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+        //         .filter(SinglePassConstraints::seatCoversDayAndWorking)
+        //         .groupBy((d, s, b) -> Arrays.asList(s.employee.id, d.id),
+        //                 ConstraintCollectors.toSet((d, s, b) -> s.factory))
+        //         .filter((key, dynamicFabs) -> {
+        //             int empId = (int) key.get(0);
+        //             int dayId = (int) key.get(1);
+
+        //             Set<String> fixedFabs = FIXED_FACTORIES_BY_EMP_DAY
+        //                     .getOrDefault(empId, Collections.emptyMap())
+        //                     .getOrDefault(dayId, Collections.emptySet());
+
+        //             if (fixedFabs.isEmpty()) {
+        //                 return dynamicFabs.size() > 1;
+        //             }
+        //             Set<String> all = new HashSet<>(dynamicFabs);
+        //             all.addAll(fixedFabs);
+        //             return all.size() > 1;
+        //         })
+        //         .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicFabs) -> {
+        //             int empId = (int) key.get(0);
+        //             int dayId = (int) key.get(1);
+
+        //             Map<Integer, Set<String>> byDay =
+        //                     FIXED_FACTORIES_BY_EMP_DAY.get(empId);
+        //             Set<String> fixedFabs = (byDay == null)
+        //                     ? Collections.emptySet()
+        //                     : byDay.getOrDefault(dayId, Collections.emptySet());
+
+        //             Set<String> all = new HashSet<>(dynamicFabs);
+        //             all.addAll(fixedFabs);
+        //             return all.size() - 1;
+        //         })
+        //         .asConstraint("seat-one-factory-per-emp-day");
+        // }
+
+        // helper key (put inside EmployeeSchedule class, anywhere static)
+        static final class EmpDayKey {
+            final int empId;
+            final int dayId;
+            EmpDayKey(int empId, int dayId) { this.empId = empId; this.dayId = dayId; }
+
+            @Override public boolean equals(Object o) {
+                if (this == o) return true;
+                if (!(o instanceof EmpDayKey k)) return false;
+                return empId == k.empId && dayId == k.dayId;
+            }
+            @Override public int hashCode() { return 31 * empId + dayId; }
+        }
+
+        Constraint oneTaskPerEmpPerDay(ConstraintFactory f) {
             return f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
-                    //  ignore unassigned AND pinned; fixed fabs are taken from FIXED_FACTORIES_BY_EMP_DAY
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee) && !s.isPinned()))
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .groupBy((d, s, b) -> Arrays.asList(s.employee.id, d.id),
-                        ConstraintCollectors.toSet((d, s, b) -> s.factory))
-                .filter((key, dynamicFabs) -> {
-                    int empId = (int) key.get(0);
-                    int dayId = (int) key.get(1);
 
-                    Set<String> fixedFabs = FIXED_FACTORIES_BY_EMP_DAY
-                            .getOrDefault(empId, Collections.emptyMap())
-                            .getOrDefault(dayId, Collections.emptySet());
+                // ---- Tri -> Uni (now collectors are Uni collectors, no type mismatch)
+                .map((d, s, b) -> new EmpDayKey(s.employee.id, d.id))
 
-                    if (fixedFabs.isEmpty()) {
-                        return dynamicFabs.size() > 1;
-                    }
-                    Set<String> all = new HashSet<>(dynamicFabs);
-                    all.addAll(fixedFabs);
-                    return all.size() > 1;
+                .groupBy(key -> key, ConstraintCollectors.count()) // dynamic task count per emp-day
+
+                .filter((key, dynCount) -> {
+                    int fixedCount = FIXED_TASKCOUNT_BY_EMP_DAY
+                        .getOrDefault(key.empId, Collections.emptyMap())
+                        .getOrDefault(key.dayId, 0);
+                    return (dynCount + fixedCount) > 1;
                 })
-                .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicFabs) -> {
-                    int empId = (int) key.get(0);
-                    int dayId = (int) key.get(1);
-
-                    Map<Integer, Set<String>> byDay =
-                            FIXED_FACTORIES_BY_EMP_DAY.get(empId);
-                    Set<String> fixedFabs = (byDay == null)
-                            ? Collections.emptySet()
-                            : byDay.getOrDefault(dayId, Collections.emptySet());
-
-                    Set<String> all = new HashSet<>(dynamicFabs);
-                    all.addAll(fixedFabs);
-                    return all.size() - 1;
+                .penalize(HardMediumSoftScore.ONE_HARD, (key, dynCount) -> {
+                    int fixedCount = FIXED_TASKCOUNT_BY_EMP_DAY
+                        .getOrDefault(key.empId, Collections.emptyMap())
+                        .getOrDefault(key.dayId, 0);
+                    return (dynCount + fixedCount) - 1;
                 })
-                .asConstraint("seat-one-factory-per-emp-day");
+                .asConstraint("emp-one-task-per-day");
         }
-
 
         Constraint dailyCap12h(ConstraintFactory f) {
             return f.forEach(DaySlot.class)
@@ -2554,6 +2599,7 @@ for (Map<String,Object> wf : wfl) {
         // --------------------------------------------------
         FIXED_HOURS_BY_EMP_DAY.clear();
         FIXED_FACTORIES_BY_EMP_DAY.clear();
+        FIXED_TASKCOUNT_BY_EMP_DAY.clear();
 
         for (FixedAssign fa : sch.fixedRows) {
             EmployeeFact ef = env.byWid.get(fa.wid);
@@ -2561,7 +2607,6 @@ for (Map<String,Object> wf : wfl) {
 
             int empId = ef.id;
 
-            // hours per day (horizon-only)
             for (Map.Entry<Integer, Integer> e : fa.hoursByDay.entrySet()) {
                 int dayId = e.getKey();
                 int h     = e.getValue();
@@ -2569,18 +2614,26 @@ for (Map<String,Object> wf : wfl) {
 
                 if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
 
+                // existing: fixed hours
                 FIXED_HOURS_BY_EMP_DAY
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(dayId, h, Integer::sum);
 
+                // existing: fixed factories
                 if (fa.factory != null && !fa.factory.isBlank()) {
                     FIXED_FACTORIES_BY_EMP_DAY
                         .computeIfAbsent(empId, k -> new HashMap<>())
                         .computeIfAbsent(dayId, k -> new HashSet<>())
                         .add(fa.factory);
                 }
+
+                // NEW: fixed task count (each fixed assignment row counts as 1 task on that day)
+                FIXED_TASKCOUNT_BY_EMP_DAY
+                    .computeIfAbsent(empId, k -> new HashMap<>())
+                    .merge(dayId, 1, Integer::sum);
             }
         }
+
         // ----  aggregate fixed totals and overtime (HORIZON ONLY) ----
         FIXED_TOTAL_HOURS_BY_EMP.clear();
         FIXED_ANNUAL_OT_BY_EMP_YEAR.clear();
@@ -2637,7 +2690,7 @@ for (Map<String,Object> wf : wfl) {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 240, 3600);
+                "0hard/*medium/*soft", 180, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -2675,7 +2728,7 @@ for (Map<String,Object> wf : wfl) {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                240  /* spentMinutes */,
+                220  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();

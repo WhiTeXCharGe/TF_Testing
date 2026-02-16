@@ -60,7 +60,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 30
+        max_worker_num: 33
   - id: wf_personal_business
     name: Personal Business
     phase_list:
@@ -74,7 +74,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 30
+        max_worker_num: 33
   fab_list:
   - id: f_other
     name: Other
