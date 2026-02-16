@@ -57,8 +57,8 @@ UNAV_FILL = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="sol
 BLACK = Font(color="000000")
 BOLD_BLACK = Font(bold=True, color="000000")
 
-CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
-LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
+CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
+LEFT = Alignment(horizontal="left", vertical="center", wrap_text=False)
 
 THIN = Side(style="thin", color="999999")
 BORDER_THIN = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
@@ -345,7 +345,7 @@ def main(env_path: str, sched_path: str, out_path: str):
             col = start_col_dates + k
             cell = ws.cell(row=r, column=col, value="")
             cell.border = BORDER_THIN
-            cell.alignment = CENTER
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
             cell.font = BLACK
 
             # unavailable -> RED
@@ -366,7 +366,7 @@ def main(env_path: str, sched_path: str, out_path: str):
                 else:
                     names.append(module_name_by_id.get(mid, mid))
 
-            text = "\n".join(names) if JOIN_MULTIPLE_WITH_NEWLINE else " | ".join(names)
+            text = names[0] if JOIN_MULTIPLE_WITH_NEWLINE else " | ".join(names)
             cell.value = text
 
             # color key uses normalized code base from module NAME (not id)
@@ -381,16 +381,6 @@ def main(env_path: str, sched_path: str, out_path: str):
             cD.value = todays_text
 
         ws.row_dimensions[r].height = DATA_ROW_HEIGHT
-
-    # Legend (optional)
-    legend_row = ws.max_row + 2
-    ws.cell(row=legend_row, column=1, value="Legend").font = BOLD_BLACK
-    ws.cell(row=legend_row + 1, column=1, value="Unavailable (EnvConfig.worker_list.unavailable_dates)").font = BLACK
-    ws.cell(row=legend_row + 1, column=2, value="").fill = UNAV_FILL
-    for rr in range(legend_row, legend_row + 2):
-        for cc in range(1, 3):
-            ws.cell(row=rr, column=cc).border = BORDER_THIN
-            ws.cell(row=rr, column=cc).alignment = LEFT
 
     wb.save(out_path)
     print(f"Saved: {out_path}")
