@@ -976,8 +976,6 @@ static class OpTaskMeta {
 
         Constraint regionTransitGap(ConstraintFactory f) {
 
-            // Build (emp, dayId, region) for all assigned work in the horizon.
-            // Includes pinnedFixed and dynamic; excludes UNASSIGNED.
             var worked = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
@@ -991,60 +989,79 @@ static class OpTaskMeta {
             return worked
                 .filter((emp, list) -> emp != null && emp.id != 0 && list != null && !list.isEmpty())
                 .filter((emp, list) -> {
-                    // Return true if there is ANY violation
-                    // (we compute exact penalty in the penalize() part)
-                    List<EmpDayRegion> ds = new ArrayList<>(list);
-                    ds.sort(Comparator.comparingInt(x -> x.dayId));
+                    // Build deterministic per-day region map
+                    java.util.TreeMap<Integer, String> dayToRegion = new java.util.TreeMap<>();
+                    for (EmpDayRegion x : list) {
+                        if (x == null || x.region == null || x.region.isBlank()) continue;
+                        dayToRegion.merge(
+                            x.dayId,
+                            x.region,
+                            (a, b) -> (a.compareTo(b) <= 0) ? a : b // deterministic tie-break
+                        );
+                    }
+                    if (dayToRegion.isEmpty()) return false;
 
-                    // Optional: seed with last fixed history if it is before the horizon
-                    int minDay = ds.get(0).dayId;
+                    // Seed with last fixed history (optional but matches your concept)
                     int prevDay = Integer.MIN_VALUE;
                     String prevRegion = null;
 
-                    // Deduplicate per day (if any), keeping first region for that day.
-                    int i = 0;
-                    while (i < ds.size()) {
-                        int day = ds.get(i).dayId;
-                        String region = ds.get(i).region;
+                    // Only seed if it is strictly before the first worked day
+                    int firstDay = dayToRegion.firstKey();
+                    if (emp.histLastFixedDayId != Integer.MIN_VALUE
+                            && emp.histLastFixedRegion != null
+                            && !emp.histLastFixedRegion.isBlank()
+                            && emp.histLastFixedDayId < firstDay) {
+                        prevDay = emp.histLastFixedDayId;
+                        prevRegion = emp.histLastFixedRegion;
+                    }
 
-                        // skip all entries for same day
-                        int j = i + 1;
-                        while (j < ds.size() && ds.get(j).dayId == day) j++;
+                    // Detect any violation
+                    for (var e : dayToRegion.entrySet()) {
+                        int day = e.getKey();
+                        String region = e.getValue();
 
                         if (prevRegion != null && region != null && !region.equals(prevRegion)) {
                             int need = CAL.transitDays(prevRegion, region);
                             if (need > 0) {
-                                // must have at least (need) empty days between prevDay and day
-                                // meaning day >= prevDay + need + 1
-                                if (day <= prevDay + need) {
+                                int earliestLegal = prevDay + need + 1;
+                                if (day < earliestLegal) {
                                     return true;
                                 }
                             }
                         }
-
                         prevDay = day;
                         prevRegion = region;
-                        i = j;
                     }
                     return false;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD, (emp, list) -> {
-                    // Penalty = total number of "missing gap days" across transitions
-                    List<EmpDayRegion> ds = new ArrayList<>(list);
-                    ds.sort(Comparator.comparingInt(x -> x.dayId));
+                    java.util.TreeMap<Integer, String> dayToRegion = new java.util.TreeMap<>();
+                    for (EmpDayRegion x : list) {
+                        if (x == null || x.region == null || x.region.isBlank()) continue;
+                        dayToRegion.merge(
+                            x.dayId,
+                            x.region,
+                            (a, b) -> (a.compareTo(b) <= 0) ? a : b
+                        );
+                    }
+                    if (dayToRegion.isEmpty()) return 0;
 
-                    int minDay = ds.get(0).dayId;
                     int prevDay = Integer.MIN_VALUE;
                     String prevRegion = null;
+
+                    int firstDay = dayToRegion.firstKey();
+                    if (emp.histLastFixedDayId != Integer.MIN_VALUE
+                            && emp.histLastFixedRegion != null
+                            && !emp.histLastFixedRegion.isBlank()
+                            && emp.histLastFixedDayId < firstDay) {
+                        prevDay = emp.histLastFixedDayId;
+                        prevRegion = emp.histLastFixedRegion;
+                    }
+
                     int penalty = 0;
-
-                    int i = 0;
-                    while (i < ds.size()) {
-                        int day = ds.get(i).dayId;
-                        String region = ds.get(i).region;
-
-                        int j = i + 1;
-                        while (j < ds.size() && ds.get(j).dayId == day) j++;
+                    for (var e : dayToRegion.entrySet()) {
+                        int day = e.getKey();
+                        String region = e.getValue();
 
                         if (prevRegion != null && region != null && !region.equals(prevRegion)) {
                             int need = CAL.transitDays(prevRegion, region);
@@ -1055,12 +1072,9 @@ static class OpTaskMeta {
                                 }
                             }
                         }
-
                         prevDay = day;
                         prevRegion = region;
-                        i = j;
                     }
-
                     return Math.max(1, penalty);
                 })
                 .asConstraint("emp-region-transit-gap");
