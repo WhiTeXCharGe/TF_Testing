@@ -287,14 +287,22 @@ def main(env_path: str, sched_path: str, out_path: str):
 
     start_col_dates = len(headers) + 1
 
-    # date headers MUST include year (avoid confusion)
+
+    # date headers: store real date value (with year) but DISPLAY only MM/DD
     for k, dd in enumerate(dates):
         col = start_col_dates + k
-        c = ws.cell(row=1, column=col, value=dd.strftime("%Y/%m/%d"))
+
+        # store as an Excel date serial (has year internally)
+        c = ws.cell(row=1, column=col, value=datetime(dd.year, dd.month, dd.day))
+
+        # display format (what you see without clicking)
+        c.number_format = "mm/dd"
+
         c.font = BOLD_BLACK
         c.alignment = CENTER
         c.border = BORDER_THIN
         ws.column_dimensions[get_column_letter(col)].width = DATE_COL_WIDTH
+
 
     # meta widths
     ws.column_dimensions["A"].width = META_COL_WIDTHS["company"]
@@ -381,6 +389,9 @@ def main(env_path: str, sched_path: str, out_path: str):
             cD.value = todays_text
 
         ws.row_dimensions[r].height = DATA_ROW_HEIGHT
+    last_row = ws.max_row
+    last_col = start_col_dates + len(dates) - 1
+    ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
 
     wb.save(out_path)
     print(f"Saved: {out_path}")
