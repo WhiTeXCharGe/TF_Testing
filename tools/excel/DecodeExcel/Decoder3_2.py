@@ -520,101 +520,129 @@ def cut_su_outlier_cells(
         if len(occ) <= 1:
             continue
 
-        # Unique dates for clustering
-        dates = sorted(set([x[0] for x in occ]))
-        if len(dates) <= 1:
-            continue
-
-        clusters = _cluster_by_date_gap(dates, gap_days=cluster_gap_days)
-        if len(clusters) <= 1:
-            continue
-
-        # Score each cluster by worker-days in that date set
-        date_to_count = defaultdict(int)
-        for dt, _wid, _text in occ:
-            date_to_count[dt] += 1
-
-        scored = []
-        for cl in clusters:
-            worker_days = sum(date_to_count[d] for d in cl)
-            scored.append((worker_days, len(cl), cl[0], cl))
-        scored.sort(key=lambda t: (t[0], t[1], -int(t[2].timestamp())), reverse=True)
-
-        # Start by keeping the top clusters (usually 1 main cluster).
-        keep_n = max(1, int(keep_top_clusters))
-        kept = [t[3] for t in scored[:keep_n]]
-        main_cl = scored[0][3]
-        main_start = main_cl[0]
-        main_end = main_cl[-1]
-
-        kept_dates = set()
-        for cl in kept:
-            kept_dates.update(cl)
-
-        # IMPORTANT: We do NOT always delete every other cluster.
-        # We cut only clusters that look like "drag-fill noise":
-        #   - no consecutive run (e.g., 1-day here and there)
-        #   - or a small cluster very far away from the main cluster
-        for _worker_days, _uniq_days, _cl_start, cl in scored[keep_n:]:
-            run = _longest_consecutive_run(cl)
-
-            # distance between this cluster and the main cluster (0 if overlaps)
-            if cl[-1] < main_start:
-                gap = int((main_start - cl[-1]).days)
-            elif cl[0] > main_end:
-                gap = int((cl[0] - main_end).days)
-            else:
-                gap = 0
-
-            cut = False
-            if run < 2:
-                cut = True
-            elif gap >= int(far_gap_days) and len(cl) <= int(small_cluster_max_unique_days):
-                cut = True
-
-            if not cut:
-                kept_dates.update(cl)
-
         # ------------------------------------------------------------
-        # NEW: POST-CUT VALIDATION (your issue)
-        # If remaining kept_dates evidence is too small => cut whole module.
-        # Prevent: "had many -> cut most -> left 1 day -> still shifted"
+        # PER-WORKER OUTLIER CUT (your requested behavior)
+        # For each (code, wid), cluster that worker's dates ONLY.
+        # If the worker's best cluster is not "continuous enough" (run < 2),
+        # cut ALL that worker's occurrences for this code into dummy.
+        # Otherwise keep only the best cluster for that worker and cut the rest.
         # ------------------------------------------------------------
-        remaining_unique_days = len(kept_dates)
-        remaining_cells = sum(1 for (dt, _wid, _txt) in occ if dt in kept_dates)
 
-        if (remaining_unique_days < int(cut_module_if_unique_days_lt)) or (remaining_cells < int(cut_module_if_total_cells_lt)):
-            _cut_all_occurrences(
-                code,
-                occ,
-                f"module cut AFTER outlier-cut: remaining evidence too small "
-                f"(unique_days={remaining_unique_days}, cells={remaining_cells}) "
-                f"< thresholds (days<{cut_module_if_unique_days_lt} or cells<{cut_module_if_total_cells_lt})",
-            )
-            continue
-
-        # Rewrite occurrences not in kept dates
-        broken = _break_tool_code(code)
+        occ_by_wid = defaultdict(list)  # wid -> list of (dt, text)
         for dt, wid, text in occ:
-            if dt in kept_dates:
-                continue
-            if not isinstance(text, str):
+            occ_by_wid[wid].append((dt, text))
+
+        broken = _break_tool_code(code)
+
+        for wid, wid_occ in occ_by_wid.items():
+            # unique sorted dates for THIS worker only
+            wid_dates = sorted(set(dt for dt, _ in wid_occ))
+            if len(wid_dates) <= 1:
+                # single-day involvement => treat as outlier (cut it)
+                for dt, text in wid_occ:
+                    if not isinstance(text, str):
+                        continue
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": "per-worker cut: only 1 day for this worker on this module (treated as outlier)",
+                    })
                 continue
 
-            old = text
-            new = old.replace(code, broken, 1)
-            if new == old:
+            # cluster THIS worker's dates
+            wid_clusters = _cluster_by_date_gap(wid_dates, gap_days=cluster_gap_days)
+
+            # pick "best cluster" for this worker:
+            # prefer largest uniq-days, then earliest start
+            wid_clusters.sort(key=lambda cl: (len(cl), -int(cl[0].timestamp())), reverse=True)
+            best = wid_clusters[0]
+
+            # longest consecutive run INSIDE best cluster
+            best_run = _longest_consecutive_run(best)
+
+            # If this worker does not have a consecutive run of >=2 days,
+            # cut ALL occurrences for this worker for this code.
+            if best_run < 2:
+                for dt, text in wid_occ:
+                    if not isinstance(text, str):
+                        continue
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": f"per-worker cut: no consecutive run (best_run={best_run}) for this worker on this module",
+                    })
                 continue
 
-            _remember_original_text(su_data, wid, dt, old, new)
-            worker_date_map[(wid, dt)] = new
-            corrections.append({
-                "wid": wid,
-                "date": _to_ymd(dt),
-                "code": code,
-                "text": old,
-                "reason": f"outlier cluster cut (run<2 or far-gap); cluster_gap={cluster_gap_days}d",
-            })
+            # Keep ALL "good" clusters; cut only "bad" clusters.
+            # A "good" cluster = has at least 2 consecutive days inside it.
+
+            def _cluster_has_run2(cluster_dates):
+                return _longest_consecutive_run(cluster_dates) >= 2
+
+            # Decide which dates to keep for this worker+code
+            keep_dates = set()
+            for cl in wid_clusters:
+                if _cluster_has_run2(cl):
+                    keep_dates.update(cl)
+
+            # If nothing qualifies, fall back to old behavior: cut all
+            if not keep_dates:
+                for dt, text in wid_occ:
+                    if not isinstance(text, str):
+                        continue
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": "per-worker cut: no cluster has >=2 consecutive days (treated as outliers)",
+                    })
+                continue
+
+            # Cut only dates NOT in keep_dates
+            for dt, text in wid_occ:
+                if dt in keep_dates:
+                    continue
+                if not isinstance(text, str):
+                    continue
+                old = text
+                new = old.replace(code, broken, 1)
+                if new == old:
+                    continue
+                _remember_original_text(su_data, wid, dt, old, new)
+                worker_date_map[(wid, dt)] = new
+                corrections.append({
+                    "wid": wid,
+                    "date": _to_ymd(dt),
+                    "code": code,
+                    "text": old,
+                    "reason": "per-worker cut: cluster is too small / not consecutive (outlier)",
+                })
+
+        # Done for this code
+        continue
 
     # attach for optional downstream use
     su_data["su_outlier_corrections"] = corrections
@@ -1025,19 +1053,26 @@ def build_assignments_v3(
     dummy_tool_labels = defaultdict(set)  # code -> set(full_text)
 
     # 1) NORMAL CELLS
-    for (wid, dt), text in worker_date_map.items():
+    for (wid, dt), raw_text in worker_date_map.items():
         if f_start is not None and f_end is not None and (dt < f_start or dt > f_end):
             continue
-        # restore original text for label/other-task creation and for output assignment labels
+
+        # IMPORTANT:
+        # - use internal_text (possibly broken by outlier-cut) for code extraction
+        # - use display_text (original) for label and outputs
+        internal_text = raw_text
+        display_text = raw_text
+
         k = (wid, _to_ymd(dt))
         if k in orig_map:
-            text = orig_map[k]["old"]
-        code = extract_tool_code(text)
+            display_text = orig_map[k]["old"]     # original text for label/log/output
+            internal_text = orig_map[k]["new"]    # broken text for matching (dummy behavior)
+
+        code = extract_tool_code(internal_text)
 
         if code and (code in valid_code_set) and (code in shifted_code_to_phases):
             matched = False
             for phase_meta in shifted_code_to_phases[code]:
-                # NEW: prefer exact worked-day mapping
                 ds = phase_meta.get("date_set")
                 if ds is not None:
                     if dt in ds:
@@ -1047,7 +1082,6 @@ def build_assignments_v3(
                         matched = True
                         break
                 else:
-                    # fallback to old window logic (for safety)
                     ps = phase_meta["start"]
                     pe = phase_meta["end"]
                     if ps is None or pe is None:
@@ -1061,15 +1095,18 @@ def build_assignments_v3(
             if matched:
                 continue
 
-        # otherwise: dummy "other"
-        label = text.strip() if isinstance(text, str) else ""
+        # otherwise: dummy "other" (Fixed)
+        label = display_text.strip() if isinstance(display_text, str) else ""
         if not label:
             label = "other"
         misc_label_dates[label].add(dt)
         misc_worker_label_dates[(wid, label)].append(dt)
 
-        if code and code not in valid_code_set:
-            dummy_tool_labels[code].add(label)
+        # for log: tool-code-ish labels that are not in 新規製番リスト valid set
+        # NOTE: use code extracted from DISPLAY (original) only for reporting, not matching
+        code_disp = extract_tool_code(display_text)
+        if code_disp and code_disp not in valid_code_set:
+            dummy_tool_labels[code_disp].add(label)
 
     # 2) GREY CELLS = Personal Business
     for (wid, dt), text in worker_personal_map.items():
@@ -1104,6 +1141,17 @@ def build_assignments_v3(
             "plan_flexibility": "Flexible",
         })
 
+    # worker-day counts for misc labels (unique wid+date)
+    misc_label_workerday = defaultdict(int)
+    tmp_label_wid_dates = defaultdict(set)  # label -> set((wid, dt))
+
+    for (wid, label), dates in misc_worker_label_dates.items():
+        for d in set(dates):
+            tmp_label_wid_dates[label].add((wid, d))
+
+    for label, s in tmp_label_wid_dates.items():
+        misc_label_workerday[label] = len(s)
+
     # 4) MISC ("OTHER") TASKS + FIXED ASSIGNMENTS
     misc_tasks = []
     misc_label_to_phase = {}
@@ -1119,7 +1167,11 @@ def build_assignments_v3(
         phase_id = f"{task_id}_p1"
         misc_label_to_phase[label] = {"phase_id": phase_id, "start": start, "end": end}
 
-        workload_days = int((end - start).days) + 1
+        # Workload should match assignment_list: 1 worker x 1 day = 1
+        workload_days = int(misc_label_workerday.get(label, 0))
+        if workload_days <= 0:
+            # fallback safety (should rarely happen)
+            workload_days = int((end - start).days) + 1
 
         misc_tasks.append({
             "id": task_id,
@@ -1173,8 +1225,21 @@ def build_assignments_v3(
         pb_counter += 1
         phase_id = f"{task_id}_p1"
         pb_label_to_phase[label] = {"phase_id": phase_id, "start": start, "end": end}
+        # worker-day counts for personal labels (unique wid+date)
+        personal_label_workerday = defaultdict(int)
+        tmp_pb_label_wid_dates = defaultdict(set)  # label -> set((wid, dt))
 
-        workload_days = int((end - start).days) + 1
+        for (wid, label), dates in personal_worker_label_dates.items():
+            for d in set(dates):
+                tmp_pb_label_wid_dates[label].add((wid, d))
+
+        for label, s in tmp_pb_label_wid_dates.items():
+            personal_label_workerday[label] = len(s)
+            
+        workload_days = int(personal_label_workerday.get(label, 0))
+        if workload_days <= 0:
+            # fallback safety
+            workload_days = int((end - start).days) + 1
 
         personal_tasks.append({
             "id": task_id,
@@ -1687,10 +1752,10 @@ def build_env_and_schedule_decoder3(
                 "id": "wf_tool",
                 "name": "Tool Install",
                 "phase_list": [
-                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
-                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 3}]},
+                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
+                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
+                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
+                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
                 ],
             },
             {
