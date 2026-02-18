@@ -24,6 +24,7 @@ import sys
 import yaml
 from datetime import datetime, date, timedelta
 from collections import defaultdict
+import hashlib
 
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
@@ -42,6 +43,11 @@ META_COL_WIDTHS = {
 
 HEADER_ROW_HEIGHT = 18
 DATA_ROW_HEIGHT = 18
+HEADER_ROWS = 3
+MONTH_ROW = 1
+DAY_ROW = 2
+DOW_ROW = 3
+DATA_START_ROW = 4
 
 # Filter huge worker_list:
 # True  -> include everyone in EnvConfig.worker_list (can be 800+)
@@ -64,9 +70,15 @@ THIN = Side(style="thin", color="999999")
 BORDER_THIN = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
 
 # Light palette (avoid red + avoid too-dark; text must remain black)
-PALETTE = [
+PALETTE_FIXED = [
     "FFF2CC", "D9EAD3", "CFE2F3", "D9D2E9", "FCE5CD", "EAD1DC", "D0E0E3", "E2EFDA",
     "DEEAF6", "E7E6E6", "C9DAF8", "D9E1F2", "D0CECE", "E2F0D9", "DDEBF7", "F8CBAD",
+]
+
+# stronger / more saturated (avoid red)
+PALETTE_FLEX = [
+    "FFE599", "B6D7A8", "9FC5E8", "B4A7D6", "F9CB9C", "D5A6BD", "A2C4C9", "CFE2F3",
+    "A4C2F4", "B7B7B7", "A4C2F4", "B6D7A8", "9FC5E8", "FFD966", "A2C4C9", "D9D2E9",
 ]
 
 
@@ -102,25 +114,36 @@ def normalize_module_code(name: str) -> str:
     s = str(name).strip()
     return s.split("_", 1)[0]
 
+def stable_palette_color(key: str, palette: list[str], namespace: str) -> str:
+    """
+    Stable across runs/machines.
+    namespace lets you separate mappings for company vs module if you want.
+    """
+    s = (namespace + "::" + (key or "")).encode("utf-8")
+    h = hashlib.md5(s).hexdigest()
+    idx = int(h[:8], 16) % len(palette)
+    return palette[idx]
 
-def color_for_key(key: str, key_to_color: dict) -> str:
-    """Stable mapping key -> color."""
-    if key in key_to_color:
-        return key_to_color[key]
-    idx = abs(hash(key)) % len(PALETTE)
-    col = PALETTE[idx]
-    key_to_color[key] = col
-    return col
 
 
 def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
     """
-    Matches the schema used in export_schedule_excel.py:
-      - scalar date
-      - list of scalar dates
-      - {single:{days:[...]}}
-      - {weekly:{weekdays:[sat,sun,...]}}
-      - list of those dicts
+    Supports these shapes:
+      A) unavailable_dates:
+           - date: 2025/01/25
+           - date: 2025/01/26
+
+      B) unavailable_dates:
+           - 2025/01/25
+           - 2025/01/26
+
+      C) unavailable_dates:
+           - single:
+               days: [2025/01/25, ...]
+           - weekly:
+               weekdays: [sat, sun, ...]
+
+    (C is kept for compatibility with older configs.)
     """
     off = set()
     if raw is None:
@@ -153,6 +176,12 @@ def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
         if item is None:
             continue
 
+        # ✅ Case A: dict with {"date": "..."}
+        if isinstance(item, dict) and "date" in item:
+            add_single(item["date"])
+            continue
+
+        # Case C: single/weekly schema
         if isinstance(item, dict):
             single = item.get("single")
             if isinstance(single, dict):
@@ -169,8 +198,10 @@ def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
                         wd = weekday_to_int(w)
                         if wd is not None:
                             weekly.add(wd)
-        else:
-            add_single(item)
+            continue
+
+        # Case B: plain scalar date
+        add_single(item)
 
     if weekly:
         for dd in daterange(plan_start, plan_end):
@@ -178,6 +209,7 @@ def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
                 off.add(dd)
 
     return off
+
 
 
 def build_op_task_index(workflow_task_list):
@@ -193,7 +225,11 @@ def build_op_task_index(workflow_task_list):
                 idx[ot["id"]] = mid
     return idx
 
-
+def company_fill(comp_key: str):
+    if not comp_key:
+        return None
+    col = stable_palette_color(comp_key, PALETTE_FIXED, namespace="company")  # stable
+    return PatternFill(start_color=col, end_color=col, fill_type="solid")
 # ---------------- Main exporter ----------------
 def main(env_path: str, sched_path: str, out_path: str):
     env = load_yaml(env_path)
@@ -236,7 +272,10 @@ def main(env_path: str, sched_path: str, out_path: str):
         for ditem in (a.get(wd_key) or []):
             dd = _d(ditem.get("date"))
             if plan_start <= dd <= plan_end:
-                cell_modules[(wid, dd)].append(mid)
+                flex = str(a.get("plan_flexibility", "")).strip()   # "Flexible" / "Fixed" / maybe blank
+                is_flexible = (flex.lower() == "flexible")
+
+                cell_modules[(wid, dd)].append((mid, is_flexible))
                 assigned_workers.add(wid)
 
     # worker unavailable map (and filter set)
@@ -280,44 +319,77 @@ def main(env_path: str, sched_path: str, out_path: str):
 
     headers = ["company", "name", "manager", "today_task"]
     for j, h in enumerate(headers, start=1):
-        c = ws.cell(row=1, column=j, value=h)
+        c = ws.cell(row=DOW_ROW, column=j, value=h)   # row 3
         c.font = BOLD_BLACK
         c.alignment = CENTER
         c.border = BORDER_THIN
 
     start_col_dates = len(headers) + 1
 
+    # --- 3-row date header: Month / Day / Weekday(kanji) ---
+    dow_kanji = ["月", "火", "水", "木", "金", "土", "日"]
 
-    # date headers: store real date value (with year) but DISPLAY only MM/DD
+    # row 2 + 3: day + weekday
     for k, dd in enumerate(dates):
         col = start_col_dates + k
+        dt = datetime(dd.year, dd.month, dd.day)
 
-        # store as an Excel date serial (has year internally)
-        c = ws.cell(row=1, column=col, value=datetime(dd.year, dd.month, dd.day))
+        # Day row (value is real date; display only day)
+        c_day = ws.cell(row=DAY_ROW, column=col, value=dt)
+        c_day.number_format = "dd"
+        c_day.font = BOLD_BLACK
+        c_day.alignment = CENTER
+        c_day.border = BORDER_THIN
 
-        # display format (what you see without clicking)
-        c.number_format = "mm/dd"
+        # Weekday row (kanji)
+        c_dow = ws.cell(row=DOW_ROW, column=col, value=dow_kanji[dd.weekday()])
+        c_dow.font = BOLD_BLACK
+        c_dow.alignment = CENTER
+        c_dow.border = BORDER_THIN
 
-        c.font = BOLD_BLACK
-        c.alignment = CENTER
-        c.border = BORDER_THIN
         ws.column_dimensions[get_column_letter(col)].width = DATE_COL_WIDTH
 
+    # row 1: Month labels, merged across same month
+    # Example: "1月" spanning all columns of that month
+    month_start_k = 0
+    while month_start_k < len(dates):
+        m = dates[month_start_k].month
+        y = dates[month_start_k].year
+        month_end_k = month_start_k
+        while month_end_k + 1 < len(dates) and dates[month_end_k + 1].month == m and dates[month_end_k + 1].year == y:
+            month_end_k += 1
 
-    # meta widths
-    ws.column_dimensions["A"].width = META_COL_WIDTHS["company"]
-    ws.column_dimensions["B"].width = META_COL_WIDTHS["name"]
-    ws.column_dimensions["C"].width = META_COL_WIDTHS["manager"]
-    ws.column_dimensions["D"].width = META_COL_WIDTHS["today_task"]
+        c1 = start_col_dates + month_start_k
+        c2 = start_col_dates + month_end_k
 
-    ws.freeze_panes = get_column_letter(start_col_dates) + "2"
-    ws.row_dimensions[1].height = HEADER_ROW_HEIGHT
+        label = f"{m}月"
+        c_month = ws.cell(row=MONTH_ROW, column=c1, value=label)
+        c_month.font = BOLD_BLACK
+        c_month.alignment = CENTER
+        c_month.border = BORDER_THIN
+
+        # fill borders for merged area
+        for cc in range(c1, c2 + 1):
+            ws.cell(row=MONTH_ROW, column=cc).border = BORDER_THIN
+
+        if c2 > c1:
+            ws.merge_cells(start_row=MONTH_ROW, start_column=c1, end_row=MONTH_ROW, end_column=c2)
+
+        month_start_k = month_end_k + 1
+
+    # header row heights
+    ws.row_dimensions[MONTH_ROW].height = HEADER_ROW_HEIGHT
+    ws.row_dimensions[DAY_ROW].height = HEADER_ROW_HEIGHT
+    ws.row_dimensions[DOW_ROW].height = HEADER_ROW_HEIGHT
+
+
+    ws.freeze_panes = get_column_letter(start_col_dates) + str(DATA_START_ROW)
 
     # color maps
     company_color = {}
     module_color = {}
 
-    for r, wid in enumerate(worker_ids, start=2):
+    for r, wid in enumerate(worker_ids, start=DATA_START_ROW):
         wcfg = workers.get(wid, {}) or {}
         wname = wcfg.get("name", wid)
         is_mgr = bool(wcfg.get("is_manager", False))
@@ -326,29 +398,34 @@ def main(env_path: str, sched_path: str, out_path: str):
         wc_name = (worker_companies.get(wc_id, {}) or {}).get("name", wc_id or "")
 
         # company label color (consistent per company)
+        # company label color (consistent per company)
         comp_key = wc_name or wc_id or ""
-        comp_fill = None
-        if comp_key:
-            col = color_for_key(comp_key, company_color)
-            comp_fill = PatternFill(start_color=col, end_color=col, fill_type="solid")
+        comp_fill = company_fill(comp_key)
 
-        # left columns
+        # left columns (create cells first)
         cA = ws.cell(row=r, column=1, value=wc_name)
         cB = ws.cell(row=r, column=2, value=wname)
         cC = ws.cell(row=r, column=3, value="Yes" if is_mgr else "")
         cD = ws.cell(row=r, column=4, value="")
 
+        # style left columns
         for c in (cA, cB, cC, cD):
             c.border = BORDER_THIN
             c.font = BOLD_BLACK if c in (cA, cB) else BLACK
             c.alignment = CENTER if c in (cA, cC) else LEFT
-            if comp_fill:
+
+        # apply company color ONLY to company + name columns (A,B)
+        if comp_fill:
+            for c in (cA, cB):
                 c.fill = comp_fill
-                # text black always
                 c.font = Font(bold=c.font.bold, color="000000")
+
+        # manager column should be blank fill (no company color)
+        # today_task column will be colored later by today's task fill (not company color)
 
         # grid cells
         todays_text = ""
+        todays_fill = None
         for k, dd in enumerate(dates):
             col = start_col_dates + k
             cell = ws.cell(row=r, column=col, value="")
@@ -361,37 +438,45 @@ def main(env_path: str, sched_path: str, out_path: str):
                 cell.fill = UNAV_FILL
                 continue
 
-            mids = cell_modules.get((wid, dd), [])
-            if not mids:
+            entries = cell_modules.get((wid, dd), [])
+            if not entries:
                 continue
 
-            # convert module_id -> module_name (module code)
-            names = []
-            for mid in mids:
-                if mid.startswith("UNKNOWN::"):
-                    # show something visible if YAML mismatch exists
-                    names.append(mid.replace("UNKNOWN::", ""))
-                else:
-                    names.append(module_name_by_id.get(mid, mid))
+            # entries: [(module_id, is_flexible), ...]
+            mid, is_flexible = entries[0]  # your design uses first only
 
-            text = names[0] if JOIN_MULTIPLE_WITH_NEWLINE else " | ".join(names)
-            cell.value = text
+            # module name (code)
+            if str(mid).startswith("UNKNOWN::"):
+                module_name = str(mid).replace("UNKNOWN::", "")
+            else:
+                module_name = module_name_by_id.get(mid, mid)
 
-            # color key uses normalized code base from module NAME (not id)
-            base = normalize_module_code(names[0])
-            mcol = color_for_key(base, module_color)
-            cell.fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
+            cell.value = module_name
+
+            base = normalize_module_code(module_name)
+
+            palette = PALETTE_FLEX if is_flexible else PALETTE_FIXED
+            mcol = stable_palette_color(base, palette, namespace="module")
+
+            task_fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
+            cell.fill = task_fill
 
             if dd == today:
-                todays_text = text
+                todays_text = module_name
+                todays_fill = task_fill
 
         if todays_text:
             cD.value = todays_text
+            if todays_fill:
+                cD.fill = todays_fill
+                cD.font = Font(color="000000")
+
 
         ws.row_dimensions[r].height = DATA_ROW_HEIGHT
     last_row = ws.max_row
     last_col = start_col_dates + len(dates) - 1
-    ws.auto_filter.ref = f"A1:{get_column_letter(last_col)}{last_row}"
+    ws.auto_filter.ref = f"A{DOW_ROW}:{get_column_letter(last_col)}{last_row}"
+
 
     wb.save(out_path)
     print(f"Saved: {out_path}")
