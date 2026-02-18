@@ -13,7 +13,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 8
+        max_worker_num: 7
     - id: tool_p2
       name: Hardware Setup
       operation_list:
@@ -24,7 +24,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 8
+        max_worker_num: 7
     - id: tool_p3
       name: Function Setup
       operation_list:
@@ -35,7 +35,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 8
+        max_worker_num: 7
     - id: tool_p4
       name: Utility
       operation_list:
@@ -46,7 +46,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 8
+        max_worker_num: 7
   - id: wf_other
     name: Other work (from SU_Others)
     phase_list:
@@ -60,7 +60,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 26
+        max_worker_num: 8
   - id: wf_personal_business
     name: Personal Business
     phase_list:
@@ -74,7 +74,7 @@ environment:
         - 10
         - 12
         min_worker_num: 1
-        max_worker_num: 26
+        max_worker_num: 8
   fab_list:
   - id: f_other
     name: Other

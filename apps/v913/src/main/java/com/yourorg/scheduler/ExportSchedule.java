@@ -13,7 +13,83 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public class ExportSchedule {
 
-        @SuppressWarnings("unchecked")
+    @SuppressWarnings("unchecked")
+    static void moveFlexibleBeforeCutoffToFixed(
+            List<Map<String,Object>> preservedFixed,
+            List<Map<String,Object>> preservedFlexible,
+            LocalDate planStart,
+            int cutOffDayId
+    ) {
+        DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+
+        List<Map<String,Object>> remainFlexible = new ArrayList<>();
+
+        for (Map<String,Object> a : preservedFlexible) {
+            if (a == null) continue;
+
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            List<Map<String,Object>> wdl =
+                    (List<Map<String,Object>>) a.getOrDefault(wdKey, List.of());
+
+            // split work_date_list
+            List<Map<String,Object>> before = new ArrayList<>();
+            List<Map<String,Object>> after  = new ArrayList<>();
+
+            for (Map<String,Object> item : wdl) {
+                if (item == null) continue;
+                String dateStr = String.valueOf(item.get("date"));
+                Integer did = EmployeeSchedule.dayIdFromDate(planStart, dateStr);
+                if (did == null) continue;
+
+                if (did < cutOffDayId) before.add(item);
+                else after.add(item);
+            }
+
+            // build FIXED row from before-part
+            if (!before.isEmpty()) {
+                Map<String,Object> fixedRow = new LinkedHashMap<>(a);
+                fixedRow.put("plan_flexibility", "Fixed");
+                fixedRow.put("work_date_list", before);
+
+                // refresh start/end from before part
+                int minDid = Integer.MAX_VALUE, maxDid = Integer.MIN_VALUE;
+                for (Map<String,Object> item : before) {
+                    Integer did = EmployeeSchedule.dayIdFromDate(planStart, String.valueOf(item.get("date")));
+                    if (did == null) continue;
+                    minDid = Math.min(minDid, did);
+                    maxDid = Math.max(maxDid, did);
+                }
+                fixedRow.put("start_date", planStart.plusDays(minDid).format(DF));
+                fixedRow.put("end_date",   planStart.plusDays(maxDid).format(DF));
+
+                preservedFixed.add(fixedRow);
+            }
+
+            // keep remaining flexible (>= cutoff) only if it has dates
+            if (!after.isEmpty()) {
+                Map<String,Object> flexRow = new LinkedHashMap<>(a);
+                flexRow.put("plan_flexibility", "Flexible");
+                flexRow.put("work_date_list", after);
+
+                int minDid = Integer.MAX_VALUE, maxDid = Integer.MIN_VALUE;
+                for (Map<String,Object> item : after) {
+                    Integer did = EmployeeSchedule.dayIdFromDate(planStart, String.valueOf(item.get("date")));
+                    if (did == null) continue;
+                    minDid = Math.min(minDid, did);
+                    maxDid = Math.max(maxDid, did);
+                }
+                flexRow.put("start_date", planStart.plusDays(minDid).format(DF));
+                flexRow.put("end_date",   planStart.plusDays(maxDid).format(DF));
+
+                remainFlexible.add(flexRow);
+            }
+        }
+
+        preservedFlexible.clear();
+        preservedFlexible.addAll(remainFlexible);
+    }
+
+    @SuppressWarnings("unchecked")
     public static void overwriteScheduleWithAssignments(
             EmployeeSchedule.SinglePassPlan plan,
             LocalDate planStart,
@@ -92,6 +168,20 @@ public class ExportSchedule {
                 preservedFlexible.add(a);
             }
         }
+
+        // read cut_off_date
+        LocalDate cutOffDate = null;
+        Object cut = sched.get("cut_off_date");
+        if (cut != null) {
+            cutOffDate = LocalDate.parse(String.valueOf(cut).replace("-", "/"), EmployeeSchedule.DF);
+        } else {
+            // if missing, treat as planStart
+            cutOffDate = planStart;
+        }
+        int cutOffDayId = (int)(cutOffDate.toEpochDay() - planStart.toEpochDay());
+
+        // Convert flexible history before cutoff into fixed
+        moveFlexibleBeforeCutoffToFixed(preservedFixed, preservedFlexible, planStart, cutOffDayId);
 
         // ---- Detect "stage1 only" situation (warmPinned still exists) ----
         boolean hasWarmPinned = false;

@@ -1671,12 +1671,12 @@ static class OpTaskMeta {
 
         // Fixed assignments parsed from Schedule.yaml
         List<FixedAssign> fixedRows;
-        Map<String,Integer> fixedHoursByKey;
         List<FlexibleAssign> flexibleRows;
         Map<String,Integer>  flexibleHoursByKey;
         // modules that are still relevant after trim (for dynamic blocks / warm start)
         Set<String> activeModules;
-
+        Map<String,Integer> fixedHoursByKeyAll;     // includes history before cutoff
+        Map<String,Integer> fixedHoursByKeyHorizon; // horizon only
         // flexible warm-start rows
         List<InitialAssign> initialRows;
 
@@ -1945,7 +1945,7 @@ for (Map<String,Object> wf : wfl) {
 
         // ---- Read fixed + flexible assignments ----
         List<FixedAssign> fixedRows = new ArrayList<>();
-        Map<String,Integer> fixedHoursByKey = new HashMap<>();
+        Map<String,Integer> fixedHoursByKeyAll = new HashMap<>();
         List<InitialAssign> initialRows = new ArrayList<>();
 
         List<FlexibleAssign> flexibleRows = new ArrayList<>();
@@ -2036,7 +2036,7 @@ for (Map<String,Object> wf : wfl) {
             }
 
             if (isFixed && totalFixedHours > 0) {
-                fixedHoursByKey.merge(module + "|" + opId, totalFixedHours, Integer::sum);
+                fixedHoursByKeyAll.merge(module + "|" + opId, totalFixedHours, Integer::sum);
             }
             if (isFixed && !byDay.isEmpty()) {
                 FixedAssign fa = new FixedAssign();
@@ -2048,33 +2048,57 @@ for (Map<String,Object> wf : wfl) {
             }
 
             if (isFlexible && !byDay.isEmpty()) {
-                FlexibleAssign fa = new FlexibleAssign();
-                fa.module = module;
-                fa.opId   = opId;
-                fa.wid    = wid;
-                fa.hoursByDay.putAll(byDay);
-                fa.phaseId = phId;
-                fa.phaseNum = phNum;
-                fa.factory = (meta != null) ? meta.factory : null;
-                flexibleRows.add(fa);
 
-                int tot = byDay.values().stream().mapToInt(Integer::intValue).sum();
-                if (tot > 0) {
-                    flexibleHoursByKey.merge(module + "|" + opId, tot, Integer::sum);
+                Map<Integer,Integer> before = new HashMap<>();
+                Map<Integer,Integer> after  = new HashMap<>();
+                for (var ent : byDay.entrySet()) {
+                    int did = ent.getKey();
+                    int h   = ent.getValue();
+                    if (h <= 0) continue;
+                    if (did < cutOffDayId) before.put(did, h);
+                    else after.put(did, h);
                 }
 
-                InitialAssign ia = new InitialAssign();
-                ia.module = module;
-                ia.opId   = opId;
-                ia.hoursByDay.putAll(byDay);
-                initialRows.add(ia);
+                // (1) BEFORE cutoff => treat as FIXED history
+                if (!before.isEmpty()) {
+                    int totBefore = before.values().stream().mapToInt(Integer::intValue).sum();
+                    fixedHoursByKeyAll.merge(module + "|" + opId, totBefore, Integer::sum);
+
+                    FixedAssign fx = new FixedAssign();
+                    fx.module = module; fx.opId = opId; fx.wid = wid;
+                    fx.hoursByDay.putAll(before);
+                    fx.phaseId = phId; fx.phaseNum = phNum;
+                    fx.factory = (meta != null) ? meta.factory : null;
+                    fixedRows.add(fx);
+                }
+
+                // (2) AFTER cutoff => keep as flexible warm-start
+                if (!after.isEmpty()) {
+                    FlexibleAssign fa = new FlexibleAssign();
+                    fa.module = module; fa.opId = opId; fa.wid = wid;
+                    fa.hoursByDay.putAll(after);
+                    fa.phaseId = phId; fa.phaseNum = phNum;
+                    fa.factory = (meta != null) ? meta.factory : null;
+                    flexibleRows.add(fa);
+
+                    int tot = after.values().stream().mapToInt(Integer::intValue).sum();
+                    if (tot > 0) flexibleHoursByKey.merge(module + "|" + opId, tot, Integer::sum);
+
+                    InitialAssign ia = new InitialAssign();
+                    ia.module = module; ia.opId = opId;
+                    ia.hoursByDay.putAll(after);
+                    initialRows.add(ia);
+                }
             }
+
         }
 
         ParsedSchedule out = new ParsedSchedule();
         out.planStart = start; out.planEnd = end;
         out.windows = windows; out.requiredByKey = required;
-        out.fixedRows = fixedRows; out.fixedHoursByKey = fixedHoursByKey;
+        out.fixedRows = fixedRows;
+        out.fixedHoursByKeyAll = fixedHoursByKeyAll;
+        out.fixedHoursByKeyHorizon = new HashMap<>();
         out.activeModules = activeModules;
         out.initialRows = initialRows;
         out.flexibleRows = flexibleRows;
@@ -2196,8 +2220,8 @@ for (Map<String,Object> wf : wfl) {
                     : REQUIRED_HOURS_PER_WORKLOAD_DAY;
 
             int totalReq = w.workloadDays * baseline;
-            int fixed = sch.fixedHoursByKey.getOrDefault(w.module + "|" + w.opId, 0);
-            int req = Math.max(0, totalReq - fixed);
+            int fixedAll = sch.fixedHoursByKeyAll.getOrDefault(w.module + "|" + w.opId, 0);
+            int req = Math.max(0, totalReq - fixedAll);
 
             if (req == 0) continue;
 
@@ -2812,7 +2836,8 @@ for (Map<String,Object> wf : wfl) {
         // Recompute fixed-hours per (module|op) INSIDE solver horizon only.
         int hMin = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
         int hMax = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
-        sch.fixedHoursByKey = recomputeFixedHoursByKeyHorizon(sch.fixedRows, hMin, hMax);
+        sch.fixedHoursByKeyHorizon = recomputeFixedHoursByKeyHorizon(sch.fixedRows, hMin, hMax);
+
 
         int realEmp = Math.max(1, env.employees.size() - 1);
         int totalReq = sch.requiredByKey.values().stream().mapToInt(Integer::intValue).sum();
