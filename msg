@@ -1,104 +1,150 @@
-You *can* delete it, but I **don’t recommend deleting the whole per-worker clustering block**, because then drag-fill noise comes back and your shifting/workload can explode again.
+Yes — your understanding is correct:
 
-What you actually want is simpler:
+* **Fixed vs Flexible** is controlled by `PALETTE_FIXED / PALETTE_FLEX` + `palette = ...`.
+* **Unavailable dates red** is already working now because your `parse_unavailable_dates()` supports `- date: ...` shape (your current code includes that ✅).
 
-* ✅ **Keep** *all* clusters that look “real work” (ex: cluster has ≥2 consecutive days, or at least length ≥2)
-* ❌ **Cut** only tiny/noisy clusters (single day, or no consecutive run)
+Now for your new request:
 
-Right now your code does this (too aggressive):
+> Flexible should be “highlighted” but not too dark for black text.
+> New option: **If enabled**, make **Flexible text = white** and allow using **darker palette** for Flexible.
 
-* pick **best cluster only**
-* cut everything else → reason = `"outside worker main cluster"`
-
-That’s why a valid second cluster (even 2+ days) gets cut.
+✅ We can do that with a config flag and a separate flex-font + flex-palette.
 
 ---
 
-## Don’t delete — replace just the “keep only best cluster” rule
-
-Find this part:
+## ✅ Add these configs (near CONFIG section)
 
 ```python
-# Otherwise keep ONLY dates in best cluster for this worker; cut the rest
-best_dates = set(best)
-for dt, text in wid_occ:
-    if dt in best_dates:
-        continue
-    ...
-    reason = f"per-worker cut: outside worker's main cluster (kept {len(best_dates)} days)"
+# Flexible highlight mode:
+# False -> current behavior (black text + PALETTE_FLEX)
+# True  -> flexible cells use WHITE text + DARK palette (strong highlight)
+FLEX_WHITE_TEXT_MODE = True
+
+# Optional: only apply to flexible cells (fixed stays black)
+FLEX_FONT_WHITE = Font(color="FFFFFF", bold=False)
+FLEX_FONT_BLACK = Font(color="000000", bold=False)
 ```
-
-### Replace it with this logic:
-
-✅ Keep *any* cluster that has a consecutive run >= 2
-❌ Cut clusters that don’t
-
-```python
-# Keep ALL "good" clusters; cut only "bad" clusters.
-# A "good" cluster = has at least 2 consecutive days inside it.
-
-def _cluster_has_run2(cluster_dates):
-    return _longest_consecutive_run(cluster_dates) >= 2
-
-# Decide which dates to keep for this worker+code
-keep_dates = set()
-for cl in wid_clusters:
-    if _cluster_has_run2(cl):
-        keep_dates.update(cl)
-
-# If nothing qualifies, fall back to old behavior: cut all
-if not keep_dates:
-    for dt, text in wid_occ:
-        if not isinstance(text, str):
-            continue
-        old = text
-        new = old.replace(code, broken, 1)
-        if new == old:
-            continue
-        _remember_original_text(su_data, wid, dt, old, new)
-        worker_date_map[(wid, dt)] = new
-        corrections.append({
-            "wid": wid,
-            "date": _to_ymd(dt),
-            "code": code,
-            "text": old,
-            "reason": "per-worker cut: no cluster has >=2 consecutive days (treated as outliers)",
-        })
-    continue
-
-# Cut only dates NOT in keep_dates
-for dt, text in wid_occ:
-    if dt in keep_dates:
-        continue
-    if not isinstance(text, str):
-        continue
-    old = text
-    new = old.replace(code, broken, 1)
-    if new == old:
-        continue
-    _remember_original_text(su_data, wid, dt, old, new)
-    worker_date_map[(wid, dt)] = new
-    corrections.append({
-        "wid": wid,
-        "date": _to_ymd(dt),
-        "code": code,
-        "text": old,
-        "reason": "per-worker cut: cluster is too small / not consecutive (outlier)",
-    })
-```
-
-### What this changes
-
-* If Worker has **two real periods** like `05-10` and `20-25`, both stay **Flexible**
-* Only “random crumbs” like `08` alone get turned into dummy **Fixed**
-* The `"outside worker main cluster"` message mostly disappears (because we no longer force “one cluster only”)
 
 ---
 
-## If you *really* want to delete something
+## ✅ Add a darker palette for flexible (still avoid red)
 
-Delete **only** the “cut rest outside best cluster” part, not the whole outlier system.
+Put under your palettes:
 
-But the replacement above is the safe version that matches your requirement.
+```python
+PALETTE_FLEX_DARK = [
+    # darker but not red; white text will be readable
+    "6FA8DC", "93C47D", "8E7CC3", "76A5AF", "C27BA0", "F6B26B", "A4C2F4", "6D9EEB",
+    "6AA84F", "674EA7", "45818E", "A64D79", "E69138", "3D85C6", "38761D", "4C1130",
+]
+```
 
-If you paste the exact block from your file around the “outside worker main cluster” section, I can point the exact start/end lines to replace (no extra changes).
+(If you want even darker, we can tune later, but this set works well with white text.)
+
+---
+
+## ✅ Change ONLY this part in your cell fill section
+
+Find this block inside the grid loop:
+
+```python
+palette = PALETTE_FLEX if is_flexible else PALETTE_FIXED
+mcol = stable_palette_color(base, palette, namespace="module")
+
+task_fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
+cell.fill = task_fill
+```
+
+Replace it with:
+
+```python
+if is_flexible:
+    palette = PALETTE_FLEX_DARK if FLEX_WHITE_TEXT_MODE else PALETTE_FLEX
+else:
+    palette = PALETTE_FIXED
+
+mcol = stable_palette_color(base, palette, namespace="module")
+
+task_fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
+cell.fill = task_fill
+
+# text color rule
+if is_flexible and FLEX_WHITE_TEXT_MODE:
+    cell.font = FLEX_FONT_WHITE
+else:
+    cell.font = BLACK
+```
+
+This keeps:
+
+* Fixed: black text, soft palette
+* Flexible:
+
+  * if mode OFF → black text + your current PALETTE_FLEX
+  * if mode ON → white text + darker palette
+
+---
+
+## ✅ Also update today_task column text color
+
+Right now you force today_task to black:
+
+```python
+cD.font = Font(color="000000")
+```
+
+But if today is flexible + white-text-mode, it should also be white.
+
+So after setting `todays_fill`, also store today’s font.
+
+### 1) Add before date loop:
+
+```python
+todays_font = None
+```
+
+### 2) When dd == today:
+
+Replace:
+
+```python
+if dd == today:
+    todays_text = module_name
+    todays_fill = task_fill
+```
+
+with:
+
+```python
+if dd == today:
+    todays_text = module_name
+    todays_fill = task_fill
+    todays_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
+```
+
+### 3) When applying to cD:
+
+Replace:
+
+```python
+cD.fill = todays_fill
+cD.font = Font(color="000000")
+```
+
+with:
+
+```python
+cD.fill = todays_fill
+cD.font = todays_font or BLACK
+```
+
+---
+
+## Summary
+
+* ✅ Add `FLEX_WHITE_TEXT_MODE` boolean
+* ✅ Add `PALETTE_FLEX_DARK`
+* ✅ Flexible cells optionally become **white text + dark fill**
+* ✅ Today_task column matches the same style
+
+If you paste these edits and tell me “flex still too dark / too light”, I’ll tune the `PALETTE_FLEX_DARK` colors to match your SU_Others look.
