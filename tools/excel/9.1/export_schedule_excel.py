@@ -69,7 +69,7 @@ BALANCE_K = 25.0  # higher = stricter penalty per dev from op_avg_skill
 # 0..PREF_MAX_LEVEL levels, 0 = NG, higher = more preferred
 PREF_MAX_LEVEL = 3
 
-WORK_HOURS_PER_DAY = 10
+
 # ------------------------------ UTILITIES ------------------------------
 def _d(s):
     """Parse 'YYYY/MM/DD' or 'YYYY-MM-DD' to date."""
@@ -452,6 +452,9 @@ def build_op_task_index(modules):
                     "phase": ph_id,
                     "op_id": ot.get("operation"),
                     "op_name": ot.get("name", "") or ot.get("operation", ""),
+                    # Optional per-task staffing override (Schedule.yaml)
+                    "min_worker_num": ot.get("min_worker_num"),
+                    "max_worker_num": ot.get("max_worker_num"),
                 }
     return idx
 
@@ -493,6 +496,19 @@ def build_maps(env, modules, assignments):
     op_phase_of_module = {}  # (module_id, op_id) -> phase_id
     
     op_task_index = build_op_task_index(modules)
+
+    # Per-(module, op) staffing overrides from Schedule.yaml (min/max can be None)
+    schedule_minmax = {}  # (m_id, op_id) -> (min_worker_num, max_worker_num)
+    for _ot_id, meta in op_task_index.items():
+        m_id0 = meta.get("m_id")
+        op_id0 = meta.get("op_id")
+        if not m_id0 or not op_id0:
+            continue
+        mn = meta.get("min_worker_num")
+        mx = meta.get("max_worker_num")
+        if mn is not None or mx is not None:
+            schedule_minmax[(m_id0, op_id0)] = (mn, mx)
+
     module_workflow = {m["id"]: m.get("workflow") for m in modules}
     for m in modules:
         starts = []
@@ -627,6 +643,7 @@ def build_maps(env, modules, assignments):
         "phase_end": phase_end,
         "op_phase_of_module": op_phase_of_module,
         "op_task_index": op_task_index,
+        "schedule_minmax": schedule_minmax,
         "module_workflow": module_workflow,
         "mod_meta_cols": mod_meta_cols,
         "module_ops": module_ops,
@@ -800,34 +817,23 @@ def build_preference_match_rows(env, modules, assignments, maps):
     return rows
 
 # ----------------------- REQUIRED HOURS (task/module) ------------------
-def compute_required_hours_task_module(modules, hours_per_day=WORK_HOURS_PER_DAY):
+def compute_required_hours_task_module(modules):
     """Return:
-       - req_task[(m_id, op_id)] = workload_days * hours_per_day
+       - req_task[(m_id, op_id)] = workload_days * 8
        - req_module[m_id]        = sum of its tasks
     """
     req_task   = defaultdict(int)
     req_module = defaultdict(int)
-
-    # safety: ensure int and >0
-    try:
-        hpd = int(hours_per_day)
-    except Exception:
-        hpd = 8
-    if hpd <= 0:
-        hpd = 8
-
     for m in modules:
         m_id = m["id"]
         total_days = 0
         for ph in m.get("phase_task_list", []):
             for ot in ph.get("operation_task_list", []):
                 days = int(ot.get("workload_days", 0))
-                req_task[(m_id, ot["operation"])] += days * hpd
+                req_task[(m_id, ot["operation"])] += days * 8
                 total_days += days
-        req_module[m_id] = total_days * hpd
-
+        req_module[m_id] = total_days * 8
     return req_task, req_module
-
 
 # --------------------------- VIOLATION DETECTION -----------------------
 def detect_violations(env, modules, assignments, maps, cal, plan_start=None, plan_end=None):
@@ -1001,8 +1007,22 @@ def detect_violations(env, modules, assignments, maps, cal, plan_start=None, pla
         # min/max staffing (workflow differs per module!)
         wf_id = module_workflow.get(m_id)
         meta = (op_meta.get(wf_id, {}) if wf_id else {}).get(ph, {}).get(op_id, {}) or {}
-        min_w = int(meta.get("min_worker_num", 1))
-        max_w = int(meta.get("max_worker_num", 999))
+
+        # Prefer per-task min/max from Schedule.yaml when provided; otherwise fall back to EnvConfig workflow defaults
+        sched_mnmx = maps.get("schedule_minmax", {}).get((m_id, op_id))
+        if sched_mnmx is not None:
+            mn_raw, mx_raw = sched_mnmx
+        else:
+            mn_raw, mx_raw = (None, None)
+
+        # Resolve with safe defaults
+        if mn_raw is None:
+            mn_raw = meta.get("min_worker_num", 1)
+        if mx_raw is None:
+            mx_raw = meta.get("max_worker_num", 999)
+
+        min_w = int(mn_raw) if mn_raw is not None else 1
+        max_w = int(mx_raw) if mx_raw is not None else 999
 
         status = ""
         if heads < min_w:

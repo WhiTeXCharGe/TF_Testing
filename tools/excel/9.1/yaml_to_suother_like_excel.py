@@ -32,13 +32,13 @@ from openpyxl.utils import get_column_letter
 
 
 # ---------------- CONFIG (easy to adjust) ----------------
-DATE_COL_WIDTH = 6.5   # width for the employee x date cells
+DATE_COL_WIDTH = 3.5   # width for the employee x date cells
 
 META_COL_WIDTHS = {
-    "company": 14,
-    "name": 16,
+    "company": 20,
+    "name": 20,
     "manager": 10,
-    "today_task": 22,
+    "today_task": 30,
 }
 
 HEADER_ROW_HEIGHT = 18
@@ -58,16 +58,29 @@ INCLUDE_ALL_WORKERS = False
 JOIN_MULTIPLE_WITH_NEWLINE = True
 
 # Unavailable date fill (must be RED-ish)
-UNAV_FILL = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid")
+UNAV_FILL = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
 
 BLACK = Font(color="000000")
 BOLD_BLACK = Font(bold=True, color="000000")
 
-CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
+CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False, )
 LEFT = Alignment(horizontal="left", vertical="center", wrap_text=False)
 
 THIN = Side(style="thin", color="999999")
 BORDER_THIN = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
+
+PB_WORKFLOW_ID = "wf_personal_business"
+PB_COLOR = "898989"
+PB_FILL = PatternFill(start_color=PB_COLOR, end_color=PB_COLOR, fill_type="solid")
+PB_FONT = Font(color="FFFFFF")   # optional; use white so it’s readable on grey
+# Flexible highlight mode:
+# False -> current behavior (black text + PALETTE_FLEX)
+# True  -> flexible cells use WHITE text + DARK palette (strong highlight)
+FLEX_WHITE_TEXT_MODE = False
+
+# Optional: only apply to flexible cells (fixed stays black)
+FLEX_FONT_WHITE = Font(color="FFFFFF", bold=False)
+FLEX_FONT_BLACK = Font(color="000000", bold=False)
 
 # Light palette (avoid red + avoid too-dark; text must remain black)
 PALETTE_FIXED = [
@@ -81,6 +94,11 @@ PALETTE_FLEX = [
     "A4C2F4", "B7B7B7", "A4C2F4", "B6D7A8", "9FC5E8", "FFD966", "A2C4C9", "D9D2E9",
 ]
 
+PALETTE_FLEX_DARK = [
+    # darker but not red; white text will be readable
+    "6FA8DC", "93C47D", "8E7CC3", "76A5AF", "C27BA0", "F6B26B", "A4C2F4", "6D9EEB",
+    "6AA84F", "674EA7", "45818E", "A64D79", "E69138", "3D85C6", "38761D", "4C1130",
+]
 
 # ---------------- Utilities ----------------
 def _d(s) -> date:
@@ -176,7 +194,7 @@ def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
         if item is None:
             continue
 
-        # ✅ Case A: dict with {"date": "..."}
+        #  Case A: dict with {"date": "..."}
         if isinstance(item, dict) and "date" in item:
             add_single(item["date"])
             continue
@@ -249,7 +267,8 @@ def main(env_path: str, sched_path: str, out_path: str):
 
     # schedule lookups
     modules = sched_root.get("workflow_task_list", []) or []
-    module_name_by_id = {m["id"]: (m.get("name") or m["id"]) for m in modules}
+    module_name_by_id = {m["id"]: (m.get("name") or "") for m in modules}
+    module_workflow_by_id = {m["id"]: (m.get("workflow") or "") for m in modules}
 
     op_task_to_module = build_op_task_index(modules)
 
@@ -322,8 +341,13 @@ def main(env_path: str, sched_path: str, out_path: str):
         c = ws.cell(row=DOW_ROW, column=j, value=h)   # row 3
         c.font = BOLD_BLACK
         c.alignment = CENTER
-        c.border = BORDER_THIN
 
+        c.border = BORDER_THIN
+    # apply meta column widths
+    for j, h in enumerate(headers, start=1):
+        col_letter = get_column_letter(j)
+        if h in META_COL_WIDTHS:
+            ws.column_dimensions[col_letter].width = META_COL_WIDTHS[h]
     start_col_dates = len(headers) + 1
 
     # --- 3-row date header: Month / Day / Weekday(kanji) ---
@@ -430,7 +454,7 @@ def main(env_path: str, sched_path: str, out_path: str):
             col = start_col_dates + k
             cell = ws.cell(row=r, column=col, value="")
             cell.border = BORDER_THIN
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
+            cell.alignment = LEFT
             cell.font = BLACK
 
             # unavailable -> RED
@@ -442,10 +466,9 @@ def main(env_path: str, sched_path: str, out_path: str):
             if not entries:
                 continue
 
-            # entries: [(module_id, is_flexible), ...]
-            mid, is_flexible = entries[0]  # your design uses first only
+            mid, is_flexible = entries[0]  # first only
 
-            # module name (code)
+            # module name
             if str(mid).startswith("UNKNOWN::"):
                 module_name = str(mid).replace("UNKNOWN::", "")
             else:
@@ -453,23 +476,55 @@ def main(env_path: str, sched_path: str, out_path: str):
 
             cell.value = module_name
 
+            # ---- PB override: one fixed grey color ----
+            wf_id = module_workflow_by_id.get(mid, "")
+            if wf_id == PB_WORKFLOW_ID:
+                cell.fill = PB_FILL
+                cell.font = PB_FONT  # or BLACK if you prefer
+                if dd == today:
+                    todays_text = module_name
+                    todays_fill = PB_FILL
+                    todays_font = PB_FONT
+                continue
+            # ------------------------------------------
+
             base = normalize_module_code(module_name)
 
-            palette = PALETTE_FLEX if is_flexible else PALETTE_FIXED
-            mcol = stable_palette_color(base, palette, namespace="module")
+            if is_flexible:
+                palette = PALETTE_FLEX_DARK if FLEX_WHITE_TEXT_MODE else PALETTE_FLEX
+            else:
+                palette = PALETTE_FIXED
 
+            mcol = stable_palette_color(base, palette, namespace="module")
             task_fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
             cell.fill = task_fill
+
+            if is_flexible and FLEX_WHITE_TEXT_MODE:
+                cell.font = FLEX_FONT_WHITE
+            else:
+                cell.font = BLACK
 
             if dd == today:
                 todays_text = module_name
                 todays_fill = task_fill
+                todays_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
+
+            # text color rule
+            if is_flexible and FLEX_WHITE_TEXT_MODE:
+                cell.font = FLEX_FONT_WHITE
+            else:
+                cell.font = BLACK
+
+            if dd == today:
+                todays_text = module_name
+                todays_fill = task_fill
+                todays_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
 
         if todays_text:
             cD.value = todays_text
             if todays_fill:
                 cD.fill = todays_fill
-                cD.font = Font(color="000000")
+                cD.font = todays_font or BLACK
 
 
         ws.row_dimensions[r].height = DATA_ROW_HEIGHT
