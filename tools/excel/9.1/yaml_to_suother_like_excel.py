@@ -88,18 +88,16 @@ PALETTE_FIXED = [
     "DEEAF6", "E7E6E6", "C9DAF8", "D9E1F2", "D0CECE", "E2F0D9", "DDEBF7", "F8CBAD",
 ]
 
-# stronger / more saturated (avoid red)
-PALETTE_FLEX = [
-    "FFE599", "B6D7A8", "9FC5E8", "B4A7D6", "F9CB9C", "D5A6BD", "A2C4C9", "CFE2F3",
-    "A4C2F4", "B7B7B7", "A4C2F4", "B6D7A8", "9FC5E8", "FFD966", "A2C4C9", "D9D2E9",
+# One palette for ALL module background colors (stable by workflow_task_list order)
+# Excludes reds and greys; suitable with BLACK text (and WHITE when needed)
+MODULE_PALETTE = [
+    "FFE599", "FFD966", "F9CB9C", "F6B26B", "FCE5CD",
+    "B6D7A8", "93C47D", "6AA84F", "D9EAD3", "E2EFDA",
+    "9FC5E8", "6FA8DC", "3D85C6", "A4C2F4", "CFE2F3",
+    "B4A7D6", "8E7CC3", "674EA7", "D9D2E9", "EAD1DC",
+    "A2C4C9", "76A5AF", "45818E", "D0E0E3", "DDEBF7",
+    "C27BA0", "D5A6BD", "E6B8AF", "F8CBAD", "FFF2CC",
 ]
-
-PALETTE_FLEX_DARK = [
-    # darker but not red; white text will be readable
-    "6FA8DC", "93C47D", "8E7CC3", "76A5AF", "C27BA0", "F6B26B", "A4C2F4", "6D9EEB",
-    "6AA84F", "674EA7", "45818E", "A64D79", "E69138", "3D85C6", "38761D", "4C1130",
-]
-
 # ---------------- Utilities ----------------
 def _d(s) -> date:
     """Parse 'YYYY/MM/DD' (or 'YYYY-MM-DD') to date."""
@@ -142,7 +140,32 @@ def stable_palette_color(key: str, palette: list[str], namespace: str) -> str:
     idx = int(h[:8], 16) % len(palette)
     return palette[idx]
 
+def build_module_fill_by_order(modules, module_name_by_id):
+    """
+    Stable module color assignment by the order in Schedule.yaml workflow_task_list.
+    Uses normalized module code to keep suffix variants consistent:
+      530N02621A_JP_Rapidus_新規  and  530N02621A  -> same base -> same color
+    """
+    base_to_color = {}
+    module_id_to_fill = {}
 
+    color_idx = 0
+    for m in modules or []:
+        mid = m.get("id")
+        name = (m.get("name") or "")
+        base = normalize_module_code(name)
+
+        # Keep same base code same color (first occurrence decides)
+        if base not in base_to_color:
+            base_to_color[base] = MODULE_PALETTE[color_idx % len(MODULE_PALETTE)]
+            color_idx += 1
+
+        col = base_to_color[base]
+        module_id_to_fill[mid] = PatternFill(start_color=col, end_color=col, fill_type="solid")
+
+    # fallback fill for unknowns (not red/grey)
+    unknown_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    return module_id_to_fill, unknown_fill
 
 def parse_unavailable_dates(raw, plan_start: date, plan_end: date) -> set:
     """
@@ -269,6 +292,7 @@ def main(env_path: str, sched_path: str, out_path: str):
     modules = sched_root.get("workflow_task_list", []) or []
     module_name_by_id = {m["id"]: (m.get("name") or "") for m in modules}
     module_workflow_by_id = {m["id"]: (m.get("workflow") or "") for m in modules}
+    module_fill_by_id, unknown_fill = build_module_fill_by_order(modules, module_name_by_id)
 
     op_task_to_module = build_op_task_index(modules)
 
@@ -450,6 +474,7 @@ def main(env_path: str, sched_path: str, out_path: str):
         # grid cells
         todays_text = ""
         todays_fill = None
+        todays_font = None
         for k, dd in enumerate(dates):
             col = start_col_dates + k
             cell = ws.cell(row=r, column=col, value="")
@@ -480,7 +505,7 @@ def main(env_path: str, sched_path: str, out_path: str):
             wf_id = module_workflow_by_id.get(mid, "")
             if wf_id == PB_WORKFLOW_ID:
                 cell.fill = PB_FILL
-                cell.font = PB_FONT  # or BLACK if you prefer
+                cell.font = PB_FONT
                 if dd == today:
                     todays_text = module_name
                     todays_fill = PB_FILL
@@ -488,37 +513,18 @@ def main(env_path: str, sched_path: str, out_path: str):
                 continue
             # ------------------------------------------
 
-            base = normalize_module_code(module_name)
-
-            if is_flexible:
-                palette = PALETTE_FLEX_DARK if FLEX_WHITE_TEXT_MODE else PALETTE_FLEX
-            else:
-                palette = PALETTE_FIXED
-
-            mcol = stable_palette_color(base, palette, namespace="module")
-            task_fill = PatternFill(start_color=mcol, end_color=mcol, fill_type="solid")
+            # background fill: stable by workflow_task_list order (NOT affected by flexibility)
+            task_fill = module_fill_by_id.get(mid, unknown_fill)
             cell.fill = task_fill
 
-            if is_flexible and FLEX_WHITE_TEXT_MODE:
-                cell.font = FLEX_FONT_WHITE
-            else:
-                cell.font = BLACK
+            # flexible => only text becomes white if enabled
+            cell_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
+            cell.font = cell_font
 
             if dd == today:
                 todays_text = module_name
-                todays_fill = task_fill
-                todays_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
-
-            # text color rule
-            if is_flexible and FLEX_WHITE_TEXT_MODE:
-                cell.font = FLEX_FONT_WHITE
-            else:
-                cell.font = BLACK
-
-            if dd == today:
-                todays_text = module_name
-                todays_fill = task_fill
-                todays_font = (FLEX_FONT_WHITE if (is_flexible and FLEX_WHITE_TEXT_MODE) else BLACK)
+                todays_fill = task_fill 
+                todays_font = cell_font 
 
         if todays_text:
             cD.value = todays_text
