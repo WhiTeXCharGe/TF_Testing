@@ -9,9 +9,7 @@ environment:
       - id: p1
         name: Module Setup
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
         max_worker_num: 8
     - id: tool_p2
@@ -20,9 +18,7 @@ environment:
       - id: p2
         name: Hardware Setup
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
         max_worker_num: 8
     - id: tool_p3
@@ -31,9 +27,7 @@ environment:
       - id: p3
         name: Function Setup
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
         max_worker_num: 8
     - id: tool_p4
@@ -42,9 +36,7 @@ environment:
       - id: p4
         name: Utility
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
         max_worker_num: 8
   - id: wf_other
@@ -56,11 +48,9 @@ environment:
       - id: other_op
         name: Other work
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
-        max_worker_num: 26
+        max_worker_num: 28
   - id: wf_personal_business
     name: Personal Business
     phase_list:
@@ -70,11 +60,9 @@ environment:
       - id: personal_business_op
         name: Personal Business
         work_hours:
-        - 8
         - 10
-        - 12
         min_worker_num: 1
-        max_worker_num: 15
+        max_worker_num: 42
   fab_list:
   - id: f_other
     name: Other
@@ -97,8 +85,8 @@ environment:
     customer_company: c3
     unavailable_dates: []
   - id: f4
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab14
-    region: r2
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab21
+    region: r1
     customer_company: c4
     unavailable_dates: []
   - id: f5
@@ -107,73 +95,73 @@ environment:
     customer_company: c5
     unavailable_dates: []
   - id: f6
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab21
-    region: r1
+    name: Shenzhen Pensun Technology Co., Ltd.
+    region: r4
     customer_company: c6
     unavailable_dates: []
   - id: f7
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab20
-    region: r2
+    name: IBM CORPORATION ALBANY
+    region: r1
     customer_company: c7
     unavailable_dates: []
   - id: f8
-    name: Shenzhen Pensun Technology Co., Ltd.
-    region: r4
+    name: SK hynix Inc. M16
+    region: r5
     customer_company: c8
     unavailable_dates: []
   - id: f9
-    name: IBM CORPORATION ALBANY
-    region: r1
+    name: Rapidus株式会社
+    region: r3
     customer_company: c9
     unavailable_dates: []
   - id: f10
-    name: SK hynix Inc. M16
+    name: SK hynix Inc. M14 P2
     region: r5
     customer_company: c10
     unavailable_dates: []
   - id: f11
-    name: Rapidus株式会社
-    region: r3
+    name: Hua Hong Semiconductor Manufacturing (Wuxi) Co.,Ltd.
+    region: r4
     customer_company: c11
     unavailable_dates: []
   - id: f12
-    name: SK hynix Inc. M14 P2
-    region: r5
+    name: PXW Semiconductor Manufactory Co., LTD.
+    region: r4
     customer_company: c12
     unavailable_dates: []
   - id: f13
-    name: Hua Hong Semiconductor Manufacturing (Wuxi) Co.,Ltd.
-    region: r4
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab22
+    region: r2
     customer_company: c13
     unavailable_dates: []
   - id: f14
-    name: PXW Semiconductor Manufactory Co., LTD.
-    region: r4
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab14
+    region: r2
     customer_company: c14
     unavailable_dates: []
   - id: f15
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab22
-    region: r2
+    name: Dongguan Guangmao Technology Co., Ltd.
+    region: r4
     customer_company: c15
     unavailable_dates: []
   - id: f16
-    name: Intel Corporation F32
-    region: r1
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab20
+    region: r2
     customer_company: c16
     unavailable_dates: []
   - id: f17
-    name: Dongguan Guangmao Technology Co., Ltd.
-    region: r4
+    name: Micron Memory Taiwan Co., Ltd.
+    region: r2
     customer_company: c17
     unavailable_dates: []
   - id: f18
-    name: Micron Memory Taiwan Co., Ltd.
-    region: r2
+    name: United Microelectronics Corporation SINGAPORE BRANCH
+    region: r6
     customer_company: c18
     unavailable_dates: []
   - id: f19
-    name: United Microelectronics Corporation SINGAPORE BRANCH
-    region: r6
+    name: Intel Corporation F32
+    region: r1
     customer_company: c19
     unavailable_dates: []
   - id: f20
@@ -212,174 +200,138 @@ environment:
     customer_company: c26
     unavailable_dates: []
   - id: f27
-    name: VisionPower Semiconductor Manufacturing Company Pte Ltd.
-    region: r6
+    name: SK hynix Inc. M15X
+    region: r5
     customer_company: c27
     unavailable_dates: []
   - id: f28
-    name: SK hynix Inc. M15X
-    region: r5
+    name: ソニーセミコンダクタマニュファクチャリング株式会社 熊本テクノロジーセンター
+    region: r3
     customer_company: c28
     unavailable_dates: []
   - id: f29
-    name: ソニーセミコンダクタマニュファクチャリング株式会社 熊本テクノロジーセンター
-    region: r3
+    name: Micron Technology Taiwan, Inc. Fab-1
+    region: r2
     customer_company: c29
     unavailable_dates: []
   - id: f30
-    name: Micron Technology Taiwan, Inc. Fab-1
-    region: r2
+    name: マイクロンメモリジャパン株式会社
+    region: r3
     customer_company: c30
     unavailable_dates: []
   - id: f31
-    name: マイクロンメモリジャパン株式会社
+    name: ソニーセミコンダクタマニュファクチャリング株式会社 長崎テクノロジーセンター  Fab4_Fab5
     region: r3
     customer_company: c31
     unavailable_dates: []
   - id: f32
-    name: ソニーセミコンダクタマニュファクチャリング株式会社 長崎テクノロジーセンター  Fab4_Fab5
-    region: r3
+    name: STMicroelectronics CROLLES
+    region: r7
     customer_company: c32
     unavailable_dates: []
   - id: f33
-    name: STMicroelectronics CROLLES
-    region: r7
+    name: Micron Technology Inc. ID
+    region: r1
     customer_company: c33
     unavailable_dates: []
   - id: f34
-    name: Micron Technology Inc. ID
-    region: r1
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab12
+    region: r2
     customer_company: c34
     unavailable_dates: []
   - id: f35
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab12
-    region: r2
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab16
+    region: r4
     customer_company: c35
     unavailable_dates: []
   - id: f36
-    name: Samsung Electronics Co., Ltd. NRD-K
-    region: r5
+    name: GTA Semiconductor Co., Ltd.
+    region: r4
     customer_company: c36
     unavailable_dates: []
   - id: f37
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab16
+    name: Huahong Integrated Circuit (Chengdu) Corporation
     region: r4
     customer_company: c37
     unavailable_dates: []
   - id: f38
-    name: GTA Semiconductor Co., Ltd.
-    region: r4
+    name: Micron SEMICONDUCTOR ASIA PTE. LTD F10N
+    region: r6
     customer_company: c38
     unavailable_dates: []
   - id: f39
-    name: Huahong Integrated Circuit (Chengdu) Corporation
-    region: r4
+    name: INFINEON TECHNOLOGIES AG Villach
+    region: r8
     customer_company: c39
     unavailable_dates: []
   - id: f40
-    name: Intel Corporation F11X
-    region: r1
+    name: 加賀東芝エレクトロニクス株式会社
+    region: r3
     customer_company: c40
     unavailable_dates: []
   - id: f41
-    name: Samsung Electronics Co., Ltd. P1-F
-    region: r5
+    name: Intel Corporation F11X
+    region: r1
     customer_company: c41
     unavailable_dates: []
   - id: f42
-    name: INFINEON TECHNOLOGIES AG 300mm
-    region: r8
-    customer_company: c42
-    unavailable_dates: []
-  - id: f43
-    name: Micron SEMICONDUCTOR ASIA PTE. LTD F10N
-    region: r6
-    customer_company: c43
-    unavailable_dates: []
-  - id: f44
-    name: INFINEON TECHNOLOGIES AG Villach
-    region: r9
-    customer_company: c44
-    unavailable_dates: []
-  - id: f45
-    name: 加賀東芝エレクトロニクス株式会社
-    region: r3
-    customer_company: c45
-    unavailable_dates: []
-  - id: f46
-    name: Intel Corporation D1D
-    region: r1
-    customer_company: c46
-    unavailable_dates: []
-  - id: f47
-    name: Intel Corporation F15
-    region: r1
-    customer_company: c47
-    unavailable_dates: []
-  - id: f48
     name: Intel Corporation D1X
     region: r1
-    customer_company: c48
+    customer_company: c42
     unavailable_dates: []
   region_list:
   - id: r_other
     name: Other
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r1
     name: UNITED STATES
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r2
     name: TAIWAN, PROVINCE OF CHINA
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r3
     name: JAPAN
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r4
     name: CHINA
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r5
     name: KOREA, REPUBLIC OF
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r6
     name: SINGAPORE
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r7
     name: FRANCE
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   - id: r8
-    name: GERMANY
-    max_stay_on: 90
-    max_annual_stay: 240
-    stay_off_interval: 3
-    unavailable_dates: []
-  - id: r9
     name: AUSTRIA
-    max_stay_on: 90
-    max_annual_stay: 240
+    max_stay_on: 10000
+    max_annual_stay: 10000
     stay_off_interval: 3
     unavailable_dates: []
   customer_company_list:
@@ -396,52 +348,52 @@ environment:
     name: Japan Advanced Semiconductor Manufacturing
     unavailable_dates: []
   - id: c4
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab14
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab21
     unavailable_dates: []
   - id: c5
     name: Intel Corporation F52
     unavailable_dates: []
   - id: c6
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab21
-    unavailable_dates: []
-  - id: c7
-    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab20
-    unavailable_dates: []
-  - id: c8
     name: Shenzhen Pensun Technology Co., Ltd.
     unavailable_dates: []
-  - id: c9
+  - id: c7
     name: IBM CORPORATION ALBANY
     unavailable_dates: []
-  - id: c10
+  - id: c8
     name: SK hynix Inc. M16
     unavailable_dates: []
-  - id: c11
+  - id: c9
     name: Rapidus株式会社
     unavailable_dates: []
-  - id: c12
+  - id: c10
     name: SK hynix Inc. M14 P2
     unavailable_dates: []
-  - id: c13
+  - id: c11
     name: Hua Hong Semiconductor Manufacturing (Wuxi) Co.,Ltd.
     unavailable_dates: []
-  - id: c14
+  - id: c12
     name: PXW Semiconductor Manufactory Co., LTD.
     unavailable_dates: []
-  - id: c15
+  - id: c13
     name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab22
     unavailable_dates: []
-  - id: c16
-    name: Intel Corporation F32
+  - id: c14
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab14
     unavailable_dates: []
-  - id: c17
+  - id: c15
     name: Dongguan Guangmao Technology Co., Ltd.
     unavailable_dates: []
-  - id: c18
+  - id: c16
+    name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab20
+    unavailable_dates: []
+  - id: c17
     name: Micron Memory Taiwan Co., Ltd.
     unavailable_dates: []
-  - id: c19
+  - id: c18
     name: United Microelectronics Corporation SINGAPORE BRANCH
+    unavailable_dates: []
+  - id: c19
+    name: Intel Corporation F32
     unavailable_dates: []
   - id: c20
     name: パナソニック・タワージャズ セミコンダクター株式会社 魚津
@@ -465,69 +417,51 @@ environment:
     name: Micron Technology Taiwan, Inc. Fab-2
     unavailable_dates: []
   - id: c27
-    name: VisionPower Semiconductor Manufacturing Company Pte Ltd.
-    unavailable_dates: []
-  - id: c28
     name: SK hynix Inc. M15X
     unavailable_dates: []
-  - id: c29
+  - id: c28
     name: ソニーセミコンダクタマニュファクチャリング株式会社 熊本テクノロジーセンター
     unavailable_dates: []
-  - id: c30
+  - id: c29
     name: Micron Technology Taiwan, Inc. Fab-1
     unavailable_dates: []
-  - id: c31
+  - id: c30
     name: マイクロンメモリジャパン株式会社
     unavailable_dates: []
-  - id: c32
+  - id: c31
     name: ソニーセミコンダクタマニュファクチャリング株式会社 長崎テクノロジーセンター  Fab4_Fab5
     unavailable_dates: []
-  - id: c33
+  - id: c32
     name: STMicroelectronics CROLLES
     unavailable_dates: []
-  - id: c34
+  - id: c33
     name: Micron Technology Inc. ID
     unavailable_dates: []
-  - id: c35
+  - id: c34
     name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab12
     unavailable_dates: []
-  - id: c36
-    name: Samsung Electronics Co., Ltd. NRD-K
-    unavailable_dates: []
-  - id: c37
+  - id: c35
     name: Taiwan Semiconductor Manufacturing Company, Ltd. Fab16
     unavailable_dates: []
-  - id: c38
+  - id: c36
     name: GTA Semiconductor Co., Ltd.
     unavailable_dates: []
-  - id: c39
+  - id: c37
     name: Huahong Integrated Circuit (Chengdu) Corporation
     unavailable_dates: []
-  - id: c40
-    name: Intel Corporation F11X
-    unavailable_dates: []
-  - id: c41
-    name: Samsung Electronics Co., Ltd. P1-F
-    unavailable_dates: []
-  - id: c42
-    name: INFINEON TECHNOLOGIES AG 300mm
-    unavailable_dates: []
-  - id: c43
+  - id: c38
     name: Micron SEMICONDUCTOR ASIA PTE. LTD F10N
     unavailable_dates: []
-  - id: c44
+  - id: c39
     name: INFINEON TECHNOLOGIES AG Villach
     unavailable_dates: []
-  - id: c45
+  - id: c40
     name: 加賀東芝エレクトロニクス株式会社
     unavailable_dates: []
-  - id: c46
-    name: Intel Corporation D1D
+  - id: c41
+    name: Intel Corporation F11X
     unavailable_dates: []
-  - id: c47
-    name: Intel Corporation F15
-    unavailable_dates: []
-  - id: c48
+  - id: c42
     name: Intel Corporation D1X
     unavailable_dates: []
   worker_company_list:
@@ -831,9 +765,6 @@ environment:
   - from: r_other
     to: r8
     days: 0
-  - from: r_other
-    to: r9
-    days: 0
   - from: r1
     to: r_other
     days: 0
@@ -857,9 +788,6 @@ environment:
     days: 1
   - from: r1
     to: r8
-    days: 1
-  - from: r1
-    to: r9
     days: 1
   - from: r2
     to: r_other
@@ -885,9 +813,6 @@ environment:
   - from: r2
     to: r8
     days: 1
-  - from: r2
-    to: r9
-    days: 1
   - from: r3
     to: r_other
     days: 0
@@ -911,9 +836,6 @@ environment:
     days: 1
   - from: r3
     to: r8
-    days: 1
-  - from: r3
-    to: r9
     days: 1
   - from: r4
     to: r_other
@@ -939,9 +861,6 @@ environment:
   - from: r4
     to: r8
     days: 1
-  - from: r4
-    to: r9
-    days: 1
   - from: r5
     to: r_other
     days: 0
@@ -965,9 +884,6 @@ environment:
     days: 1
   - from: r5
     to: r8
-    days: 1
-  - from: r5
-    to: r9
     days: 1
   - from: r6
     to: r_other
@@ -993,9 +909,6 @@ environment:
   - from: r6
     to: r8
     days: 1
-  - from: r6
-    to: r9
-    days: 1
   - from: r7
     to: r_other
     days: 0
@@ -1020,9 +933,6 @@ environment:
   - from: r7
     to: r8
     days: 1
-  - from: r7
-    to: r9
-    days: 1
   - from: r8
     to: r_other
     days: 0
@@ -1046,36 +956,6 @@ environment:
     days: 1
   - from: r8
     to: r7
-    days: 1
-  - from: r8
-    to: r9
-    days: 1
-  - from: r9
-    to: r_other
-    days: 0
-  - from: r9
-    to: r1
-    days: 1
-  - from: r9
-    to: r2
-    days: 1
-  - from: r9
-    to: r3
-    days: 1
-  - from: r9
-    to: r4
-    days: 1
-  - from: r9
-    to: r5
-    days: 1
-  - from: r9
-    to: r6
-    days: 1
-  - from: r9
-    to: r7
-    days: 1
-  - from: r9
-    to: r8
     days: 1
   worker_list:
   - id: w001
@@ -1096,7 +976,7 @@ environment:
     worker_company: wc2
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 0
@@ -1128,7 +1008,7 @@ environment:
     worker_company: wc3
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 1
@@ -1205,8 +1085,8 @@ environment:
     skill_map:
       p1: 0
       p2: 0
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -1341,8 +1221,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 1
+      p3: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -1356,7 +1236,7 @@ environment:
     worker_company: wc2
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 1
       p4: 1
@@ -1419,8 +1299,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -1503,8 +1383,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 0
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -1834,7 +1714,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -1897,10 +1777,10 @@ environment:
     worker_company: wc6
     is_manager: true
     skill_map:
-      p1: 1
-      p2: 1
+      p1: 0
+      p2: 0
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -2074,7 +1954,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -2150,7 +2030,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -2207,7 +2087,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -2303,8 +2183,8 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
+      p1: 0
+      p2: 0
       p3: 1
       p4: 1
       other_op: 1
@@ -2377,7 +2257,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -2775,8 +2655,8 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 1
-      p3: 0
+      p2: 0
+      p3: 1
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -2933,8 +2813,8 @@ environment:
     skill_map:
       p1: 0
       p2: 0
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -3231,7 +3111,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -3292,7 +3172,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -3325,10 +3205,10 @@ environment:
     worker_company: wc26
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 0
+      p1: 0
+      p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -3552,7 +3432,7 @@ environment:
     skill_map:
       p1: 0
       p2: 0
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -4425,9 +4305,9 @@ environment:
     is_manager: true
     skill_map:
       p1: 1
-      p2: 1
-      p3: 1
-      p4: 1
+      p2: 0
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -4515,7 +4395,7 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 0
@@ -4673,7 +4553,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -4950,7 +4830,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -4997,7 +4877,7 @@ environment:
     skill_map:
       p1: 0
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5225,7 +5105,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5332,7 +5212,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5391,7 +5271,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5498,7 +5378,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5572,8 +5452,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 0
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5585,8 +5465,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 0
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5598,8 +5478,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 0
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5611,7 +5491,7 @@ environment:
     skill_map:
       p1: 0
       p2: 0
-      p3: 1
+      p3: 0
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -5672,10 +5552,10 @@ environment:
     worker_company: wc6
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5717,7 +5597,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5752,8 +5632,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5765,7 +5645,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -5792,7 +5672,7 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 0
       p4: 0
@@ -5815,7 +5695,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5908,7 +5788,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -5961,8 +5841,8 @@ environment:
     worker_company: wc4
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
+      p1: 0
+      p2: 0
       p3: 0
       p4: 1
       other_op: 1
@@ -6208,9 +6088,9 @@ environment:
     worker_company: wc27
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
-      p3: 1
+      p1: 0
+      p2: 0
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -6273,8 +6153,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -6289,7 +6169,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -6487,7 +6367,7 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 0
@@ -6511,8 +6391,8 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
+      p1: 0
+      p2: 0
       p3: 0
       p4: 0
       other_op: 1
@@ -6628,7 +6508,7 @@ environment:
     worker_company: wc5
     is_manager: true
     skill_map:
-      p1: 0
+      p1: 1
       p2: 1
       p3: 1
       p4: 1
@@ -6652,7 +6532,7 @@ environment:
     worker_company: wc2
     is_manager: false
     skill_map:
-      p1: 0
+      p1: 1
       p2: 1
       p3: 1
       p4: 1
@@ -6792,7 +6672,7 @@ environment:
     worker_company: wc23
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 4
       p4: 4
@@ -6821,8 +6701,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -7122,7 +7002,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -7315,7 +7195,7 @@ environment:
     worker_company: wc9
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 0
@@ -7409,9 +7289,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 0
+      p2: 1
       p3: 1
-      p4: 0
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -7827,9 +7707,9 @@ environment:
     is_manager: true
     skill_map:
       p1: 0
-      p2: 1
-      p3: 1
-      p4: 1
+      p2: 0
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -8028,8 +7908,8 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 1
-      p3: 1
+      p2: 0
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -8040,10 +7920,10 @@ environment:
     worker_company: wc12
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
-      p3: 1
-      p4: 1
+      p1: 0
+      p2: 0
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -8125,7 +8005,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -8299,7 +8179,7 @@ environment:
     worker_company: wc2
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 0
       p4: 1
@@ -8338,7 +8218,7 @@ environment:
     worker_company: wc2
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 0
       p3: 0
       p4: 0
@@ -8370,7 +8250,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -8435,7 +8315,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -8917,8 +8797,8 @@ environment:
     is_manager: true
     skill_map:
       p1: 0
-      p2: 1
-      p3: 1
+      p2: 0
+      p3: 0
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -9081,7 +8961,7 @@ environment:
       p1: 1
       p2: 1
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -9104,7 +8984,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -9369,8 +9249,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 1
+      p3: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -9412,10 +9292,10 @@ environment:
     worker_company: wc12
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -9459,7 +9339,7 @@ environment:
     worker_company: wc12
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 1
       p4: 1
@@ -9553,7 +9433,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
+      p3: 1
       p4: 1
       other_op: 1
       personal_business_op: 1
@@ -9929,8 +9809,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -10004,8 +9884,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -10473,8 +10353,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 0
-      p4: 0
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -10697,10 +10577,10 @@ environment:
     worker_company: wc7
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11180,9 +11060,9 @@ environment:
     worker_company: wc36
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
-      p3: 1
+      p1: 0
+      p2: 0
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -11196,9 +11076,9 @@ environment:
     worker_company: wc36
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
-      p3: 1
+      p1: 0
+      p2: 0
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -11301,7 +11181,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11327,7 +11207,7 @@ environment:
       p1: 1
       p2: 1
       p3: 1
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11442,9 +11322,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 1
-      p3: 1
-      p4: 1
+      p2: 0
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11558,8 +11438,8 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
-      p4: 1
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11673,9 +11553,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 0
-      p3: 0
-      p4: 0
+      p2: 1
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11936,7 +11816,7 @@ environment:
     skill_map:
       p1: 1
       p2: 1
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -11968,7 +11848,7 @@ environment:
     skill_map:
       p1: 0
       p2: 0
-      p3: 1
+      p3: 0
       p4: 0
       other_op: 1
       personal_business_op: 1
@@ -11980,9 +11860,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 0
-      p3: 0
-      p4: 0
+      p2: 1
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -11993,7 +11873,7 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 0
+      p2: 1
       p3: 0
       p4: 0
       other_op: 1
@@ -12094,7 +11974,7 @@ environment:
       p1: 0
       p2: 0
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -12287,9 +12167,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 1
-      p2: 0
-      p3: 0
-      p4: 0
+      p2: 1
+      p3: 1
+      p4: 1
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -13549,8 +13429,8 @@ environment:
     worker_company: wc12
     is_manager: false
     skill_map:
-      p1: 1
-      p2: 1
+      p1: 0
+      p2: 0
       p3: 0
       p4: 0
       other_op: 1
@@ -13567,7 +13447,7 @@ environment:
     worker_company: wc12
     is_manager: false
     skill_map:
-      p1: 1
+      p1: 0
       p2: 1
       p3: 1
       p4: 1
@@ -13753,7 +13633,7 @@ environment:
     is_manager: false
     skill_map:
       p1: 0
-      p2: 0
+      p2: 1
       p3: 1
       p4: 1
       other_op: 1
@@ -14897,9 +14777,9 @@ environment:
     is_manager: false
     skill_map:
       p1: 0
-      p2: 1
-      p3: 1
-      p4: 1
+      p2: 0
+      p3: 0
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []
@@ -16611,7 +16491,7 @@ environment:
       p1: 0
       p2: 0
       p3: 0
-      p4: 1
+      p4: 0
       other_op: 1
       personal_business_op: 1
     fab_suitability_map: []

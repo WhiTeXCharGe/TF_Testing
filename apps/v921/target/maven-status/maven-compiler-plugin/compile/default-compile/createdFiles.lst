@@ -16,6 +16,7 @@ com\yourorg\scheduler\EmployeeSchedule$FixedAssign.class
 com\yourorg\scheduler\EmployeeSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$BlockDecision$StartDayStrength.class
 com\yourorg\scheduler\EmployeeSchedule$SinglePassConstraints.class
+com\yourorg\scheduler\EmployeeSchedule$1RawAssignRow.class
 com\yourorg\scheduler\ExportSchedule.class
 com\yourorg\scheduler\EmployeeSchedule$OpTaskMeta.class
 com\yourorg\scheduler\EmployeeSchedule$SinglePassPlan.class
