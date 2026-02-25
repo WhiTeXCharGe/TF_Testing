@@ -72,6 +72,12 @@ public class EmployeeSchedule {
     }
 
     static String safeStr(Object o) { return o == null ? "" : String.valueOf(o); }
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> asMap(Object o) {
+        return (o instanceof Map) ? (Map<String, Object>) o : null;
+    }
+
     static int parseInt(Object o, int def) {
         if (o == null) return def;
         try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return def; }
@@ -372,7 +378,7 @@ static class OpTaskMeta {
     // fixed overtime per employee per year-month (ym = year*100 + month)
     static Map<Integer, Map<Integer, Integer>> FIXED_MONTHLY_OT_BY_EMP_YM = new HashMap<>();
 
-    public static final boolean TRIM_FINISHED_MODULES = true;
+    public static final boolean TRIM_FINISHED_MODULES = false;
     // if module ended more than this many days before cutOffDate,
     // it is considered finished and can be trimmed.
     public static final int MODULE_TRIM_GRACE_DAYS = 6; // x days, change as you like
@@ -1963,6 +1969,105 @@ static class OpTaskMeta {
         return out;
     }
 
+    static String preprocessScheduleYaml(String schedPath) throws IOException {
+        Map<String,Object> root = loadYaml(schedPath);
+        @SuppressWarnings("unchecked")
+        Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
+
+        // IMPORTANT: We don't have a separate "cut_off_date".
+        // The "cutoff" is the plan_range.start_date (history before that is fixed).
+        Map<String, Object> planRange = asMap(s.get("plan_range"));
+        if (planRange == null) {
+            return schedPath;
+        }
+        Object startObj = planRange.get("start_date");
+        if (startObj == null) {
+            return schedPath;
+        }
+        LocalDate cutOffDate = LocalDate.parse(safeStr(startObj).replace("-", "/"), DF);
+
+        Object asgObj = s.get("assignment_list");
+        @SuppressWarnings("unchecked")
+        List<Map<String,Object>> asgs =
+            (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
+
+        // --- helper: get (module, phaseNum) from operation_task like "e72_p1", "e72_p1o2", etc. ---
+        record PhaseKey(String module, int phaseNum) {}
+
+        java.util.function.Function<String, PhaseKey> phaseKeyOfOpTask = (opTask) -> {
+            if (opTask == null) return new PhaseKey("", 0);
+            String t = opTask.trim();
+
+            // find "_p" then digits
+            int pIdx = t.toLowerCase(Locale.ROOT).indexOf("_p");
+            if (pIdx >= 0) {
+                String module = t.substring(0, pIdx);
+                int i = pIdx + 2;
+                StringBuilder num = new StringBuilder();
+                while (i < t.length() && Character.isDigit(t.charAt(i))) {
+                    num.append(t.charAt(i));
+                    i++;
+                }
+                int pn = 0;
+                try { pn = Integer.parseInt(num.toString()); } catch (Exception ignore) {}
+                return new PhaseKey(module, pn);
+            }
+
+            // fallback: try your existing phaseNumFromId on whole string
+            int pn = phaseNumFromId(t);
+            // guess module as prefix before first '_' if exists
+            String module = t.contains("_") ? t.substring(0, t.indexOf('_')) : t;
+            return new PhaseKey(module, pn);
+        };
+
+        // PASS 1: detect phases that started before cut-off
+        Set<PhaseKey> started = new HashSet<>();
+
+        for (Map<String,Object> a : asgs) {
+            if (a == null) continue;
+
+            String opTask = safeStr(a.get("operation_task"));
+            PhaseKey key = phaseKeyOfOpTask.apply(opTask);
+
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            @SuppressWarnings("unchecked")
+            List<Map<String,Object>> wdl =
+                (a.get(wdKey) instanceof List) ? (List<Map<String,Object>>) a.get(wdKey) : List.of();
+
+            boolean anyBefore = false;
+            for (Map<String,Object> item : wdl) {
+                if (item == null) continue;
+                String ds = safeStr(item.get("date"));
+                if (ds.isBlank()) continue;
+                LocalDate d = LocalDate.parse(ds.replace("-", "/"), DF);
+                if (d.isBefore(cutOffDate)) {
+                    anyBefore = true;
+                    break;
+                }
+            }
+            if (anyBefore) started.add(key);
+        }
+
+        if (started.isEmpty()) {
+            // nothing started before cutoff => no change
+            return schedPath;
+        }
+
+        // PASS 2: convert ALL assignments in those phases to Fixed (NO trimming!)
+        for (Map<String,Object> a : asgs) {
+            if (a == null) continue;
+            String opTask = safeStr(a.get("operation_task"));
+            PhaseKey key = phaseKeyOfOpTask.apply(opTask);
+
+            if (started.contains(key)) {
+                a.put("plan_flexibility", "Fixed"); // force fixed
+            }
+        }
+
+        // Write to temp and return path
+        saveYaml(schedPath, root);
+        return schedPath;
+    }
     @SuppressWarnings("unchecked")
     static ParsedSchedule parseSchedule(String schedPath, Map<String,OpDef> opdef) throws IOException {
         Map<String,Object> root = loadYaml(schedPath);
@@ -2369,14 +2474,18 @@ static class OpTaskMeta {
 
         if (TRIM_FINISHED_MODULES) {
             for (TaskWindow w : windows) {
-                w.startDayId = Math.max(w.startDayId, cutOffDayId);
-                if (w.startDayId > w.endDayId) {
-                    System.out.printf(
-                        "[WARN] Window fully before cut_off_date for module %s, phase %s op=%s; workloadDays -> 0%n",
-                        w.module, w.phaseId, w.opId
-                    );
-                    w.workloadDays = 0;
+
+                boolean phaseStarted =
+                        phaseStartedBeforeCutoff.contains(w.module + "|" + w.phaseNum);
+
+                if (!phaseStarted) {
+                    w.startDayId = Math.max(w.startDayId, cutOffDayId);
+                    if (w.startDayId > w.endDayId) {
+                        w.workloadDays = 0;
+                    }
                 }
+
+                // If phase started before cutoff → DO NOT TRIM WINDOW
             }
         }
 
@@ -3073,7 +3182,8 @@ static class OpTaskMeta {
 
     public static RunResult solveFromYaml(String envPath, String schedPath) throws IOException {
         ParsedEnv env = parseEnv(envPath);
-        ParsedSchedule sch = parseSchedule(schedPath, env.opdef);
+        String schedFixedPath = preprocessScheduleYaml(schedPath);
+        ParsedSchedule sch = parseSchedule(schedFixedPath, env.opdef);
         buildCalendars(envPath, sch.planStart, sch.planEnd);
         SOLVE_MIN_DAY = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
         SOLVE_MAX_DAY = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
@@ -3233,7 +3343,7 @@ static class OpTaskMeta {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 300, 3600);
+                "0hard/*medium/*soft", 2, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -3257,7 +3367,7 @@ static class OpTaskMeta {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                10  /* spentMinutes */,
+                1  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
