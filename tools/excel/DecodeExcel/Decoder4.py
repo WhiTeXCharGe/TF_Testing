@@ -26,6 +26,8 @@
 READ_ALL_DATA = True
 DATE_RANGE = None   # e.g. "2026/01/01-2026/03/31" or None
 
+#Default maximum worker for normal task
+DEFAULT_MAX_WORKER = 8
 # Workload calculation for wf_tool operation_task_list[].workload_days:
 #   OptionA = window-days (end-start+1) from shifted phase window
 #   OptionB = worker-days (1 worker x 1 day = 1), counted from shifted SU_Others assignments
@@ -39,6 +41,10 @@ TRANSFORMATION_LOG = "TransformationLog.txt"
 # If SU_Others actual span is completely outside the planned window
 # by more than this many days, cut the module from 新規製番リスト
 CUT_DISTANCE_DAYS = 365
+
+# If gap between SU_Others clusters > this many days,
+# cut entire module to dummy before shifting
+CLUSTER_GAP_CUT_DAYS = 30
 
 # If planned module has NO SU_Others match after cutting:
 # A) False => keep module in Schedule.yaml (no shift), workload will be 0 and show in WORKLOAD WARNING
@@ -226,6 +232,80 @@ def cut_su_short_span_modules_to_dummy(
             })
 
     su_data["su_short_span_corrections"] = corrections
+    return corrections
+
+
+def cut_module_if_large_cluster_gap(
+    su_data: dict,
+    gap_days_threshold: int,
+    planned_meta: dict | None = None,
+):
+    """
+    If a module has multiple clusters separated by > gap_days_threshold,
+    cut ALL its occurrences to dummy (no shifting).
+    """
+    if not su_data:
+        return []
+
+    worker_date_map = su_data.get("worker_date_map", {})
+    if not worker_date_map:
+        return []
+
+    code_to_dates = defaultdict(list)
+
+    for (wid, dt), text in worker_date_map.items():
+        code = extract_tool_code(text)
+        if not code:
+            continue
+        if planned_meta is not None and code not in planned_meta:
+            continue
+        code_to_dates[code].append(dt)
+
+    corrections = []
+
+    for code, dts in code_to_dates.items():
+        uniq = sorted(set(dts))
+        if len(uniq) <= 1:
+            continue
+
+        clusters = _cluster_by_date_gap(uniq, gap_days=1)
+
+        if len(clusters) <= 1:
+            continue
+
+        # check gap between clusters
+        cut_flag = False
+        for i in range(len(clusters) - 1):
+            gap = (clusters[i+1][0] - clusters[i][-1]).days
+            if gap > gap_days_threshold:
+                cut_flag = True
+                break
+
+        if not cut_flag:
+            continue
+
+        broken = _break_tool_code(code)
+
+        for (wid, dt), text in list(worker_date_map.items()):
+            if extract_tool_code(text) != code:
+                continue
+            old = text
+            new = old.replace(code, broken, 1)
+            if new == old:
+                continue
+
+            _remember_original_text(su_data, wid, dt, old, new)
+            worker_date_map[(wid, dt)] = new
+
+            corrections.append({
+                "wid": wid,
+                "date": _to_ymd(dt),
+                "code": code,
+                "text": old,
+                "reason": f"module cut: cluster gap > {gap_days_threshold}",
+            })
+
+    su_data["su_large_gap_corrections"] = corrections
     return corrections
 # ============================================================
 # Code extraction from SU_Others cell text
@@ -582,7 +662,7 @@ def cut_su_outlier_cells(
     cut_module_if_total_cells_lt: int = 4,
     cut_module_if_unique_days_lt: int = 4,
     planned_meta: dict | None = None,
-    cut_if_far_from_planned_days: int = 180,
+    cut_if_far_from_planned_days: int = 90,
 ):
     """
     Some modules appear in SU_Others as one long continuous period, but also have
@@ -1387,7 +1467,7 @@ def build_assignments_v3(
             "id": task_id,
             "name": label,
             "workflow": "wf_other",
-            "fab": "f_other",   # Decoder3 change: never null
+            "fab": "f_other",   
             "phase_task_list": [{
                 "id": phase_id,
                 "name": "Other work",
@@ -1451,7 +1531,7 @@ def build_assignments_v3(
             "id": task_id,
             "name": label,
             "workflow": "wf_personal_business",
-            "fab": None,
+            "fab": "f_other",
             "phase_task_list": [{
                 "id": phase_id,
                 "name": "Personal Business",
@@ -1705,7 +1785,7 @@ def build_env_and_schedule_decoder3(
             cut_module_if_unique_days_lt=4,
             cut_module_if_total_cells_lt=4,
             planned_meta=planned_meta,
-            cut_if_far_from_planned_days=180
+            cut_if_far_from_planned_days=90
         )
         # short-span modules (< 4 unique worked days) must become dummy "other"
         su_short_span_corrections = cut_su_short_span_modules_to_dummy(
@@ -1713,7 +1793,16 @@ def build_env_and_schedule_decoder3(
             min_unique_worked_days=MIN_WORKED_DAYS_FOR_TOOL,
             planned_meta=planned_meta
         )
-        all_su_corrections = su_outlier_corrections + su_short_span_corrections
+        su_large_gap_corrections = cut_module_if_large_cluster_gap(
+            su_data,
+            gap_days_threshold=CLUSTER_GAP_CUT_DAYS,
+            planned_meta=planned_meta
+        )
+        all_su_corrections = (
+            su_outlier_corrections
+            + su_short_span_corrections
+            + su_large_gap_corrections
+        )
         # Summarize outlier-cut modules so they appear in CUT OUT + DUMMY MODULES sections
         outlier_cut_summary = defaultdict(list)  # code -> list of sample original texts
         for rec in all_su_corrections:
@@ -1833,7 +1922,7 @@ def build_env_and_schedule_decoder3(
         if no_su_codes:
             for code in no_su_codes:
                 # log it like "CUT OUT" so everyone sees why it's missing
-                cut_rows.append((code, "SKIPPED: SU_Others NOT FOUND (no shift); module omitted from Schedule.yaml"))
+                cut_rows.append((code, "SKIPPED: SU_Others NOT FOUND; module omitted from Schedule.yaml"))
 
                 # remove from planned_meta + shifted_meta so it never becomes a tool task
                 planned_meta.pop(code, None)
@@ -1950,8 +2039,8 @@ def build_env_and_schedule_decoder3(
     region_list = [{
         "id": "r_other",
         "name": "Other",
-        "max_stay_on": 90,
-        "max_annual_stay": 240,
+        "max_stay_on": 10000,
+        "max_annual_stay": 10000,
         "stay_off_interval": 3,
         "unavailable_dates": [],
     }]
@@ -1973,8 +2062,8 @@ def build_env_and_schedule_decoder3(
             region_list.append({
                 "id": rid,
                 "name": nm,
-                "max_stay_on": 90,
-                "max_annual_stay": 240,
+                "max_stay_on": 10000,
+                "max_annual_stay": 10000,
                 "stay_off_interval": 3,
                 "unavailable_dates": [],
             })
@@ -2019,10 +2108,10 @@ def build_env_and_schedule_decoder3(
                 "id": "wf_tool",
                 "name": "Tool Install",
                 "phase_list": [
-                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
-                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
-                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
-                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 15}]},
+                    {"id": "tool_p1", "name": "Module Setup", "operation_list": [{"id": "p1", "name": "Module Setup", "work_hours": [10], "min_worker_num": 1, "max_worker_num": DEFAULT_MAX_WORKER}]},
+                    {"id": "tool_p2", "name": "Hardware Setup", "operation_list": [{"id": "p2", "name": "Hardware Setup", "work_hours": [10], "min_worker_num": 1, "max_worker_num": DEFAULT_MAX_WORKER}]},
+                    {"id": "tool_p3", "name": "Function Setup", "operation_list": [{"id": "p3", "name": "Function Setup", "work_hours": [10], "min_worker_num": 1, "max_worker_num": DEFAULT_MAX_WORKER}]},
+                    {"id": "tool_p4", "name": "Utility", "operation_list": [{"id": "p4", "name": "Utility", "work_hours": [10], "min_worker_num": 1, "max_worker_num": DEFAULT_MAX_WORKER}]},
                 ],
             },
             {
@@ -2031,7 +2120,7 @@ def build_env_and_schedule_decoder3(
                 "phase_list": [{
                     "id": "other_p1",
                     "name": "Other work",
-                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 8}],
+                    "operation_list": [{"id": "other_op", "name": "Other work", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 28}],
                 }],
             },
             {
@@ -2040,7 +2129,7 @@ def build_env_and_schedule_decoder3(
                 "phase_list": [{
                     "id": "pb_p1",
                     "name": "Personal Business",
-                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [8, 10, 12], "min_worker_num": 1, "max_worker_num": 8}],
+                    "operation_list": [{"id": "personal_business_op", "name": "Personal Business", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 42}],
                 }],
             },
         ],
@@ -2136,14 +2225,19 @@ def build_env_and_schedule_decoder3(
                     ot["workload_days"] = max(a, b)
                 else:
                     ot["workload_days"] = b
+                # If the real worker assigned was exceed default the min/max of the worker is have special worker maimum count
+                if uniq_w > DEFAULT_MAX_WORKER:
+                    # Put min/max into Schedule.yaml operation_task_list
+                    ot["min_worker_num"] = 1
 
-                # Put min/max into Schedule.yaml operation_task_list
-                ot["min_worker_num"] = 1
-
-                # if nobody worked in SU_Others, keep it safe:
-                # - either 1
-                # - or keep workflow default (3) if you prefer
-                ot["max_worker_num"] = (uniq_w if uniq_w > 0 else 3)
+                    # if nobody worked in SU_Others, keep it safe:
+                    # - either 1
+                    # - or keep workflow default (3) if you prefer
+                    ot["max_worker_num"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
+                #The recommend worker number is depend on the worker real assigned 
+                ot["recommends_worker_min"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
+                ot["recommends_worker_max"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
+                
 
     schedule = {
         "plan_range": plan_range,
