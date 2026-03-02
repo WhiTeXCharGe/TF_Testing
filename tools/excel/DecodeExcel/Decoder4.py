@@ -42,9 +42,15 @@ TRANSFORMATION_LOG = "TransformationLog.txt"
 # by more than this many days, cut the module from 新規製番リスト
 CUT_DISTANCE_DAYS = 365
 
-# If gap between SU_Others clusters > this many days,
-# cut entire module to dummy before shifting
-CLUSTER_GAP_CUT_DAYS = 30
+# Shift policy:
+# True  => shifting timeline = unique worked days (compressed)
+# False => shifting timeline = continuous span (actual_start..actual_end)
+SHIFT_USE_WORKED_DAYS = False
+
+# Pre-cut policy:
+# If True => before shifting, run "phase-zero workload" sanity check using span-based split,
+#            and if any phase would get 0 worked days => cut whole module to dummy.
+CUT_MODULE_IF_PHASE_ZERO_WORKLOAD = True
 
 # If planned module has NO SU_Others match after cutting:
 # A) False => keep module in Schedule.yaml (no shift), workload will be 0 and show in WORKLOAD WARNING
@@ -306,6 +312,90 @@ def cut_module_if_large_cluster_gap(
             })
 
     su_data["su_large_gap_corrections"] = corrections
+    return corrections
+
+def cut_module_if_phase_zero_workload(
+    su_data: dict,
+    planned_meta: dict,
+):
+    """
+    Detect modules where, if we split the ACTUAL SPAN (actual_start..actual_end) by planned ratios,
+    some phases receive 0 worked days from SU_Others evidence.
+    If so, cut the entire module to dummy (break tool code everywhere).
+    """
+    if not su_data:
+        return []
+    worker_date_map = su_data.get("worker_date_map", {})
+    if not worker_date_map:
+        return []
+
+    # code -> list of (dt, wid, text)
+    code_to_occ = defaultdict(list)
+    for (wid, dt), text in worker_date_map.items():
+        code = extract_tool_code(text)
+        if not code:
+            continue
+        if code not in planned_meta:
+            continue
+        code_to_occ[code].append((dt, wid, text))
+
+    corrections = []
+
+    for code, occ in code_to_occ.items():
+        worked_days = sorted(set(dt for dt, _, _ in occ))
+        if not worked_days:
+            continue
+
+        actual_start = worked_days[0]
+        actual_end = worked_days[-1]
+        actual_total_span = int((actual_end - actual_start).days) + 1
+        if actual_total_span <= 0:
+            continue
+
+        # Build continuous span days
+        span_days = [actual_start + pd.Timedelta(days=i) for i in range(actual_total_span)]
+
+        # Allocate span lengths by planned ratio
+        alloc = _allocate_phase_lengths(actual_total_span, planned_meta[code]["phase_len"])
+
+        # Split span days into phase buckets
+        phase_span_days = {}
+        idx = 0
+        for ph in (1, 2, 3, 4):
+            ln = int(alloc.get(ph, 0))
+            phase_span_days[ph] = span_days[idx: idx + ln] if ln > 0 else []
+            idx += ln
+
+        worked_set = set(worked_days)
+
+        # Count worked days inside each phase bucket
+        phase_worked_counts = {
+            ph: sum(1 for d in phase_span_days[ph] if d in worked_set)
+            for ph in (1, 2, 3, 4)
+        }
+
+        # If any phase has 0 workload -> cut whole module
+        if any(phase_worked_counts[ph] == 0 for ph in (1, 2, 3, 4)):
+            broken = _break_tool_code(code)
+
+            for dt, wid, text in occ:
+                if not isinstance(text, str):
+                    continue
+                old = text
+                new = old.replace(code, broken, 1)
+                if new == old:
+                    continue
+                _remember_original_text(su_data, wid, dt, old, new)
+                worker_date_map[(wid, dt)] = new
+                corrections.append({
+                    "wid": wid,
+                    "date": _to_ymd(dt),
+                    "code": code,
+                    "text": old,
+                    "reason": f"module cut: phase zero workload under span-split check (counts={phase_worked_counts})",
+                })
+
+    su_data["su_phase_zero_corrections"] = corrections
     return corrections
 # ============================================================
 # Code extraction from SU_Others cell text
@@ -1142,43 +1232,75 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None):
 
         occ = code_occ.get(code, [])
         if occ:
-            # NEW: "worked days" (unique SU dates) becomes the timeline
             worked_days = sorted(set(x[0] for x in occ))
-            worked_total = len(worked_days)
+            worked_set = set(worked_days)
 
-            alloc = _allocate_phase_lengths(worked_total, meta["phase_len"])
+            actual_start = worked_days[0]
+            actual_end = worked_days[-1]
 
+            # timeline for shifting split
+            if SHIFT_USE_WORKED_DAYS:
+                timeline_days = worked_days  # compressed (worked days only)
+            else:
+                total_span = int((actual_end - actual_start).days) + 1
+                timeline_days = [actual_start + pd.Timedelta(days=i) for i in range(total_span)]
+
+            timeline_total = len(timeline_days)
+
+            # Allocate by planned ratio on the shifting timeline
+            alloc_span = _allocate_phase_lengths(timeline_total, meta["phase_len"])
+
+            # Build per-phase segments on timeline_days
+            # - seg = raw segment days (worked-days or span-days depending on policy)
+            # - phase_days = only worked days inside that segment (always used for mapping)
             phase_days = {}
+            seg_edges = {}  # ph -> (seg_start, seg_end) from timeline_days slicing
+
             idx = 0
             for ph in (1, 2, 3, 4):
-                ln = int(alloc.get(ph, 0))
-                seg = worked_days[idx: idx + ln] if ln > 0 else []
-                phase_days[ph] = seg
+                ln = int(alloc_span.get(ph, 0))
+                seg = timeline_days[idx: idx + ln] if ln > 0 else []
+                if seg:
+                    seg_edges[ph] = (seg[0], seg[-1])
+                else:
+                    # empty bucket fallback
+                    seg_edges[ph] = (actual_start, actual_start)
+
+                if SHIFT_USE_WORKED_DAYS:
+                    # seg already equals worked days
+                    phase_days[ph] = seg
+                else:
+                    # seg is continuous span; keep only actual worked days for mapping
+                    phase_days[ph] = [d for d in seg if d in worked_set]
+
                 idx += ln
 
-            # Build shifted start/end from the segment edges (not continuous window)
-            shifted_starts = {}
-            shifted_ends = {}
-            for ph in (1, 2, 3, 4):
-                seg = phase_days[ph]
-                if seg:
-                    shifted_starts[ph] = seg[0]
-                    shifted_ends[ph] = seg[-1]
-                else:
-                    # empty segment: keep something safe (collapse to first worked day)
-                    shifted_starts[ph] = worked_days[0]
-                    shifted_ends[ph] = worked_days[0]
+            # shifted window edges MUST come from segment edges (span edges),
+            # otherwise SHIFT_USE_WORKED_DAYS=False collapses windows incorrectly.
+            shifted_starts = {ph: seg_edges[ph][0] for ph in (1, 2, 3, 4)}
+            shifted_ends   = {ph: seg_edges[ph][1] for ph in (1, 2, 3, 4)}
+
+            alloc_worked = {ph: len(phase_days.get(ph, [])) for ph in (1, 2, 3, 4)}
 
             shifted_meta[code] = {
                 "plan": meta,
                 "had_su_match": True,
-                "actual_first": worked_days[0],
-                "actual_last": worked_days[-1],
-                "actual_total": worked_total,           # NEW meaning: number of worked days
-                "alloc_days": alloc,                    # NEW meaning: number of worked days per phase
-                "phase_days": phase_days,               # IMPORTANT
+                "actual_first": actual_start,
+                "actual_last": actual_end,
+
+                # actual worked days count (what you *meant* by "actual_total")
+                "actual_total": len(worked_days),
+
+                # split lengths on timeline (span-days when SHIFT_USE_WORKED_DAYS=False)
+                "alloc_span_days": alloc_span,
+
+                # worked-day counts per phase (always meaningful)
+                "alloc_worked_days": alloc_worked,
+
+                "phase_days": phase_days,  # IMPORTANT for dt-in-date_set mapping
                 "shifted_starts": shifted_starts,
                 "shifted_ends": shifted_ends,
+
                 "occ_sample": sorted(occ, key=lambda x: x[0])[:3],
                 "occ_last_sample": sorted(occ, key=lambda x: x[0])[-3:],
             }
@@ -1189,7 +1311,8 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None):
                 "actual_first": None,
                 "actual_last": None,
                 "actual_total": None,
-                "alloc_days": None,
+                "alloc_span_days": None,
+                "alloc_worked_days": None,
                 "phase_days": None,
                 "shifted_starts": starts,
                 "shifted_ends": ends,
@@ -1208,7 +1331,7 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None):
                 "start": shifted_meta[code]["shifted_starts"][ph],
                 "end": shifted_meta[code]["shifted_ends"][ph],
                 "operation": f"p{ph}",
-                "date_set": ds,  # IMPORTANT (new)
+                "date_set": ds,
             })
 
     return shifted_meta, code_to_shifted_phases, code_occ
@@ -1651,22 +1774,21 @@ def write_transformation_log(
 
         # actual
         if m["had_su_match"]:
-            lines.append("actual (SU_Others):")
-            lines.append(f"  first date: {_to_ymd(m['actual_first'])}")
-            for dt, wid, text in m["occ_sample"]:
-                nm = worker_id_to_name.get(wid, wid)
-                lines.append(f"    - {_to_ymd(dt)} / {wid}({nm}) / {text}")
-            lines.append(f"  last date:  {_to_ymd(m['actual_last'])}")
-            for dt, wid, text in m["occ_last_sample"]:
-                nm = worker_id_to_name.get(wid, wid)
-                lines.append(f"    - {_to_ymd(dt)} / {wid}({nm}) / {text}")
-
-            # shifted
             lines.append("shifted result (used in Schedule.yaml):")
-            for ph in (1,2,3,4):
-                ln = m["alloc_days"].get(ph, 0) if m["alloc_days"] else 0
-                lines.append(_format_phase_line(ph, m["shifted_starts"][ph], m["shifted_ends"][ph], extra=f"(alloc={ln}d)"))
-            lines.append(f"  shifted overall: {_to_ymd(m['actual_first'])} - {_to_ymd(m['actual_last'])} (total={m['actual_total']}d)")
+            alloc_span = m.get("alloc_span_days") or m.get("alloc_days")  # support older logs
+            alloc_worked = m.get("alloc_worked_days")
+
+            for ph in (1, 2, 3, 4):
+                ln_span = alloc_span.get(ph, 0) if alloc_span else 0
+                extra = f"(alloc_span={ln_span}d)"
+                if alloc_worked:
+                    extra += f", worked_in_phase={alloc_worked.get(ph, 0)}d"
+                lines.append(_format_phase_line(ph, m["shifted_starts"][ph], m["shifted_ends"][ph], extra=extra))
+
+            lines.append(
+                f"  shifted overall: {_to_ymd(m['actual_first'])} - {_to_ymd(m['actual_last'])} "
+                f"(worked_total={m.get('actual_total')}d)"
+            )
         else:
             lines.append("actual (SU_Others): NOT FOUND -> no shift (kept planned dates)")
             lines.append("shifted result (used in Schedule.yaml): (same as planned)")
@@ -1793,15 +1915,17 @@ def build_env_and_schedule_decoder3(
             min_unique_worked_days=MIN_WORKED_DAYS_FOR_TOOL,
             planned_meta=planned_meta
         )
-        su_large_gap_corrections = cut_module_if_large_cluster_gap(
-            su_data,
-            gap_days_threshold=CLUSTER_GAP_CUT_DAYS,
-            planned_meta=planned_meta
-        )
+        su_phase_zero_corrections = []
+        if CUT_MODULE_IF_PHASE_ZERO_WORKLOAD:
+            su_phase_zero_corrections = cut_module_if_phase_zero_workload(
+                su_data,
+                planned_meta=planned_meta
+            )
+
         all_su_corrections = (
             su_outlier_corrections
             + su_short_span_corrections
-            + su_large_gap_corrections
+            + su_phase_zero_corrections
         )
         # Summarize outlier-cut modules so they appear in CUT OUT + DUMMY MODULES sections
         outlier_cut_summary = defaultdict(list)  # code -> list of sample original texts
