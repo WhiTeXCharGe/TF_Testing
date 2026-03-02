@@ -41,7 +41,7 @@ from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.worksheet.table import Table, TableStyleInfo
-
+from openpyxl.chart import BarChart, Reference
 
 # ---------------------------
 # YAML
@@ -106,7 +106,7 @@ def add_df_sheet(
     df: pd.DataFrame,
     freeze: str = "A2",
     table_name: Optional[str] = None,
-) -> None:
+):
     ws = wb.create_sheet(title=name)
 
     # write cells
@@ -124,7 +124,7 @@ def add_df_sheet(
 
     ws.freeze_panes = freeze
 
-    # basic column widths
+    # widths
     for col in ws.columns:
         col_letter = col[0].column_letter
         max_len = 0
@@ -134,7 +134,7 @@ def add_df_sheet(
             max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = min(max(10, max_len + 2), 45)
 
-    # add Excel table (for filtering/sorting)
+    # table
     if table_name is None:
         table_name = re.sub(r"[^A-Za-z0-9_]", "_", name)[:20] + "_tbl"
 
@@ -150,7 +150,27 @@ def add_df_sheet(
         )
         ws.add_table(tbl)
 
+    return ws
 
+def append_df(ws, df: pd.DataFrame, start_row: int, start_col: int = 1, header: bool = True):
+    r0 = start_row
+    c0 = start_col
+
+    # header
+    if header:
+        for j, col_name in enumerate(df.columns, start=c0):
+            cell = ws.cell(r0, j, value=col_name)
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        r0 += 1
+
+    # body
+    for i in range(len(df)):
+        for j, col_name in enumerate(df.columns, start=c0):
+            ws.cell(r0 + i, j, value=df.iloc[i][col_name]).alignment = Alignment(vertical="top", wrap_text=True)
+
+    return r0 + len(df)  # next free row
 # ---------------------------
 # Core analysis
 # ---------------------------
@@ -321,7 +341,10 @@ def build_workbook(env_path: Path, schedule_path: Path, out_path: Path) -> None:
 
     # --- Distributions (histogram bins)
     bins = [0, 25, 50, 75, 100, 150, 200, 300, 500, 1000, float("inf")]
-    labels = ["0-25", "25-50", "50-75", "75-100", "100-150", "150-200", "200-300", "300-500", "500-1000", "1000+"]
+    labels = [
+        "0-25", "25-50", "50-75", "75-100", "100-150",
+        "150-200", "200-300", "300-500", "500-1000", "1000+"
+    ]
 
     dist_rows: List[Dict[str, Any]] = []
     for op, sub in df.groupby("operation"):
@@ -334,8 +357,70 @@ def build_workbook(env_path: Path, schedule_path: Path, out_path: Path) -> None:
             dist_rows.append({"operation": op, "workload_range": rng, "count": int(cnt)})
 
     dist_df = pd.DataFrame(dist_rows)
-    if not dist_df.empty:
+
+    if dist_df.empty:
+        ws_dist = wb.create_sheet("Distributions")
+        ws_dist["A1"] = "No distribution data (no workload_days rows after filtering)."
+    else:
+        # ✅ FIX ORDER: workload_range sorts by numeric bin order, not string
+        dist_df["workload_range"] = pd.Categorical(dist_df["workload_range"], categories=labels, ordered=True)
+
+        # also keep operation order like p1,p2,p3... (string sort is OK if names are p1,p2,p3)
         dist_df = dist_df.sort_values(["operation", "workload_range"])
+
+        # 1) Write LONG FORMAT table at the top (what you want to see)
+        ws_dist = add_df_sheet(wb, "Distributions", dist_df, table_name="DistTbl")
+
+        # 2) Build pivot (bins × operation) for chart (place below)
+        pivot_df = (
+            dist_df.pivot_table(
+                index="workload_range",
+                columns="operation",
+                values="count",
+                fill_value=0,
+                aggfunc="sum",
+            )
+            .reindex(labels)  # keep bin order
+            .reset_index()
+        )
+
+        # Put pivot below the long table with 2 blank lines
+        start_row = ws_dist.max_row + 3
+        pivot_top_row = start_row
+        pivot_bottom_row = append_df(ws_dist, pivot_df, start_row=pivot_top_row, start_col=1, header=True)
+
+        # 3) Add clustered histogram chart (use pivot area)
+        chart = BarChart()
+        chart.type = "col"
+        chart.grouping = "clustered"
+        chart.title = "Workload Days Histogram by Operation"
+        chart.y_axis.title = "Count"
+        chart.x_axis.title = "workload_days range"
+
+        # Pivot layout:
+        # row pivot_top_row: headers
+        # col1 = workload_range, col2.. = operations
+        data = Reference(
+            ws_dist,
+            min_col=2,
+            min_row=pivot_top_row,
+            max_col=1 + pivot_df.shape[1],
+            max_row=pivot_top_row + pivot_df.shape[0],
+        )
+        cats = Reference(
+            ws_dist,
+            min_col=1,
+            min_row=pivot_top_row + 1,
+            max_row=pivot_top_row + pivot_df.shape[0],
+        )
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+
+        # Place chart UNDER the pivot (left side)
+        chart_anchor_row = pivot_top_row
+        chart_anchor_col = 1 + pivot_df.shape[1] + 2  # to the right a bit
+        chart_cell = ws_dist.cell(chart_anchor_row, chart_anchor_col).coordinate
+        ws_dist.add_chart(chart, chart_cell)
 
     # --- Raw data (pretty dates)
     raw = df.copy()
@@ -347,8 +432,6 @@ def build_workbook(env_path: Path, schedule_path: Path, out_path: Path) -> None:
     add_df_sheet(wb, "Operation Summary", op_summary, table_name="OpSummaryTbl")
     add_df_sheet(wb, "Phase Summary", phase_summary, table_name="PhaseSummaryTbl")
     add_df_sheet(wb, "Module Summary", module_summary, table_name="ModuleSummaryTbl")
-    if not dist_df.empty:
-        add_df_sheet(wb, "Distributions", dist_df, table_name="DistTbl")
     add_df_sheet(wb, "Data (op tasks)", raw, table_name="DataTbl")
 
     wb.save(out_path)

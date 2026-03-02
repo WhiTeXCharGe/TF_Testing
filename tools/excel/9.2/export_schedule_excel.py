@@ -2013,28 +2013,42 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
         chart.height = 15
         chart.width = 28
         ws.add_chart(chart, "T{}".format(q0))
-    # ================= Recommend staffing deviation (soft) =================
-    rec0 = ws.max_row + 3
-    ws.cell(row=rec0, column=1, value="Recommend staffing deviation (soft)").font = bold
+
+#=========================== SHEET 4: Recommend staffing deviation (soft) =============================
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
+
+def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws = wb.create_sheet("Recommend (Soft)")  # you can rename later
+
+    # Title
+    ws.cell(row=1, column=1, value="Recommend staffing deviation (soft)").font = bold
 
     rec_hdr = [
-        "module", "op_id", "op_name", "phase",
+        "module", "op_id", "phase",
         "phase_start", "phase_end",
         "rec_min", "rec_max",
         "days_in_window", "days_outside",
         "outside_%", "avg_heads",
-        "max_dev", "sum_dev"
+        "max_dev"
     ]
     for j, h in enumerate(rec_hdr, start=1):
-        ws.cell(row=rec0 + 1, column=j, value=h).font = bold
+        c = ws.cell(row=2, column=j, value=h)
+        c.font = bold
+        c.alignment = center
 
-    # Build a quick lookup for recommend range per (module, op_id)
+    # Make columns readable
+    for col in range(1, len(rec_hdr) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 16
+
     op_task_index = maps.get("op_task_index", {}) or {}
 
     # (m_id, op_id) -> (rec_min, rec_max)
     rec_range = {}
-    op_name_map = {}
-    for ot_id, meta in op_task_index.items():
+    for _ot_id, meta in op_task_index.items():
         m_id = meta.get("m_id")
         op_id = meta.get("op_id")
         if not m_id or not op_id:
@@ -2043,11 +2057,9 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
         rmin = meta.get("recommends_worker_min")
         rmax = meta.get("recommends_worker_max")
 
-        # If neither exists, skip
+        # If schedule doesn't provide recommended range, skip
         if rmin is None and rmax is None:
             continue
-
-        # Normalize: if only one side exists, use it for both
         if rmin is None:
             rmin = rmax
         if rmax is None:
@@ -2063,95 +2075,123 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
             rmin, rmax = rmax, rmin
 
         rec_range[(m_id, op_id)] = (rmin, rmax)
-        if (m_id, op_id) not in op_name_map:
-            op_name_map[(m_id, op_id)] = meta.get("op_name", "") or op_id
 
-    # If nothing has recommend fields, just stop here
-    if rec_range:
-        # Phase windows from Schedule.yaml (use phase_task_list start/end)
-        phase_window = {}  # (m_id, phase_id) -> (start, end)
-        for m in modules:
-            for ph in m.get("phase_task_list", []) or []:
-                try:
-                    phase_window[(m["id"], ph["phase"])] = (_d(ph["start_date"]), _d(ph["end_date"]))
-                except Exception:
-                    pass
+    # Phase windows from Schedule.yaml (phase_task_list)
+    phase_window = {}
+    for m in modules:
+        for ph in m.get("phase_task_list", []) or []:
+            try:
+                phase_window[(m["id"], ph["phase"])] = (_d(ph["start_date"]), _d(ph["end_date"]))
+            except Exception:
+                pass
 
-        rows = []
-        for (m_id, op_id, _op_name_unused) in (maps.get("module_ops") or []):
-            if (m_id, op_id) not in rec_range:
-                continue
+    rows = []
+    for (m_id, op_id, _op_name_unused) in (maps.get("module_ops") or []):
+        if (m_id, op_id) not in rec_range:
+            continue
 
-            ph_id = maps.get("op_phase_of_module", {}).get((m_id, op_id))
-            w = phase_window.get((m_id, ph_id))
-            if not w:
-                continue
-            w_start, w_end = w
-            if not w_start or not w_end:
-                continue
+        ph_id = maps.get("op_phase_of_module", {}).get((m_id, op_id))
+        w = phase_window.get((m_id, ph_id))
+        if not w:
+            continue
 
-            # clamp to plan range
-            start = max(plan_start, w_start)
-            end   = min(plan_end, w_end)
-            if start > end:
-                continue
+        w_start, w_end = w
+        if not w_start or not w_end:
+            continue
 
-            rec_min, rec_max = rec_range[(m_id, op_id)]
-            days_in_window = (end - start).days + 1
+        # clamp to plan range
+        start = max(plan_start, w_start)
+        end   = min(plan_end, w_end)
+        if start > end:
+            continue
 
-            # compute head stats over the window (include 0 head days)
-            total_heads = 0
-            days_outside = 0
-            max_dev = 0
-            sum_dev = 0
+        rec_min, rec_max = rec_range[(m_id, op_id)]
+        days_in_window = (end - start).days + 1
 
-            d = start
-            while d <= end:
-                heads = int(maps.get("day_op_heads", {}).get((m_id, op_id, d), 0))
-                total_heads += heads
+        total_heads_assigned = 0
+        assigned_days = 0
 
-                dev = 0
-                if heads < rec_min:
-                    dev = rec_min - heads
-                elif heads > rec_max:
-                    dev = heads - rec_max
+        days_outside = 0
+        max_dev = 0
 
-                if dev > 0:
-                    days_outside += 1
-                    sum_dev += dev
-                    if dev > max_dev:
-                        max_dev = dev
+        d = start
+        while d <= end:
+            heads = int(maps.get("day_op_heads", {}).get((m_id, op_id, d), 0))
 
-                d += timedelta(days=1)
+            # avg_heads over actual assignment days only
+            if heads > 0:
+                assigned_days += 1
+                total_heads_assigned += heads
 
-            avg_heads = (total_heads / days_in_window) if days_in_window > 0 else 0.0
-            outside_pct = (100.0 * days_outside / days_in_window) if days_in_window > 0 else 0.0
+            dev = 0
+            if heads < rec_min:
+                dev = rec_min - heads
+            elif heads > rec_max:
+                dev = heads - rec_max
 
-            rows.append((
-                m_id,
-                op_id,
-                op_name_map.get((m_id, op_id), "") or "",
-                ph_id or "",
-                start.isoformat(),
-                end.isoformat(),
-                rec_min,
-                rec_max,
-                days_in_window,
-                days_outside,
-                round(outside_pct, 1),
-                round(avg_heads, 2),
-                max_dev,
-                sum_dev,
-            ))
+            if dev > 0:
+                days_outside += 1
+                if dev > max_dev:
+                    max_dev = dev
 
-        # sort: most problematic first
-        rows.sort(key=lambda r: (-r[9], -r[12], -r[13], r[0], r[1]))
+            d += timedelta(days=1)
 
-        # write rows
-        for i, row in enumerate(rows, start=rec0 + 2):
+        avg_heads = (total_heads_assigned / assigned_days) if assigned_days > 0 else 0.0
+        outside_pct = (100.0 * days_outside / days_in_window) if days_in_window > 0 else 0.0
+
+        rows.append((
+            m_id,
+            op_id,
+            ph_id or "",
+            start.isoformat(),
+            end.isoformat(),
+            rec_min,
+            rec_max,
+            days_in_window,
+            days_outside,
+            round(outside_pct, 1),
+            round(avg_heads, 2),
+            max_dev,
+        ))
+
+    # Sort: worst first
+    rows.sort(key=lambda r: (-r[8], -r[11], r[0], r[1]))
+
+    # Write data (or write a "no data" message)
+    out_row = 3
+    if rows:
+        for row in rows:
             for j, v in enumerate(row, start=1):
-                ws.cell(row=i, column=j, value=v)
- #=========================== SHEET 4: write sheet dashboard employee =============================
+                c = ws.cell(row=out_row, column=j, value=v)
+                c.alignment = center if j >= 4 else Alignment(horizontal="left", vertical="center", wrap_text=True)
+            out_row += 1
+    else:
+        ws.cell(row=3, column=1, value="No rows: recommends_worker_min/max not found, or no matching tasks in module_ops.")
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(rec_hdr))
+
+    # Freeze title+header
+    ws.freeze_panes = "A3"
+
+    # Add filter dropdowns (auto_filter) for header row
+    last_row = ws.max_row
+    last_col = len(rec_hdr)
+    if last_row >= 2 and last_col >= 1:
+        ws.auto_filter.ref = f"A2:{get_column_letter(last_col)}{last_row}"
+
+    # (Optional but nicer) turn it into an Excel Table so filter UI is guaranteed
+    # Only if we have at least header + 1 data row
+    if rows:
+        ref = f"A2:{get_column_letter(last_col)}{ws.max_row}"
+        tbl = Table(displayName="RecommendSoftTbl", ref=ref)
+        tbl.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium9",
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        ws.add_table(tbl)
+    
+
+ #=========================== SHEET 5: write sheet dashboard employee =============================
 
 def write_sheet_dashboard_employees(
     wb, plan_start, plan_end, env, maps,
@@ -2875,16 +2915,20 @@ def main():
         wb, plan_start, plan_end, env, maps,
         modules, assignments, assignment_blocks, req_module
     )
-    # ===== SHEET 4: Dashboard (Employees) =====
+
+    # ===== SHEET 4: Recommend staffing deviation (soft) =====
+    write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps)
+
+    # ===== SHEET 5: Dashboard (Employees) =====
     write_sheet_dashboard_employees(
         wb, plan_start, plan_end, env, maps,
         modules, assignments, assignment_blocks, req_module, vios
     )
-    # ===== SHEET 5: Breaches (Plan) =====
+    # ===== SHEET 6: Breaches (Plan) =====
     write_sheet_breaches_plan(wb, vios)
-    # ===== SHEET 6: Breaches (Employees) =====
+    # ===== SHEET 7: Breaches (Employees) =====
     write_sheet_breaches_employee(wb, vios)
-    # ===== SHEET 7: Moving plan =====
+    # ===== SHEET 8: Moving plan =====
     write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios)
 
     wb.save(args.out)
