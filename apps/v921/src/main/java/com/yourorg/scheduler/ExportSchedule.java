@@ -280,6 +280,7 @@ public class ExportSchedule {
                     for (int i = 0; i < s.pinnedDays; i++) {
                         int did = s.pinnedStart + i;
                         if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
+                        if (EmployeeSchedule.isWorkerUnavailable(s.employee.wid, did)) continue;
                         byDay.merge(did, h, Integer::sum);
                     }
 
@@ -291,6 +292,7 @@ public class ExportSchedule {
                     for (int i = 0; i < b.days; i++) {
                         int did = b.startDay + i;
                         if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
+                        if (EmployeeSchedule.isWorkerUnavailable(s.employee.wid, did)) continue;
                         byDay.merge(did, h, Integer::sum);
                     }
 
