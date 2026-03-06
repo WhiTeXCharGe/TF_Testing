@@ -100,6 +100,49 @@ public class EmployeeSchedule {
 
     static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
+
+    static final class ParsedOpTaskRef {
+        String module;
+        String phaseToken;
+        int phaseNum;
+        String opToken;
+    }
+
+    static ParsedOpTaskRef parseOpTaskRef(String raw) {
+        ParsedOpTaskRef out = new ParsedOpTaskRef();
+        String t = safeStr(raw).trim();
+        if (t.isBlank()) {
+            out.module = "";
+            out.phaseToken = "";
+            out.phaseNum = 0;
+            out.opToken = "";
+            return out;
+        }
+
+        // Supports both:
+        //   e1_p1, e1_p1o2
+        //   e1p1,  e1p1o2
+        Matcher m = Pattern.compile("^(.*?)(?:_)?(p\\d+(?:o\\d+)?)$", Pattern.CASE_INSENSITIVE).matcher(t);
+        if (m.matches()) {
+            out.module = safeStr(m.group(1));
+            while (out.module.endsWith("_") || out.module.endsWith("-")) {
+                out.module = out.module.substring(0, out.module.length() - 1);
+            }
+            out.opToken = safeStr(m.group(2));
+            String phaseOnly = out.opToken.replaceFirst("(?i)(p\\d+).*$", "$1");
+            out.phaseToken = phaseOnly;
+            out.phaseNum = phaseNumFromId(phaseOnly);
+            return out;
+        }
+
+        // Fallback: keep old behavior, but still try to extract a phase number safely.
+        out.module = t;
+        out.opToken = t;
+        out.phaseNum = phaseNumFromId(t);
+        out.phaseToken = (out.phaseNum > 0) ? ("p" + out.phaseNum) : "";
+        return out;
+    }
+
     // ---------------- Domain ----------------
 
     public static class DaySlot {
@@ -324,8 +367,11 @@ static class OpTaskMeta {
                 return new ListValueRange<>(base);
             } else {
                 // Non-manager seat may keep UNASSIGNED as a legal value to ease feasibility
-                if (base.isEmpty()) base = List.of(UNASSIGNED);
-                return new ListValueRange<>(base);
+                // if (base.isEmpty()) base = List.of(UNASSIGNED);
+                List<EmployeeFact> list = new ArrayList<>(base == null? List.of(): base);
+                list.add(UNASSIGNED);
+                list = list.stream().distinct().toList();
+                return new ListValueRange<>(list);
             }
         }
 
@@ -460,7 +506,7 @@ static class OpTaskMeta {
                 Locale.ROOT,
                 "[W%04d] module=%s wf=%s fab=%s phase=%s(#%d) op=%s " +
                 "win=%d..%d clamp=%d..%d exceeds=%s outside=%s " +
-                "workloadDays=%d min=%d max=%d allowed=%s",
+                "workloadDays=%d min=%d max=%d allowed=%s recommendHead=%d",
                 (++idx),
                 safeStr(w.module), safeStr(w.workflowId), safeStr(w.factory),
                 safeStr(w.phaseId), w.phaseNum, safeStr(w.opId),
@@ -470,7 +516,8 @@ static class OpTaskMeta {
                 String.valueOf(outside),
                 w.workloadDays,
                 w.minHeads, w.maxHeads,
-                String.valueOf(w.allowed)
+                String.valueOf(w.allowed),
+                w.recommendHeads
             ));
         }
     }
@@ -1294,7 +1341,7 @@ static class OpTaskMeta {
                     }
                     if (dayToRegion.isEmpty()) return false;
 
-                    // Seed with last fixed history (optional but matches your concept)
+                    // Seed with last fixed history
                     int prevDay = Integer.MIN_VALUE;
                     String prevRegion = null;
 
@@ -1991,33 +2038,13 @@ static class OpTaskMeta {
         List<Map<String,Object>> asgs =
             (asgObj instanceof List) ? (List<Map<String,Object>>) asgObj : List.of();
 
-        // --- helper: get (module, phaseNum) from operation_task like "e72_p1", "e72_p1o2", etc. ---
+        // --- helper: get (module, phaseNum) from operation_task like
+        //     e72_p1, e72_p1o2, e72p1, e72p1o2
         record PhaseKey(String module, int phaseNum) {}
 
         java.util.function.Function<String, PhaseKey> phaseKeyOfOpTask = (opTask) -> {
-            if (opTask == null) return new PhaseKey("", 0);
-            String t = opTask.trim();
-
-            // find "_p" then digits
-            int pIdx = t.toLowerCase(Locale.ROOT).indexOf("_p");
-            if (pIdx >= 0) {
-                String module = t.substring(0, pIdx);
-                int i = pIdx + 2;
-                StringBuilder num = new StringBuilder();
-                while (i < t.length() && Character.isDigit(t.charAt(i))) {
-                    num.append(t.charAt(i));
-                    i++;
-                }
-                int pn = 0;
-                try { pn = Integer.parseInt(num.toString()); } catch (Exception ignore) {}
-                return new PhaseKey(module, pn);
-            }
-
-            // fallback: try your existing phaseNumFromId on whole string
-            int pn = phaseNumFromId(t);
-            // guess module as prefix before first '_' if exists
-            String module = t.contains("_") ? t.substring(0, t.indexOf('_')) : t;
-            return new PhaseKey(module, pn);
+            ParsedOpTaskRef ref = parseOpTaskRef(opTask);
+            return new PhaseKey(ref.module, ref.phaseNum);
         };
 
         // PASS 1: detect phases that started before cut-off
@@ -2168,6 +2195,9 @@ static class OpTaskMeta {
                     } else if (ot.containsKey("recommends_worker_min")) {
                         rec = parseInt(ot.get("recommends_worker_min"), 0);
                     }
+                    // if (rec > 0) {
+                    //     maxHeads = Math.max(minHeads, rec);
+                    // }
                     TaskWindow tw = new TaskWindow();
                     tw.module = module; tw.workflowId = workflowId; tw.factory = fab;
                     tw.phaseId = phId; tw.phaseNum = phNum;
@@ -2267,24 +2297,11 @@ static class OpTaskMeta {
                 phId   = meta.phaseId;
                 phNum  = meta.phaseNum;
             } else {
-                // your existing fallback split (keep your fixed point)
-                String tmp = opTask;
-                if (tmp.contains("_")) {
-                    int us = tmp.lastIndexOf('_');
-                    module = (us > 0) ? tmp.substring(0, us) : tmp;
-                    opId   = (us > 0 && us + 1 < tmp.length()) ? tmp.substring(us + 1) : "";
-                } else {
-                    int idx = tmp.toLowerCase(Locale.ROOT).indexOf("p");
-                    module = (idx > 0) ? tmp.substring(0, idx) : tmp;
-                    opId   = (idx > 0) ? tmp.substring(idx) : "";
-                }
-                while (module.endsWith("_") || module.endsWith("-")) {
-                    module = module.substring(0, module.length() - 1);
-                }
-                String pPart = opId;
-                try { pPart = opId.split("o", 2)[0]; } catch (Exception ignore) {}
-                phId  = pPart;
-                phNum = phaseNumFromId(pPart);
+                ParsedOpTaskRef ref = parseOpTaskRef(opTask);
+                module = ref.module;
+                opId   = ref.opToken;
+                phId   = ref.phaseToken;
+                phNum  = ref.phaseNum;
             }
 
             String wid = safeStr(a.get("worker"));
@@ -2329,8 +2346,6 @@ static class OpTaskMeta {
             rr.byDay = byDay;
 
             rawRows.add(rr);
-
-            // keep your "any end" tracking for true fixed rows (used for pushing phase windows)
             if ("fixed".equalsIgnoreCase(flex)) {
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
@@ -2443,8 +2458,6 @@ static class OpTaskMeta {
         out.activeModules = activeModules;
         out.cutOffDayId = cutOffDayId;
         out.cutOffDate = cutOffDate;
-
-// and keep your window push logic below, using latestFixedEndInRange/latestFixedEndAny
 
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
@@ -2646,7 +2659,6 @@ static class OpTaskMeta {
                 // keep ONLY days inside plan_range/horizon
                 if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
 
-                // keep ONLY working days (optional but consistent with your constraints)
                 if (!isWorkingDay(dayId, factory)) continue;
 
                 workDays.add(dayId);
@@ -3160,7 +3172,6 @@ static class OpTaskMeta {
                     + ", requiredKeys=" + (sch.requiredByKey == null ? 0 : sch.requiredByKey.size())
                     + ", activeModules=" + (sch.activeModules == null ? 0 : sch.activeModules.size()));
 
-            // warn if windows exceed solver daySlots (useful for your “0 hard but looks wrong” situation)
             if (sch.daySlots != null && !sch.daySlots.isEmpty() && sch.windows != null) {
                 long outCount = sch.windows.stream()
                         .filter(w -> w != null && (w.startDayId < minDay || w.endDayId > maxDay))
@@ -3338,12 +3349,12 @@ static class OpTaskMeta {
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
 
-        // ---- Stage 1: your current settings (e.g., 90/90) ----
+        // ---- Stage 1: current settings (e.g., 90/90) ----
         SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 2, 3600);
+                "0hard/*medium/*soft", 240, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -3367,7 +3378,7 @@ static class OpTaskMeta {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                1  /* spentMinutes */,
+                300  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
