@@ -27,6 +27,7 @@
 import os
 import math
 import yaml
+import re
 try:
     from yaml import CSafeLoader as _YamlLoader
 except Exception:
@@ -512,7 +513,7 @@ def build_maps(env, modules, assignments):
         if mn is not None or mx is not None:
             schedule_minmax[(m_id0, op_id0)] = (mn, mx)
 
-    module_workflow = {m["id"]: m.get("workflow") for m in modules}
+    module_workflow = {m["id"]: (m.get("workflow") or m.get("workflow_id")) for m in modules}
     for m in modules:
         starts = []
         for ph in m.get("phase_task_list", []):
@@ -833,9 +834,9 @@ def compute_required_hours_task_module(modules):
         for ph in m.get("phase_task_list", []):
             for ot in ph.get("operation_task_list", []):
                 days = int(ot.get("workload_days", 0))
-                req_task[(m_id, ot["operation"])] += days * 8
+                req_task[(m_id, ot["operation"])] += days * 10
                 total_days += days
-        req_module[m_id] = total_days * 8
+        req_module[m_id] = total_days * 10
     return req_task, req_module
 
 # --------------------------- VIOLATION DETECTION -----------------------
@@ -2018,13 +2019,14 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+# =========================== SHEET 4: Recommend staffing deviation (soft) ==========================
 def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    ws = wb.create_sheet("Recommend (Soft)")  # you can rename later
+    ws = wb.create_sheet("Recommend (Soft)")
 
-    # Title
     ws.cell(row=1, column=1, value="Recommend staffing deviation (soft)").font = bold
 
     rec_hdr = [
@@ -2033,14 +2035,13 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
         "rec_min", "rec_max",
         "days_in_window", "days_outside",
         "outside_%", "avg_heads",
-        "max_dev"
+        "max_worker"
     ]
     for j, h in enumerate(rec_hdr, start=1):
         c = ws.cell(row=2, column=j, value=h)
         c.font = bold
         c.alignment = center
 
-    # Make columns readable
     for col in range(1, len(rec_hdr) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 16
 
@@ -2057,7 +2058,6 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
         rmin = meta.get("recommends_worker_min")
         rmax = meta.get("recommends_worker_max")
 
-        # If schedule doesn't provide recommended range, skip
         if rmin is None and rmax is None:
             continue
         if rmin is None:
@@ -2076,7 +2076,7 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
 
         rec_range[(m_id, op_id)] = (rmin, rmax)
 
-    # Phase windows from Schedule.yaml (phase_task_list)
+    # phase window
     phase_window = {}
     for m in modules:
         for ph in m.get("phase_task_list", []) or []:
@@ -2099,7 +2099,6 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
         if not w_start or not w_end:
             continue
 
-        # clamp to plan range
         start = max(plan_start, w_start)
         end   = min(plan_end, w_end)
         if start > end:
@@ -2110,29 +2109,22 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
 
         total_heads_assigned = 0
         assigned_days = 0
-
         days_outside = 0
-        max_dev = 0
+        max_heads = 0
 
         d = start
         while d <= end:
             heads = int(maps.get("day_op_heads", {}).get((m_id, op_id, d), 0))
 
-            # avg_heads over actual assignment days only
             if heads > 0:
                 assigned_days += 1
                 total_heads_assigned += heads
 
-            dev = 0
-            if heads < rec_min:
-                dev = rec_min - heads
-            elif heads > rec_max:
-                dev = heads - rec_max
+            if heads > max_heads:
+                max_heads = heads
 
-            if dev > 0:
+            if heads < rec_min or heads > rec_max:
                 days_outside += 1
-                if dev > max_dev:
-                    max_dev = dev
 
             d += timedelta(days=1)
 
@@ -2151,35 +2143,30 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
             days_outside,
             round(outside_pct, 1),
             round(avg_heads, 2),
-            max_dev,
+            max_heads,
         ))
 
-    # Sort: worst first
+    # sort: worst first, then biggest peak worker
     rows.sort(key=lambda r: (-r[8], -r[11], r[0], r[1]))
 
-    # Write data (or write a "no data" message)
     out_row = 3
     if rows:
         for row in rows:
             for j, v in enumerate(row, start=1):
                 c = ws.cell(row=out_row, column=j, value=v)
-                c.alignment = center if j >= 4 else Alignment(horizontal="left", vertical="center", wrap_text=True)
+                c.alignment = center if j >= 4 else left
             out_row += 1
     else:
         ws.cell(row=3, column=1, value="No rows: recommends_worker_min/max not found, or no matching tasks in module_ops.")
         ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(rec_hdr))
 
-    # Freeze title+header
     ws.freeze_panes = "A3"
 
-    # Add filter dropdowns (auto_filter) for header row
     last_row = ws.max_row
     last_col = len(rec_hdr)
     if last_row >= 2 and last_col >= 1:
         ws.auto_filter.ref = f"A2:{get_column_letter(last_col)}{last_row}"
 
-    # (Optional but nicer) turn it into an Excel Table so filter UI is guaranteed
-    # Only if we have at least header + 1 data row
     if rows:
         ref = f"A2:{get_column_letter(last_col)}{ws.max_row}"
         tbl = Table(displayName="RecommendSoftTbl", ref=ref)
@@ -2777,31 +2764,21 @@ def write_sheet_breaches_employee(wb, vios):
     for col in range(1, 12):
         ws.column_dimensions[get_column_letter(col)].width = 18
 
-# ===================== SHEET X: wf_tool one-day "isolated" work cells =====================
-# "not continue work" = the employee has exactly 1 wf_tool assignment day in the whole plan range,
-# and the left/right day cells are BOTH empty (no text), AND those neighbor days are WHITE
-# (i.e., not grey closed, not red/purple/blue/pink/orange/brown, etc.)
-#
-# NOTE: to reliably know "white background", we must use the SAME coloring logic you used in
-#       Employees x Dates:
-#         - grey if personal_off (cal["worker_off"])
-#         - orange if skill_mismatch_cells
-#         - brown if unavail_emp_cells
-#       (you are NOT greying weekends here, so weekends are just "white" unless breached)
-#
+# ===================== SHEET X: wf_tool one-day isolated work =====================
 def write_sheet_wftool_isolated_workdays(wb, plan_start, plan_end, env, maps, modules, assignments, vios, cal):
     bold   = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    ws = wb.create_sheet("wf_tool Isolated Days")
-    ws.cell(row=1, column=1, value="wf_tool isolated one-day work (neighbors empty & white)").font = bold
+    ws = wb.create_sheet("Isolated Days")
+    ws.cell(row=1, column=1, value="isolated one-day work").font = bold
 
     hdr = [
-        "employee", "company", "date",
-        "wf_tool_items_that_day",
-        "left_day", "left_status",
-        "right_day", "right_status"
+        "employee",
+        "company",
+        "date",
+        "module_id",
+        "module_name",
     ]
     for j, h in enumerate(hdr, start=1):
         c = ws.cell(row=2, column=j, value=h)
@@ -2810,22 +2787,33 @@ def write_sheet_wftool_isolated_workdays(wb, plan_start, plan_end, env, maps, mo
 
     for col in range(1, len(hdr) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 20
-    ws.column_dimensions["D"].width = 60
+    ws.column_dimensions["D"].width = 30
+    ws.column_dimensions["E"].width = 40
 
-    # ---------- helpers ----------
     module_workflow = maps.get("module_workflow", {}) or {}
-    worker_company_name = maps.get("worker_company_name", {}) or {}
     worker_name = maps.get("worker_name", {}) or {}
-    op_task_index = maps.get("op_task_index", {}) or {}
 
-    # name -> wid (since maps["edt"] uses employee name)
+    # module_id -> module_name
+    module_name_map = {}
+    if modules:
+        if isinstance(modules, list):
+            for m in modules:
+                mid = (m or {}).get("id")
+                mname = (m or {}).get("name")
+                if mid:
+                    module_name_map[str(mid)] = str(mname or "")
+        elif isinstance(modules, dict):
+            for mid, m in modules.items():
+                mname = (m or {}).get("name")
+                module_name_map[str(mid)] = str(mname or "")
+
+    # name -> wid
     name_to_wid = {}
     for wid, w in (env.get("workers", {}) or {}).items():
         nm = worker_name.get(wid, w.get("name", wid))
         if nm and nm not in name_to_wid:
             name_to_wid[nm] = wid
 
-    # reuse your roster order
     roster = []
     seen = set()
     for (comp, wname, _dte), _ in maps.get("edt", {}).items():
@@ -2841,13 +2829,6 @@ def write_sheet_wftool_isolated_workdays(wb, plan_start, plan_end, env, maps, mo
             d += timedelta(days=1)
 
     def is_white_neighbor_cell(comp: str, wname: str, dt: date) -> bool:
-        """
-        "White background" in Employees x Dates sheet:
-          - NOT personal_off grey
-          - NOT skill mismatch orange
-          - NOT unavail_emp_cells brown
-        We don't care about the actual Excel fill; we recompute from your logic.
-        """
         wid = name_to_wid.get(wname)
         personal_off = bool(wid) and (dt in cal["worker_off"].get(wid, set()))
         if personal_off:
@@ -2858,86 +2839,73 @@ def write_sheet_wftool_isolated_workdays(wb, plan_start, plan_end, env, maps, mo
             return False
         return True
 
-    def wf_tool_items_for_day(comp: str, wname: str, dt: date):
-        """
-        From maps["edt"] day strings like 'm_idop_id (8H)'
-        Filter only those modules whose workflow == 'wf_tool'
-        Return list[str] (original text) and also count.
-        """
+    def parse_module_id_from_item_text(item_text: str):
+        s0 = str(item_text)
+        # longest match first, safer when one id is prefix of another
+        mids = sorted(module_workflow.keys(), key=lambda x: len(str(x)), reverse=True)
+        for mid in mids:
+            if s0.startswith(str(mid)):
+                return str(mid)
+        return None
+
+    def wf_tool_module_ids_for_day(comp: str, wname: str, dt: date):
         items = list(maps.get("edt", {}).get((comp, wname, dt), []) or [])
         if not items:
             return []
 
-        keep = []
+        module_ids = []
         for s in items:
-            # s looks like: f22_3f22p3 (8H)  OR  m_id + op_id
-            # We'll try to parse module id by matching known module ids at start.
-            # Safe path: detect module id by checking each module id as prefix.
-            s0 = str(s)
-            m_found = None
-            for mid in module_workflow.keys():
-                if s0.startswith(str(mid)):
-                    m_found = mid
-                    break
-            if not m_found:
-                # fallback: try operation_task_index parsing if your string contained "m_idop_id"
-                # but usually prefix match is enough.
+            mid = parse_module_id_from_item_text(s)
+            if not mid:
                 continue
+            if module_workflow.get(mid) == "wf_tool":
+                module_ids.append(mid)
 
-            if module_workflow.get(m_found) == "wf_tool":
-                keep.append(s0)
-        return keep
-
-    # ---------- compute "exactly 1 wf_tool day in whole horizon" ----------
-    wf_tool_days_by_emp = {}  # (comp,wname) -> [dates where wf_tool_items exist]
-    for (comp, wname) in roster:
-        dates_with_wf = []
-        for dt in daterange(plan_start, plan_end):
-            if wf_tool_items_for_day(comp, wname, dt):
-                dates_with_wf.append(dt)
-        wf_tool_days_by_emp[(comp, wname)] = dates_with_wf
+        return sorted(set(module_ids))
 
     rows = []
-    for (comp, wname), wf_days in wf_tool_days_by_emp.items():
-        if len(wf_days) != 1:
-            continue
-        dt = wf_days[0]
+    start_dt = plan_start + timedelta(days=1)
+    end_dt   = plan_end - timedelta(days=1)
 
-        # neighbor dates must exist in plan range
-        ldt = dt - timedelta(days=1)
-        rdt = dt + timedelta(days=1)
-        if ldt < plan_start or rdt > plan_end:
-            continue
+    if start_dt <= end_dt:
+        for (comp, wname) in roster:
+            for dt in daterange(start_dt, end_dt):
+                module_ids_today = wf_tool_module_ids_for_day(comp, wname, dt)
+                if not module_ids_today:
+                    continue
 
-        # left/right must be empty text
-        left_txt  = " | ".join(sorted(maps.get("edt", {}).get((comp, wname, ldt), []) or []))
-        right_txt = " | ".join(sorted(maps.get("edt", {}).get((comp, wname, rdt), []) or []))
-        if left_txt != "" or right_txt != "":
-            continue
+                ldt = dt - timedelta(days=1)
+                rdt = dt + timedelta(days=1)
 
-        # and both neighbors must be "white"
-        if not is_white_neighbor_cell(comp, wname, ldt):
-            continue
-        if not is_white_neighbor_cell(comp, wname, rdt):
-            continue
+                left_raw  = maps.get("edt", {}).get((comp, wname, ldt), []) or []
+                right_raw = maps.get("edt", {}).get((comp, wname, rdt), []) or []
+                if left_raw or right_raw:
+                    continue
 
-        wf_items = wf_tool_items_for_day(comp, wname, dt)
-        rows.append((
-            wname,
-            comp,
-            dt.isoformat(),
-            " | ".join(sorted(wf_items)),
-            ldt.isoformat(),
-            "white+empty",
-            rdt.isoformat(),
-            "white+empty",
-        ))
+                if not is_white_neighbor_cell(comp, wname, ldt):
+                    continue
+                if not is_white_neighbor_cell(comp, wname, rdt):
+                    continue
 
-    # write output
+                module_names_today = [
+                    module_name_map.get(mid, "")
+                    for mid in module_ids_today
+                ]
+                module_names_today = [x for x in module_names_today if x]
+
+                rows.append((
+                    wname,
+                    comp,
+                    dt.isoformat(),
+                    " | ".join(module_ids_today),
+                    " | ".join(sorted(set(module_names_today))),
+                ))
+
     if not rows:
-        ws.cell(row=3, column=1, value="No isolated wf_tool one-day work found (with your white+empty definition).")
+        ws.cell(row=3, column=1, value="No isolated one-day wf_tool work found")
         ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(hdr))
         ws.freeze_panes = "A3"
+        ws.auto_filter.ref = f"A2:{get_column_letter(len(hdr))}2"
         return
 
     rows.sort(key=lambda r: (r[1] or "", r[0] or "", r[2]))
@@ -2945,54 +2913,101 @@ def write_sheet_wftool_isolated_workdays(wb, plan_start, plan_end, env, maps, mo
     for row in rows:
         for j, v in enumerate(row, start=1):
             c = ws.cell(row=out_r, column=j, value=v)
-            c.alignment = left if j in (1, 2, 4) else center
+            c.alignment = left if j in (1, 2, 4, 5) else center
         out_r += 1
 
     ws.freeze_panes = "A3"
     ws.auto_filter.ref = f"A2:{get_column_letter(len(hdr))}{ws.max_row}"
-
 
 # ===================== SHEET Y: wf_tool module phase-gap (Schedule windows) =====================
 # Track module-level gaps between consecutive phases:
 #   gap_days = next_phase_start - prev_phase_end - 1
 # Only for modules where module_workflow == "wf_tool"
 #
-def write_sheet_wftool_module_phase_gaps(wb, plan_start, plan_end, modules, maps):
+def write_sheet_wftool_module_phase_gaps(wb, plan_start, plan_end, modules, maps, assignments):
+    """
+    Track gaps between consecutive phases for wf_tool modules, using *actual* assignments only.
+    Columns:
+      - module
+      - phase_prev
+      - last_assign   : last real work day in previous phase
+      - phase_next
+      - next_assign  : first real work day in next phase
+      - gap_days    : (next_first - prev_last) - 1   [kept only if > 0]
+    """
     bold   = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left   = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    ws = wb.create_sheet("wf_tool Phase Gaps")
-    ws.cell(row=1, column=1, value="wf_tool module phase gaps (Schedule windows)").font = bold
+    ws = wb.create_sheet("Phase Gaps")
+    ws.cell(row=1, column=1, value="Module phase gaps").font = bold
 
-    hdr = ["module", "phase_prev", "prev_end", "phase_next", "next_start", "gap_days"]
+    hdr = [
+        "module",
+        "phase_prev",
+        "last_assign",
+        "phase_next",
+        "next_assign",
+        "gap_days",
+    ]
     for j, h in enumerate(hdr, start=1):
         c = ws.cell(row=2, column=j, value=h)
         c.font = bold
         c.alignment = center
 
     for col in range(1, len(hdr) + 1):
-        ws.column_dimensions[get_column_letter(col)].width = 18
+        ws.column_dimensions[get_column_letter(col)].width = 20
     ws.freeze_panes = "A3"
 
+    # Indices prepared earlier in your file
     module_workflow = maps.get("module_workflow", {}) or {}
+    op_task_index   = maps.get("op_task_index", {}) or {} 
+
+    # ---------- Build per-(module, phase) first/last assignment dates ----------
+    from collections import defaultdict
+    first_in_phase = defaultdict(lambda: defaultdict(lambda: None))  # m -> phase -> date
+    last_in_phase  = defaultdict(lambda: defaultdict(lambda: None))  # m -> phase -> date
+
+    for a in assignments:
+        ot_id = a.get("operation_task")
+        dt    = a.get("date")
+        meta  = op_task_index.get(ot_id)
+        if not meta:
+            # Unknown op_task id -> skip safely (older dataset variants are handled by your other helpers)
+            continue
+        m_id  = meta.get("m_id")
+        ph_id = meta.get("phase")
+        if not m_id or not ph_id or not isinstance(dt, date):
+            continue
+
+        f_prev = first_in_phase[m_id].get(ph_id)
+        if f_prev is None or dt < f_prev:
+            first_in_phase[m_id][ph_id] = dt
+
+        l_prev = last_in_phase[m_id].get(ph_id)
+        if l_prev is None or dt > l_prev:
+            last_in_phase[m_id][ph_id] = dt
+    # --------------------------------------------------------------------------
 
     rows = []
     for m in modules:
         m_id = m.get("id")
         if not m_id:
             continue
-        if module_workflow.get(m_id) != "wf_tool":
+        # robust 'wf_tool' detection whether YAML uses workflow or workflow_id
+        wf = module_workflow.get(m_id) or m.get("workflow") or m.get("workflow_id")
+        if wf != "wf_tool":
             continue
 
         phase_list = list(m.get("phase_task_list", []) or [])
-        # sort by start_date to be safe
+
+        # sort by start_date to be safe (uses the same _d() helper you already have)
         def _ph_key(ph):
             try:
                 return _d(ph.get("start_date"))
             except Exception:
                 return date.min
-        phase_list.sort(key=_ph_key)
+        phase_list.sort(key=_ph_key)  # keeps phases in chronological order
 
         for i in range(len(phase_list) - 1):
             p1 = phase_list[i]
@@ -3000,42 +3015,47 @@ def write_sheet_wftool_module_phase_gaps(wb, plan_start, plan_end, modules, maps
             try:
                 p1_id = p1.get("phase", "")
                 p2_id = p2.get("phase", "")
-                p1_end = _d(p1.get("end_date"))
-                p2_start = _d(p2.get("start_date"))
             except Exception:
                 continue
 
-            gap = (p2_start - p1_end).days - 1
-            if gap <= 0:
-                continue
+            prev_last  = last_in_phase.get(m_id, {}).get(p1_id)
+            next_first = first_in_phase.get(m_id, {}).get(p2_id)
 
-            rows.append((
-                m_id,
-                p1_id,
-                p1_end.isoformat(),
-                p2_id,
-                p2_start.isoformat(),
-                int(gap),
-            ))
+            # Only compute a gap if both sides have assignments
+            assign_gap = None
+            if isinstance(prev_last, date) and isinstance(next_first, date):
+                assign_gap = (next_first - prev_last).days - 1
+
+            # Keep only positive gaps
+            if assign_gap is not None and assign_gap > 0:
+                rows.append((
+                    m_id,
+                    p1_id,
+                    prev_last.isoformat(),
+                    p2_id,
+                    next_first.isoformat(),
+                    int(assign_gap),
+                ))
 
     if not rows:
-        ws.cell(row=3, column=1, value="No positive phase gaps found for wf_tool modules.")
+        ws.cell(row=3, column=1, value="No positive assignment gaps found for wf_tool modules.")
         ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(hdr))
         ws.auto_filter.ref = f"A2:{get_column_letter(len(hdr))}{ws.max_row}"
         return
 
+    # Sort: biggest gaps first, then module/phase
     rows.sort(key=lambda r: (-r[5], r[0] or "", r[1] or ""))
+
     out_r = 3
     for row in rows:
         for j, v in enumerate(row, start=1):
             c = ws.cell(row=out_r, column=j, value=v)
-            c.alignment = left if j == 1 else center
+            c.alignment = left if j in (1, 2, 4) else center
         out_r += 1
 
     ws.auto_filter.ref = f"A2:{get_column_letter(len(hdr))}{ws.max_row}"
 
-
-# ----------------------- SHEET 7: MOVING PLAN CALENDAR -----------------------
+# ----------------------- SHEET : MOVING PLAN CALENDAR -----------------------
 def write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios):
     """
     Calendar per employee:
@@ -3184,14 +3204,13 @@ def main():
     write_sheet_breaches_plan(wb, vios)
     # ===== SHEET 7: Breaches (Employees) =====
     write_sheet_breaches_employee(wb, vios)
-    # ===== wf_tool isolated 1-day work =====
+    # ===== isolated 1-day work =====
     write_sheet_wftool_isolated_workdays(
         wb, plan_start, plan_end, env, maps, modules, assignments, vios, cal
     )
-
-    # ===== wf_tool module phase gaps =====
+    # ===== module phase gaps =====
     write_sheet_wftool_module_phase_gaps(
-        wb, plan_start, plan_end, modules, maps
+        wb, plan_start, plan_end, modules, maps, assignments
     )
     # ===== SHEET 8: Moving plan =====
     write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios)
