@@ -199,7 +199,8 @@ public class EmployeeSchedule {
         public int minHeads;
         public int maxHeads;
         public int workloadDays;
-        public int recommendHeads;
+        public int recommendMinHeads;
+        public int recommendMaxHeads;
     }
 static class OpTaskMeta {
     String module;
@@ -233,7 +234,8 @@ static class OpTaskMeta {
         public int minHeads;
         public int maxHeads;
         public boolean warmPinned = false;
-        public int recommendHeads;
+        public int recommendMinHeads;
+        public int recommendMaxHeads;
 
         @PlanningVariable(valueRangeProviderRefs = "vrStartWithinWindow",
                   strengthComparatorClass = StartDayStrength.class)
@@ -506,7 +508,7 @@ static class OpTaskMeta {
                 Locale.ROOT,
                 "[W%04d] module=%s wf=%s fab=%s phase=%s(#%d) op=%s " +
                 "win=%d..%d clamp=%d..%d exceeds=%s outside=%s " +
-                "workloadDays=%d min=%d max=%d allowed=%s recommendHead=%d",
+                "workloadDays=%d min=%d max=%d allowed=%s recommendRange=%d..%d",
                 (++idx),
                 safeStr(w.module), safeStr(w.workflowId), safeStr(w.factory),
                 safeStr(w.phaseId), w.phaseNum, safeStr(w.opId),
@@ -517,7 +519,7 @@ static class OpTaskMeta {
                 w.workloadDays,
                 w.minHeads, w.maxHeads,
                 String.valueOf(w.allowed),
-                w.recommendHeads
+                w.recommendMinHeads, w.recommendMaxHeads
             ));
         }
     }
@@ -703,11 +705,13 @@ static class OpTaskMeta {
 
         int horizon = (int) (planEnd.toEpochDay() - planStart.toEpochDay()) + 1;
 
+        // For weekly patterns we need the actual dates in horizon
         List<LocalDate> allDates = new ArrayList<>(horizon);
         for (int i = 0; i < horizon; i++) {
             allDates.add(planStart.plusDays(i));
         }
 
+        // Helper: convert "sat", "sun", "mon" etc to DayOfWeek
         java.util.function.Function<String, java.time.DayOfWeek> parseWeekday = (s) -> {
             if (s == null) return null;
             String t = s.trim().toLowerCase(java.util.Locale.ROOT);
@@ -723,34 +727,44 @@ static class OpTaskMeta {
             }
         };
 
+        // ---- Normalize raw into a List<?> ----
+        // Supported shapes:
+        //   unavailable_dates: 2025/09/10
+        //   unavailable_dates: [2025/09/10, 2025/09/11]
+        //   unavailable_dates:
+        //     - { single: { days: [...] } }
+        //     - { weekly: { weekdays: [...] } }
+        //   unavailable_dates:
+        //     weekly:
+        //       weekdays: [sat, sun]
         List<?> list;
         if (raw instanceof List<?> l) {
             list = l;
         } else if (raw instanceof Map<?,?> m) {
+            // Top-level map like {weekly: {weekdays:[sat,sun]}} or {single:{...}}
             list = List.of(m);
         } else {
+            // Single scalar date string
             try {
                 Integer did = dayIdFromDate(planStart, String.valueOf(raw));
-                if (did != null && did >= 0 && did < horizon) off.add(did);
+                if (did != null && did >= 0 && did < horizon) {
+                    off.add(did);
+                }
             } catch (Exception ignore) {}
             return off;
         }
 
+        // We support:
+        // - "2025/09/10" style entries directly in the list
+        // - { single: { days: [...] } }
+        // - { weekly: { weekdays: [sat, sun] } }
         Set<java.time.DayOfWeek> weeklyOff = new HashSet<>();
 
         for (Object item : list) {
             if (item == null) continue;
 
             if (item instanceof Map<?,?> map) {
-                // NEW: support {date: 2025/09/08}
-                Object dateObj = map.get("date");
-                if (dateObj != null) {
-                    try {
-                        Integer did = dayIdFromDate(planStart, String.valueOf(dateObj));
-                        if (did != null && did >= 0 && did < horizon) off.add(did);
-                    } catch (Exception ignore) {}
-                }
-
+                // --- single: { days: [...] } ---
                 Object singleObj = map.get("single");
                 if (singleObj instanceof Map<?,?> singleMap) {
                     Object daysObj = singleMap.get("days");
@@ -758,12 +772,15 @@ static class OpTaskMeta {
                         for (Object dObj : daysList) {
                             try {
                                 Integer did = dayIdFromDate(planStart, String.valueOf(dObj));
-                                if (did != null && did >= 0 && did < horizon) off.add(did);
+                                if (did != null && did >= 0 && did < horizon) {
+                                    off.add(did);
+                                }
                             } catch (Exception ignore) {}
                         }
                     }
                 }
 
+                // --- weekly: { weekdays: [sat, sun] } ---
                 Object weeklyObj = map.get("weekly");
                 if (weeklyObj instanceof Map<?,?> weeklyMap) {
                     Object wdaysObj = weeklyMap.get("weekdays");
@@ -775,17 +792,23 @@ static class OpTaskMeta {
                     }
                 }
             } else {
+                // plain string in the list, treat as single date
                 try {
                     Integer did = dayIdFromDate(planStart, String.valueOf(item));
-                    if (did != null && did >= 0 && did < horizon) off.add(did);
+                    if (did != null && did >= 0 && did < horizon) {
+                        off.add(did);
+                    }
                 } catch (Exception ignore) {}
             }
         }
 
+        // Expand weekly patterns into actual dayIds within the horizon
         if (!weeklyOff.isEmpty()) {
             for (int i = 0; i < horizon; i++) {
                 LocalDate d = allDates.get(i);
-                if (weeklyOff.contains(d.getDayOfWeek())) off.add(i);
+                if (weeklyOff.contains(d.getDayOfWeek())) {
+                    off.add(i);
+                }
             }
         }
 
@@ -898,28 +921,7 @@ static class OpTaskMeta {
         return true;
     }
 
-    static boolean isWorkerUnavailable(String wid, int dayId) {
-        if (wid == null || dayId < 0) return false;
-        return CAL.workerOffByWid.getOrDefault(wid, Set.of()).contains(dayId);
-    }
 
-    static boolean isSeatWorkedOnDay(CrewSeat s, BlockDecision b, int dayId) {
-        if (s == null || isUnassigned(s.employee)) return false;
-
-        if (s.pinnedFixed) {
-            if (s.pinnedWorkDays == null || s.pinnedWorkDays.isEmpty()) return false;
-            if (!s.pinnedWorkDays.contains(dayId)) return false;
-            if (isWorkerUnavailable(s.employee.wid, dayId)) return false;
-            return true;
-        }
-
-        if (b == null || b.startDay == null || b.days == null || b.days <= 0) return false;
-        if (dayId < b.startDay || dayId > b.startDay + b.days - 1) return false;
-        if (!isWorkingDay(dayId, s.factory)) return false;
-        if (isWorkerUnavailable(s.employee.wid, dayId)) return false;
-
-        return true;
-    }
     // IMPORTANT: Integer (nullable) parameters here
     static int workingDaysCount(Integer startDay, Integer dayCount, String fabId) {
         if (startDay == null || dayCount == null || startDay < 0 || dayCount == 0) return 0;
@@ -985,42 +987,6 @@ static class OpTaskMeta {
                 }
             }
         }
-    }
-
-    private static int effectiveWorkedDaysForSeat(CrewSeat s, BlockDecision b) {
-        if (s == null || isUnassigned(s.employee)) return 0;
-
-        // fixed
-        if (s.pinnedFixed) {
-            if (s.pinnedWorkDays == null || s.pinnedWorkDays.isEmpty()) return 0;
-            int n = 0;
-            for (int did : s.pinnedWorkDays) {
-                if (!isWorkerUnavailable(s.employee.wid, did)) n++;
-            }
-            return n;
-        }
-
-        if (b == null || b.startDay == null || b.days == null || b.days <= 0) return 0;
-
-        int n = 0;
-        for (int i = 0; i < b.days; i++) {
-            int did = b.startDay + i;
-            if (!isWorkingDay(did, s.factory)) continue;
-            if (isWorkerUnavailable(s.employee.wid, did)) continue;
-            n++;
-        }
-        return n;
-    }
-
-    private static int producedHoursForBlock(BlockDecision b, List<CrewSeat> seats) {
-        if (b == null || seats == null || seats.isEmpty()) return 0;
-        int h = b.chosenHours();
-        int total = 0;
-        for (CrewSeat s : seats) {
-            if (s == null || isUnassigned(s.employee)) continue;
-            total += effectiveWorkedDaysForSeat(s, b) * h;
-        }
-        return total;
     }
     // ---------------- Constraints ----------------
 
@@ -1112,22 +1078,18 @@ static class OpTaskMeta {
         private static boolean seatCoversDayAndWorking(DaySlot d, CrewSeat s, BlockDecision b) {
             if (d == null || s == null) return false;
 
-            // FIXED seats: exact days only, untouched
+            // FIXED seats: exact days only (no range span)
             if (s.pinnedFixed) {
                 if (s.pinnedWorkDays == null || s.pinnedWorkDays.isEmpty()) return false;
-                return s.pinnedWorkDays.contains(d.id);
+                return s.pinnedWorkDays.contains(d.id); // already filtered to working days if you used isWorkingDay() above
             }
 
-            // FLEX seats: block range + working day + not personal unavailable
+            // dynamic seats: range from block decision
             final Integer start = (b == null ? null : b.startDay);
             final Integer days  = (b == null ? null : b.days);
             if (start == null || days == null || days <= 0) return false;
 
-            if (!(start <= d.id && d.id <= (start + days - 1))) return false;
-            if (!isWorkingDay(d.id, s.factory)) return false;
-            if (isWorkerUnavailable(s.employee.wid, d.id)) return false;
-
-            return true;
+            return start <= d.id && d.id <= (start + days - 1) && isWorkingDay(d.id, s.factory);
         }
 
 
@@ -1147,12 +1109,18 @@ static class OpTaskMeta {
 
             return perBlock
                 .filter((b, seats) -> {
-                    int prod = producedHoursForBlock(b, seats);
+                    int D = workingDaysCount(b.startDay, b.days, b.factory);
+                    int hours = b.chosenHours();
+                    int staffed = staffedCountForBlock(seats);
+                    int prod = staffed * hours * Math.max(0, D);
                     return prod < b.requiredHours;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD,
                     (b, seats) -> {
-                        int prod = producedHoursForBlock(b, seats);
+                        int D = workingDaysCount(b.startDay, b.days, b.factory);
+                        int hours = b.chosenHours();
+                        int staffed = staffedCountForBlock(seats);
+                        int prod = staffed * hours * Math.max(0, D);
                         int gap = b.requiredHours - prod;
                         return clampToInt((long) gap * (long) UNDERFILL_MULT);
                     })
@@ -1161,30 +1129,30 @@ static class OpTaskMeta {
 
         Constraint overfillAtMostOneDayByBlock(ConstraintFactory f) {
             var perBlock = f.forEach(BlockDecision.class)
-                    .join(f.forEach(CrewSeat.class),
-                            Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
-                    .groupBy((b, s) -> b, ConstraintCollectors.toList((b, s) -> s));
+                .join(f.forEach(CrewSeat.class),
+                    Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
+                .groupBy((b, s) -> b,
+                        ConstraintCollectors.toList((b, s) -> s));
 
             return perBlock
-                    .filter((b, seats) -> {
-                        int prod = producedHoursForBlock(b, seats);
-                        int over = prod - b.requiredHours;
-
-                        int staffed = staffedCountForBlock(seats);
+                .filter((b, seats) -> {
+                    int D = workingDaysCount(b.startDay, b.days, b.factory);
+                    int hours = b.chosenHours();
+                    int staffed = staffedCountForBlock(seats);
+                    int prod = staffed * hours * Math.max(0, D);
+                    int over = prod - b.requiredHours;
+                    return over > staffed * hours; // more than one extra day worth
+                })
+                .penalize(HardMediumSoftScore.ONE_HARD,
+                    (b, seats) -> {
+                        int D = workingDaysCount(b.startDay, b.days, b.factory);
                         int hours = b.chosenHours();
-
-                        return over > staffed * hours; // more than one extra day worth
-                    })
-                    .penalize(HardMediumSoftScore.ONE_HARD, (b, seats) -> {
-                        int prod = producedHoursForBlock(b, seats);
-                        int over = prod - b.requiredHours;
-
                         int staffed = staffedCountForBlock(seats);
-                        int hours = b.chosenHours();
-
+                        int prod = staffed * hours * Math.max(0, D);
+                        int over = prod - b.requiredHours;
                         return Math.max(0, over - staffed * hours);
                     })
-                    .asConstraint("block-overfill-at-most-one-day");
+                .asConstraint("block-overfill-at-most-one-day");
         }
 
         // ---------- Seat hard rules ----------
@@ -1375,7 +1343,7 @@ static class OpTaskMeta {
                     }
                     if (dayToRegion.isEmpty()) return false;
 
-                    // Seed with last fixed history
+                    // Seed with last fixed history (optional but matches your concept)
                     int prevDay = Integer.MIN_VALUE;
                     String prevRegion = null;
 
@@ -1858,10 +1826,9 @@ static class OpTaskMeta {
             }
             return clampToInt(v);
         }
-
         Constraint recommendHeadcount(ConstraintFactory f) {
             var perBlock = f.forEach(BlockDecision.class)
-                .filter(b -> b.recommendHeads > 0)
+                .filter(b -> b.recommendMinHeads > 0 || b.recommendMaxHeads > 0)
                 .join(f.forEach(CrewSeat.class),
                     Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
                 .groupBy((b, s) -> b, ConstraintCollectors.toList((b, s) -> s));
@@ -1869,13 +1836,30 @@ static class OpTaskMeta {
             return perBlock
                 .penalize(HardMediumSoftScore.ONE_MEDIUM, (b, seats) -> {
                     int staffed = staffedCountForBlock(seats);
-                    int diff = Math.abs(staffed - b.recommendHeads);
+
+                    int min = b.recommendMinHeads;
+                    int max = b.recommendMaxHeads;
+
+                    if (min <= 0 && max > 0) min = max;
+                    if (max <= 0 && min > 0) max = min;
+                    if (min <= 0 && max <= 0) return 0;
+                    if (max < min) max = min;
+
+                    int diff = 0;
+                    if (staffed < min) {
+                        diff = min - staffed;
+                    } else if (staffed > max) {
+                        diff = staffed - max;
+                    } else {
+                        diff = 0;
+                    }
+
                     if (diff == 0) return 0;
 
                     int expo = expPenalty(diff);
                     return clampToInt((long) RECOMMEND_HEADS_W * (long) expo);
                 })
-                .asConstraint("block-recommend-headcount");
+                .asConstraint("block-recommend-headcount-range");
         }
 
     }
@@ -2223,13 +2207,20 @@ static class OpTaskMeta {
                     if (minHeads < 1) minHeads = 1;
                     if (maxHeads < minHeads) maxHeads = minHeads;
 
-                    int rec = 0;
-                    if (ot.containsKey("recommends_worker_max")) {
-                        rec = parseInt(ot.get("recommends_worker_max"), 0);
-                    } else if (ot.containsKey("recommends_worker_min")) {
-                        rec = parseInt(ot.get("recommends_worker_min"), 0);
+                    int recMin = 0;
+                    int recMax = 0;
+
+                    if (ot.containsKey("recommends_worker_min")) {
+                        recMin = parseInt(ot.get("recommends_worker_min"), 0);
                     }
-                    // if (rec > 0) {
+                    if (ot.containsKey("recommends_worker_max")) {
+                        recMax = parseInt(ot.get("recommends_worker_max"), 0);
+                    }
+                    // fallback / normalization
+                    if (recMin <= 0 && recMax > 0) recMin = recMax;
+                    if (recMax <= 0 && recMin > 0) recMax = recMin;
+                    if (recMin > 0 && recMax > 0 && recMax < recMin) recMax = recMin;
+                    // if (recMax > 0) {
                     //     maxHeads = Math.max(minHeads, rec);
                     // }
                     TaskWindow tw = new TaskWindow();
@@ -2240,7 +2231,8 @@ static class OpTaskMeta {
                     tw.minHeads = minHeads;
                     tw.maxHeads = maxHeads;
                     tw.workloadDays = workloadDays;
-                    tw.recommendHeads = rec;
+                    tw.recommendMinHeads = recMin;
+                    tw.recommendMaxHeads = recMax;
                     windows.add(tw);
                 }
             }
@@ -2308,7 +2300,7 @@ static class OpTaskMeta {
         Map<String,Integer> latestFixedEndInRange = new HashMap<>();
         Map<String,Integer> latestFixedEndAny     = new HashMap<>();
 
-        // NEW: phase-wide started-before-cutoff marker
+        //  phase-wide started-before-cutoff marker
         Set<String> phaseStartedBeforeCutoff = new HashSet<>();
 
         List<RawAssignRow> rawRows = new ArrayList<>();
@@ -2380,6 +2372,8 @@ static class OpTaskMeta {
             rr.byDay = byDay;
 
             rawRows.add(rr);
+
+            // keep your "any end" tracking for true fixed rows (used for pushing phase windows)
             if ("fixed".equalsIgnoreCase(flex)) {
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
@@ -2492,6 +2486,8 @@ static class OpTaskMeta {
         out.activeModules = activeModules;
         out.cutOffDayId = cutOffDayId;
         out.cutOffDate = cutOffDate;
+
+// and keep your window push logic below, using latestFixedEndInRange/latestFixedEndAny
 
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
@@ -2640,7 +2636,8 @@ static class OpTaskMeta {
             b.requiredHours = req;
             b.allowed = new ArrayList<>(w.allowed);
             b.minHeads = w.minHeads; b.maxHeads = w.maxHeads;
-            b.recommendHeads = w.recommendHeads;
+            b.recommendMinHeads = w.recommendMinHeads;
+            b.recommendMaxHeads = w.recommendMaxHeads;
             blocks.add(b);
 
             for (int sidx = 0; sidx < Math.max(1, w.maxHeads); sidx++) {
@@ -2693,6 +2690,7 @@ static class OpTaskMeta {
                 // keep ONLY days inside plan_range/horizon
                 if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
 
+                // keep ONLY working days (optional but consistent with your constraints)
                 if (!isWorkingDay(dayId, factory)) continue;
 
                 workDays.add(dayId);
@@ -2794,14 +2792,14 @@ static class OpTaskMeta {
                 if (rp == 0 || cp == 0) continue; // hate → never candidate
 
                 // Availability gate (skip person off days, fab closure handled separately)
-                // Set<Integer> off = personalOff.getOrDefault(e.wid, Set.of());
-                // boolean clash = false;
-                // for (int i = 0; i < estDays; i++) {
-                //     int did = estStart + i;
-                //     if (!isWorkingDay(did, s.factory)) continue; // fab closed; not a person off violation
-                //     if (off.contains(did)) { clash = true; break; }
-                // }
-                // if (clash) continue;
+                Set<Integer> off = personalOff.getOrDefault(e.wid, Set.of());
+                boolean clash = false;
+                for (int i = 0; i < estDays; i++) {
+                    int did = estStart + i;
+                    if (!isWorkingDay(did, s.factory)) continue; // fab closed; not a person off violation
+                    if (off.contains(did)) { clash = true; break; }
+                }
+                if (clash) continue;
 
                 cand.add(e);
             }
@@ -2854,7 +2852,7 @@ static class OpTaskMeta {
 
     // ---------------- Logging helper ----------------
 
-        static void appendSolveLog(
+    static void appendSolveLog(
             SolverFactory<SinglePassPlan> factoryStage2,
             SinglePassPlan best2,
             ParsedSchedule sch,
@@ -2992,8 +2990,63 @@ static class OpTaskMeta {
     }
 
 
-        static void applyInitialPlan(ParsedSchedule sch, List<BlockDecision> blocks) {
-        if (sch.initialRows == null || sch.initialRows.isEmpty()) return;
+        static final class ScoreFiles {
+            static void writeText(java.nio.file.Path path, String header, String body) {
+                try (var bw = java.nio.file.Files.newBufferedWriter(
+                        path,
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                        java.nio.file.StandardOpenOption.WRITE)) {
+                    bw.write(header);
+                    bw.newLine();
+                    bw.write(body);
+                    bw.newLine();
+                } catch (java.io.IOException e) {
+                    System.err.println("Failed to write " + path + ": " + e.getMessage());
+                }
+            }
+        }
+
+
+    public static void writeInitialScoreAnalysis(
+        SolverFactory<SinglePassPlan> factory,
+        SinglePassPlan initialPlan,
+        String fileName,
+        int topMatchesPerConstraints ) {
+            try {
+                var solutionManager = SolutionManager.create(factory);
+                solutionManager.update(initialPlan);
+                var analysis = solutionManager.analyze(initialPlan);
+                String header = "========== INITIAL Score (pre-solve ) ==========\n" +
+                    "Total initial score: " + analysis.score();
+                
+                String body = analysis.summarize(Math.max(1, topMatchesPerConstraints));
+                ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);                
+            } catch (Exception ex) {
+                System.err.println("writeInitialScoreAnalysis failed: " + ex.getMessage());
+            }
+        }
+
+    public static void writeFinalScoreAnalysis(
+        SolverFactory<SinglePassPlan> factory,
+        SinglePassPlan finalPlan,
+        String fileName,
+        int topMatchesPerConstraints) {
+            try {
+                var solutionManager = SolutionManager.create(factory);
+                solutionManager.update(finalPlan);
+                var analysis = solutionManager.analyze(finalPlan);
+                String header = "========== Final Score (pre-solve ) ==========\n" +
+                    "Total initial score: " + analysis.score();
+                String body = analysis.summarize(Math.max(1,topMatchesPerConstraints));
+                ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);
+            } catch (Exception ex){
+                System.err.println("writeInitialScoreAnalysis failed:  " + ex.getMessage());
+            }
+        }
+    
+    static void applyInitialPlan(ParsedSchedule sch, List<BlockDecision> blocks) {
+         if (sch.initialRows == null || sch.initialRows.isEmpty()) return;
 
         // Earliest day index that actually exists as a DaySlot (after trimming)
         int minActiveDay = sch.daySlots.stream()
@@ -3019,7 +3072,7 @@ static class OpTaskMeta {
             List<InitialAssign> list = byKey.get(b.module + "|" + b.opId);
             if (list == null || list.isEmpty()) continue;
             
-            List<Integer> days = new ArrayList<>();
+            List<Integer> days = new ArrayList<>(); 
             int totalHours = 0;
             for (InitialAssign ia : list) {
                 for (Map.Entry<Integer,Integer> e : ia.hoursByDay.entrySet()) {
@@ -3206,6 +3259,7 @@ static class OpTaskMeta {
                     + ", requiredKeys=" + (sch.requiredByKey == null ? 0 : sch.requiredByKey.size())
                     + ", activeModules=" + (sch.activeModules == null ? 0 : sch.activeModules.size()));
 
+            // warn if windows exceed solver daySlots (useful for your “0 hard but looks wrong” situation)
             if (sch.daySlots != null && !sch.daySlots.isEmpty() && sch.windows != null) {
                 long outCount = sch.windows.stream()
                         .filter(w -> w != null && (w.startDayId < minDay || w.endDayId > maxDay))
@@ -3325,7 +3379,7 @@ static class OpTaskMeta {
                         .add(fa.factory);
                 }
 
-                // NEW: fixed task count (each fixed assignment row counts as 1 task on that day)
+                // fixed task count (each fixed assignment row counts as 1 task on that day)
                 FIXED_TASKCOUNT_BY_EMP_DAY
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(dayId, 1, Integer::sum);
@@ -3373,17 +3427,24 @@ static class OpTaskMeta {
 
 
         fillSeatCandidatesSinglePass(built.seats, built.blocks, env.employees);
-
         SinglePassPlan p = new SinglePassPlan();
         p.days = sch.daySlots;
         p.employees = env.employees;
         p.blocks = built.blocks;
         p.seats  = built.seats;
 
+        SolverFactory<SinglePassPlan> factoryForInitial = buildSolverFactory(
+            SinglePassPlan.class,
+            new Class<?>[]{ BlockDecision.class, CrewSeat.class},
+            SinglePassConstraints.class,
+            "0hard/*medium/*soft",
+            1,
+            1);
+        writeInitialScoreAnalysis(factoryForInitial, p, "initial_score.txt",200);
+        
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
-
-        // ---- Stage 1: current settings (e.g., 90/90) ----
+        // ---- Stage 1: your current settings (e.g., 90/90) ----
         SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
@@ -3440,8 +3501,8 @@ static class OpTaskMeta {
         EmployeeSchedule.validateHorizonOverlaps(best2, SOLVE_MIN_DAY, SOLVE_MAX_DAY);
 
         // Append log to file (score + durations + per-constraint score)
+        writeFinalScoreAnalysis(factoryStage2, best2, "final_score.txt", 100);
         appendSolveLog(factoryStage2, best2, sch, stage1Dur, stage2Dur);
-
 
         RunResult rr = new RunResult();
         rr.plan = best2; rr.planStart = sch.planStart;
