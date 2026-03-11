@@ -1610,7 +1610,9 @@ def build_assignments_v3(
     # 3) TOOL ASSIGNMENTS (Flexible) + OptionB worker-day counting
     assignments = []
     phase_workerday_count = defaultdict(int)
-    phase_worker_set = defaultdict(set)  # phase_id -> set(wid)
+
+    # phase_id -> date -> set(worker_id)
+    phase_date_worker_set = defaultdict(lambda: defaultdict(set))
 
     tmp_phase_to_worker_dates = defaultdict(set)  # (phase_id, wid) -> set(dt)
     for (wid, phase_id), dates in known_assign_map.items():
@@ -1619,9 +1621,16 @@ def build_assignments_v3(
 
     for (phase_id, wid), dset in tmp_phase_to_worker_dates.items():
         phase_workerday_count[phase_id] += len(dset)
-        phase_worker_set[phase_id].add(wid)
+        for d in dset:
+            phase_date_worker_set[phase_id][d].add(wid)
 
-    phase_worker_count = {pid: len(wset) for pid, wset in phase_worker_set.items()}
+    # max concurrent workers on any single date
+    phase_worker_count = {}
+    for phase_id, date_map in phase_date_worker_set.items():
+        if not date_map:
+            phase_worker_count[phase_id] = 0
+        else:
+            phase_worker_count[phase_id] = max(len(wset) for wset in date_map.values())
 
     for (wid, phase_id), dates in known_assign_map.items():
         uniq_dates = sorted(set(dates))
@@ -2309,7 +2318,7 @@ def build_env_and_schedule_decoder3(
             for to in region_ids:
                 if fr == to:
                     continue
-                d = 0 if (fr == "r_other" or to == "r_other") else days_default
+                d = 0 if (fr == "r_other" and to == "r_other") else days_default
                 out.append({"from": fr, "to": to, "days": d})
         return out
 
@@ -2430,8 +2439,7 @@ def build_env_and_schedule_decoder3(
             if b == 0:
                 workload_zero_phase_info.append((phase_id, phase_id_to_module_code.get(phase_id, "")))
 
-            # NEW: unique worker count => max_worker_num
-            uniq_w = int(phase_worker_count.get(phase_id, 0))
+            peak_w = int(phase_worker_count.get(phase_id, 0))
 
             for ot in pt.get("operation_task_list", []):
                 a = int(ot.get("workload_days", 0))
@@ -2440,17 +2448,12 @@ def build_env_and_schedule_decoder3(
                 else:
                     ot["workload_days"] = b
                 # If the real worker assigned was exceed default the min/max of the worker is have special worker maimum count
-                if uniq_w > DEFAULT_MAX_WORKER:
-                    # Put min/max into Schedule.yaml operation_task_list
+                if peak_w > DEFAULT_MAX_WORKER:
                     ot["min_worker_num"] = 1
+                    ot["max_worker_num"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
 
-                    # if nobody worked in SU_Others, keep it safe:
-                    # - either 1
-                    # - or keep workflow default (3) if you prefer
-                    ot["max_worker_num"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
-                #The recommend worker number is depend on the worker real assigned 
-                ot["recommends_worker_min"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
-                ot["recommends_worker_max"] = (uniq_w if uniq_w > 0 else DEFAULT_MAX_WORKER)
+                ot["recommends_worker_min"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
+                ot["recommends_worker_max"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
                 
 
     schedule = {
