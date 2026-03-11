@@ -1626,11 +1626,15 @@ def build_assignments_v3(
 
     # max concurrent workers on any single date
     phase_worker_count = {}
+    phase_assigned_date_count = {}
+
     for phase_id, date_map in phase_date_worker_set.items():
         if not date_map:
             phase_worker_count[phase_id] = 0
+            phase_assigned_date_count[phase_id] = 0
         else:
             phase_worker_count[phase_id] = max(len(wset) for wset in date_map.values())
+            phase_assigned_date_count[phase_id] = len(date_map)
 
     for (wid, phase_id), dates in known_assign_map.items():
         uniq_dates = sorted(set(dates))
@@ -1790,7 +1794,7 @@ def build_assignments_v3(
             "plan_flexibility": "Fixed",
         })
 
-    return assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count, phase_worker_count, pb_worker_dates, dummy_tool_labels
+        return assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count, phase_worker_count, phase_assigned_date_count, pb_worker_dates, dummy_tool_labels
 # ============================================================
 # Transformation log building
 # ============================================================
@@ -2366,15 +2370,16 @@ def build_env_and_schedule_decoder3(
 
     # 9) assignments
     if read_all_data and su_data is not None:
-        assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count, phase_worker_count, pb_worker_dates, dummy_tool_labels = build_assignments_v3(
+        assignments, misc_tasks, personal_tasks, inferred_worker_phase, phase_workerday_count, phase_worker_count, phase_assigned_date_count, pb_worker_dates, dummy_tool_labels = build_assignments_v3(
             su_data, code_to_phases, valid_code_set, date_filter=date_filter if f_start is not None else None
         )
     else:
         assignments, misc_tasks, personal_tasks = [], [], []
         inferred_worker_phase = defaultdict(set)
         phase_workerday_count = defaultdict(int)
-        dummy_tool_labels = {}
         phase_worker_count = {}
+        phase_assigned_date_count = {}
+        dummy_tool_labels = {}
 
     # 10) fill skills (base + inferred + excel max)
     for w in environment["worker_list"]:
@@ -2440,6 +2445,7 @@ def build_env_and_schedule_decoder3(
                 workload_zero_phase_info.append((phase_id, phase_id_to_module_code.get(phase_id, "")))
 
             peak_w = int(phase_worker_count.get(phase_id, 0))
+            assigned_date_count = int(phase_assigned_date_count.get(phase_id, 0))
 
             for ot in pt.get("operation_task_list", []):
                 a = int(ot.get("workload_days", 0))
@@ -2447,13 +2453,30 @@ def build_env_and_schedule_decoder3(
                     ot["workload_days"] = max(a, b)
                 else:
                     ot["workload_days"] = b
-                # If the real worker assigned was exceed default the min/max of the worker is have special worker maimum count
+
+                # max_worker_num still uses peak same-day worker count
                 if peak_w > DEFAULT_MAX_WORKER:
                     ot["min_worker_num"] = 1
-                    ot["max_worker_num"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
+                    ot["max_worker_num"] = peak_w
+                # if peak_w <= DEFAULT_MAX_WORKER, keep workflow default max=8
 
-                ot["recommends_worker_min"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
-                ot["recommends_worker_max"] = (peak_w if peak_w > 0 else DEFAULT_MAX_WORKER)
+                # recommends use:
+                # total assigned worker-days / unique actual assigned dates
+                if assigned_date_count > 0:
+                    recommend_avg = b / assigned_date_count
+                    rec_min = int(math.floor(recommend_avg))
+                    rec_max = int(math.ceil(recommend_avg))
+                else:
+                    rec_min = 0
+                    rec_max = 0
+
+                # if there is some real assignment, keep minimum visible value at least 1
+                if b > 0:
+                    rec_min = max(1, rec_min)
+                    rec_max = max(1, rec_max)
+
+                ot["recommends_worker_min"] = rec_min
+                ot["recommends_worker_max"] = rec_max
                 
 
     schedule = {
