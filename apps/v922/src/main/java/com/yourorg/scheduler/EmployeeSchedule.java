@@ -377,8 +377,53 @@ static class OpTaskMeta {
             }
         }
 
-        @PlanningVariable(valueRangeProviderRefs = "eligibleEmployeesForSeat")
+        @PlanningVariable(
+                valueRangeProviderRefs = "eligibleEmployeesForSeat",
+                strengthComparatorClass = EmployeeStrength.class
+        )
         public EmployeeFact employee;
+
+        public static class EmployeeStrength implements Comparator<EmployeeFact> {
+
+            @Override
+            public int compare(EmployeeFact a, EmployeeFact b) {
+                if (a == b) return 0;
+                if (a == null) return 1;
+                if (b == null) return -1;
+
+                boolean aUnassigned = "__UNASSIGNED__".equals(a.wid);
+                boolean bUnassigned = "__UNASSIGNED__".equals(b.wid);
+
+                // real employee before UNASSIGNED
+                if (aUnassigned != bUnassigned) {
+                    return aUnassigned ? 1 : -1;
+                }
+
+                // manager first
+                if (a.isManager != b.isManager) {
+                    return a.isManager ? -1 : 1;
+                }
+
+                // higher total skill first
+                int aSkill = totalSkillScore(a);
+                int bSkill = totalSkillScore(b);
+                if (aSkill != bSkill) {
+                    return Integer.compare(bSkill, aSkill);
+                }
+
+                // stable fallback
+                return Integer.compare(a.id, b.id);
+            }
+
+            private static int totalSkillScore(EmployeeFact e) {
+                if (e == null || e.skills == null || e.skills.isEmpty()) return 0;
+                int sum = 0;
+                for (Integer v : e.skills.values()) {
+                    if (v != null) sum += v;
+                }
+                return sum;
+            }
+        }
     }
 
 
@@ -1050,6 +1095,7 @@ static class OpTaskMeta {
                 // softContinuousRegionStay(f), 
                 softFabPreference(f),
                 recommendHeadcount(f),
+                preferSeatPriorityByRecommendRange(f),
             };
         }
 
@@ -1900,8 +1946,31 @@ static class OpTaskMeta {
                 .asConstraint("block-recommend-headcount-range");
         }
 
-    }
+        Constraint preferSeatPriorityByRecommendRange(ConstraintFactory f) {
+            return f.forEach(CrewSeat.class)
+                .join(f.forEach(BlockDecision.class),
+                    Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+                .filter((s, b) -> !isUnassigned(s.employee))
+                .penalize(HardMediumSoftScore.ONE_MEDIUM, (s, b) -> {
+                    if (s.needManager) return 0;
 
+                    int recMin = Math.max(0, b.recommendMinHeads);
+                    int recMax = Math.max(recMin, b.recommendMaxHeads);
+
+                    if (s.seatIndex < recMin) {
+                        return 0;
+                    } else if (s.seatIndex < recMax) {
+                        return 1;
+                    } else {
+                        int over = s.seatIndex - recMax + 1;
+                        return over * over * 5;
+                    }
+                })
+                .asConstraint("prefer-seat-priority-by-recommend-range");
+        }
+
+    }
+    
     // ---------------- Parsing ----------------
 
     static class OpDef {
@@ -2178,15 +2247,34 @@ static class OpTaskMeta {
             String workflowId = safeStr(wf.get("workflow"));
             if (workflowId.isBlank()) workflowId = safeStr(wf.get("workflow_id"));
             String fab = safeStr(wf.get("fab"));
+
             Object phasesObj = wf.get("phase_task_list");
             List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
+
+            // find phase 1 start date once per module
+            LocalDate phase1Start = null;
+            for (Map<String,Object> ph : phases) {
+                if (ph == null) continue;
+                String phId = safeStr(ph.get("phase"));
+                int phNum = phaseNumFromId(phId);
+                if (phNum == 1) {
+                    phase1Start = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                    break;
+                }
+            }
+
             for (Map<String,Object> ph : phases) {
                 String phId = safeStr(ph.get("phase"));
                 int phNum = phaseNumFromId(phId);
-                LocalDate pStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
-                LocalDate pEnd   = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+
+                // use phase 1 start for every phase if it exists
+                LocalDate originalStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                LocalDate pStart = (phase1Start != null) ? phase1Start : originalStart;
+
+                LocalDate pEnd = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
-                int endId   = (int) (pEnd.toEpochDay()   - start.toEpochDay());
+                int endId   = (int) (pEnd.toEpochDay() - start.toEpochDay());
 
                 // remember the latest end per module (even if before horizon)
                 moduleLastEnd.merge(module, endId, Math::max);
@@ -2259,7 +2347,7 @@ static class OpTaskMeta {
                     if (recMax <= 0 && recMin > 0) recMax = recMin;
                     if (recMin > 0 && recMax > 0 && recMax < recMin) recMax = recMin;
                     // if (recMax > 0) {
-                    //     maxHeads = Math.max(minHeads, rec);
+                    //     maxHeads = Math.max(minHeads, recMax);
                     // }
                     TaskWindow tw = new TaskWindow();
                     tw.module = module; tw.workflowId = workflowId; tw.factory = fab;
@@ -3487,7 +3575,7 @@ static class OpTaskMeta {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 240, 3600);
+                "0hard/*medium/*soft", 300, 3600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -3511,7 +3599,7 @@ static class OpTaskMeta {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                300  /* spentMinutes */,
+                240  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
