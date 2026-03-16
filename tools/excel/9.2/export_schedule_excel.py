@@ -41,7 +41,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import BarChart, LineChart, ScatterChart, Reference, Series  # NEW: ScatterChart
-
+from openpyxl.worksheet.table import Table, TableStyleInfo
 # ------------------------------- COLORS --------------------------------
 LIGHT_BLUE   = "ADD8E6"   # start marker (not a violation)
 RED          = "FF9999"   # deadline marker (not a violation)
@@ -840,14 +840,69 @@ def compute_required_hours_task_module(modules):
     return req_task, req_module
 
 # --------------------------- VIOLATION DETECTION -----------------------
+def build_effective_phase_window(modules, maps):
+    """
+    Effective phase window rules:
+    - For wf_tool:
+        start_date = module phase1 start (earliest phase start in that module)
+        end_date   = that phase own end_date
+    - For other workflows:
+        start_date = phase own start_date
+        end_date   = phase own end_date
+    Returns:
+        dict[(m_id, phase_id)] = (effective_start, effective_end)
+    """
+    phase_window = {}
+
+    module_workflow = maps.get("module_workflow", {}) or {}
+
+    for m in modules:
+        m_id = m.get("id")
+        if not m_id:
+            continue
+
+        phase_list = list(m.get("phase_task_list", []) or [])
+        if not phase_list:
+            continue
+
+        wf = module_workflow.get(m_id) or m.get("workflow") or m.get("workflow_id")
+
+        # module earliest phase start
+        module_start = None
+        for ph in phase_list:
+            try:
+                ps = _d(ph.get("start_date"))
+            except Exception:
+                continue
+            if module_start is None or ps < module_start:
+                module_start = ps
+
+        for ph in phase_list:
+            ph_id = ph.get("phase")
+            if not ph_id:
+                continue
+            try:
+                own_start = _d(ph.get("start_date"))
+                own_end   = _d(ph.get("end_date"))
+            except Exception:
+                continue
+
+            if wf == "wf_tool":
+                eff_start = module_start if module_start else own_start
+                eff_end   = own_end
+            else:
+                eff_start = own_start
+                eff_end   = own_end
+
+            phase_window[(m_id, ph_id)] = (eff_start, eff_end)
+
+    return phase_window
+
 def detect_violations(env, modules, assignments, maps, cal, plan_start=None, plan_end=None):
     """Build lookups for coloring and Sheet breach tables (Sheet4/5/6)."""
 
-    # ---------------- Phase windows (Schedule.yaml) ----------------
-    phase_window = {}  # (m_id, phase_id) -> (start, end)
-    for m in modules:
-        for ph in m.get("phase_task_list", []):
-            phase_window[(m["id"], ph["phase"])] = (_d(ph["start_date"]), _d(ph["end_date"]))
+    # ---------------- Effective Phase windows ----------------
+    phase_window = build_effective_phase_window(modules, maps)
 
     # ---------------- Phase order predecessor map ----------------
     # Works for phases like "tool_p1", "tool_p2", ... (no numeric parsing).
@@ -2015,10 +2070,6 @@ def write_sheet_dashboard_plan(wb, plan_start, plan_end, env, maps, modules, ass
         chart.width = 28
         ws.add_chart(chart, "T{}".format(q0))
 
-#=========================== SHEET 4: Recommend staffing deviation (soft) =============================
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.table import Table, TableStyleInfo
-
 # =========================== SHEET 4: Recommend staffing deviation (soft) ==========================
 def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
     bold = Font(bold=True)
@@ -2033,9 +2084,9 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
         "module", "op_id", "phase",
         "phase_start", "phase_end",
         "rec_min", "rec_max",
-        "days_in_window", "days_outside",
-        "outside_%", "avg_heads",
-        "max_worker"
+        "avg_heads",
+        "max_worker",
+        "diff_avg_vs_rec"
     ]
     for j, h in enumerate(rec_hdr, start=1):
         c = ws.cell(row=2, column=j, value=h)
@@ -2076,14 +2127,8 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
 
         rec_range[(m_id, op_id)] = (rmin, rmax)
 
-    # phase window
-    phase_window = {}
-    for m in modules:
-        for ph in m.get("phase_task_list", []) or []:
-            try:
-                phase_window[(m["id"], ph["phase"])] = (_d(ph["start_date"]), _d(ph["end_date"]))
-            except Exception:
-                pass
+    # use same effective phase window rule as breaches
+    phase_window = build_effective_phase_window(modules, maps)
 
     rows = []
     for (m_id, op_id, _op_name_unused) in (maps.get("module_ops") or []):
@@ -2105,11 +2150,9 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
             continue
 
         rec_min, rec_max = rec_range[(m_id, op_id)]
-        days_in_window = (end - start).days + 1
 
         total_heads_assigned = 0
         assigned_days = 0
-        days_outside = 0
         max_heads = 0
 
         d = start
@@ -2123,13 +2166,17 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
             if heads > max_heads:
                 max_heads = heads
 
-            if heads < rec_min or heads > rec_max:
-                days_outside += 1
-
             d += timedelta(days=1)
 
         avg_heads = (total_heads_assigned / assigned_days) if assigned_days > 0 else 0.0
-        outside_pct = (100.0 * days_outside / days_in_window) if days_in_window > 0 else 0.0
+
+        # distance from recommended range
+        if avg_heads < rec_min:
+            diff_avg_vs_rec = rec_min - avg_heads
+        elif avg_heads > rec_max:
+            diff_avg_vs_rec = avg_heads - rec_max
+        else:
+            diff_avg_vs_rec = 0.0
 
         rows.append((
             m_id,
@@ -2139,15 +2186,13 @@ def write_sheet_recommend_staffing(wb, plan_start, plan_end, modules, maps):
             end.isoformat(),
             rec_min,
             rec_max,
-            days_in_window,
-            days_outside,
-            round(outside_pct, 1),
             round(avg_heads, 2),
             max_heads,
+            round(diff_avg_vs_rec, 2),
         ))
 
-    # sort: worst first, then biggest peak worker
-    rows.sort(key=lambda r: (-r[8], -r[11], r[0], r[1]))
+    # sort: biggest gap from recommend first, then biggest worker peak
+    rows.sort(key=lambda r: (-r[9], -r[8], r[0], r[1]))
 
     out_row = 3
     if rows:
