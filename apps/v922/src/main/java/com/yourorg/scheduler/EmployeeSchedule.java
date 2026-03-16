@@ -1192,16 +1192,20 @@ static class OpTaskMeta {
             return perBlock
                 .filter((b, seats) -> {
                     int hours = b.chosenHours();
-                    int staffed = staffedCountForBlock(seats);
-                    int prod = producedHoursForBlock(b, seats);
+                    int staffed = (int) seats.stream()
+                            .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
+                            .count();
+                    int prod = producedHoursForBlockFlexibleOnly(b, seats);
                     int over = prod - b.requiredHours;
-                    return over > staffed * hours; // more than one extra day worth
+                    return over > staffed * hours;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD,
                     (b, seats) -> {
                         int hours = b.chosenHours();
-                        int staffed = staffedCountForBlock(seats);
-                        int prod = producedHoursForBlock(b, seats);
+                        int staffed = (int) seats.stream()
+                                .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
+                                .count();
+                        int prod = producedHoursForBlockFlexibleOnly(b, seats);
                         int over = prod - b.requiredHours;
                         return Math.max(0, over - staffed * hours);
                     })
@@ -1675,6 +1679,27 @@ static class OpTaskMeta {
             return total;
         }
 
+        private static int producedHoursForBlockFlexibleOnly(BlockDecision b, List<CrewSeat> seats) {
+            if (b == null || seats == null || seats.isEmpty()) return 0;
+
+            int total = 0;
+            int hours = b.chosenHours();
+
+            for (CrewSeat s : seats) {
+                if (s == null || isUnassigned(s.employee)) continue;
+                if (s.pinnedFixed) continue; // ignore fixed seats
+
+                if (b.startDay == null || b.days == null || b.days <= 0) continue;
+
+                for (int i = 0; i < b.days; i++) {
+                    int did = b.startDay + i;
+                    if (!isWorkingDay(did, s.factory)) continue;
+                    if (isWorkerUnavailable(s.employee, did)) continue;
+                    total += hours;
+                }
+            }
+            return total;
+        }
         Constraint monthlyOvertimeLimit(ConstraintFactory f) {
             var dynEmpMonthOt = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
