@@ -237,6 +237,7 @@ static class OpTaskMeta {
         public int recommendMinHeads;
         public int recommendMaxHeads;
 
+        public int fixedAssignedHoursActual = 0;
         @PlanningVariable(valueRangeProviderRefs = "vrStartWithinWindow",
                   strengthComparatorClass = StartDayStrength.class)
         public Integer startDay;
@@ -384,44 +385,23 @@ static class OpTaskMeta {
         public EmployeeFact employee;
 
         public static class EmployeeStrength implements Comparator<EmployeeFact> {
-
             @Override
             public int compare(EmployeeFact a, EmployeeFact b) {
                 if (a == b) return 0;
                 if (a == null) return 1;
                 if (b == null) return -1;
 
-                boolean aUnassigned = "__UNASSIGNED__".equals(a.wid);
-                boolean bUnassigned = "__UNASSIGNED__".equals(b.wid);
-
-                // real employee before UNASSIGNED
-                if (aUnassigned != bUnassigned) {
-                    return aUnassigned ? 1 : -1;
+                int aSkills = skillCount(a);
+                int bSkills = skillCount(b);
+                if (aSkills != bSkills) {
+                    return Integer.compare(aSkills, bSkills); // fewer skills first
                 }
 
-                // manager first
-                if (a.isManager != b.isManager) {
-                    return a.isManager ? -1 : 1;
-                }
-
-                // higher total skill first
-                int aSkill = totalSkillScore(a);
-                int bSkill = totalSkillScore(b);
-                if (aSkill != bSkill) {
-                    return Integer.compare(bSkill, aSkill);
-                }
-
-                // stable fallback
                 return Integer.compare(a.id, b.id);
             }
 
-            private static int totalSkillScore(EmployeeFact e) {
-                if (e == null || e.skills == null || e.skills.isEmpty()) return 0;
-                int sum = 0;
-                for (Integer v : e.skills.values()) {
-                    if (v != null) sum += v;
-                }
-                return sum;
+            private static int skillCount(EmployeeFact e) {
+                return (e == null || e.skills == null) ? 0 : e.skills.size();
             }
         }
     }
@@ -1195,7 +1175,7 @@ static class OpTaskMeta {
                     int staffed = (int) seats.stream()
                             .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
                             .count();
-                    int prod = producedHoursForBlockFlexibleOnly(b, seats);
+                    int prod = producedHoursForBlock(b, seats);
                     int over = prod - b.requiredHours;
                     return over > staffed * hours;
                 })
@@ -1205,7 +1185,7 @@ static class OpTaskMeta {
                         int staffed = (int) seats.stream()
                                 .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
                                 .count();
-                        int prod = producedHoursForBlockFlexibleOnly(b, seats);
+                        int prod = producedHoursForBlock(b, seats);
                         int over = prod - b.requiredHours;
                         return Math.max(0, over - staffed * hours);
                     })
@@ -1654,18 +1634,12 @@ static class OpTaskMeta {
         private static int producedHoursForBlock(BlockDecision b, List<CrewSeat> seats) {
             if (b == null || seats == null || seats.isEmpty()) return 0;
 
-            int total = 0;
+            int total = b.fixedAssignedHoursActual;
             int hours = b.chosenHours();
-
+            
             for (CrewSeat s : seats) {
                 if (s == null || isUnassigned(s.employee)) continue;
-
-                // fixed seats stay untouched
-                if (s.pinnedFixed) {
-                    int dcount = (s.pinnedWorkDays == null) ? 0 : s.pinnedWorkDays.size();
-                    total += dcount * hours;
-                    continue;
-                }
+                if (s.pinnedFixed) continue;
 
                 if (b.startDay == null || b.days == null || b.days <= 0) continue;
 
@@ -1679,27 +1653,6 @@ static class OpTaskMeta {
             return total;
         }
 
-        private static int producedHoursForBlockFlexibleOnly(BlockDecision b, List<CrewSeat> seats) {
-            if (b == null || seats == null || seats.isEmpty()) return 0;
-
-            int total = 0;
-            int hours = b.chosenHours();
-
-            for (CrewSeat s : seats) {
-                if (s == null || isUnassigned(s.employee)) continue;
-                if (s.pinnedFixed) continue; // ignore fixed seats
-
-                if (b.startDay == null || b.days == null || b.days <= 0) continue;
-
-                for (int i = 0; i < b.days; i++) {
-                    int did = b.startDay + i;
-                    if (!isWorkingDay(did, s.factory)) continue;
-                    if (isWorkerUnavailable(s.employee, did)) continue;
-                    total += hours;
-                }
-            }
-            return total;
-        }
         Constraint monthlyOvertimeLimit(ConstraintFactory f) {
             var dynEmpMonthOt = f.forEach(DaySlot.class)
                 .join(f.forEach(CrewSeat.class),
@@ -2789,6 +2742,11 @@ static class OpTaskMeta {
             b.minHeads = w.minHeads; b.maxHeads = w.maxHeads;
             b.recommendMinHeads = w.recommendMinHeads;
             b.recommendMaxHeads = w.recommendMaxHeads;
+
+            // ADD THIS HERE
+            String key = w.module + "|" + w.opId;
+            b.fixedAssignedHoursActual = sch.fixedHoursByKeyAll.getOrDefault(key, 0);
+
             blocks.add(b);
 
             for (int sidx = 0; sidx < Math.max(1, w.maxHeads); sidx++) {
@@ -3624,7 +3582,7 @@ static class OpTaskMeta {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                240  /* spentMinutes */,
+                300  /* spentMinutes */,
                 3600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
