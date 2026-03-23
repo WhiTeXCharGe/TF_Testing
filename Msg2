@@ -1,0 +1,93 @@
+もちろんです。
+以下が **パラメータ部分の日本語版** です。
+今回は、**説明文よりも名前を実コード・数式側に合わせる**ことを優先して、`startDay`、`recommendMaxHeads`、`FIXED_HOURS_BY_EMP_DAY` のように **実際に見返しやすい名前** で統一しています。
+
+---
+
+## パラメータ
+
+`EnvConfig.yaml` / `Schedule.yaml` から取得、または内部生成され、モデルおよび制約計算で使用する代表的な値。
+
+| パラメータ名                            | 内容                             | 主な出所                                   |
+| --------------------------------- | ------------------------------ | -------------------------------------- |
+| `dayId`                           | 計画期間内の各日付に対応する整数ID             | plan range から内部生成                      |
+| `date`                            | `DaySlot` が表す実際の日付             | 内部生成                                   |
+| `wid`                             | 作業者ID文字列                       | EnvConfig `worker_list`                |
+| `id`                              | 作業者・エンティティの内部整数ID              | 内部付与                                   |
+| `name`                            | 作業者名                           | EnvConfig `worker_list`                |
+| `skills`                          | 作業者ごとの operation ID 別スキルマップ    | EnvConfig `worker_list`                |
+| `isManager`                       | 管理者フラグ                         | EnvConfig `worker_list`                |
+| `workerCompany`                   | 作業者所属会社                        | EnvConfig `worker_list`                |
+| `regionPreference`                | 作業者の地域適性・地域志向マップ               | EnvConfig `worker_list`                |
+| `customerPreference`              | 作業者の顧客適性・顧客志向マップ               | EnvConfig `worker_list`                |
+| `module`                          | 作業対象の module / 製番識別子           | Schedule                               |
+| `workflow`                        | 作業の workflow 種別                | Schedule                               |
+| `factory`                         | 対象 factory                     | Schedule                               |
+| `phaseId`                         | phase 識別子                      | Schedule                               |
+| `phaseNum`                        | module 内での工程順序番号               | Schedule                               |
+| `opId`                            | operation 識別子                  | Schedule                               |
+| `startDayId`                      | `TaskWindow` 上の元の開始日ID         | Schedule → parsed window               |
+| `endDayId`                        | `TaskWindow` 上の元の終了日ID         | Schedule → parsed window               |
+| `windowStart`                     | `BlockDecision.startDay` の下限   | `TaskWindow` と solve horizon から導出      |
+| `windowEnd`                       | block window の上限               | `TaskWindow` と solve horizon から導出      |
+| `allowed`                         | ブロックで選択可能な1日作業時間集合             | Schedule                               |
+| `workloadDays`                    | workload-day 単位の必要作業量          | Schedule                               |
+| `requiredHours`                   | 内部換算後、かつ固定実績分を差し引いた必要作業時間      | `workloadDays` と fixed assignment から導出 |
+| `minHeads`                        | 最小人数条件                         | Schedule                               |
+| `maxHeads`                        | 最大人数条件 / seat 数の基準             | Schedule                               |
+| `recommendMinHeads`               | 推奨最小人数                         | Schedule                               |
+| `recommendMaxHeads`               | 推奨最大人数                         | Schedule                               |
+| `startDay`                        | `BlockDecision` の開始日           | Planning Variable                      |
+| `days`                            | `BlockDecision` の継続日数          | Planning Variable                      |
+| `hours`                           | `BlockDecision` の1日あたり作業時間     | Planning Variable                      |
+| `seatIndex`                       | block 内での seat の番号             | 内部生成                                   |
+| `needManager`                     | その seat に管理者が必要かどうか            | seat 生成時に内部設定                          |
+| `employee`                        | `CrewSeat` に割り当てる作業者           | Planning Variable                      |
+| `pinnedFixed`                     | その seat が固定席かどうか               | fixed assignment history から導出          |
+| `pinnedWid`                       | 固定席に対応する固定作業者ID                | Schedule assignment history            |
+| `pinnedStart`                     | 固定席の開始日                        | Schedule assignment history            |
+| `pinnedDays`                      | 固定席の継続日数                       | Schedule assignment history            |
+| `pinnedHours`                     | 固定席の1日あたり作業時間                  | Schedule assignment history            |
+| `histLastFixedDayId`              | solve horizon 前の直近固定実績 day ID  | fixed history から導出                     |
+| `histLastFixedFactory`            | solve horizon 前の直近固定実績 factory | fixed history から導出                     |
+| `histLastFixedRegion`             | solve horizon 前の直近固定実績 region  | fixed history から導出                     |
+| `DAILY_CAP`                       | 1日あたり作業時間上限                    | グローバル定数                                |
+| `TARGET_HOURS_PER_EMP`            | 平準化用の目標総作業時間                   | 導出グローバル値                               |
+| `REQUIRED_HOURS_PER_WORKLOAD_DAY` | `workloadDays` を時間へ換算する係数      | グローバル定数                                |
+| `OP_CAPACITY`                     | operation ごとの容量関連パラメータ         | parsed / global map                    |
+| `OP_AVG_SKILL`                    | operation ごとの目標平均スキル           | parsed / global map                    |
+| `SOLVE_MIN_DAY`                   | solve horizon の下限 day ID       | plan range から導出                        |
+| `SOLVE_MAX_DAY`                   | solve horizon の上限 day ID       | plan range から導出                        |
+| `FIXED_HOURS_BY_EMP_DAY`          | 作業者・日付ごとの固定実績時間                | Schedule assignment history            |
+| `FIXED_TASKCOUNT_BY_EMP_DAY`      | 作業者・日付ごとの固定実績タスク数              | Schedule assignment history            |
+| `FIXED_FACTORIES_BY_EMP_DAY`      | 作業者・日付ごとの固定実績 factory 集合       | Schedule assignment history            |
+| `FIXED_TOTAL_HOURS_BY_EMP`        | 作業者ごとの固定実績総時間                  | Schedule assignment history            |
+| `FIXED_ANNUAL_OT_BY_EMP_YEAR`     | 作業者・年ごとの固定実績年間残業時間             | Schedule assignment history            |
+| `FIXED_MONTHLY_OT_BY_EMP_YM`      | 作業者・年月ごとの固定実績月間残業時間            | Schedule assignment history            |
+| `fab → region`                    | factory から region への対応         | EnvConfig `fab_list`                   |
+| `fab → customer`                  | factory から customer への対応       | EnvConfig `fab_list`                   |
+| `workerOffByWid`                  | 作業者ごとの個人不可日                    | EnvConfig `worker_list`                |
+| `transitDays(r_i,r_j)`            | 地域間移動に必要な日数                    | EnvConfig `transite_day_map`           |
+| `maxStayOn`                       | 地域連続滞在上限日数                     | EnvConfig `region_list`                |
+| `maxAnnualStay`                   | 地域年間滞在上限日数                     | EnvConfig `region_list`                |
+| `L^{month}`                       | 月次残業上限                         | EnvConfig `worker_company_list`        |
+| `L^{year}`                        | 年次残業上限                         | EnvConfig `worker_company_list`        |
+
+---
+
+文書内で使うときの考え方はこの形が一番わかりやすいです。
+
+* **表の名前**はコード・数式に合わせる
+* **内容**で業務上の意味を説明する
+* **数式**ではそのまま同じ名前を使う
+
+たとえば：
+
+* 表では `recommendMaxHeads`
+* 数式では `\mathrm{recommendMaxHeads}(b)`
+* 説明文で「推奨最大人数」と補足する
+
+こうすると、読む人が
+**表 → 数式 → ロジック説明** を往復しやすくなります。
+
+次はこれに合わせて **「最適化変数」日本語版も同じ命名ルールで統一**するとかなり綺麗になります。
