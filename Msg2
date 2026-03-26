@@ -1,93 +1,1572 @@
-もちろんです。
-以下が **パラメータ部分の日本語版** です。
-今回は、**説明文よりも名前を実コード・数式側に合わせる**ことを優先して、`startDay`、`recommendMaxHeads`、`FIXED_HOURS_BY_EMP_DAY` のように **実際に見返しやすい名前** で統一しています。
+# 蟇ｾ雎｡隕∽ｻｶ
+
+繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺梧ｺ縺溘☆縺ｹ縺崎ｦ∽ｻｶ縺ｮ讎りｦ√�
+
+## 邨ｶ蟇ｾ蛻ｶ邏�
+
+| 蛻ｶ邏�錐              | 蜀�ｮｹ                                            | 蛯呵�                               |
+| ---------------- | --------------------------------------------- | -------------------------------- |
+| [[#蟾･遞矩俣鬆�ｺ従]       | 蜈郁｡悟ｷ･遞九�蜈ｨ菴懈･ｭ縺悟ｮ御ｺ�☆繧九∪縺ｧ蠕檎ｶ壼ｷ･遞九�菴懈･ｭ縺ｯ髢句ｧ九〒縺阪↑縺�                 |                                  |
+| [[#菴懈･ｭ譎る俣]]        | 菴懈･ｭ縺斐→縺ｫ1譌･縺ｧ蜷�ｽ懈･ｭ閠�′菴懈･ｭ蜿ｯ閭ｽ縺ｪ譎る俣                          |                                  |
+| [[#蟾･遞矩幕蟋区律繝ｻ邨ゆｺ�律]]   | 陬�ｽｮ縺ｮ蜷�ｷ･遞九＃縺ｨ縺ｫ髢句ｧ九�邨ゆｺ�律縺ｮ遽�峇蜀�〒蜈ｨ菴懈･ｭ繧定｡後≧                    |                                  |
+| [[#蛻晏ｷ･遞矩幕蟋区律蝗ｺ螳壼宛邏Ь]  | 譛蛻昴�蟾･遞九�縲√≠繧峨°縺倥ａ螳夂ｾｩ縺輔ｌ縺滄幕蟋区律縺九ｉ蠢�★菴懈･ｭ繧帝幕蟋九☆繧�               |                                  |
+| [[#菴懈･ｭ荳榊庄譌･蛻ｶ邏Ь]     | 遶九■荳翫￡菴懈･ｭ荳榊庄閭ｽ縺ｪ譌･繧貞牡繧雁ｽ薙※縺ｪ縺�                            | 逶ｴ謗･Hard蛻ｶ邏��迴ｾ迥ｶ譛ｪ驕ｩ逕ｨ                   |
+| [[#蠢�ｦ∽ｽ懈･ｭ驥従]       | 蜷�ｽ懈･ｭ縺ｯ縲∝ｿ�ｦ√↑菴懈･ｭ驥上ｒ遒ｺ螳溘↓貅縺溘☆荳譁ｹ縺ｧ縲�℃蜑ｰ縺ｫ莠ｺ繧�凾髢薙ｒ謚募�縺励☆縺弱↑縺�ｈ縺�↓險育判縺吶ｋ縲� |                                  |
+| [[#蜷御ｸ譌･菴懈･ｭ驥崎､�ｦ∵ｭ｢蛻ｶ邏Ь] | 1莠ｺ縺ｮ菴懈･ｭ閠��1譌･縺ｫ隍�焚縺ｮ菴懈･ｭ繧定｡後≧縺薙→縺ｯ縺ｧ縺阪↑縺�                     | 蟆�擂逧�↓縺ｯ縲∝酔荳蟾･蝣ｴ蜀�〒縺ゅｌ縺ｰ蜷梧律縺ｫ隍�焚菴懈･ｭ繧定ｨｱ蜿ｯ縺吶ｋ諡｡蠑ｵ繧呈､懆ｨ� |
+| [[#遘ｻ蜍墓律蛻ｶ]]        | 逡ｰ縺ｪ繧句慍蝓滄俣縺ｧ菴懈･ｭ繧貞牡繧雁ｽ薙※繧矩圀縺ｫ遘ｻ蜍墓律繧定ｨｭ縺代ｋ                      |                                  |
+| [[#菴懈･ｭ雋ｬ莉ｻ閠�宛邏Ь]     | 陬ｽ逡ｪ縺ｮ菴懈･ｭ遞ｮ蛻･縺斐→縺ｫ菴懈･ｭ雋ｬ莉ｻ閠�′蠢�ｦ�                            |                                  |
+| [[#繧ｹ繧ｭ繝ｫ繝槭ャ繝余]      | 菴懈･ｭ閠�′菫晄戟縺励※縺�ｋ繧ｹ繧ｭ繝ｫ縺ｮ菴懈･ｭ縺励°諡�ｽ薙〒縺阪↑縺�                      |                                  |
+| [[#譛蟆上�譛螟ｧ菴懈･ｭ閠�焚蛻ｶ邏Ь] | 菴懈･ｭ縺斐→縺ｫ1譌･縺ｧ蜑ｲ繧雁ｽ薙※蜿ｯ閭ｽ縺ｪ菴懈･ｭ閠�焚縺ｮ譛蟆上�譛螟ｧ                     |                                  |
+| [[#貊槫惠譛滄俣蛻ｶ邏Ь]      | 蜷御ｸ縺ｮ蝗ｽ縺ｫ騾｣邯壹√∪縺溘�蟷ｴ髢薙〒貊槫惠蜿ｯ閭ｽ縺ｪ譌･謨ｰ繧定ｶ�∴繧九％縺ｨ縺ｯ縺ｧ縺阪↑縺�              | 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ                            |
+| [[#谿区･ｭ譎る俣蛻ｶ邏Ь]      | 菴懈･ｭ閠��譛医＃縺ｨ縲√∪縺溘�蟷ｴ髢薙〒縺ｮ谿区･ｭ譎る俣邏ｯ險医′荳企剞繧定ｶ�∴繧九％縺ｨ縺ｯ縺ｧ縺阪↑縺Ы|\|       | 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ                            |
+| [[#蝨ｰ蝓滄←諤ｧ]]        | 菴懈･ｭ閠�＃縺ｨ縺ｫ迚ｹ螳壼慍蝓溘〒縺ｮ菴懈･ｭ荳榊庄縺ｮ閠��                           | 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ                            |
+| [[#莨∵･ｭ驕ｩ諤ｧ]]        | 菴懈･ｭ閠�＃縺ｨ縺ｫ迚ｹ螳壻ｼ∵･ｭ縺ｧ縺ｮ菴懈･ｭ荳榊庄縺ｮ閠��                           | 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ                            |
+
+## 閠��蛻ｶ邏�
+
+| 蛻ｶ邏�錐                  | 蜀�ｮｹ                                | 蛯呵�                |
+| -------------------- | --------------------------------- | ----------------- |
+| [[#謗ｨ螂ｨ莠ｺ謨ｰ蟶ｯ]]           | 謗ｨ螂ｨ譛蟆擾ｽ樊怙螟ｧ莠ｺ謨ｰ縺ｫ霑代＞驟咲ｽｮ繧貞━蜈医☆繧�               | Medium score      |
+| [[#Makespan譛蟆丞喧]]     | 陬�ｽｮ縺ｮ蜈ｨ蟾･遞句ｮ御ｺ�′縺ｧ縺阪ｋ縺�縺第掠縺上↑繧九％縺ｨ              | Soft score        |
+| [[#谿区･ｭ譎る俣縺ｮ譛蟆丞喧]]        | 邱乗ｮ区･ｭ譎る俣(1譌･8h縺梧ｨ呎ｺ悶�菴懈･ｭ譎る俣縺ｨ縺吶ｋ)縺後〒縺阪ｋ縺�縺大ｰ代↑縺�％縺ｨ | Soft score        |
+| [[#菴懈･ｭ譎る俣縺ｮ蟷ｳ貅門喧]]        | 菴懈･ｭ閠�俣縺ｮ邱丈ｽ懈･ｭ譎る俣蛛上ｊ繧呈椛縺医ｋ                  | Soft score        |
+| [[#蜷御ｸ蜊泌鴨莨∵･ｭ縺ｮ邨�∩蜷医ｏ縺嫋]    | 蜷御ｸ莨夂､ｾ縺ｮ菴懈･ｭ閠�ｒ蜷御ｸ繝悶Ο繝�け縺ｫ蟇�○繧�               | Soft score        |
+| [[#繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν縺ｮ蟷ｳ貅門喧]]      | 菴懈･ｭ髢薙〒繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν縺後〒縺阪ｋ縺�縺大ｷｮ縺後↑縺�％縺ｨ            | Soft score        |
+| [[#蝨ｰ蝓滄←諤ｧ繝ｻ莨∵･ｭ驕ｩ諤ｧ\|蝨ｰ蝓滄←諤ｧ]] | 菴懈･ｭ閠��蝨ｰ蝓滄←諤ｧ繧定��縺吶ｋ                     | Soft score, 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ |
+| [[#蝨ｰ蝓滄←諤ｧ繝ｻ莨∵･ｭ驕ｩ諤ｧ\|莨∵･ｭ驕ｩ諤ｧ]] | 菴懈･ｭ閠��鬘ｧ螳｢繝ｻ莨∵･ｭ驕ｩ諤ｧ繧定��縺吶ｋ                  | Soft score, 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ |
+| [[#遘ｻ蜍輔さ繧ｹ繝医�譛蟆丞喧]]       | 逡ｰ縺ｪ繧句嵜髢薙�遘ｻ蜍墓律謨ｰ縺後〒縺阪ｋ縺�縺大ｰ代↑縺�％縺ｨ             | Soft score, 迴ｾ蝨ｨ譛ｪ驕ｩ逕ｨ |
 
 ---
 
-## パラメータ
+# 繝｢繝�Ν蛹�
 
-`EnvConfig.yaml` / `Schedule.yaml` から取得、または内部生成され、モデルおよび制約計算で使用する代表的な値。
+## 繝代Λ繝｡繝ｼ繧ｿ
 
-| パラメータ名                            | 内容                             | 主な出所                                   |
-| --------------------------------- | ------------------------------ | -------------------------------------- |
-| `dayId`                           | 計画期間内の各日付に対応する整数ID             | plan range から内部生成                      |
-| `date`                            | `DaySlot` が表す実際の日付             | 内部生成                                   |
-| `wid`                             | 作業者ID文字列                       | EnvConfig `worker_list`                |
-| `id`                              | 作業者・エンティティの内部整数ID              | 内部付与                                   |
-| `name`                            | 作業者名                           | EnvConfig `worker_list`                |
-| `skills`                          | 作業者ごとの operation ID 別スキルマップ    | EnvConfig `worker_list`                |
-| `isManager`                       | 管理者フラグ                         | EnvConfig `worker_list`                |
-| `workerCompany`                   | 作業者所属会社                        | EnvConfig `worker_list`                |
-| `regionPreference`                | 作業者の地域適性・地域志向マップ               | EnvConfig `worker_list`                |
-| `customerPreference`              | 作業者の顧客適性・顧客志向マップ               | EnvConfig `worker_list`                |
-| `module`                          | 作業対象の module / 製番識別子           | Schedule                               |
-| `workflow`                        | 作業の workflow 種別                | Schedule                               |
-| `factory`                         | 対象 factory                     | Schedule                               |
-| `phaseId`                         | phase 識別子                      | Schedule                               |
-| `phaseNum`                        | module 内での工程順序番号               | Schedule                               |
-| `opId`                            | operation 識別子                  | Schedule                               |
-| `startDayId`                      | `TaskWindow` 上の元の開始日ID         | Schedule → parsed window               |
-| `endDayId`                        | `TaskWindow` 上の元の終了日ID         | Schedule → parsed window               |
-| `windowStart`                     | `BlockDecision.startDay` の下限   | `TaskWindow` と solve horizon から導出      |
-| `windowEnd`                       | block window の上限               | `TaskWindow` と solve horizon から導出      |
-| `allowed`                         | ブロックで選択可能な1日作業時間集合             | Schedule                               |
-| `workloadDays`                    | workload-day 単位の必要作業量          | Schedule                               |
-| `requiredHours`                   | 内部換算後、かつ固定実績分を差し引いた必要作業時間      | `workloadDays` と fixed assignment から導出 |
-| `minHeads`                        | 最小人数条件                         | Schedule                               |
-| `maxHeads`                        | 最大人数条件 / seat 数の基準             | Schedule                               |
-| `recommendMinHeads`               | 推奨最小人数                         | Schedule                               |
-| `recommendMaxHeads`               | 推奨最大人数                         | Schedule                               |
-| `startDay`                        | `BlockDecision` の開始日           | Planning Variable                      |
-| `days`                            | `BlockDecision` の継続日数          | Planning Variable                      |
-| `hours`                           | `BlockDecision` の1日あたり作業時間     | Planning Variable                      |
-| `seatIndex`                       | block 内での seat の番号             | 内部生成                                   |
-| `needManager`                     | その seat に管理者が必要かどうか            | seat 生成時に内部設定                          |
-| `employee`                        | `CrewSeat` に割り当てる作業者           | Planning Variable                      |
-| `pinnedFixed`                     | その seat が固定席かどうか               | fixed assignment history から導出          |
-| `pinnedWid`                       | 固定席に対応する固定作業者ID                | Schedule assignment history            |
-| `pinnedStart`                     | 固定席の開始日                        | Schedule assignment history            |
-| `pinnedDays`                      | 固定席の継続日数                       | Schedule assignment history            |
-| `pinnedHours`                     | 固定席の1日あたり作業時間                  | Schedule assignment history            |
-| `histLastFixedDayId`              | solve horizon 前の直近固定実績 day ID  | fixed history から導出                     |
-| `histLastFixedFactory`            | solve horizon 前の直近固定実績 factory | fixed history から導出                     |
-| `histLastFixedRegion`             | solve horizon 前の直近固定実績 region  | fixed history から導出                     |
-| `DAILY_CAP`                       | 1日あたり作業時間上限                    | グローバル定数                                |
-| `TARGET_HOURS_PER_EMP`            | 平準化用の目標総作業時間                   | 導出グローバル値                               |
-| `REQUIRED_HOURS_PER_WORKLOAD_DAY` | `workloadDays` を時間へ換算する係数      | グローバル定数                                |
-| `OP_CAPACITY`                     | operation ごとの容量関連パラメータ         | parsed / global map                    |
-| `OP_AVG_SKILL`                    | operation ごとの目標平均スキル           | parsed / global map                    |
-| `SOLVE_MIN_DAY`                   | solve horizon の下限 day ID       | plan range から導出                        |
-| `SOLVE_MAX_DAY`                   | solve horizon の上限 day ID       | plan range から導出                        |
-| `FIXED_HOURS_BY_EMP_DAY`          | 作業者・日付ごとの固定実績時間                | Schedule assignment history            |
-| `FIXED_TASKCOUNT_BY_EMP_DAY`      | 作業者・日付ごとの固定実績タスク数              | Schedule assignment history            |
-| `FIXED_FACTORIES_BY_EMP_DAY`      | 作業者・日付ごとの固定実績 factory 集合       | Schedule assignment history            |
-| `FIXED_TOTAL_HOURS_BY_EMP`        | 作業者ごとの固定実績総時間                  | Schedule assignment history            |
-| `FIXED_ANNUAL_OT_BY_EMP_YEAR`     | 作業者・年ごとの固定実績年間残業時間             | Schedule assignment history            |
-| `FIXED_MONTHLY_OT_BY_EMP_YM`      | 作業者・年月ごとの固定実績月間残業時間            | Schedule assignment history            |
-| `fab → region`                    | factory から region への対応         | EnvConfig `fab_list`                   |
-| `fab → customer`                  | factory から customer への対応       | EnvConfig `fab_list`                   |
-| `workerOffByWid`                  | 作業者ごとの個人不可日                    | EnvConfig `worker_list`                |
-| `transitDays(r_i,r_j)`            | 地域間移動に必要な日数                    | EnvConfig `transite_day_map`           |
-| `maxStayOn`                       | 地域連続滞在上限日数                     | EnvConfig `region_list`                |
-| `maxAnnualStay`                   | 地域年間滞在上限日数                     | EnvConfig `region_list`                |
-| `L^{month}`                       | 月次残業上限                         | EnvConfig `worker_company_list`        |
-| `L^{year}`                        | 年次残業上限                         | EnvConfig `worker_company_list`        |
+`EnvConfig.yaml` / `Schedule.yaml` 縺九ｉ蜿門ｾ励√∪縺溘�蜀�Κ逕滓�縺輔ｌ縲√Δ繝�Ν縺翫ｈ縺ｳ蛻ｶ邏�ｨ育ｮ励〒菴ｿ逕ｨ縺吶ｋ莉｣陦ｨ逧�↑蛟､縲�
+
+| 繝代Λ繝｡繝ｼ繧ｿ蜷�                                          | 蜀�ｮｹ                    | 荳ｻ縺ｪ蜃ｺ謇                                               |
+| ----------------------------------------------- | --------------------- | -------------------------------------------------- |
+| `EmployeeFact.wid`                              | 菴懈･ｭ閠� ID                | EnvConfig `worker_list.id`                         |
+| `EmployeeFact.name`                             | 菴懈･ｭ閠�錐                  | EnvConfig `worker_list.name`                       |
+| `EmployeeFact.skills`                           | 菴懈･ｭ閠�� 繧ｿ繧ｹ繧ｯ 蛻･繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν      | EnvConfig `worker_list.skill_map`                  |
+| `EmployeeFact.isManager`                        | 邂｡逅��°縺ｩ縺�°               | EnvConfig `worker_list.is_manager`                 |
+| `EmployeeFact.workerCompany`                    | 菴懈･ｭ閠�園螻樔ｼ夂､ｾ ID            | EnvConfig `worker_list.worker_company`             |
+| `EmployeeFact.regionPreference`                 | 菴懈･ｭ閠��蝨ｰ蝓滄←諤ｧ繧ｹ繧ｳ繧｢           | EnvConfig `fab_suitability_map (region)`           |
+| `EmployeeFact.customerPreference`               | 菴懈･ｭ閠��鬘ｧ螳｢驕ｩ諤ｧ繧ｹ繧ｳ繧｢           | EnvConfig `fab_suitability_map (customer_company)` |
+| `TaskWindow.module`                             | 菴懈･ｭ蟇ｾ雎｡ module / 陬ｽ逡ｪ ID   | Schedule                                           |
+| `TaskWindow.factory`                            | 蟇ｾ雎｡ factory            | Schedule                                           |
+| `TaskWindow.phaseNum`                           | module 蜀�〒縺ｮ蟾･遞矩��ｺ冗分蜿ｷ      | 蜀�Κ邂怜�                                               |
+| `TaskWindow.opId`                               | operation 隴伜挨蟄�         | Schedule                                           |
+| `TaskWindow.startDayId`                         | 蜈��髢句ｧ区律 dayId           | Schedule                                           |
+| `TaskWindow.endDayId`                           | 蜈��邨ゆｺ�律 dayId           | Schedule                                           |
+| `TaskWindow.allowedHours`                       | 驕ｸ謚槫庄閭ｽ縺ｪ 1 譌･菴懈･ｭ譎る俣髮�粋       | EnvConfig / Schedule                               |
+| `TaskWindow.workloadDays`                       | workload-day 蜊倅ｽ阪�蠢�ｦ∽ｽ懈･ｭ驥� | Schedule                                           |
+| `TaskWindow.minHeads`                           | 譛蟆丞ｿ�ｦ∽ｺｺ謨ｰ                | Schedule                                           |
+| `TaskWindow.maxHeads`                           | 譛螟ｧ莠ｺ謨ｰ��seat 荳企剞��         | Schedule                                           |
+| `TaskWindow.recMin`                             | 謗ｨ螂ｨ譛蟆丈ｺｺ謨ｰ                | Schedule                                           |
+| `TaskWindow.recMax`                             | 謗ｨ螂ｨ譛螟ｧ莠ｺ謨ｰ                | Schedule                                           |
+| `BlockDecision.startDay`                        | 繝悶Ο繝�け髢句ｧ区律 dayId         | Planning Variable                                  |
+| `BlockDecision.days`                            | 繝悶Ο繝�け邯咏ｶ壽律謨ｰ              | Planning Variable                                  |
+| `BlockDecision.hours`                           | 1 譌･縺ゅ◆繧贋ｽ懈･ｭ譎る俣            | Planning Variable                                  |
+| `BlockDecision.requiredHours`                   | 蝗ｺ螳壼ｮ溽ｸｾ蟾ｮ蠑募ｾ後�蠢�ｦ∽ｽ懈･ｭ譎る俣        | workloadDays + fixed                               |
+| `CrewSeat.employee`                             | 蠎ｧ蟶ｭ縺ｫ蜑ｲ蠖薙※繧峨ｌ縺滉ｽ懈･ｭ閠�          | Planning Variable                                  |
+| `workerOffByWid(wid)`                           | 菴懈･ｭ閠�倶ｺｺ縺ｮ菴懈･ｭ荳榊庄譌･髮�粋         | EnvConfig                                          |
+| `transitDays(r竄�,r竄�)`                            | 蝨ｰ蝓滄俣遘ｻ蜍輔↓蠢�ｦ√↑譌･謨ｰ           | EnvConfig                                          |
+| `maxStayOn(region)`                             | 蝨ｰ蝓滄｣邯壽ｻ槫惠荳企剞譌･謨ｰ            | EnvConfig                                          |
+| `maxAnnualStay(region)`                         | 蝨ｰ蝓溷ｹｴ髢捺ｻ槫惠荳企剞              | EnvConfig                                          |
+| monthlyOt<br>$$ L^{\mathrm{company}}_{month} $$ | 譛域ｬ｡谿区･ｭ荳企剞                | EnvConfig                                          |
+| annualOt<br>$$L^{\mathrm{company}}_{year}$$     | 蟷ｴ谺｡谿区･ｭ荳企剞                | EnvConfig                                          |
+
 
 ---
 
-文書内で使うときの考え方はこの形が一番わかりやすいです。
 
-* **表の名前**はコード・数式に合わせる
-* **内容**で業務上の意味を説明する
-* **数式**ではそのまま同じ名前を使う
+## 譛驕ｩ蛹門､画焚
 
-たとえば：
+| 隕∫ｴ�                       | 遞ｮ蛻･                | 蜀�ｮｹ                               |
+| ------------------------ | ----------------- | -------------------------------- |
+| BlockDecision            | Planning Entity   | 蜷�ｽ懈･ｭ繝悶Ο繝�け縺ｮ險育判豎ｺ螳壼腰菴�                   |
+| `BlockDecision.startDay` | Planning Variable | 繝悶Ο繝�け髢句ｧ区律                          |
+| `BlockDecision.days`     | Planning Variable | 繝悶Ο繝�け邯咏ｶ壽律謨ｰ                         |
+| `BlockDecision.hours`    | Planning Variable | 1譌･縺ゅ◆繧贋ｽ懈･ｭ譎る俣                        |
+| CrewSeat                 | Planning Entity   | 繝悶Ο繝�け驟堺ｸ九�菴懈･ｭ閠�牡蠖灘ｸｭ                    |
+| `CrewSeat.employee`      | Planning Variable | 縺昴�蟶ｭ縺ｫ蜑ｲ繧雁ｽ薙※繧倶ｽ懈･ｭ閠�                     |
 
-* 表では `recommendMaxHeads`
-* 数式では `\mathrm{recommendMaxHeads}(b)`
-* 説明文で「推奨最大人数」と補足する
 
-こうすると、読む人が
-**表 → 数式 → ロジック説明** を往復しやすくなります。
+## 繝｢繝�Ν讒矩�
 
-次はこれに合わせて **「最適化変数」日本語版も同じ命名ルールで統一**するとかなり綺麗になります。
+| 髢｢菫�              | 蜀�ｮｹ                |
+| --------------- | ----------------- |
+| $$\mathcal{D}$$ | DaySlot 縺ｮ髮�粋       |
+| $$\mathcal{E}$$ | EmployeeFact 縺ｮ髮�粋  |
+| $$\mathcal{T}$$ | TaskWindow 縺ｮ髮�粋    |
+| $$\mathcal{B}$$ | BlockDecision 縺ｮ髮�粋 |
+| $$\mathcal{S}$$ | CrewSeat 縺ｮ髮�粋      |
+
+
+$$
+
+\forall t \in \mathcal{T},\
+
+\exists b \in \mathcal{B}
+
+\;:\;
+
+\pi(b) = t
+
+$$
+$$
+
+\forall b \in \mathcal{B},\
+
+S_b \subseteq \mathcal{S}, 
+|S_b| \ge 1
+
+$$
+$$
+
+|S_b|
+
+=
+
+\mathrm{seatCount}(b)
+
+$$
+$$
+
+\forall s \in S_b,\
+
+\mathrm{employee}(s)
+
+\in
+
+\mathcal{E}
+
+\cup
+
+\{\varnothing\}
+
+$$
+$$
+
+\pi : \mathcal{B} \rightarrow \mathcal{T},
+
+\qquad
+
+\sigma : \mathcal{S} \rightarrow \mathcal{B}
+
+$$
+
+
+諢丞袖縺ｨ縺励※縺ｯ縲�
+
+- **TaskWindow** 縺悟�縺ｮ菴懈･ｭ譫�繧貞ｮ夂ｾｩ縺励�
+    
+- **BlockDecision** 縺後◎縺ｮ菴懈･ｭ譫�縺ｫ蟇ｾ縺吶ｋ螳滄圀縺ｮ險育判蛟､繧呈戟縺｡縲�
+    
+- **CrewSeat** 縺後◎縺ｮ繝悶Ο繝�け縺ｫ隱ｰ繧貞牡繧雁ｽ薙※繧九°繧定｡ｨ縺吶�
+	
+- **TaskWindow 縺ｨ BlockDecision 縺ｯ 1 蟇ｾ 1 縺ｮ髢｢菫�**縺ｧ縺ゅｊ縲∝推菴懈･ｭ譫�縺ｫ蟇ｾ縺励※蟇ｾ蠢懊☆繧玖ｨ育判繝悶Ο繝�け縺ｯ蟶ｸ縺ｫ 1 縺､縺ｧ縺ゅｋ縲�
+	
+- **BlockDecision 縺ｨ CrewSeat 縺ｯ 1 蟇ｾ螟壹�髢｢菫�**縺ｧ縲�1 縺､縺ｮ險育判繝悶Ο繝�け縺ｫ蟇ｾ縺励※隍�焚縺ｮ蜑ｲ蠖灘ｸｭ縺檎ｴ舌▼縺�
+
+### 驕ｩ逕ｨ謚陦薙�隱ｬ譏�
+
+
+- **HardScore / MediumScore / SoftScore**ﾂ�
+
+ﾂ� 險育判邨先棡縺ｨ縺励※謌千ｫ九＠縺ｦ縺�ｋ縺九√∪縺溘�縺ｩ繧後□縺第悍縺ｾ縺励＞縺九ｒﾂ�
+ﾂ� *蜑ｲ蠖鍋ｵ先棡縺ｫ蝓ｺ縺･縺�※隧穂ｾ｡* 縺吶ｋ縺溘ａ縺ｮ謚陦薙つ�
+ﾂ� 隍�焚螟画焚縺ｮ邨�∩蜷医ｏ縺帙ｄ蜈ｨ菴馴寔險医′蠢�ｦ√↑蛻ｶ邏�� Score 縺ｨ縺励※螳壼ｼ丞喧縺吶ｋ縲�
+
+---
+
+# 蛻ｶ邏��螳壼ｼ丞喧
+
+## 邨ｶ蟇ｾ蛻ｶ邏�
+
+### 蟾･遞矩俣鬆�ｺ�
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 蜷御ｸ module 蜀�〒縺ｯ縲∝ｾ檎ｶ壹ヵ繧ｧ繝ｼ繧ｺ縺ｯ蜈郁｡後ヵ繧ｧ繝ｼ繧ｺ縺ｮ邨ゆｺ�燕縺ｫ髢句ｧ九〒縺阪↑縺�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{end}(b)
+
+=
+
+\mathrm{startDay}(b)
+
++
+
+\mathrm{days}(b)
+
+-
+
+1
+
+$$
+$$
+
+\forall (b_p, b_{p+1}) \in \mathcal{B} \times \mathcal{B},
+
+\;
+
+\mathrm{phaseNum}(b_{p+1})
+
+=
+
+\mathrm{phaseNum}(b_p) + 1
+
+$$
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\mathrm{end}(b_p)
+
+-
+
+\mathrm{startDay}(b_{p+1})
+
++
+
+1
+
+\right)
+
+$$
+
+### 菴懈･ｭ譎る俣
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeProvider
+    
+- `BlockDecision.hours` 縺ｯ allowedHours 縺ｮ髮｢謨｣髮�粋縺九ｉ驕ｸ縺ｶ
+    
+- 隧ｳ邏ｰ��
+    
+$$
+
+\mathrm{hours}(b) \in \mathrm{allowedHours}(b)
+
+$$
+
+### 邯咏ｶ壽律謨ｰ蛟呵｣�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+    
+- `BlockDecision.days` 縺ｯ 1 譌･莉･荳翫√え繧｣繝ｳ繝峨え髟ｷ莉･荳�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{days}(b)
+
+\in
+
+\left\{
+
+1, 2, \dots,
+
+\mathrm{windowEnd}(b) - \mathrm{windowStart}(b) + 1
+
+\right\}
+
+$$
+### 蟾･遞矩幕蟋区律繝ｻ邨ゆｺ�律
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 繝悶Ο繝�け邨ゆｺ�律縺御ｽ懈･ｭ蜿ｯ閭ｽ譛滄俣縺ｮ邨ゆｺ�ｒ雜�∴縺ｦ縺ｯ縺ｪ繧峨↑縺�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\mathrm{startDay}(b)
+
++
+
+\mathrm{days}(b)
+
+-
+
+1
+
+-
+
+\mathrm{windowEnd}(b)
+
+\right)
+
+$$
+### 蛻晏ｷ･遞矩幕蟋区律蝗ｺ螳壼宛邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+    
+- 蛻晏ｷ･遞九�菴懈･ｭ縺ｯ縲√≠繧峨°縺倥ａ螳夂ｾｩ縺輔ｌ縺滄幕蟋区律縺九ｉ蠢�★髢句ｧ九☆繧九�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+
+\mathrm{phaseNum}(b) = 1
+
+\;\Rightarrow\;
+
+\mathrm{startDay}(b) = \mathrm{windowStart}(b)
+
+$$
+
+### 蟾･遞矩幕蟋区律驕ｸ謚槫宛邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+	
+- 隨ｬ2蟾･遞倶ｻ･髯阪�菴懈･ｭ縺ｯ縲∽ｽ懈･ｭ蜿ｯ閭ｽ譛滄俣蜀�〒髢句ｧ区律繧定ｪｿ謨ｴ縺ｧ縺阪ｋ縲�
+	
+- 隧ｳ邏ｰ��
+
+$$
+
+\mathrm{phaseNum}(b) > 1
+
+\;\Rightarrow\;
+
+\mathrm{startDay}(b)
+
+\in
+
+\left[
+
+\mathrm{windowStart}(b),
+
+\mathrm{windowEnd}(b)
+
+\right]
+
+$$
+
+### 菴懈･ｭ荳榊庄譌･蛻ｶ邏�
+
+
+
+- 驕ｩ逕ｨ謚陦難ｼ咾alendar filtering
+
+- 菴懈･ｭ荳榊庄譌･縺ｯ繧ｹ繧ｳ繧｢險育ｮ励�蟇ｾ雎｡縺ｨ縺ｯ縺帙★縲∽ｽ懈･ｭ譌･險育ｮ励ｄ蜷�ｨｮ髮�ｨ医°繧蛾勁螟悶☆繧�
+
+- 隧ｳ邏ｰ��
+
+$$
+
+W(b,s)
+
+=
+
+\left\{
+
+d \in \mathcal{D}
+
+\;\middle|\;
+
+\mathrm{startDay}(b)
+
+\le d \le
+
+\mathrm{end}(b)
+
+\;\land\;
+
+\mathrm{isWorkingDay}(d)
+
+\;\land\;
+
+d \notin \mathrm{Unavailable}(s)
+
+\right\}
+
+$$
+縺薙�蛻ｶ邏�↓繧医ｊ縲∽ｽ懈･ｭ荳榊庄譌･縺ｯﾂ�螳溽函逕｣譎る俣縺ｮ險育ｮ励ｄ譌･蛻･髮�ｨ医�蟇ｾ雎｡螟悶→縺励※謇ｱ繧上ｌ繧九�
+
+
+### 蠢�ｦ∽ｽ懈･ｭ驥�
+
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 蜷�ｽ懈･ｭ繝悶Ο繝�け縺ｫ縺翫＞縺ｦ縲∝ｮ溽函逕｣譎る俣縺ｯ蠢�ｦ∽ｽ懈･ｭ驥上ｒ荳句屓縺｣縺ｦ縺ｯ縺ｪ繧峨★縲√∪縺滄℃蜑ｰ縺ｪ謚募�繧ゆｸ螳夂ｯ�峇蜀�↓蛻ｶ髯舌☆繧九�
+
+#### 螳滉ｽ懈･ｭ譎る俣縺ｮ螳夂ｾｩ
+
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+P(b)
+
+=
+
+\sum_{s \in S_b,\ \mathrm{employee}(s) \neq \varnothing}
+
+\;  \;
+
+\sum_{d \in W(b,s)}
+
+\mathrm{hours}(b)
+
+
+$$
+
+縺薙％縺ｧ \( W(b,s) \) 縺ｯ縲�� 繝悶Ο繝�け譛滄俣蜀�°縺､蟾･蝣ｴ繝ｻ蝨ｰ蝓溘�鬘ｧ螳｢繧ｫ繝ｬ繝ｳ繝縺翫ｈ縺ｳ蛟倶ｺｺ菴懈･ｭ荳榊庄譌･繧帝勁螟悶＠縺滓怏蜉ｹ菴懈･ｭ譌･縺ｮ髮�粋繧定｡ｨ縺吶�
+
+#### 蠢�ｦ∽ｽ懈･ｭ驥丈ｸ矩剞
+
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{HardScore}
+
+\propto
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\mathrm{requiredHours}(b)
+
+-
+
+P(b)
+
+\right)
+
+
+$$
+
+#### 驕主臆謚募�荳企剞
+
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+n(b)
+
+=
+
+\left|
+
+\left\{
+
+s \in S_b
+
+\;\middle|\;
+
+\mathrm{employee}(s) \neq \varnothing
+
+\right\}
+
+\right|
+
+
+$$
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\bigl(
+
+P(b)
+
+-
+
+\mathrm{requiredHours}(b)
+
+\bigr)
+
+-
+
+n(b)\cdot \mathrm{hours}(b)
+
+\right)
+
+$$
+
+### 蜷御ｸ譌･菴懈･ｭ驥崎､�ｦ∵ｭ｢蛻ｶ邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 蝗ｺ螳壼ｮ溽ｸｾ繧貞性繧√∝酔荳菴懈･ｭ閠�′蜷御ｸ譌･縺ｫ諡�ｽ薙☆繧倶ｽ懈･ｭ縺ｯ 1 莉ｶ縺ｾ縺ｧ縺ｨ縺吶ｋ
+
+#### 隍�焚菴懈･ｭ荳榊庄
+
+- 蜷御ｸ菴懈･ｭ閠�′蜷御ｸ譌･縺ｫ諡�ｽ薙〒縺阪ｋ菴懈･ｭ縺ｯ 1 莉ｶ縺ｾ縺ｧ縺ｨ縺吶ｋ
+	
+- 隧ｳ邏ｰ��
+
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+N(e,d)
+
+-
+
+1
+
+\right)
+
+$$
+
+蝗ｺ螳壼ｮ溽ｸｾ縺ｨ縺励※險井ｸ翫＆繧後※縺�ｋ菴懈･ｭ莉ｶ謨ｰ繧ょ粋邂励＠縺滉ｸ翫〒蛻､螳壹☆繧九�
+
+#### 蜷御ｸ譌･隍�焚蟾･蝣ｴ荳榊庄
+
+- 1莠ｺ縺ｮ菴懈･ｭ閠�′蜷梧律縺ｫ隍�焚蟾･蝣ｴ縺ｸ蜈･繧九％縺ｨ繧堤ｦ∵ｭ｢縺吶ｋ蛻ｶ邏�
+    
+- 隧ｳ邏ｰ��
+
+$$
+
+\left|
+
+F(e,d)
+
+\right|
+
+=
+
+N(e,d)
+
+$$
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+N(e,d)
+
+
+
+-
+
+1
+
+\right)
+
+$$
+#### 1譌･菴懈･ｭ譎る俣荳企剞
+
+
+- 蜷御ｸ菴懈･ｭ閠��蜷御ｸ譌･縺ｫ縺翫￠繧狗ｷ丈ｽ懈･ｭ譎る俣縺ｯ縲∝ｮ壹ａ繧峨ｌ縺� 1 譌･縺ｮ荳企剞譎る俣繧定ｶ�∴縺ｦ縺ｯ縺ｪ繧峨↑縺�
+
+- 隧ｳ邏ｰ��
+
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+H(e,d)
+
+-
+
+H_{\max}
+
+\right)
+
+$$
+
+窶ｻ 蜍慕噪縺ｫ蜑ｲ繧雁ｽ薙※繧峨ｌ縺滉ｽ懈･ｭ譎る俣縺ｨ縲∽ｺ句燕縺ｫ遒ｺ螳壹＠縺ｦ縺�ｋ菴懈･ｭ譎る俣縺ｮ蜷郁ｨ医↓蟇ｾ縺励※蛻､螳壹ｒ陦後≧縲�
+
+### 遘ｻ蜍墓律蛻ｶ邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 逡ｰ縺ｪ繧句慍蝓滄俣縺ｧ騾｣邯壻ｽ懈･ｭ縺吶ｋ蝣ｴ蜷医∝慍蝓滄俣遘ｻ蜍墓律謨ｰ繧呈ｺ縺溘☆蠢�ｦ√′縺ゅｋ
+    
+- 隧ｳ邏ｰ��
+    
+$$
+
+r(d)
+
+=
+
+\mathrm{fabToRegion}
+
+\bigl(
+
+\mathrm{d}
+
+\bigr)
+
+$$
+$$
+
+g(r_i, r_j)
+
+=
+
+\mathrm{transitDays}(r_i, r_j)
+
+$$
+$$
+
+\mathrm{HardScore}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+g\bigl(r(d), r(d')\bigr)
+
+-
+
+\bigl(d' - d\bigr)
+
+\right)
+
+$$
+
+髫｣謗･縺吶ｋ逡ｰ蝨ｰ蝓滉ｽ懈･ｭ譌･縺ｫ蟇ｾ縺励∵律莉伜ｷｮ縺悟ｿ�ｦ∫ｧｻ蜍墓律謨ｰ繧医ｊ蟆上＆縺��ｴ蜷医ｒ驕募渚縺ｨ縺吶ｋ縲� 
+
+### 菴懈･ｭ雋ｬ莉ｻ閠�宛邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+    
+- 邂｡逅��ｸｭ縺ｫ縺ｯ邂｡逅���縺ｿ蜑ｲ蠖灘庄閭ｽ
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathcal{E}^{\mathrm{mgr}}_s
+
+=
+
+\left\{
+
+e \in \mathcal{E}_s
+
+\;\middle|\;
+
+\mathrm{isManager}(e) = True
+
+\right\}
+
+$$
+$$
+
+\mathrm{needManager}(s) = True
+
+\;\Rightarrow\;
+
+\mathrm{employee}(s) \in \mathcal{E}^{\mathrm{mgr}}_s
+
+$$
+
+髱樒ｮ｡逅��ｸｭ縺ｧ縺ｯ `UNASSIGNED` 繧貞呵｣懊↓蜷ｫ繧√ｋ縺後∫ｮ｡逅��ｸｭ縺ｧ縺ｯ蜷ｫ繧√↑縺��
+
+### 繧ｹ繧ｭ繝ｫ繝槭ャ繝�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+    
+- 蠢�ｦ√せ繧ｭ繝ｫ繧呈ｺ縺溘☆菴懈･ｭ閠��縺ｿ繧� `CrewSeat` 縺ｮ蛟呵｣憺寔蜷医↓蜷ｫ繧√ｋ
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathcal{E}_s
+
+=
+
+\left\{
+
+e \in \mathcal{E}
+
+\;\middle|\;
+
+\mathrm{skills}(e,\mathrm{opId}(s)) > 0
+
+\right\}
+
+$$
+$$
+
+\mathrm{employee}(s) \in \mathcal{E}_s
+
+$$
+
+窶ｻ 譛ｬ繝｢繝�Ν縺ｧ縺ｯ縲∝呵｣懊↓縺ｪ繧雁ｾ励↑縺�ｽ懈･ｭ閠�ｒ縺ゅｉ縺九§繧�勁螟悶＠縺滉ｸ翫〒蛟呵｣憺寔蜷医ｒ螳夂ｾｩ縺励※縺翫ｊ縲��繧ｹ繧ｭ繝ｫ荳崎ｶｳ繧帝＆蜿阪→窶ｻ縺励※隧穂ｾ｡��HardScore�峨☆繧区婿蠑上�蜿悶▲縺ｦ縺�↑縺��
+
+### 譛蟆上�譛螟ｧ菴懈･ｭ閠�焚蛻ｶ邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+	
+- 蜷�ｽ懈･ｭ縺ｫ蟇ｾ縺励※縲��鄂ｮ蜿ｯ閭ｽ縺ｪ菴懈･ｭ閠�焚縺ｯ縲√≠繧峨°縺倥ａ螳夂ｾｩ縺輔ｌ縺滓怙蟆丈ｺｺ謨ｰ縺翫ｈ縺ｳ譛螟ｧ莠ｺ謨ｰ縺ｮ遽�峇蜀�〒險育判縺輔ｌ繧九�
+	
+- 隧ｳ邏ｰ��
+
+
+$$
+\mathrm{minHeads}(\pi(b))
+
+\;\le\;
+
+|S_b|
+
+\;\le\;
+
+\mathrm{maxHeads}(\pi(b))
+$$
+
+### 貊槫惠譛滄俣蛻ｶ邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 蝨ｰ蝓滄｣邯壽ｻ槫惠譌･謨ｰ縲∝ｹｴ髢捺ｻ槫惠譌･謨ｰ縺ｮ荳企剞繧定ｶ�∴縺ｪ縺�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+D(e,r)
+
+=
+
+\left\{
+
+d \in \mathcal{D}
+
+\;\middle|\;
+
+r(d)=r
+
+\;\land\;
+
+e(d)=e
+
+\right\}
+
+$$
+$$
+
+\mathrm{Span}_{\max}(e,r)
+
+=
+
+\max
+
+\left\{
+
+|I|
+
+\;\middle|\;
+
+I \in \mathcal{C}_{\delta(r)}\!\bigl(D(e,r)\bigr)
+
+\right\}
+
+$$
+$$
+
+\mathrm{HardScore}_{\mathrm{stay}}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\mathrm{Span}_{\max}(e,r)
+
+-
+
+\mathrm{maxStayOn}(r)
+
+\right)
+
+$$
+
+---
+$$
+
+\mathrm{Span}_{\mathrm{year}}(e,r)
+
+=
+
+\sum
+
+\left\{
+
+|I|
+
+\;\middle|\;
+
+I \in \mathcal{C}_{\delta(r)}\!\bigl(D(e,r)\bigr)
+
+\right\}
+
+$$
+$$
+
+\mathrm{HardScore}_{\mathrm{annual}}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+\mathrm{Span}_{\mathrm{year}}(e,r)
+
+-
+
+\mathrm{maxAnnualStay}(r)
+
+\right)
+
+$$
+
+窶ｻ 髢｢騾｣繝ｭ繧ｸ繝�け縺ｯ螳溯｣�＆繧後※縺�ｋ縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
+
+### 谿区･ｭ譎る俣蛻ｶ邏�
+
+- 驕ｩ逕ｨ謚陦難ｼ唏ardScore
+    
+- 譛域ｬ｡繝ｻ蟷ｴ谺｡縺ｮ谿区･ｭ譎る俣邏ｯ險医′荳企剞繧定ｶ�∴縺ｪ縺�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+OT_{\mathrm{day}}(e,d)
+
+=
+
+\max
+
+\left(
+
+0,\;
+
+Hour(e,d)
+
+-
+
+Hour^{\mathrm{reg}}
+
+\right)
+
+$$
+$$
+
+OT_{\mathrm{month}}(e,y,m)
+
+=
+
+\sum_{d \in M(y,m)}
+
+\left(
+
+OT_{\mathrm{day}}(e,d)
+
+\right)
+
+$$
+$$
+
+\mathrm{HardScore}_{\mathrm{month}}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+OT_{\mathrm{month}}(e,y,m)
+
+-
+
+L^{\mathrm{company}}_{month}(e)
+
+\right)
+
+$$
+
+  
+
+---
+$$
+
+OT_{\mathrm{year}}(e,y)
+
+=
+
+\sum_{m \in Y(y)}
+
+OT_{\mathrm{month}}(e,y,m)
+
+$$
+$$
+
+\mathrm{HardScore}_{\mathrm{year}}
+
+=
+
+-
+
+\max
+
+\left(
+
+0,\;
+
+OT_{\mathrm{year}}(e,y)
+
+-
+
+L^{\mathrm{company}}_{year}(e)
+
+\right)
+
+$$
+
+窶ｻ 蝗ｺ螳壽ｮ区･ｭ螳溽ｸｾ繧ょ粋邂励☆繧玖ｨｭ險医□縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
+
+## 蝨ｰ蝓滄←諤ｧ
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+	
+- 菴懈･ｭ閠�＃縺ｨ縺ｫ縲∝慍蝓滄←諤ｧ縺� 0 縺ｨ螳夂ｾｩ縺輔ｌ縺ｦ縺�ｋ蝨ｰ蝓溘〒縺ｯ菴懈･ｭ繧定｡後ｏ縺ｪ縺��
+
+- 隧ｳ邏ｰ��
+
+$$
+\forall s \in \mathcal{S},
+
+\;
+
+\mathrm{employee}(s) = e \neq \varnothing
+
+\;\Rightarrow\;
+
+\mathrm{regionPreference}
+
+\bigl(
+
+e,\;
+
+\mathrm{region}(\pi(\sigma(s)))
+
+\bigr)
+
+> 0
+$$
+窶ｻ 髢｢騾｣繝ｭ繧ｸ繝�け縺ｯ螳溯｣�＆繧後※縺�ｋ縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
+
+## 莨∵･ｭ驕ｩ諤ｧ
+
+- 驕ｩ逕ｨ謚陦難ｼ啖alueRangeFactory
+	
+- 菴懈･ｭ閠�＃縺ｨ縺ｫ縲�｡ｧ螳｢驕ｩ諤ｧ縺� 0 縺ｨ螳夂ｾｩ縺輔ｌ縺ｦ縺�ｋ鬘ｧ螳｢莨∵･ｭ縺ｮ菴懈･ｭ縺ｯ蜑ｲ繧雁ｽ薙※縺ｪ縺��
+
+- 隧ｳ邏ｰ��
+
+$$
+\forall s \in \mathcal{S},
+
+\;
+
+\mathrm{employee}(s) = e \neq \varnothing
+
+\;\Rightarrow\;
+
+\mathrm{customerPreference}
+
+\bigl(
+
+e,\;
+
+\mathrm{customer}(\pi(\sigma(s)))
+
+\bigr)
+
+> 0
+$$
+窶ｻ 髢｢騾｣繝ｭ繧ｸ繝�け縺ｯ螳溯｣�＆繧後※縺�ｋ縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
+
+---
+
+## 閠��蛻ｶ邏�
+
+### 謗ｨ螂ｨ莠ｺ謨ｰ蟶ｯ
+
+- 驕ｩ逕ｨ謚陦難ｼ哺ediumScore
+    
+- 蜷�ｽ懈･ｭ縺ｫ縺､縺�※縲∵耳螂ｨ譛蟆丈ｺｺ謨ｰ縺九ｉ謗ｨ螂ｨ譛螟ｧ莠ｺ謨ｰ縺ｮ遽�峇縺ｫ霑代＞莠ｺ蜩｡驟咲ｽｮ繧貞━蜈医＠縲∵耳螂ｨ莠ｺ謨ｰ繧定ｶ�∴繧玖ｿｽ蜉�驟咲ｽｮ縺ｯ谿ｵ髫守噪縺ｫ謚大宛縺吶ｋ
+    
+- 隧ｳ邏ｰ��
+    
+窶ｻ 譛ｬ蛻ｶ邏��縲∽ｻ･荳九� **2 縺､縺ｮ蛻ｶ邏�ｒ邨�∩蜷医ｏ縺帙※讒区�**縺輔ｌ縺ｦ縺�ｋ縲�
+$$
+
+n(b)
+
+=
+
+\left|
+
+\left\{
+
+s \in S_b
+
+\;\middle|\;
+
+\mathrm{employee}(s) \neq \varnothing
+
+\right\}
+
+\right|
+
+$$
+$$
+
+\delta(b)
+
+=
+
+\begin{cases}
+
+\mathrm{recMin}(b) - n(b) & \text{if } n(b) < \mathrm{recMin}(b) \\
+
+n(b) - \mathrm{recMax}(b) & \text{if } n(b) > \mathrm{recMax}(b) \\
+
+0 & \text{otherwise}
+
+\end{cases}
+
+$$
+$$
+
+\mathrm{MediumScore}
+
+\propto
+
+\cdot
+
+3^{\delta(b)}
+
+$$
+
+$$
+
+\mathrm{MediumScore}(s)
+
+=
+
+w
+
+\cdot
+
+\begin{cases}
+
+0
+
+& \text{if } \mathrm{seatIndex}(s) < \mathrm{recMin}(b)
+
+\\[6pt]
+
+-1
+
+& \text{if } \mathrm{recMin}(b) \le \mathrm{seatIndex}(s) < \mathrm{recMax}(b)
+
+\\[6pt]
+
+-5
+
+\left(
+
+\mathrm{seatIndex}(s) - \mathrm{recMax}(b) + 1
+
+\right)^2
+
+& \text{if } \mathrm{seatIndex}(s) \ge \mathrm{recMax}(b)
+
+\end{cases}
+
+$$
+
+### Makespan譛蟆丞喧
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 蜿ｯ閭ｽ縺ｪ繧画掠縺城幕蟋九☆繧�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+
+\left(
+
+\mathrm{startDay}(b)
+
+-
+
+\mathrm{windowStart}(b)
+
+\right)
+
+$$
+
+### 谿区･ｭ譎る俣縺ｮ譛蟆丞喧
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 菴懈･ｭ驥上ｄ蟾･遞句ｮ御ｺ�ｒ蜑肴署縺ｨ縺励◆荳翫〒縲∝庄閭ｽ縺ｪ蝣ｴ蜷医↓縺ｯ谿区･ｭ縺檎匱逕溘＠縺ｫ縺上＞菴懈･ｭ譎る俣險ｭ螳壹ｒ蜆ｪ蜈医☆繧�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+-
+
+\mathrm{hours}(b)
+
+$$
+
+
+### 菴懈･ｭ譎る俣縺ｮ蟷ｳ貅門喧
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 菴懈･ｭ閠�＃縺ｨ縺ｮ邱丈ｽ懈･ｭ譎る俣縺ｮ蛛上ｊ繧呈椛縺医ｋ
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+H^{\mathrm{target}}
+
+=
+
+\frac{
+
+\sum_{b \in \mathcal{B}}
+
+\mathrm{requiredHours}(b)
+
+}{
+
+\left|
+
+\mathcal{E}
+
+\right|
+
+}
+
+$$
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+-
+
+\left|
+
+H^{\mathrm{total}}(e)
+
+-
+
+H^{\mathrm{target}}
+
+\right|
+
+$$
+
+### 蜷御ｸ蜊泌鴨莨∵･ｭ縺ｮ邨�∩蜷医ｏ縺�
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 蜷後§ block 蜀�〒蜷御ｸ莨夂､ｾ縺ｮ邨�∩蜷医ｏ縺帙ｒ蜆ｪ蜈医☆繧�
+    
+- 隧ｳ邏ｰ��
+    
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+\left|
+
+\left\{
+
+(s_i, s_j) \in S_b \times S_b
+
+\;\middle|\;
+
+\mathrm{workerCompany}(s_i) = \mathrm{workerCompany}(s_j),
+
+\;
+
+i < j
+
+\right\}
+
+\right|
+
+$$
+
+### 繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν縺ｮ蟷ｳ貅門喧
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 蜷�ｽ懈･ｭ縺ｫ縺翫＞縺ｦ縲∝�菴薙→縺励※驕ｩ蛻�↑繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν繧堤｢ｺ菫昴＠縺､縺､縲∫音螳壹�繧ｹ繧ｭ繝ｫ繝ｬ繝吶Ν縺ｸ縺ｮ蛛上ｊ繧帝∩縺代◆驟咲ｽｮ繧貞━蜈医☆繧九�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\bar{\sigma}(b)
+
+=
+
+\frac{
+
+\sum_{s \in S_b}
+
+\mathbf{1}_{\{\mathrm{skill}(\mathrm{employee}(s),\mathrm{opId}(b))>0\}}
+
+\cdot
+
+\mathrm{skill}\!\left(\mathrm{employee}(s),\mathrm{opId}(b)\right)
+
+}{
+
+\max
+
+\left(
+
+1,\;
+
+\sum_{s \in S_b}
+
+\mathbf{1}_{\{\mathrm{skill}(\mathrm{employee}(s),\mathrm{opId}(b))>0\}}
+
+\right)
+
+}
+
+$$
+$$
+
+\sigma^{\mathrm{target}}(\mathrm{opId})
+
+=
+
+\frac{
+
+\sum_{e \in \mathcal{E}}
+
+\mathbf{1}_{\{\mathrm{skill}(e,\mathrm{opId})>0\}}
+
+\cdot
+
+\mathrm{skill}(e,\mathrm{opId})
+
+}{
+
+\max
+
+\left(
+
+1,\;
+
+\sum_{e \in \mathcal{E}}
+
+\mathbf{1}_{\{\mathrm{skill}(e,\mathrm{opId})>0\}}
+
+\right)
+
+}
+
+$$
+
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+-
+
+\cdot
+
+\left|
+
+\bar{\sigma}(b)
+
+-
+
+\sigma^{\mathrm{target}}\!\left(\mathrm{opId}(b)\right)
+
+\right|
+
+$$
+
+窶ｻ  蜷御ｸ菴懈･ｭ蜀�〒縲∝酔縺倥せ繧ｭ繝ｫ繝ｬ繝吶Ν縺ｮ菴懈･ｭ閠�↓驕主ｺｦ縺ｫ蛛上ｉ縺ｪ縺��鄂ｮ繧貞━蜈医☆繧九�
+
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+-
+
+\sum_{\ell}
+
+\left|
+
+\left\{
+
+s \in S_b
+
+\;\middle|\;
+
+\mathrm{skill}\!\left(
+
+\mathrm{employee}(s),
+
+\mathrm{opId}(b)
+
+\right)
+
+=
+
+\ell
+
+\right\}
+
+\right|
+
+\left(
+
+\left|
+
+\left\{
+
+s \in S_b
+
+\;\middle|\;
+
+\mathrm{skill}\!\left(
+
+\mathrm{employee}(s),
+
+\mathrm{opId}(b)
+
+\right)
+
+=
+
+\ell
+
+\right\}
+
+\right|
+
+-
+
+1
+
+\right)
+
+$$
+
+### 蝨ｰ蝓滄←諤ｧ繝ｻ莨∵･ｭ驕ｩ諤ｧ
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 蝨ｰ蝓� preference 縺ｨ customer preference 縺ｮ鬮倥＞菴懈･ｭ閠�ｒ蜆ｪ蜈医☆繧�
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+p_r(e,r)
+
+=
+
+\mathrm{regionPreference}(e,r)
+
+$$
+$$
+
+p_c(e,c)
+
+=
+
+\mathrm{customerPreference}(e,c)
+
+$$
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+f\!\left(
+
+p_r(e,r),
+
+p_c(e,c)
+
+\right)
+
+$$
+
+窶ｻ螳溯｣��縺ゅｋ縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
+
+### 遘ｻ蜍輔さ繧ｹ繝医�譛蟆丞喧
+
+- 驕ｩ逕ｨ謚陦難ｼ售oftScore
+    
+- 蜷御ｸ蝨ｰ蝓溘↓邯咏ｶ壹＠縺ｦ貊槫惠縺吶ｋ驟咲ｽｮ繧貞･ｽ繧
+    
+- 隧ｳ邏ｰ��
+    
+
+$$
+
+\mathrm{SoftScore}
+
+\propto
+
+\sum_{r}
+
+\sum_{I \in \mathcal{C}_{\delta(r)}\!\bigl(D(e,r)\bigr)}
+
+|I|
+
+$$
+
+窶ｻ螳溯｣��縺ゅｋ縺後∫樟迥ｶ縺ｯ譛ｪ譛牙柑縲�
