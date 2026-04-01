@@ -442,6 +442,7 @@ def cut_module_if_phase_zero_workload(
             continue
 
         span_days = [actual_start + pd.Timedelta(days=i) for i in range(actual_total_span)]
+
         alloc = _allocate_phase_lengths_v5(
             actual_total_span,
             planned_meta[code]["phase_len"],
@@ -1233,10 +1234,12 @@ def _allocate_phase_lengths(actual_total_days: int, planned_phase_len: dict):
     Decoder5 mainly uses _allocate_phase_lengths_v5().
     """
     phs = [1, 2, 3, 4]
+
     if actual_total_days <= 0:
         return {1: 1, 2: 1, 3: 1, 4: 1}
 
     total_planned = sum(max(0, int(planned_phase_len.get(ph, 0))) for ph in phs)
+
     if total_planned <= 0:
         base = actual_total_days // 4
         rem = actual_total_days - base * 4
@@ -1255,7 +1258,11 @@ def _allocate_phase_lengths(actual_total_days: int, planned_phase_len: dict):
     if actual_total_days >= 4:
         zeros = [ph for ph in phs if out.get(ph, 0) <= 0]
         for z in zeros:
-            donors = sorted([ph for ph in phs if out.get(ph, 0) > 1], key=lambda ph: out[ph], reverse=True)
+            donors = sorted(
+                [ph for ph in phs if out.get(ph, 0) > 1],
+                key=lambda ph: out[ph],
+                reverse=True
+            )
             if not donors:
                 break
             d = donors[0]
@@ -1336,9 +1343,11 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_day
     - no p1
     - timeline starts at actual first worked day => p2 start
     - first QC participation can trigger p3 start
-    - but p3+p4 total tail is capped to phase34_cap_days (default 28)
-    - p2 always keeps at least 1 day when there is at least 2 worked days
-    - p3/p4 split uses planned p3:p4 ratio from 新規製番リスト
+    - p3+p4 combined tail is capped to phase34_cap_days (default 28)
+    - splitting is done on COMPRESSED worked days (blank calendar gaps are stitched out)
+    - p3/p4 are split as equally as possible
+    - if tail count is odd, the phase with larger planned length in 新規製番リスト gets the extra 1 day
+    - if QC never joins and tail exists, try to keep at least 1 day for both p3 and p4
     """
     orig_map = su_data.get("su_outlier_original_text", {}) if su_data else {}
 
@@ -1356,6 +1365,33 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_day
                     disp = orig_map[k]["old"]
                 code_occ[code].append((dt, wid, disp))
 
+    def _split_tail_equal(tail_days: int, meta: dict):
+        if tail_days <= 0:
+            return {3: 0, 4: 0}
+        if tail_days == 1:
+            return {3: 1, 4: 0}
+
+        half = tail_days // 2
+        rem = tail_days % 2
+        p3 = half
+        p4 = half
+
+        if rem == 1:
+            p3_len = int(meta.get("phase_len", {}).get(3, 0))
+            p4_len = int(meta.get("phase_len", {}).get(4, 0))
+            if p3_len >= p4_len:
+                p3 += 1
+            else:
+                p4 += 1
+
+        if tail_days >= 2:
+            if p3 <= 0:
+                p3, p4 = 1, tail_days - 1
+            elif p4 <= 0:
+                p4, p3 = 1, tail_days - 1
+
+        return {3: p3, 4: p4}
+
     for code, meta in planned_meta.items():
         occ = code_occ.get(code, [])
         if occ:
@@ -1368,19 +1404,20 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_day
                 code, worked_days, code_occ, su_data, phase34_cap_days
             )
 
+            # worked_days is already compressed unique worked dates only.
+            # Example: 01-15 and 31-40 becomes 25 worked-day timeline.
             p2_days = max(1, phase3_start_idx) if total_days >= 2 else total_days
             tail_days = max(0, total_days - p2_days)
-            tail_alloc = _allocate_phase_lengths_v5(
-                tail_days,
-                meta["phase_len"],
-                phase_ids=(3, 4),
-                min_one=(tail_days >= 2),
-            ) if tail_days > 0 else {3: 0, 4: 0}
+
+            if phase34_cap_days is not None:
+                tail_days = min(tail_days, int(phase34_cap_days))
+
+            tail_alloc = _split_tail_equal(tail_days, meta)
 
             phase_days = {
                 2: worked_days[:p2_days],
                 3: worked_days[p2_days:p2_days + tail_alloc.get(3, 0)],
-                4: worked_days[p2_days + tail_alloc.get(3, 0):],
+                4: worked_days[p2_days + tail_alloc.get(3, 0):p2_days + tail_alloc.get(3, 0) + tail_alloc.get(4, 0)],
             }
 
             shifted_starts = {}
