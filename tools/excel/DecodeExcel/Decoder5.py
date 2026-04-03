@@ -781,11 +781,13 @@ def parse_su_others(path: str, sheet_names=("予定表_2025",), date_filter=None
 
     worker_list = []
     for acc in worker_acc.values():
+        wid = acc["id"]
         worker_list.append({
-            "id": acc["id"],
+            "id": wid,
             "name": acc["name"],
             "worker_company": acc["worker_company"],
             "is_manager": acc["is_manager"],
+            "role": worker_roles.get(wid, ""),
             "skill_map": {},
             "fab_suitability_map": [],
             "unavailable_dates": [{"date": d} for d in sorted(acc["unavailable_set"])],
