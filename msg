@@ -1,266 +1,497 @@
-# Decoder5 p3/p4 Comparison Notes
+# Draft summary: Regular / Spot concept in current scheduler
 
-## Purpose
-This note summarizes the observed characteristics, advantages, disadvantages, and abnormal patterns from two Decoder5 result logs:
+## 1. What “regular / spot” means in the current model
 
-- **Version A:** non-limit p3/p4
-- **Version B:** 28-day limit for p3+p4
+In the current model, assignment already depends on a few layers:
 
-The goal is not to compare every module, but to extract the major tendencies and a few representative examples.
+- task/phase skill match
+- manager requirement
+- personal unavailable dates
+- region / customer preference
+- region transit / stay rules
+- workload and headcount balance
 
----
+So **regular / spot** would not replace the whole assignment logic.  
+It would act more like an extra business meaning on top of the current worker model.
 
-## 1. Non-limit p3/p4
+A simple meaning could be:
 
-### Main behavior
-In the non-limit version, once phase 3 starts, the remaining worked days can continue to flow into phase 3 and phase 4 without a hard upper bound. In practice, this means that if the QC trigger happens early, p3 and p4 can occupy a very large portion of the compressed worked timeline.
+- **regular** = worker is a normal / preferred member for that type of work
+- **spot** = worker is still possible, but more like backup / overflow / temporary support
 
-### Advantage
-- It follows the actual SU_Others worked flow more naturally when a long tail really exists.
-- It preserves long p3/p4 spans instead of forcing them into a short standardized tail.
-- It can be closer to the real field history when QC participation starts early and the module genuinely continues in later-stage work for a long time.
+So in schedule behavior, regular / spot can help answer:
 
-### Disadvantage
-- It can create **very small p2** and **very large p3/p4**, which may look operationally unbalanced.
-- It is more likely to drift away from the rough structure implied by 譁ｰ隕剰｣ｽ逡ｪ繝ｪ繧ｹ繝�.
-- When QC joins early, phase 3 may start too early and the remaining timeline becomes dominated by p3/p4.
+- who should be assigned first when several workers are all possible
+- who is considered the “core team” for a block
+- when the solver should use backup people
+- how to express “preferred pool” without making everyone else impossible
 
-### Abnormal / suspicious patterns seen in this version
+That matches your current model well, because your current solver already separates:
 
-#### A. p2 becomes too short compared with the whole worked timeline
-A strong example is **530900102A**:
+- **cannot assign** cases  
+- **can assign but less preferred** cases
 
-- planned: p2=21d, p3=15d, p4=12d
-- shifted result (non-limit):
-  - p2 = **1d**
-  - p3 = **40d**
-  - p4 = **39d**
-  - worked total = **80d**
+For example, right now skill and manager are direct feasibility checks, while region/customer preference is already partly used as preference logic. Also, preference level `0` for region or customer is already treated as “not a candidate” in the candidate build, while positive levels are used later as a soft preference reward. :contentReference[oaicite:0]{index=0}
 
-This is a strong abnormal sign because the structure becomes almost 窶彗ll late phases,窶� even though the planned structure is much more balanced.
-
-#### B. p3 and p4 become disproportionately long
-Example **530N03002A**:
-
-- planned: p2=15d, p3=15d, p4=13d
-- shifted result (non-limit):
-  - p2 = **14d**
-  - p3 = **27d**
-  - p4 = **27d**
-  - worked total = **68d**
-
-This is not necessarily wrong, but it is clearly more stretched than the original plan and can be read as a late-phase expansion.
-
-#### C. early QC trigger can pull too much work into p3/p4
-Example **530900112A**:
-
-- planned: p2=24d, p3=14d, p4=30d
-- shifted result (non-limit):
-  - p2 = **22d**
-  - p3 = **25d**
-  - p4 = **26d**
-  - worked total = **73d**
-
-Compared with the plan, the shifted result becomes much more even across p2/p3/p4, even though the original plan expected a heavier p4.
-
-### Overall evaluation of non-limit p3/p4
-This version is better when the goal is to respect long real execution tails. However, it also produces the most obvious 窶徭hape abnormalities,窶� especially:
-
-- p2 collapsing to a very short period
-- p3/p4 becoming overly dominant
-- stronger separation from the planned balance in 譁ｰ隕剰｣ｽ逡ｪ繝ｪ繧ｹ繝�
+Timefold also separates this general idea into:
+- **hard constraints** for things that must not happen,
+- **soft constraints** for things that should be preferred,
+and hard constraints always outweigh soft ones. :contentReference[oaicite:1]{index=1}
 
 ---
 
-## 2. 28-day limit p3+p4
+## 2. How regular / spot is different from current preference
 
-### Main behavior
-In this version, p3 and p4 together are limited to **28 worked days** after compression. This effectively pushes more of the earlier worked timeline into p2, while standardizing the tail into a smaller late-phase block.
+### Current preference meaning
+In the current model:
 
-### Advantage
-- It suppresses extreme late-phase stretching.
-- It makes p3/p4 easier to read and easier to compare across modules.
-- It avoids cases where almost the entire module turns into p3/p4 after one early QC trigger.
-- It reduces 窶徭hape explosion窶� in the shifted result.
+- `regionPreference` and `customerPreference` already exist on employee facts
+- region/customer are derived from fab
+- level `0` means worker is blocked from candidacy for that fab’s region/customer
+- level `2+` gives more soft reward than level `1`
 
-### Disadvantage
-- It can make **p2 too large**, especially when the actual late-stage work was truly long.
-- It may hide real long-tail behavior by compressing it into a fixed tail budget.
-- It can move the visible start of p3 later than the QC join date suggests.
+So current preference is closer to:
 
-### Abnormal / suspicious patterns seen in this version
+- **0** = cannot go
+- **1** = can go, neutral
+- **2,3,...** = can go and preferred
 
-#### A. p2 can become unnaturally long because p3+p4 is forced into 28 worked days
-Example **530900102A**:
+This means your current preference is already doing two jobs:
 
-- shifted result (28-day limit):
-  - p2 = **52d**
-  - p3 = **14d**
-  - p4 = **14d**
-  - worked total = **80d**
+1. eligibility gate at level 0  
+2. preference strength at level 1+ 
 
-This is much cleaner than the non-limit result, but it creates the opposite concern: p2 now occupies most of the module.
+### Regular / spot meaning
+Regular / spot is a bit different:
 
-#### B. late phases become standardized, possibly too standardized
-Example **530900112A**:
+- it is more about **worker role in the staffing pool**
+- not only about liking a region/customer
+- not only about legality
 
-- shifted result (28-day limit):
-  - p2 = **45d**
-  - p3 = **14d**
-  - p4 = **14d**
-  - worked total = **73d**
+Example:
+- someone may be allowed to go to a fab, but still be only a **spot** worker there
+- someone may have neutral region preference, but still be **regular** for a certain phase because of experience or team role
+- someone may have high customer preference but still not be part of the normal core crew for that work
 
-This is easy to read and stable, but it may be too rigid if the real operation actually had a longer p3/p4 tail.
+So regular / spot should usually be read as:
 
-#### C. plan-vs-shift balance can become distorted in the opposite direction
-Example **530N02824A**:
-
-- planned: p2=20d, p3=18d, p4=24d
-- shifted result (28-day limit):
-  - p2 = **18d**
-  - p3 = **14d**
-  - p4 = **14d**
-  - worked total = **46d**
-
-Compared with the non-limit result (7d / 19d / 20d), this version looks more controlled, but it also flattens the intended difference between p3 and p4.
-
-### Important note about compressed worked days
-This version still works on the **compressed worked-day timeline**, not raw calendar span. That means calendar blanks are stitched out before splitting phases. Because of that, apparent calendar gaps can still appear in the final displayed windows.
-
-Example **530L00936A**:
-
-- shifted result (28-day limit):
-  - p2 = 2025/01/23 - 2025/02/13
-  - p3 = 2025/02/14 - 2025/02/27
-  - p4 = 2025/03/07 - 2025/03/20
-
-This does not mean the algorithm failed. It means the split was done on the compressed worked-day list, and the raw calendar had blanks in between.
-
-### Overall evaluation of 28-day limit p3+p4
-This version is better when the goal is stability and interpretability. It controls the most extreme p3/p4 growth, but it also introduces a new possible abnormality:
-
-- p2 becoming too dominant
-- p3/p4 becoming too uniform or too standardized
-- loss of genuine long-tail behavior
+- **staffing category**
+- not only location preference
 
 ---
 
-## 3. Comparison: non-limit vs 28-day limit
+## 3. Can regular / spot replace region/customer preference?
 
-### High-level difference
-The biggest difference is not in the early cut rules. The biggest difference is in the **shifted phase shape** after phase 3 starts.
+## Short answer
 
-- **Non-limit version:** more faithful to long actual tails, but more likely to create extreme p3/p4 sizes.
-- **28-day limit version:** more controlled and easier to read, but more likely to over-expand p2.
+Usually **no, not fully**.
 
-### What seems unchanged between the two logs
-Many abnormalities are effectively the same in both logs because they happen **before** the p3/p4 cap matters. These include:
+## Why not
 
-- blank / N/A phase dates in 譁ｰ隕剰｣ｽ逡ｪ繝ｪ繧ｹ繝�
-- wrong p2<=p3<=p4<=p4end order
-- phase end < start after applying next-start-1
-- planned-window far cut
-- unique SU_Others work days < 4
-- per-worker single-day outlier cut
+Because current preference already carries a stronger meaning:
 
-Representative examples that appear the same style in both logs:
+- `0` means “do not send”
+- positive values mean “okay / preferred”
 
-- **830300199A** 竊� `unique SU_Others work days < 4 (unique_days=3)`
-- **830400232A** 竊� `planned-window far cut: 103d away (> 90)` plus single-day outlier cuts
-- **530N02621A** 竊� `phase zero workload under Decoder5 span-split check (counts={2: 35, 3: 0, 4: 96})`
+That is broader than regular / spot.
 
-So the cap mainly changes the **shape of valid shifted modules**, not the basic data-cleaning anomalies.
+If you replace everything with only regular / spot, you lose the difference between:
 
-### What clearly changes between the two logs
-The modules that differ most are the ones where p3 started early enough that the non-limit version allowed a long tail.
+- impossible
+- possible but neutral
+- strongly preferred
 
-#### Example A: 530900102A
-- **Non-limit**: 1 / 40 / 39
-- **28-day limit**: 52 / 14 / 14
+So regular / spot is better as an **additional layer**, not a total replacement.
 
-Interpretation:
-- Non-limit says: 窶彗lmost everything after QC belongs to late phases.窶�
-- 28-day limit says: 窶很eep only a standardized late tail and move the rest into p2.窶�
+### Good way to think about it
 
-#### Example B: 530N03002A
-- **Non-limit**: 14 / 27 / 27
-- **28-day limit**: 40 / 14 / 14
+- **skill / manager / availability / pref=0**  
+  = “can this person be assigned at all?”
 
-Interpretation:
-- Non-limit preserves a long p3/p4 tail.
-- 28-day limit forces a compact late-phase block.
+- **region/customer preference level**  
+  = “how suitable is this location/customer for this person?”
 
-#### Example C: 530N02824A
-- **Non-limit**: 7 / 19 / 20
-- **28-day limit**: 18 / 14 / 14
+- **regular / spot**  
+  = “is this person part of the normal crew or backup crew for this work?”
 
-Interpretation:
-- Non-limit emphasizes late stages.
-- 28-day limit restores more weight to p2.
-
-#### Example D: 530900112A
-- **Non-limit**: 22 / 25 / 26
-- **28-day limit**: 45 / 14 / 14
-
-Interpretation:
-- Non-limit gives a fairly broad three-phase spread.
-- 28-day limit creates a much stronger front-loaded structure.
+That separation is cleaner.
 
 ---
 
-## 4. Suggested abnormal categories for reporting to boss
+## 4. When regular / spot could partly replace preference
 
-You can group abnormalities into the following categories.
+There are some cases where it could replace part of current preference logic.
 
-### A. Source data abnormalities
-These come from the input itself.
+### Case A: very simple business rule
+If business only says:
 
-- missing p2/p3/p4/p4end dates
-- wrong date order in 譁ｰ隕剰｣ｽ逡ｪ繝ｪ繧ｹ繝�
-- phase end < start after applying next-start-1 rule
-- SU_Others worked evidence too short (`unique_days < 4`)
+- these workers are core members
+- these workers are backup members
 
-### B. Matching / shifting abnormalities
-These come from the relation between 譁ｰ隕剰｣ｽ逡ｪ繝ｪ繧ｹ繝� and SU_Others.
+and there is no real need for multi-level preference, then regular / spot might be enough.
 
-- actual worked span is far from planned window
-- QC trigger happens very early, causing phase 3 to start too soon
-- actual execution is much longer than the planned overall duration
-- compressed worked-day stitching causes calendar gaps in displayed windows
+### Case B: current preference values are being used only as rough labels
+If current region/customer preference is not really tuned and mostly used as:
 
-### C. Balance abnormalities
-These come from how phase days are split.
+- 0 = no
+- 1 = okay
+- 2 = preferred
 
-#### More visible in non-limit version
-- p2 becomes too short
-- p3+p4 dominate the module
-- shifted balance drifts far from planned phase ratios
+then regular / spot could absorb part of the “preferred” meaning.
 
-#### More visible in 28-day limit version
-- p2 becomes too long
-- p3/p4 become too flat or too standardized
-- real long late-stage work may be under-represented
+But even then, I would still keep:
 
-### D. Structural anomalies worth highlighting separately
-- **phase zero workload** cases (for example p3=0 while p4 is very large)
-- **single-day worker participation** repeated across many modules
-- **planned-window far cut** near or above the 90-day threshold
-- **remaining unique worked dates too small vs planned total**
+- `0` as hard no-go
+- regular / spot as staff pool meaning
+
+because those 2 ideas are different.
 
 ---
 
-## 5. Practical conclusion
+## 5. Main pattern choices
 
-If the purpose is to create a result that is easier to explain and less extreme, the **28-day limit** version is stronger.
+# Pattern 1: Global worker type
 
-If the purpose is to preserve long real late-stage execution as much as possible, the **non-limit** version is stronger.
+### Meaning
+Each worker is always either:
 
-My practical reading is:
+- regular
+- or spot
 
-- For reporting and control, **28-day limit** is usually easier to defend.
-- For historical realism, **non-limit** may reflect actual SU_Others behavior better.
-- The most important abnormalities to report are not only the cuts, but also the **phase-balance abnormalities** created after shifting.
+for every task, fab, region, customer.
 
-A simple summary sentence you can use is:
+### How to use it
+Use when business meaning is simple, like:
 
-> Non-limit p3/p4 preserves actual late-stage spread but tends to create oversized p3/p4 and undersized p2, while the 28-day limit version stabilizes the late-stage tail but tends to expand p2 and flatten p3/p4 balance.
+- senior/core employees = regular
+- temporary/support employees = spot
+
+### Benefits
+- easiest to understand
+- easiest to prepare
+- good for first testing
+- good if regular/spot is really a company-wide role
+
+### Disadvantages
+- too rough
+- does not reflect that a worker may be core for one task but backup for another
+- may not match real fab/project behavior
+
+### Best use case
+A first business draft or a first experiment.
+
+---
+
+# Pattern 2: Task or phase-based type
+
+### Meaning
+Worker type depends on task.
+
+Example:
+- regular for p1/p2
+- spot for p3/p4
+
+### How to use it
+Use when “core team” depends more on work type than location.
+
+This works well when:
+- certificate / experience differs by phase
+- same person is trusted for installation but not utility
+- some workers are main members only in certain operations
+
+### Benefits
+- practical
+- closer to real work than global type
+- still not too heavy
+- matches your current `p1/p2/p3/p4` structure well 
+
+### Disadvantages
+- still ignores fab-specific specialization
+- may be too rough if customer/fab matters a lot
+
+### Best use case
+Probably the best middle version if you want one realistic but manageable design.
+
+---
+
+# Pattern 3: Fab + task type
+
+### Meaning
+Worker is regular only for some fab/task combinations.
+
+Example:
+- regular for `f3+p1`
+- regular for `f10+p4`
+- spot elsewhere
+
+### How to use it
+Use when real business depends on:
+
+- site familiarity
+- customer method differences
+- local certification/site approval
+- known core teams per fab
+
+### Benefits
+- closest to reality if work is fab-driven
+- good for rare “core member only for this site” cases
+- fits special customer/site skill pools
+
+### Disadvantages
+- heavy to maintain
+- many fabs means a lot of data
+- easy to miss definitions
+- can become messy if done too detailed
+
+### Best use case
+When fab/site identity is truly important.
+
+A practical simplification is:
+- record only **regular** cases
+- treat all not-listed cases as spot
+
+That matches your earlier idea and keeps data smaller.
+
+---
+
+# Pattern 4: Region + task type
+
+### Meaning
+Worker is regular by region and task, not by exact fab.
+
+### How to use it
+Use when fab count is high, but work style is mostly regional.
+
+Example:
+- regular for Japan p1/p2
+- spot for Taiwan p1/p2
+
+### Benefits
+- smaller data than fab+task
+- still captures geography-based core teams
+- works well with your existing region logic and transit/stay rules 
+
+### Disadvantages
+- not enough if some fabs in same region behave very differently
+
+### Best use case
+A good middle ground between task-based and fab-based modeling.
+
+---
+
+# Pattern 5: Customer + task type
+
+### Meaning
+Worker is regular based on customer and task.
+
+### How to use it
+Use when customer-specific methods matter more than fab identity.
+
+Example:
+- regular for Customer A p1/p2
+- spot for Customer B p1/p2
+
+### Benefits
+- useful when one customer has multiple similar fabs
+- matches commercial / relationship-driven staffing
+
+### Disadvantages
+- less accurate if actual difference is fab-level, not customer-level
+
+### Best use case
+When customer know-how is the real reason for staffing preference.
+
+---
+
+## 6. How regular / spot can be interpreted from current business data
+
+Regular / spot can represent several business meanings, even without changing the whole model.
+
+### A. Certificate-based meaning
+A worker may be:
+
+- **regular** because they hold the right certificate and are part of the normal certified pool
+- **spot** because they can support, but are not the usual certified choice
+
+This is useful when certificate is not only “can/cannot”, but also “main qualified member vs fallback member”.
+
+### B. Experience-based meaning
+A worker may have enough skill to be assignable, but:
+
+- regular = normal experienced member for this type of task
+- spot = can help, but not first-line
+
+### C. Region familiarity
+A worker may be:
+
+- regular for Japan jobs
+- spot for overseas jobs
+
+This is not exactly the same as region preference.
+Preference says whether location is acceptable or liked.
+Regular/spot says whether the person belongs to the normal staffing pool there.
+
+### D. Customer familiarity
+A worker may be:
+
+- regular for a certain customer because of repeated work and communication fit
+- spot for others
+
+Again, this is different from customer preference level.
+It is more like customer-specific crew membership.
+
+### E. Fab familiarity
+A worker may be regular at one fab because they know:
+
+- local rules
+- local process
+- local people
+- startup habits
+
+and only spot at other fabs.
+
+### F. Team composition meaning
+Regular / spot can also mean team structure:
+
+- regular = core team
+- spot = overflow / shortage filler
+
+This can be useful when you want the solution to first build a stable team, then use backup workers only when needed.
+
+---
+
+## 7. Potential scenarios where regular / spot helps a lot
+
+### Scenario 1: skill is enough, but business still has a normal crew
+Current skill map may say several people can do p3.  
+But in reality only some are the normal p3 crew.  
+Regular / spot can express that difference.
+
+### Scenario 2: certificate is shared, but site trust is different
+Two workers may both be legally assignable.  
+But one is the usual certified member for that fab/customer, and the other is only emergency support.
+
+### Scenario 3: preference is too general
+Region/customer preference may say a worker is okay for Taiwan.  
+But that does not tell whether they are part of the main AP6A crew or just a possible helper.  
+Regular / spot can cover that gap.
+
+### Scenario 4: want to preserve core members for important phases
+For example:
+- p1/p2 should mostly use the regular team
+- spot fills remaining shortage
+
+That is a staffing policy idea, not only a travel preference idea.
+
+### Scenario 5: want clearer business explanation
+“Assigned because he is regular for this fab/task” is easier for business users to understand than only saying “score was better due to preference”.
+
+---
+
+## 8. Potential disadvantages / risks
+
+### A. Too much overlap with existing preference
+If regular / spot is not clearly defined, it may duplicate:
+
+- region preference
+- customer preference
+- fab suitability
+- certificate skill
+
+Then data becomes confusing.
+
+### B. Data ownership becomes unclear
+Who decides regular vs spot?
+
+- planning team?
+- engineering lead?
+- certificate owner?
+- site owner?
+
+This needs a clear business rule.
+
+### C. Over-modeling
+If you define regular/spot by too many dimensions at once, maintenance will become hard.
+
+### D. Hidden hard meaning
+Sometimes business says “spot”, but actually means “do not send unless emergency”.  
+That is a different rule from ordinary backup preference.
+
+---
+
+## 9. Suggested business interpretation
+
+A clean interpretation would be:
+
+### Keep current preference for location acceptability
+Use region/customer preference for:
+
+- no-go
+- neutral
+- preferred destination
+
+### Use regular / spot for staffing pool identity
+Use regular / spot for:
+
+- core member
+- backup member
+
+### Use skills/certificates for capability
+Use skill/certification for:
+
+- can do / cannot do
+- level of technical ability
+
+That gives a nice separation:
+
+- **skill/certificate** = capability
+- **preference** = suitability of place/customer
+- **regular/spot** = crew role
+
+This separation matches your current model structure better than trying to force one field to do everything. Your current code already treats skill, manager, availability, and preference-0 as gating conditions, while region/customer preference also contributes to soft reward. 
+
+---
+
+## 10. Rough recommendation
+
+### Best first concept
+Do not treat regular / spot as a replacement for current preference.
+
+Better to treat it as a new meaning:
+
+- who is the normal crew
+- who is fallback crew
+
+### Best pattern to start with
+If you want a practical first business version:
+
+- task-based regular/spot  
+or
+- region+task regular/spot
+
+These usually give good realism without the heavy maintenance of fab+task.
+
+### Best detailed future version
+If fab identity is really important, use fab+task, but likely only record regular cases.
+
+---
+
+## 11. Final draft conclusion
+
+Regular / spot is best understood as a **staffing-role concept**, not only a travel/location preference.
+
+It can express:
+- core vs backup members
+- certificate holders vs support holders
+- normal crew vs overflow pool
+- fab/customer familiar workers vs general support workers
+
+In the current model, it should usually **sit beside** existing region/customer preference, not replace it completely.
+
+A good separation is:
+
+- preference = where the worker can or likes to go
+- regular/spot = whether the worker is part of the normal team for that work
+- skill/certificate = whether the worker is capable to do it
+
+That makes the schedule explanation much clearer and gives more room for real business rules later.
