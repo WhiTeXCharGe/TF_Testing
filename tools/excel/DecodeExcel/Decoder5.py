@@ -1316,30 +1316,76 @@ def _allocate_phase_lengths_v5(actual_total_days: int, planned_phase_len: dict, 
 def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_data: dict, phase34_cap_days: int):
     worker_roles = su_data.get("worker_roles", {}) if su_data else {}
     worked_index = {d: i for i, d in enumerate(worked_days)}
-    qc_first_idx = None
+
+    def _role_has_qc_no_m(role_text: str) -> bool:
+        rt = _clean_text(role_text).upper()
+        return ("QC" in rt) and ("M" not in rt)
+
+    def _role_has_both_m_and_qc(role_text: str) -> bool:
+        rt = _clean_text(role_text).upper()
+        return ("QC" in rt) and ("M" in rt)
+
+    # collect all worked indexes by worker for this module
+    by_wid = defaultdict(list)
     for dt, wid, _disp in sorted(code_occ.get(code, []), key=lambda x: (x[0], x[1])):
-        role_text = _clean_text(worker_roles.get(wid, "")).upper()
-        if "QC" not in role_text:
-            continue
         if dt in worked_index:
-            idx = worked_index[dt]
-            qc_first_idx = idx if qc_first_idx is None else min(qc_first_idx, idx)
+            by_wid[wid].append(worked_index[dt])
+
+    # --------------------------------------------------
+    # 1) First priority: QC-without-M worker
+    # --------------------------------------------------
+    qc_no_m_first_idx = None
+    for wid, idxs in by_wid.items():
+        role_text = worker_roles.get(wid, "")
+        if not _role_has_qc_no_m(role_text):
+            continue
+        first_idx = min(idxs)
+        qc_no_m_first_idx = first_idx if qc_no_m_first_idx is None else min(qc_no_m_first_idx, first_idx)
+
     total_days = len(worked_days)
     latest_p2_end_idx = max(0, total_days - int(phase34_cap_days) - 1) if phase34_cap_days is not None else 0
-    if qc_first_idx is None:
-        phase3_start_idx = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-        trigger = "no QC assignment found; fallback to cap/planned split"
-    else:
+
+    if qc_no_m_first_idx is not None:
         earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-        phase3_start_idx = max(qc_first_idx, earliest_from_cap)
-        trigger = f"QC first joined on {_to_ymd(worked_days[qc_first_idx])}"
+        phase3_start_idx = max(qc_no_m_first_idx, earliest_from_cap)
+        if total_days >= 2:
+            phase3_start_idx = min(phase3_start_idx, total_days - 1)
+        return phase3_start_idx, f"QC-without-M first joined on {_to_ymd(worked_days[qc_no_m_first_idx])}", qc_no_m_first_idx
+
+    # --------------------------------------------------
+    # 2) Fallback: M/QC worker rejoin after gap
+    # --------------------------------------------------
+    mqc_rejoin_idx = None
+
+    for wid, idxs in by_wid.items():
+        role_text = worker_roles.get(wid, "")
+        if not _role_has_both_m_and_qc(role_text):
+            continue
+
+        idxs = sorted(set(idxs))
+        # find first rejoin after a gap (>1 compressed worked-day)
+        for i in range(1, len(idxs)):
+            if idxs[i] - idxs[i - 1] > 1:
+                rejoin_idx = idxs[i]
+                mqc_rejoin_idx = rejoin_idx if mqc_rejoin_idx is None else min(mqc_rejoin_idx, rejoin_idx)
+                break
+
+    if mqc_rejoin_idx is not None:
+        earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
+        phase3_start_idx = max(mqc_rejoin_idx, earliest_from_cap)
+        if total_days >= 2:
+            phase3_start_idx = min(phase3_start_idx, total_days - 1)
+        return phase3_start_idx, f"M/QC rejoined after gap on {_to_ymd(worked_days[mqc_rejoin_idx])}", mqc_rejoin_idx
+
+    # --------------------------------------------------
+    # 3) No trigger found -> old fallback
+    # --------------------------------------------------
+    phase3_start_idx = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
     if total_days >= 2:
         phase3_start_idx = min(phase3_start_idx, total_days - 1)
-    else:
-        phase3_start_idx = 0
-    return phase3_start_idx, trigger, qc_first_idx
+    return phase3_start_idx, "no QC-without-M and no M/QC rejoin found; fallback to cap split", None
 
-def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_days: int = 28):
+def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_days: int = None):
     """
     Decoder5 shift rules:
     - no p1
@@ -2011,7 +2057,7 @@ def build_env_and_schedule_decoder5(
     read_all_data: bool = True,
     date_range: str | None = None,
     workload_use_window_days: bool = True,
-    phase34_cap_days: int | None = 28,
+    phase34_cap_days: int | None = None,
 ):
     date_filter = _parse_date_range(date_range) if date_range else (None, None)
     f_start, f_end = date_filter
@@ -2599,7 +2645,7 @@ if __name__ == "__main__":
             read_all_data=READ_ALL_DATA,
             date_range=DATE_RANGE,
             workload_use_window_days=WORKLOAD_USE_WINDOW_DAYS,
-            phase34_cap_days=28,
+            phase34_cap_days=None,
         )
         print("EnvConfig.yaml, Schedule.yaml, and TransformationLog.txt have been written.")
     else:
