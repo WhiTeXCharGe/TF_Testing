@@ -62,6 +62,9 @@ SKIP_MODULE_IF_NO_SU_MATCH = True  # Option A default
 MIN_WORKED_DAYS_FOR_TOOL = 4
 
 MIN_LEFT_DATE_SPAN_RATIO = 0.20
+
+DUMMY_HEAD_DAYS_FROM_PLAN_START = 10
+ONGOING_TAIL_KEEP_GAP_DAYS = 10
 # ---------------------------------------------------------------------
 
 import re
@@ -866,9 +869,14 @@ def cut_su_outlier_cells(
 
     Returns a list of correction records for TransformationLog.
     """
+
     if not su_data:
         return []
-
+    plan_range = su_data.get("plan_range", {}) if su_data else {}
+    plan_start = _as_timestamp(plan_range.get("start_date"))
+    dummy_head_end = None
+    if plan_start is not None:
+        dummy_head_end = plan_start + pd.Timedelta(days=max(0, DUMMY_HEAD_DAYS_FROM_PLAN_START - 1))
     worker_date_map = su_data.get("worker_date_map", {})
     if not worker_date_map:
         return []
@@ -921,18 +929,73 @@ def cut_su_outlier_cells(
 
     for code, occ in code_to_occ.items():
         # ------------------------------------------------------------
-        # (Example: planned ends Mar, but SU has tail in Oct -> cut tail)
+        # Head-of-plan dummy cut:
+        # if a module occurrence falls inside the first N days of SU_Others plan range,
+        # convert that occurrence to dummy.
+        # ------------------------------------------------------------
+        if dummy_head_end is not None:
+            broken = _break_tool_code(code)
+            for dt, wid, text in list(occ):
+                if not (plan_start <= dt <= dummy_head_end):
+                    continue
+                if not isinstance(text, str):
+                    continue
+
+                old = text
+                new = old.replace(code, broken, 1)
+                if new == old:
+                    continue
+
+                _remember_original_text(su_data, wid, dt, old, new)
+                worker_date_map[(wid, dt)] = new
+                corrections.append({
+                    "wid": wid,
+                    "date": _to_ymd(dt),
+                    "code": code,
+                    "text": old,
+                    "reason": f"head-of-plan cut: within first {DUMMY_HEAD_DAYS_FROM_PLAN_START} days of SU_Others plan range",
+                })
+        # ------------------------------------------------------------
+        # Planned-window far cut with ongoing-tail keep rule
         # ------------------------------------------------------------
         if planned_meta is not None and code in planned_meta:
             pstart = planned_meta[code].get("overall_start")
             pend = planned_meta[code].get("overall_end")
 
             if pstart is not None and pend is not None:
+                cutoff_day = pend + pd.Timedelta(days=int(cut_if_far_from_planned_days))
+
+                # group all dates for this module into day-clusters
+                uniq_dates = sorted(set(dt for dt, _, _ in occ))
+                clusters = _cluster_by_date_gap(uniq_dates, gap_days=1)
+
+                kept_dates = set()
+                latest_kept_day = None
+
+                for cl in clusters:
+                    cl_start = cl[0]
+                    cl_end = cl[-1]
+
+                    # cluster touches the allowed area -> keep all
+                    if cl_start <= cutoff_day:
+                        kept_dates.update(cl)
+                        latest_kept_day = cl_end
+                        continue
+
+                    # cluster is beyond cutoff, but close enough to previous kept work -> still keep
+                    if latest_kept_day is not None and (cl_start - latest_kept_day).days <= int(ONGOING_TAIL_KEEP_GAP_DAYS):
+                        kept_dates.update(cl)
+                        latest_kept_day = cl_end
+                        continue
+
+                    # otherwise cut this cluster and anything after
+                    # do nothing here; it will be cut below
+                    pass
+
                 broken = _break_tool_code(code)
 
                 for dt, wid, text in occ:
-                    dist = _planned_actual_gap_days(pstart, pend, dt, dt)
-                    if dist <= int(cut_if_far_from_planned_days):
+                    if dt in kept_dates:
                         continue
                     if not isinstance(text, str):
                         continue
@@ -949,9 +1012,12 @@ def cut_su_outlier_cells(
                         "date": _to_ymd(dt),
                         "code": code,
                         "text": old,
-                        "reason": f"planned-window far cut: {dist}d away (> {cut_if_far_from_planned_days})",
+                        "reason": (
+                            f"planned-window far cut with ongoing-tail rule: "
+                            f"beyond planned end + {cut_if_far_from_planned_days}d "
+                            f"and more than {ONGOING_TAIL_KEEP_GAP_DAYS}d from last kept work"
+                        ),
                     })
-
         # ------------------------------------------------------------
         # Pre-check A: too few UNIQUE work days (before clustering)
         # ------------------------------------------------------------
@@ -1317,73 +1383,108 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
     worker_roles = su_data.get("worker_roles", {}) if su_data else {}
     worked_index = {d: i for i, d in enumerate(worked_days)}
 
-    def _role_has_qc_no_m(role_text: str) -> bool:
-        rt = _clean_text(role_text).upper()
-        return ("QC" in rt) and ("M" not in rt)
+    # configurable: how many compressed worked-day gaps are still treated as "not stopped yet"
+    PURE_ME_STOP_GAP_TOLERANCE = 3
 
-    def _role_has_both_m_and_qc(role_text: str) -> bool:
-        rt = _clean_text(role_text).upper()
-        return ("QC" in rt) and ("M" in rt)
+    def _rt(role_text: str) -> str:
+        return _clean_text(role_text).upper()
 
-    # collect all worked indexes by worker for this module
+    def _has_qc(role_text: str) -> bool:
+        return "QC" in _rt(role_text)
+
+    def _has_m(role_text: str) -> bool:
+        return "M" in _rt(role_text)
+
+    def _has_e(role_text: str) -> bool:
+        return "E" in _rt(role_text)
+
+    def _role_is_pure_qc(role_text: str) -> bool:
+        rt = _rt(role_text)
+        return ("QC" in rt) and ("M" not in rt) and ("E" not in rt)
+
+    def _role_is_pure_m(role_text: str) -> bool:
+        rt = _rt(role_text)
+        return ("M" in rt) and ("QC" not in rt) and ("E" not in rt)
+
+    def _role_is_pure_e(role_text: str) -> bool:
+        rt = _rt(role_text)
+        return ("E" in rt) and ("QC" not in rt) and ("M" not in rt)
+
+    # collect compressed worked indexes by worker for this module
     by_wid = defaultdict(list)
     for dt, wid, _disp in sorted(code_occ.get(code, []), key=lambda x: (x[0], x[1])):
         if dt in worked_index:
             by_wid[wid].append(worked_index[dt])
 
-    # --------------------------------------------------
-    # 1) First priority: QC-without-M worker
-    # --------------------------------------------------
-    qc_no_m_first_idx = None
-    for wid, idxs in by_wid.items():
-        role_text = worker_roles.get(wid, "")
-        if not _role_has_qc_no_m(role_text):
-            continue
-        first_idx = min(idxs)
-        qc_no_m_first_idx = first_idx if qc_no_m_first_idx is None else min(qc_no_m_first_idx, first_idx)
-
     total_days = len(worked_days)
     latest_p2_end_idx = max(0, total_days - int(phase34_cap_days) - 1) if phase34_cap_days is not None else 0
 
-    if qc_no_m_first_idx is not None:
+    # --------------------------------------------------
+    # 1) First priority: pure QC
+    # --------------------------------------------------
+    pure_qc_first_idx = None
+    for wid, idxs in by_wid.items():
+        role_text = worker_roles.get(wid, "")
+        if not _role_is_pure_qc(role_text):
+            continue
+        first_idx = min(idxs)
+        pure_qc_first_idx = first_idx if pure_qc_first_idx is None else min(pure_qc_first_idx, first_idx)
+
+    if pure_qc_first_idx is not None:
         earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-        phase3_start_idx = max(qc_no_m_first_idx, earliest_from_cap)
+        phase3_start_idx = max(pure_qc_first_idx, earliest_from_cap)
         if total_days >= 2:
             phase3_start_idx = min(phase3_start_idx, total_days - 1)
-        return phase3_start_idx, f"QC-without-M first joined on {_to_ymd(worked_days[qc_no_m_first_idx])}", qc_no_m_first_idx
+        return phase3_start_idx, f"pure QC first joined on {_to_ymd(worked_days[pure_qc_first_idx])}", pure_qc_first_idx
 
     # --------------------------------------------------
-    # 2) Fallback: M/QC worker rejoin after gap
+    # 2) No pure QC:
+    #    find pure M / pure E real stop-working point
     # --------------------------------------------------
-    mqc_rejoin_idx = None
+    pure_me_stop_idx = None
 
     for wid, idxs in by_wid.items():
         role_text = worker_roles.get(wid, "")
-        if not _role_has_both_m_and_qc(role_text):
+        if not (_role_is_pure_m(role_text) or _role_is_pure_e(role_text)):
             continue
 
         idxs = sorted(set(idxs))
-        # find first rejoin after a gap (>1 compressed worked-day)
+        if not idxs:
+            continue
+
+        # Find the final cluster end, allowing small temporary gaps.
+        # Example tolerance=3:
+        # 1,2,3,7,8 => still same working run
+        # 1,2,3,10  => stop at 3, re-enter later
+        cluster_end = idxs[0]
         for i in range(1, len(idxs)):
-            if idxs[i] - idxs[i - 1] > 1:
-                rejoin_idx = idxs[i]
-                mqc_rejoin_idx = rejoin_idx if mqc_rejoin_idx is None else min(mqc_rejoin_idx, rejoin_idx)
+            gap = idxs[i] - idxs[i - 1]
+            if gap <= (PURE_ME_STOP_GAP_TOLERANCE + 1):
+                cluster_end = idxs[i]
+            else:
                 break
 
-    if mqc_rejoin_idx is not None:
+        # Phase 3 starts AFTER that stop point
+        candidate = cluster_end + 1
+        if candidate >= total_days:
+            continue
+
+        pure_me_stop_idx = candidate if pure_me_stop_idx is None else min(pure_me_stop_idx, candidate)
+
+    if pure_me_stop_idx is not None:
         earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-        phase3_start_idx = max(mqc_rejoin_idx, earliest_from_cap)
+        phase3_start_idx = max(pure_me_stop_idx, earliest_from_cap)
         if total_days >= 2:
             phase3_start_idx = min(phase3_start_idx, total_days - 1)
-        return phase3_start_idx, f"M/QC rejoined after gap on {_to_ymd(worked_days[mqc_rejoin_idx])}", mqc_rejoin_idx
+        return phase3_start_idx, f"pure M/E stopped before {_to_ymd(worked_days[phase3_start_idx])}", phase3_start_idx
 
     # --------------------------------------------------
-    # 3) No trigger found -> old fallback
+    # 3) No trigger found -> fallback
     # --------------------------------------------------
     phase3_start_idx = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
     if total_days >= 2:
         phase3_start_idx = min(phase3_start_idx, total_days - 1)
-    return phase3_start_idx, "no QC-without-M and no M/QC rejoin found; fallback to cap split", None
+    return phase3_start_idx, "no pure QC and no pure M/E stop found; fallback to cap split", None
 
 def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_days: int = None):
     """
