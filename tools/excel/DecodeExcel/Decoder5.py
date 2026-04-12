@@ -854,34 +854,34 @@ def cut_su_outlier_cells(
     cut_if_far_from_planned_days: int = 90,
 ):
     """
-    Some modules appear in SU_Others as one long continuous period, but also have
-    a few isolated cells months later (often caused by Excel horizontal drag-fill
-    mistakes). Those isolated cells can make shifting explode (first..last spans months).
-
-    Strategy:
-      - (Optional) If planned window exists: cut SU cells too far from planned window
-      - If module has too few UNIQUE work days OR too few total cells: cut everything to dummy
-      - Otherwise: cluster occurrence dates by gap<=cluster_gap_days
-          * Keep top cluster(s) (largest by worker-days, then uniq days, then earliest)
-          * Consider keeping additional clusters unless they look like drag-fill noise
-      - NEW: After deciding kept_dates, if remaining evidence is too small (days/cells),
-             cut the whole module to dummy (prevents "100 cells -> after cut only 1 day -> still shifted")
-
-    Returns a list of correction records for TransformationLog.
+    SU_Others cleanup rules:
+      1) If a module appears within the first N days of SU_Others plan range,
+         cut the ENTIRE module to dummy.
+      2) If module evidence is too small, cut the ENTIRE module to dummy.
+      3) Per-worker cleanup:
+         - if a worker appears on a module only 1 day -> dummy
+         - if a worker has no consecutive run >= 2 days on that module -> dummy
+         - otherwise keep only clusters that contain a consecutive run >= 2 days
+      4) After cleanup, apply planned-end + 90d rule with ongoing-tail keep:
+         - keep clusters up to planned_end + X days
+         - after that, keep only clusters within Y days of previous kept cluster
+         - once a cluster is too far, that cluster and later ones become dummy
     """
 
     if not su_data:
         return []
+
     plan_range = su_data.get("plan_range", {}) if su_data else {}
     plan_start = _as_timestamp(plan_range.get("start_date"))
     dummy_head_end = None
     if plan_start is not None:
         dummy_head_end = plan_start + pd.Timedelta(days=max(0, DUMMY_HEAD_DAYS_FROM_PLAN_START - 1))
+
     worker_date_map = su_data.get("worker_date_map", {})
     if not worker_date_map:
         return []
 
-    # Gather occurrences
+    # Gather occurrences from current worker_date_map
     code_to_occ = defaultdict(list)  # code -> list of (dt, wid, text)
     for (wid, dt), text in list(worker_date_map.items()):
         code = extract_tool_code(text)
@@ -927,25 +927,128 @@ def cut_su_outlier_cells(
                 "reason": reason,
             })
 
+    def _rebuild_occ_for_code(code: str):
+        out = []
+        for (wid, dt), text in worker_date_map.items():
+            if extract_tool_code(text) == code:
+                out.append((dt, wid, text))
+        return sorted(out, key=lambda x: (x[0], x[1]))
+
     for code, occ in code_to_occ.items():
         # ------------------------------------------------------------
-        # Head-of-plan dummy cut:
-        # if a module occurrence falls inside the first N days of SU_Others plan range,
-        # convert that occurrence to dummy.
+        # 1) Whole-module cut if module appears in first N plan days
         # ------------------------------------------------------------
         if dummy_head_end is not None:
-            broken = _break_tool_code(code)
-            for dt, wid, text in list(occ):
-                if not (plan_start <= dt <= dummy_head_end):
+            has_head_hit = any(plan_start <= dt <= dummy_head_end for dt, _, _ in occ)
+            if has_head_hit:
+                _cut_all_occurrences(
+                    code,
+                    occ,
+                    f"module cut: module appears within first {DUMMY_HEAD_DAYS_FROM_PLAN_START} days of SU_Others plan range",
+                )
+                continue
+
+        # ------------------------------------------------------------
+        # 2) Module-level pre-checks on raw module evidence
+        # ------------------------------------------------------------
+        uniq_days_pre = sorted(set(dt for dt, _, _ in occ))
+        if len(uniq_days_pre) < int(cut_module_if_unique_days_lt):
+            _cut_all_occurrences(
+                code,
+                occ,
+                f"module cut: unique SU_Others work days < {cut_module_if_unique_days_lt} "
+                f"(unique_days={len(uniq_days_pre)})",
+            )
+            continue
+
+        if len(occ) < int(cut_module_if_total_cells_lt):
+            _cut_all_occurrences(
+                code,
+                occ,
+                f"module cut: total SU_Others cells < {cut_module_if_total_cells_lt} "
+                f"(cells={len(occ)})",
+            )
+            continue
+
+        if len(occ) <= 1:
+            _cut_all_occurrences(
+                code,
+                occ,
+                "module cut: only 1 SU_Others cell for this module",
+            )
+            continue
+
+        # ------------------------------------------------------------
+        # 3) Per-worker outlier cleanup FIRST
+        # ------------------------------------------------------------
+        occ_by_wid = defaultdict(list)  # wid -> list of (dt, text)
+        for dt, wid, text in occ:
+            occ_by_wid[wid].append((dt, text))
+
+        broken = _break_tool_code(code)
+
+        for wid, wid_occ in occ_by_wid.items():
+            wid_dates = sorted(set(dt for dt, _ in wid_occ))
+
+            # only 1 day on this module -> dummy
+            if len(wid_dates) <= 1:
+                for dt, text in wid_occ:
+                    if not isinstance(text, str):
+                        continue
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": "per-worker cut: only 1 day for this worker on this module (treated as outlier)",
+                    })
+                continue
+
+            # cluster this worker's dates
+            wid_clusters = _cluster_by_date_gap(wid_dates, gap_days=cluster_gap_days)
+
+            # keep only clusters having consecutive run >= 2 days
+            keep_dates = set()
+            for cl in wid_clusters:
+                if _longest_consecutive_run(cl) >= 2:
+                    keep_dates.update(cl)
+
+            # if no cluster is valid -> cut all this worker's occurrences for this module
+            if not keep_dates:
+                for dt, text in wid_occ:
+                    if not isinstance(text, str):
+                        continue
+                    old = text
+                    new = old.replace(code, broken, 1)
+                    if new == old:
+                        continue
+                    _remember_original_text(su_data, wid, dt, old, new)
+                    worker_date_map[(wid, dt)] = new
+                    corrections.append({
+                        "wid": wid,
+                        "date": _to_ymd(dt),
+                        "code": code,
+                        "text": old,
+                        "reason": "per-worker cut: no cluster has >=2 consecutive days (treated as outliers)",
+                    })
+                continue
+
+            # cut dates not in keep_dates
+            for dt, text in wid_occ:
+                if dt in keep_dates:
                     continue
                 if not isinstance(text, str):
                     continue
-
                 old = text
                 new = old.replace(code, broken, 1)
                 if new == old:
                     continue
-
                 _remember_original_text(su_data, wid, dt, old, new)
                 worker_date_map[(wid, dt)] = new
                 corrections.append({
@@ -953,10 +1056,28 @@ def cut_su_outlier_cells(
                     "date": _to_ymd(dt),
                     "code": code,
                     "text": old,
-                    "reason": f"head-of-plan cut: within first {DUMMY_HEAD_DAYS_FROM_PLAN_START} days of SU_Others plan range",
+                    "reason": "per-worker cut: cluster is too small / not consecutive (outlier)",
                 })
+
         # ------------------------------------------------------------
-        # Planned-window far cut with ongoing-tail keep rule
+        # 4) Rebuild CLEANED evidence
+        # ------------------------------------------------------------
+        clean_occ = _rebuild_occ_for_code(code)
+        if not clean_occ:
+            continue
+
+        # optional: if cleaned module became too small, cut whole module
+        clean_uniq_days = sorted(set(dt for dt, _, _ in clean_occ))
+        if len(clean_uniq_days) < int(cut_module_if_unique_days_lt) or len(clean_occ) < int(cut_module_if_total_cells_lt):
+            _cut_all_occurrences(
+                code,
+                clean_occ,
+                "module cut: cleaned evidence became too small after per-worker cleanup",
+            )
+            continue
+
+        # ------------------------------------------------------------
+        # 5) Planned-end + ongoing-tail keep rule on CLEANED evidence only
         # ------------------------------------------------------------
         if planned_meta is not None and code in planned_meta:
             pstart = planned_meta[code].get("overall_start")
@@ -965,36 +1086,38 @@ def cut_su_outlier_cells(
             if pstart is not None and pend is not None:
                 cutoff_day = pend + pd.Timedelta(days=int(cut_if_far_from_planned_days))
 
-                # group all dates for this module into day-clusters
-                uniq_dates = sorted(set(dt for dt, _, _ in occ))
+                uniq_dates = sorted(set(dt for dt, _, _ in clean_occ))
                 clusters = _cluster_by_date_gap(uniq_dates, gap_days=1)
 
                 kept_dates = set()
                 latest_kept_day = None
+                stop_keeping = False
 
                 for cl in clusters:
                     cl_start = cl[0]
                     cl_end = cl[-1]
 
-                    # cluster touches the allowed area -> keep all
+                    if stop_keeping:
+                        continue
+
+                    # keep clusters that touch the normal allowed range
                     if cl_start <= cutoff_day:
                         kept_dates.update(cl)
                         latest_kept_day = cl_end
                         continue
 
-                    # cluster is beyond cutoff, but close enough to previous kept work -> still keep
+                    # beyond cutoff, but still close enough to previous kept cluster
                     if latest_kept_day is not None and (cl_start - latest_kept_day).days <= int(ONGOING_TAIL_KEEP_GAP_DAYS):
                         kept_dates.update(cl)
                         latest_kept_day = cl_end
                         continue
 
-                    # otherwise cut this cluster and anything after
-                    # do nothing here; it will be cut below
-                    pass
+                    # first cluster too far away => this and later clusters are dummy
+                    stop_keeping = True
 
                 broken = _break_tool_code(code)
 
-                for dt, wid, text in occ:
+                for dt, wid, text in clean_occ:
                     if dt in kept_dates:
                         continue
                     if not isinstance(text, str):
@@ -1015,148 +1138,64 @@ def cut_su_outlier_cells(
                         "reason": (
                             f"planned-window far cut with ongoing-tail rule: "
                             f"beyond planned end + {cut_if_far_from_planned_days}d "
-                            f"and more than {ONGOING_TAIL_KEEP_GAP_DAYS}d from last kept work"
+                            f"and more than {ONGOING_TAIL_KEEP_GAP_DAYS}d from last kept cleaned cluster"
                         ),
                     })
-        # ------------------------------------------------------------
-        # Pre-check A: too few UNIQUE work days (before clustering)
-        # ------------------------------------------------------------
-        uniq_days_pre = sorted(set([x[0] for x in occ]))
-        if len(uniq_days_pre) < int(cut_module_if_unique_days_lt):
-            _cut_all_occurrences(
-                code,
-                occ,
-                f"module cut: unique SU_Others work days < {cut_module_if_unique_days_lt} "
-                f"(unique_days={len(uniq_days_pre)})",
-            )
-            continue
+    def _final_cut_isolated_worker_module_pairs(su_data: dict):
+        """
+        Final safety pass:
+        after all other cuts, if a worker still has only 1 day on a module,
+        or has multiple days but no adjacent day pair, cut those cells to dummy.
+        """
+        if not su_data:
+            return []
 
-        # ------------------------------------------------------------
-        # Pre-check B: too few total worker-day cells (before clustering)
-        # ------------------------------------------------------------
-        if len(occ) < int(cut_module_if_total_cells_lt):
-            _cut_all_occurrences(
-                code,
-                occ,
-                f"module cut: total SU_Others cells < {cut_module_if_total_cells_lt} "
-                f"(cells={len(occ)})",
-            )
-            continue
+        worker_date_map = su_data.get("worker_date_map", {})
+        if not worker_date_map:
+            return []
 
-        if len(occ) <= 1:
-            continue
+        pair_to_occ = defaultdict(list)  # (wid, code) -> [(dt, text), ...]
 
-        # ------------------------------------------------------------
-        # PER-WORKER OUTLIER CUT (your requested behavior)
-        # For each (code, wid), cluster that worker's dates ONLY.
-        # If the worker's best cluster is not "continuous enough" (run < 2),
-        # cut ALL that worker's occurrences for this code into dummy.
-        # Otherwise keep only the best cluster for that worker and cut the rest.
-        # ------------------------------------------------------------
+        for (wid, dt), text in list(worker_date_map.items()):
+            code = extract_tool_code(text)
+            if not code:
+                continue
+            pair_to_occ[(wid, code)].append((dt, text))
 
-        occ_by_wid = defaultdict(list)  # wid -> list of (dt, text)
-        for dt, wid, text in occ:
-            occ_by_wid[wid].append((dt, text))
+        corrections = []
 
-        broken = _break_tool_code(code)
+        def _has_adjacent_pair(sorted_dates):
+            for i in range(1, len(sorted_dates)):
+                if sorted_dates[i] == sorted_dates[i - 1] + pd.Timedelta(days=1):
+                    return True
+            return False
 
-        for wid, wid_occ in occ_by_wid.items():
-            # unique sorted dates for THIS worker only
-            wid_dates = sorted(set(dt for dt, _ in wid_occ))
-            if len(wid_dates) <= 1:
-                # single-day involvement => treat as outlier (cut it)
-                for dt, text in wid_occ:
-                    if not isinstance(text, str):
-                        continue
-                    old = text
-                    new = old.replace(code, broken, 1)
-                    if new == old:
-                        continue
-                    _remember_original_text(su_data, wid, dt, old, new)
-                    worker_date_map[(wid, dt)] = new
-                    corrections.append({
-                        "wid": wid,
-                        "date": _to_ymd(dt),
-                        "code": code,
-                        "text": old,
-                        "reason": "per-worker cut: only 1 day for this worker on this module (treated as outlier)",
-                    })
+        for (wid, code), occ in pair_to_occ.items():
+            uniq_dates = sorted(set(dt for dt, _ in occ))
+
+            cut_flag = False
+            reason = None
+
+            if len(uniq_dates) <= 1:
+                cut_flag = True
+                reason = "final safety cut: worker has only 1 day on this module"
+            elif not _has_adjacent_pair(uniq_dates):
+                cut_flag = True
+                reason = "final safety cut: worker has no adjacent-day pair on this module"
+
+            if not cut_flag:
                 continue
 
-            # cluster THIS worker's dates
-            wid_clusters = _cluster_by_date_gap(wid_dates, gap_days=cluster_gap_days)
+            broken = _break_tool_code(code)
 
-            # pick "best cluster" for this worker:
-            # prefer largest uniq-days, then earliest start
-            wid_clusters.sort(key=lambda cl: (len(cl), -int(cl[0].timestamp())), reverse=True)
-            best = wid_clusters[0]
-
-            # longest consecutive run INSIDE best cluster
-            best_run = _longest_consecutive_run(best)
-
-            # If this worker does not have a consecutive run of >=2 days,
-            # cut ALL occurrences for this worker for this code.
-            if best_run < 2:
-                for dt, text in wid_occ:
-                    if not isinstance(text, str):
-                        continue
-                    old = text
-                    new = old.replace(code, broken, 1)
-                    if new == old:
-                        continue
-                    _remember_original_text(su_data, wid, dt, old, new)
-                    worker_date_map[(wid, dt)] = new
-                    corrections.append({
-                        "wid": wid,
-                        "date": _to_ymd(dt),
-                        "code": code,
-                        "text": old,
-                        "reason": f"per-worker cut: no consecutive run (best_run={best_run}) for this worker on this module",
-                    })
-                continue
-
-            # Keep ALL "good" clusters; cut only "bad" clusters.
-            # A "good" cluster = has at least 2 consecutive days inside it.
-
-            def _cluster_has_run2(cluster_dates):
-                return _longest_consecutive_run(cluster_dates) >= 2
-
-            # Decide which dates to keep for this worker+code
-            keep_dates = set()
-            for cl in wid_clusters:
-                if _cluster_has_run2(cl):
-                    keep_dates.update(cl)
-
-            # If nothing qualifies, fall back to old behavior: cut all
-            if not keep_dates:
-                for dt, text in wid_occ:
-                    if not isinstance(text, str):
-                        continue
-                    old = text
-                    new = old.replace(code, broken, 1)
-                    if new == old:
-                        continue
-                    _remember_original_text(su_data, wid, dt, old, new)
-                    worker_date_map[(wid, dt)] = new
-                    corrections.append({
-                        "wid": wid,
-                        "date": _to_ymd(dt),
-                        "code": code,
-                        "text": old,
-                        "reason": "per-worker cut: no cluster has >=2 consecutive days (treated as outliers)",
-                    })
-                continue
-
-            # Cut only dates NOT in keep_dates
-            for dt, text in wid_occ:
-                if dt in keep_dates:
-                    continue
+            for dt, text in occ:
                 if not isinstance(text, str):
                     continue
                 old = text
                 new = old.replace(code, broken, 1)
                 if new == old:
                     continue
+
                 _remember_original_text(su_data, wid, dt, old, new)
                 worker_date_map[(wid, dt)] = new
                 corrections.append({
@@ -1164,13 +1203,14 @@ def cut_su_outlier_cells(
                     "date": _to_ymd(dt),
                     "code": code,
                     "text": old,
-                    "reason": "per-worker cut: cluster is too small / not consecutive (outlier)",
+                    "reason": reason,
                 })
 
-        # Done for this code
-        continue
+        su_data["su_final_isolated_pair_corrections"] = corrections
+        return corrections
+    final_pair_corrections = _final_cut_isolated_worker_module_pairs(su_data)
+    corrections.extend(final_pair_corrections)
 
-    # attach for optional downstream use
     su_data["su_outlier_corrections"] = corrections
     return corrections
 
