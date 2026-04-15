@@ -178,6 +178,28 @@ def compute_preference_score(region_level, company_level, max_level=PREF_MAX_LEV
     c = _normalize_pref_level(company_level, max_level)
     return round(100.0 * (r + c) / 2.0, 1)
 
+
+def _norm_flex(x):
+    s = str(x or "").strip().lower()
+    if s == "fixed":
+        return "fix"
+    if s == "flexible":
+        return "flex"
+    return ""
+
+
+def _merge_scope(values):
+    vals = {v for v in values if v in ("fix", "flex")}
+    if not vals:
+        return ""
+    if len(vals) >= 2:
+        return "both"
+    return next(iter(vals))
+
+
+def _scope_matches(page_scope, row_scope):
+    return row_scope == page_scope or row_scope == "both"
+
 # ------------------------------- LOADERS -------------------------------
 def load_env(env_path):
     with open(env_path, "r", encoding="utf-8") as f:
@@ -227,11 +249,12 @@ def load_schedule(path):
     # --------- expand to per-day assignments ----------
     assignments = []
     # temp holder to merge blocks
-    per_key_dates = defaultdict(list)   # (worker, op_task) -> [dates]
+    per_key_dates = defaultdict(list)   # (worker, op_task, flex) -> [dates]
     for a in asg_raw:
         wd_key = "work_date_lsit" if "work_date_lsit" in a else "work_date_list"
         op_task = a["operation_task"]
         wid     = a["worker"]
+        flex    = str(a.get("plan_flexibility", "") or "").strip()
         wdates = []
         for ditem in a.get(wd_key, []) or []:
             d = _d(ditem["date"])
@@ -241,13 +264,14 @@ def load_schedule(path):
                 "operation_task": op_task,
                 "date": d,
                 "hours": h,
+                "plan_flexibility": flex,
             })
             wdates.append(d)
-        per_key_dates[(wid, op_task)].extend(wdates)
+        per_key_dates[(wid, op_task, flex)].extend(wdates)
 
-    # --------- COALESCE assignment blocks by (worker, op) ----------
+    # --------- COALESCE assignment blocks by (worker, op, flex) ----------
     assignment_blocks = []
-    for (wid, op_task), dates in per_key_dates.items():
+    for (wid, op_task, flex), dates in per_key_dates.items():
         if not dates:
             continue
         dates = sorted(set(dates))
@@ -257,7 +281,8 @@ def load_schedule(path):
             "operation_task": op_task,
             "start_date": sd,
             "end_date": ed,
-            "work_dates": dates,   # keep the actual working dates
+            "work_dates": dates,
+            "plan_flexibility": flex,
         })
 
     return plan_start, plan_end, modules, assignments, assignment_blocks
@@ -930,6 +955,14 @@ def detect_violations(env, modules, assignments, maps, cal, plan_start=None, pla
     op_task_index   = maps["op_task_index"]     # operation_task_list.id -> meta (m_id, phase, op_id, name)
     module_workflow = maps["module_workflow"]   # m_id -> workflow_id
 
+    # ---------------- Fixed/Flexible scope maps ----------------
+    task_day_scopes = defaultdict(set)    # (m_id, op_id, iso_date) -> {'fix','flex'}
+    task_scopes = defaultdict(set)        # (m_id, op_id) -> {'fix','flex'}
+    phase_scopes = defaultdict(set)       # (m_id, phase_id) -> {'fix','flex'}
+    emp_day_scopes = defaultdict(set)     # (worker, company, iso_date) -> {'fix','flex'}
+    emp_scopes = defaultdict(set)         # (worker, company) -> {'fix','flex'}
+    worker_scopes = defaultdict(set)      # worker -> {'fix','flex'}
+
     # ---------------- Scan assignments once ----------------
     for a in assignments:
         ot_id = a["operation_task"]
@@ -942,12 +975,18 @@ def detect_violations(env, modules, assignments, maps, cal, plan_start=None, pla
         op_id = meta_ot["op_id"]
         d     = a["date"]
         wid   = a["worker"]
+        scope = _norm_flex(a.get("plan_flexibility"))
 
         assigned_task[(m_id, op_id)] += a["hours"]
         assigned_mod[m_id]           += a["hours"]
 
         # last assigned in its phase (from maps)
         ph = maps["op_phase_of_module"].get((m_id, op_id))
+        date_key = d.isoformat()
+        task_day_scopes[(m_id, op_id, date_key)].add(scope)
+        task_scopes[(m_id, op_id)].add(scope)
+        if ph:
+            phase_scopes[(m_id, ph)].add(scope)
         prev = last_assigned_in_phase[m_id].get(ph)
         if prev is None or d > prev:
             last_assigned_in_phase[m_id][ph] = d
@@ -973,6 +1012,9 @@ def detect_violations(env, modules, assignments, maps, cal, plan_start=None, pla
         # ---------- Unavailable breaches (employee-side: personal + worker-company) ----------
         wname = maps["worker_name"].get(wid, wid)
         comp_name = maps["worker_company_name"].get(wid, "")
+        emp_day_scopes[(wname, comp_name, date_key)].add(scope)
+        emp_scopes[(wname, comp_name)].add(scope)
+        worker_scopes[wname].add(scope)
         wco = maps.get("worker_company_id", {}).get(wid)
 
         reasons_e = []
@@ -1199,6 +1241,14 @@ def detect_violations(env, modules, assignments, maps, cal, plan_start=None, pla
 
         # Preference breaches
         "tbl_pref_breach": tbl_pref_breach,
+
+        # Fixed/Flexible scope maps
+        "task_day_scopes": {k: _merge_scope(v) for k, v in task_day_scopes.items()},
+        "task_scopes": {k: _merge_scope(v) for k, v in task_scopes.items()},
+        "phase_scopes": {k: _merge_scope(v) for k, v in phase_scopes.items()},
+        "emp_day_scopes": {k: _merge_scope(v) for k, v in emp_day_scopes.items()},
+        "emp_scopes": {k: _merge_scope(v) for k, v in emp_scopes.items()},
+        "worker_scopes": {k: _merge_scope(v) for k, v in worker_scopes.items()},
     }
 
 
@@ -2656,15 +2706,38 @@ def write_sheet_dashboard_employees(
 
  #=========================== SHEET 5 :write sheet breashes plan ==================================
 
-def write_sheet_breaches_plan(wb, vios):
+def write_sheet_breaches_plan(wb, vios, page_scope="fix", sheet_name="Bre Plan fix"):
     bold = Font(bold=True)
-    ws = wb.create_sheet("Breaches (Plan)")
+    ws = wb.create_sheet(sheet_name)
 
-    # ---- Summary counts (top) ----
+    task_day_scopes = vios.get("task_day_scopes", {}) or {}
+    task_scopes = vios.get("task_scopes", {}) or {}
+    phase_scopes = vios.get("phase_scopes", {}) or {}
+
+    def scope_window(row):
+        # row: [date, module, phase, op_id, worker, reason, phase_start, phase_end]
+        return _merge_scope({
+            task_day_scopes.get((row[1], row[3], row[0]), ""),
+            phase_scopes.get((row[1], row[2]), ""),
+        })
+
+    def scope_order(row):
+        return _merge_scope({
+            task_day_scopes.get((row[1], row[3], row[0]), ""),
+            phase_scopes.get((row[1], row[2]), ""),
+        })
+
+    def scope_unavail_task(row):
+        return _merge_scope({task_day_scopes.get((row[1], row[2], row[0]), "")})
+
+    tbl_window = [r for r in (vios.get("tbl_window", []) or []) if _scope_matches(page_scope, scope_window(r))]
+    tbl_order = [r for r in (vios.get("tbl_order", []) or []) if _scope_matches(page_scope, scope_order(r))]
+    tbl_unavail_task = [r for r in (vios.get("tbl_unavail_task", []) or []) if _scope_matches(page_scope, scope_unavail_task(r))]
+
     summary = [
-        ("Phase window breaches", len(vios.get("tbl_window", []) or [])),
-        ("Phase ordering breaches", len(vios.get("tbl_order", []) or [])),
-        ("Unavailable breaches (Tasks)", len(vios.get("tbl_unavail_task", []) or [])),
+        ("Phase window breaches", len(tbl_window)),
+        ("Phase ordering breaches", len(tbl_order)),
+        ("Unavailable breaches (Tasks)", len(tbl_unavail_task)),
     ]
 
     ws.cell(row=1, column=1, value="Breach counts (rows)").font = bold
@@ -2674,7 +2747,6 @@ def write_sheet_breaches_plan(wb, vios):
         ws.cell(row=i, column=1, value=k)
         ws.cell(row=i, column=2, value=int(v))
 
-    # Leave some space, then start the detailed lists
     row = 3 + len(summary) + 2
     def write_table(title, headers, rows):
         nonlocal row
@@ -2692,19 +2764,19 @@ def write_sheet_breaches_plan(wb, vios):
     write_table(
         "Phase window breaches",
         ["date", "module", "phase", "op_id", "worker", "reason", "phase_start", "phase_end"],
-        sorted(vios["tbl_window"], key=lambda x: (x[1], x[2], x[0]))
+        sorted(tbl_window, key=lambda x: (x[1], x[2], x[0]))
     )
 
     write_table(
         "Phase ordering breaches",
         ["date", "module", "phase(later)", "op_id", "worker", "required_prev_phase_last_date"],
-        sorted(vios["tbl_order"], key=lambda x: (x[1], x[2], x[0]))
+        sorted(tbl_order, key=lambda x: (x[1], x[2], x[0]))
     )
 
     write_table(
         "Unavailable breaches (Tasks)",
         ["date", "module", "op_id", "reason"],
-        sorted(vios["tbl_unavail_task"], key=lambda x: (x[1], x[2], x[0]))
+        sorted(tbl_unavail_task, key=lambda x: (x[1], x[2], x[0]))
     )
 
     for col in range(1, 12):
@@ -2712,21 +2784,60 @@ def write_sheet_breaches_plan(wb, vios):
 
 # ====================== SHEET 6 :Write sheet breaches employee =========================
 
-def write_sheet_breaches_employee(wb, vios):
+def write_sheet_breaches_employee(wb, vios, page_scope="fix", sheet_name="Bre Emp fix"):
     bold = Font(bold=True)
-    ws = wb.create_sheet("Breaches (Employees)")
+    ws = wb.create_sheet(sheet_name)
 
-    # ---- Summary counts (top) ----
+    task_day_scopes = vios.get("task_day_scopes", {}) or {}
+    task_scopes = vios.get("task_scopes", {}) or {}
+    emp_day_scopes = vios.get("emp_day_scopes", {}) or {}
+    emp_scopes = vios.get("emp_scopes", {}) or {}
+    worker_scopes = vios.get("worker_scopes", {}) or {}
+
+    def scope_skill(row):
+        return _merge_scope({
+            emp_day_scopes.get((row[1], row[2], row[0]), ""),
+            task_scopes.get((row[3], row[4]), ""),
+        })
+
+    def scope_minmax(row):
+        return _merge_scope({task_day_scopes.get((row[1], row[2], row[0]), "")})
+
+    def scope_no_manager(row):
+        return _merge_scope({task_scopes.get((row[0], row[1]), "")})
+
+    def scope_unavail_emp(row):
+        return _merge_scope({
+            emp_day_scopes.get((row[1], row[2], row[0]), ""),
+            task_scopes.get((row[4], row[5]), ""),
+        })
+
+    def scope_worker_row(row):
+        return _merge_scope({worker_scopes.get(row[0], "")})
+
+    def scope_pref(row):
+        return _merge_scope({worker_scopes.get(row[0], "")})
+
+    tbl_skill = [r for r in (vios.get("tbl_skill", []) or []) if _scope_matches(page_scope, scope_skill(r))]
+    tbl_minmax = [r for r in (vios.get("tbl_minmax", []) or []) if _scope_matches(page_scope, scope_minmax(r))]
+    tbl_no_manager = [r for r in (vios.get("tbl_no_manager", []) or []) if _scope_matches(page_scope, scope_no_manager(r))]
+    tbl_unavail_emp = [r for r in (vios.get("tbl_unavail_emp", []) or []) if _scope_matches(page_scope, scope_unavail_emp(r))]
+    tbl_overstay = [r for r in (vios.get("tbl_overstay", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
+    tbl_move_gap = [r for r in (vios.get("tbl_move_gap", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
+    tbl_ot_month = [r for r in (vios.get("tbl_ot_month", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
+    tbl_ot_annual = [r for r in (vios.get("tbl_ot_annual", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
+    tbl_pref_breach = [r for r in (vios.get("tbl_pref_breach", []) or []) if _scope_matches(page_scope, scope_pref(r))]
+
     summary = [
-        ("Skill mismatches", len(vios.get("tbl_skill", []) or [])),
-        ("Staffing min/max breaches", len(vios.get("tbl_minmax", []) or [])),
-        ("Tasks with no manager", len(vios.get("tbl_no_manager", []) or [])),
-        ("Unavailable breaches (Employees)", len(vios.get("tbl_unavail_emp", []) or [])),
-        ("Region overstay", len(vios.get("tbl_overstay", []) or [])),
-        ("Region change gap", len(vios.get("tbl_move_gap", []) or [])),
-        ("Overtime limit breaches (monthly)", len(vios.get("tbl_ot_month", []) or [])),
-        ("Overtime limit breaches (annual)", len(vios.get("tbl_ot_annual", []) or [])),
-        ("Preference breaches (suitability level 0)", len(vios.get("tbl_pref_breach", []) or [])),
+        ("Skill mismatches", len(tbl_skill)),
+        ("Staffing min/max breaches", len(tbl_minmax)),
+        ("Tasks with no manager", len(tbl_no_manager)),
+        ("Unavailable breaches (Employees)", len(tbl_unavail_emp)),
+        ("Region overstay", len(tbl_overstay)),
+        ("Region change gap", len(tbl_move_gap)),
+        ("Overtime limit breaches (monthly)", len(tbl_ot_month)),
+        ("Overtime limit breaches (annual)", len(tbl_ot_annual)),
+        ("Preference breaches (suitability level 0)", len(tbl_pref_breach)),
     ]
 
     ws.cell(row=1, column=1, value="Breach counts (rows)").font = bold
@@ -2736,7 +2847,6 @@ def write_sheet_breaches_employee(wb, vios):
         ws.cell(row=i, column=1, value=k)
         ws.cell(row=i, column=2, value=int(v))
 
-    # Leave some space, then start the detailed lists
     row = 3 + len(summary) + 2
     def write_table(title, headers, rows):
         nonlocal row
@@ -2754,56 +2864,55 @@ def write_sheet_breaches_employee(wb, vios):
     write_table(
         "Skill mismatches",
         ["date", "worker", "company", "module", "op_id"],
-        sorted(vios["tbl_skill"], key=lambda x: (x[1], x[2], x[0]))
+        sorted(tbl_skill, key=lambda x: (x[1], x[2], x[0]))
     )
 
     write_table(
         "Staffing min/max breaches",
         ["date", "module", "op_id", "heads", "min", "max", "status"],
-        sorted(vios["tbl_minmax"], key=lambda x: (x[0], x[1], x[2]))
+        sorted(tbl_minmax, key=lambda x: (x[0], x[1], x[2]))
     )
 
     write_table(
         "Tasks with no manager",
         ["module", "op_id"],
-        sorted(vios["tbl_no_manager"], key=lambda x: (x[0], x[1]))
+        sorted(tbl_no_manager, key=lambda x: (x[0], x[1]))
     )
 
     write_table(
         "Unavailable breaches (Employees)",
         ["date", "worker", "company", "reason", "module", "op_id"],
-        sorted(vios["tbl_unavail_emp"], key=lambda x: (x[1], x[0]))
+        sorted(tbl_unavail_emp, key=lambda x: (x[1], x[0]))
     )
 
     write_table(
         "Region overstay (exceeded max stay in a country/region)",
         ["worker", "region", "start_date", "end_date", "days", "stay_limit"],
-        sorted(vios.get("tbl_overstay", []), key=lambda x: (x[0], x[1], x[2]))
+        sorted(tbl_overstay, key=lambda x: (x[0], x[1], x[2]))
     )
 
     write_table(
         "Region change without sufficient gap",
         ["worker", "from_region", "to_region", "out_date", "in_date", "gap_days", "required_gap"],
-        sorted(vios.get("tbl_move_gap", []), key=lambda x: (x[0], x[3], x[4]))
+        sorted(tbl_move_gap, key=lambda x: (x[0], x[3], x[4]))
     )
 
-    # NEW: overtime limit breaches
     write_table(
         "Overtime limit breaches (monthly)",
         ["worker", "company", "year", "month", "ot_hours", "monthly_limit"],
-        sorted(vios.get("tbl_ot_month", []), key=lambda x: (x[0], x[2], x[3]))
+        sorted(tbl_ot_month, key=lambda x: (x[0], x[2], x[3]))
     )
 
     write_table(
         "Overtime limit breaches (annual)",
         ["worker", "company", "year", "ot_hours", "annual_limit"],
-        sorted(vios.get("tbl_ot_annual", []), key=lambda x: (x[0], x[2]))
+        sorted(tbl_ot_annual, key=lambda x: (x[0], x[2]))
     )
 
     write_table(
         "Preference breaches (assigned with suitability level 0)",
         ["worker", "company", "module", "fab_id", "region", "customer_company", "reason"],
-        sorted(vios.get("tbl_pref_breach", []), key=lambda x: (x[0], x[2]))
+        sorted(tbl_pref_breach, key=lambda x: (x[0], x[2]))
     )
 
     for col in range(1, 12):
@@ -3245,10 +3354,11 @@ def main():
         wb, plan_start, plan_end, env, maps,
         modules, assignments, assignment_blocks, req_module, vios
     )
-    # ===== SHEET 6: Breaches (Plan) =====
-    write_sheet_breaches_plan(wb, vios)
-    # ===== SHEET 7: Breaches (Employees) =====
-    write_sheet_breaches_employee(wb, vios)
+    # ===== SHEET 6-9: Breaches split by Fixed/Flexible =====
+    write_sheet_breaches_plan(wb, vios, page_scope="fix", sheet_name="Bre Plan fix")
+    write_sheet_breaches_plan(wb, vios, page_scope="flex", sheet_name="Bre Plan flex")
+    write_sheet_breaches_employee(wb, vios, page_scope="fix", sheet_name="Bre Emp fix")
+    write_sheet_breaches_employee(wb, vios, page_scope="flex", sheet_name="Bre Emp flex")
     # ===== isolated 1-day work =====
     write_sheet_wftool_isolated_workdays(
         wb, plan_start, plan_end, env, maps, modules, assignments, vios, cal
