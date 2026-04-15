@@ -64,7 +64,7 @@ MIN_WORKED_DAYS_FOR_TOOL = 4
 MIN_LEFT_DATE_SPAN_RATIO = 0.20
 
 DUMMY_HEAD_DAYS_FROM_PLAN_START = 10
-ONGOING_TAIL_KEEP_GAP_DAYS = 10
+ONGOING_TAIL_KEEP_GAP_DAYS = 30
 # ---------------------------------------------------------------------
 
 import re
@@ -486,6 +486,126 @@ def cut_module_if_phase_zero_workload(
                 })
 
     su_data["su_phase_zero_corrections"] = corrections
+    return corrections
+
+def cut_final_zero_workload_modules_to_dummy(
+    su_data: dict,
+    shifted_meta: dict,
+):
+    """
+    After final phase split is decided, if any module has 0 worked days in p2/p3/p4,
+    cut the whole module to dummy.
+    """
+    if not su_data:
+        return []
+
+    worker_date_map = su_data.get("worker_date_map", {})
+    if not worker_date_map:
+        return []
+
+    zero_codes = set()
+    for code, meta in shifted_meta.items():
+        if not meta.get("had_su_match"):
+            continue
+        alloc = meta.get("alloc_worked_days") or {}
+        if any(int(alloc.get(ph, 0)) <= 0 for ph in (2, 3, 4)):
+            zero_codes.add(code)
+
+    if not zero_codes:
+        return []
+
+    corrections = []
+    for (wid, dt), text in list(worker_date_map.items()):
+        code = extract_tool_code(text)
+        if code not in zero_codes:
+            continue
+        if not isinstance(text, str):
+            continue
+
+        old = text
+        new = old.replace(code, _break_tool_code(code), 1)
+        if new == old:
+            continue
+
+        _remember_original_text(su_data, wid, dt, old, new)
+        worker_date_map[(wid, dt)] = new
+        corrections.append({
+            "wid": wid,
+            "date": _to_ymd(dt),
+            "code": code,
+            "text": old,
+            "reason": "final module cut: final p2/p3/p4 workload contains zero",
+        })
+
+    su_data["su_final_zero_phase_corrections"] = corrections
+    return corrections
+
+def cut_modules_with_no_qc_to_dummy(
+    su_data: dict,
+    shifted_meta: dict,
+):
+    """
+    If a module has no QC worker at all in actual worked cells,
+    cut the whole module to dummy.
+    """
+    if not su_data:
+        return []
+
+    worker_date_map = su_data.get("worker_date_map", {})
+    worker_roles = su_data.get("worker_roles", {})
+    if not worker_date_map:
+        return []
+
+    # gather actual workers per module
+    code_to_wids = defaultdict(set)
+    for (wid, dt), text in worker_date_map.items():
+        code = extract_tool_code(text)
+        if code:
+            code_to_wids[code].add(wid)
+
+    no_qc_codes = set()
+
+    for code, meta in shifted_meta.items():
+        if not meta.get("had_su_match"):
+            continue
+
+        has_qc = False
+        for wid in code_to_wids.get(code, set()):
+            role_text = _clean_text(worker_roles.get(wid, "")).upper()
+            if "QC" in role_text:
+                has_qc = True
+                break
+
+        if not has_qc:
+            no_qc_codes.add(code)
+
+    if not no_qc_codes:
+        return []
+
+    corrections = []
+    for (wid, dt), text in list(worker_date_map.items()):
+        code = extract_tool_code(text)
+        if code not in no_qc_codes:
+            continue
+        if not isinstance(text, str):
+            continue
+
+        old = text
+        new = old.replace(code, _break_tool_code(code), 1)
+        if new == old:
+            continue
+
+        _remember_original_text(su_data, wid, dt, old, new)
+        worker_date_map[(wid, dt)] = new
+        corrections.append({
+            "wid": wid,
+            "date": _to_ymd(dt),
+            "code": code,
+            "text": old,
+            "reason": "final module cut: no QC worker exists in actual task cells",
+        })
+
+    su_data["su_no_qc_corrections"] = corrections
     return corrections
 # ============================================================
 # Code extraction from SU_Others cell text
@@ -1471,12 +1591,20 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
         pure_qc_first_idx = first_idx if pure_qc_first_idx is None else min(pure_qc_first_idx, first_idx)
 
     if pure_qc_first_idx is not None:
-        earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-        phase3_start_idx = max(pure_qc_first_idx, earliest_from_cap)
-        if total_days >= 2:
-            phase3_start_idx = min(phase3_start_idx, total_days - 1)
-        return phase3_start_idx, f"pure QC first joined on {_to_ymd(worked_days[pure_qc_first_idx])}", pure_qc_first_idx
+        if pure_qc_first_idx == 0:
+            return 0, "pure QC exists from first worked day", pure_qc_first_idx
 
+        else:
+            earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
+            phase3_start_idx = max(pure_qc_first_idx, earliest_from_cap)
+            if total_days >= 2:
+                phase3_start_idx = min(phase3_start_idx, total_days - 1)
+            return (
+                phase3_start_idx,
+                f"pure QC first joined on {_to_ymd(worked_days[pure_qc_first_idx])}",
+                pure_qc_first_idx,
+            )
+        
     # --------------------------------------------------
     # 2) No pure QC:
     #    find pure M / pure E real stop-working point
@@ -1517,13 +1645,16 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
         if total_days >= 2:
             phase3_start_idx = min(phase3_start_idx, total_days - 1)
         return phase3_start_idx, f"pure M/E stopped before {_to_ymd(worked_days[phase3_start_idx])}", phase3_start_idx
+    
 
     # --------------------------------------------------
     # 3) No trigger found -> fallback
     # --------------------------------------------------
-    phase3_start_idx = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
-    if total_days >= 2:
-        phase3_start_idx = min(phase3_start_idx, total_days - 1)
+    phase3_start_idx = latest_p2_end_idx + 1 if total_days >= 1 else 0
+    if phase3_start_idx < 0:
+        phase3_start_idx = 0
+    if total_days >= 1:
+        phase3_start_idx = min(phase3_start_idx, total_days)
     return phase3_start_idx, "no pure QC and no pure M/E stop found; fallback to cap split", None
 
 def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_days: int = None):
@@ -1595,7 +1726,11 @@ def build_shifted_meta(planned_meta: dict, su_data: dict | None, phase34_cap_day
 
             # worked_days is already compressed unique worked dates only.
             # Example: 01-15 and 31-40 becomes 25 worked-day timeline.
-            p2_days = max(1, phase3_start_idx) if total_days >= 2 else total_days
+            p2_days = phase3_start_idx if total_days >= 2 else total_days
+            if p2_days < 0:
+                p2_days = 0
+            if p2_days > total_days:
+                p2_days = total_days
             tail_days = max(0, total_days - p2_days)
 
             if phase34_cap_days is not None:
@@ -2208,7 +2343,11 @@ def build_env_and_schedule_decoder5(
     planned_meta = task_meta["planned_meta"]
     cut_rows = task_meta["cut_rows"]
     valid_code_set = set(planned_meta.keys())
-
+    su_data = None
+    shifted_meta = {}
+    shifted_code_to_phases = defaultdict(list)
+    code_occ = defaultdict(list)
+    su_final_zero_phase_corrections = []
     # 2) Skills from スキル集計
     skill_levels, skill_people = parse_skill_excel(skill_excel_path)
 
@@ -2216,6 +2355,8 @@ def build_env_and_schedule_decoder5(
     su_outlier_corrections = []
     su_short_span_corrections = []
     su_remaining_ratio_corrections = []
+    su_final_zero_phase_corrections = []
+    su_no_qc_corrections = []
     if read_all_data:
         su_data = parse_su_others(su_others_path, date_filter=date_filter if f_start is not None else None)
 
@@ -2249,13 +2390,18 @@ def build_env_and_schedule_decoder5(
                 su_data,
                 planned_meta=planned_meta
             )
-
+        su_final_zero_phase_corrections = cut_final_zero_workload_modules_to_dummy(
+            su_data,
+            shifted_meta,
+        )
         all_su_corrections = (
             su_outlier_corrections
             + su_short_span_corrections
             + su_remaining_ratio_corrections
             + su_phase_zero_corrections
-        )
+            + su_no_qc_corrections
+            + su_final_zero_phase_corrections
+        )   
         # Summarize outlier-cut modules so they appear in CUT OUT + DUMMY MODULES sections
         outlier_cut_summary = defaultdict(list)  # code -> list of sample original texts
         for rec in all_su_corrections:
@@ -2366,7 +2512,53 @@ def build_env_and_schedule_decoder5(
     worker_id_to_name = {w["id"]: w["name"] for w in worker_list}
 
     # 5) Build shifted meta using SU_Others
-    shifted_meta, code_to_shifted_phases_simple, _code_occ = build_shifted_meta(planned_meta, su_data if read_all_data else None, phase34_cap_days=phase34_cap_days)
+    shifted_meta, shifted_code_to_phases, code_occ = build_shifted_meta(
+        planned_meta,
+        su_data if read_all_data else None,
+        phase34_cap_days=phase34_cap_days,
+    )
+    su_no_qc_corrections = []
+    if read_all_data and su_data is not None:
+        su_no_qc_corrections = cut_modules_with_no_qc_to_dummy(
+            su_data,
+            shifted_meta,
+        )
+
+        if su_no_qc_corrections:
+            no_qc_codes = set()
+            for rec in su_no_qc_corrections:
+                code = rec.get("code")
+                if code:
+                    no_qc_codes.add(code)
+
+            for code in sorted(no_qc_codes):
+                cut_rows.append((code, "DUMMY: no QC worker exists in actual task cells"))
+                planned_meta.pop(code, None)
+                shifted_meta.pop(code, None)
+
+            valid_code_set = set(planned_meta.keys())
+            task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
+    # 5.2) FINAL CUT: if final p2/p3/p4 workload has zero, cut whole module to dummy
+    if read_all_data and su_data is not None:
+        su_final_zero_phase_corrections = cut_final_zero_workload_modules_to_dummy(
+            su_data,
+            shifted_meta,
+        )
+
+        if su_final_zero_phase_corrections:
+            zero_phase_codes = set()
+            for rec in su_final_zero_phase_corrections:
+                code = rec.get("code")
+                if code:
+                    zero_phase_codes.add(code)
+
+            for code in sorted(zero_phase_codes):
+                cut_rows.append((code, "DUMMY: final p2/p3/p4 workload contains zero"))
+                planned_meta.pop(code, None)
+                shifted_meta.pop(code, None)
+
+            valid_code_set = set(planned_meta.keys())
+            task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
     
     # 5.25) OPTION B: if SU_Others NOT FOUND -> skip module entirely (do not output in Schedule.yaml)
     # This also prevents it from appearing in WORKLOAD WARNING because tool tasks won't exist.
@@ -2615,37 +2807,25 @@ def build_env_and_schedule_decoder5(
             "other_op": 1, "personal_business_op": 1
         }
 
-    # Decoder5 skill rule from SU_Others role column:
-    # - QC => min p3/p4 = 1
-    # - QC + any real tool assignment before module p3 start => min p2 = 1
     worker_by_id = {w["id"]: w for w in environment["worker_list"]}
     worker_roles = su_data.get("worker_roles", {}) if (read_all_data and su_data is not None) else {}
 
-    qc_wids = set()
     for wid, role_text in worker_roles.items():
         role_norm = _clean_text(role_text).upper()
+        w = worker_by_id.get(wid)
+        if w is None:
+            continue
+
+        # QC side => p3/p4
         if "QC" in role_norm:
-            qc_wids.add(wid)
-            w = worker_by_id.get(wid)
-            if w is not None:
-                w["skill_map"]["p3"] = max(int(w["skill_map"].get("p3", 0)), 1)
-                w["skill_map"]["p4"] = max(int(w["skill_map"].get("p4", 0)), 1)
+            w["skill_map"]["p3"] = max(int(w["skill_map"].get("p3", 0)), 1)
+            w["skill_map"]["p4"] = max(int(w["skill_map"].get("p4", 0)), 1)
 
-    if read_all_data and su_data is not None and qc_wids:
-        for (wid, dt), raw_text in su_data["worker_date_map"].items():
-            if wid not in qc_wids:
-                continue
-            code = extract_tool_code(raw_text)
-            if not code or code not in module_phase3_start_map:
-                continue
-            p3_start = module_phase3_start_map.get(code)
-            if p3_start is None:
-                continue
-            if dt < p3_start:
-                w = worker_by_id.get(wid)
-                if w is not None:
-                    w["skill_map"]["p2"] = max(int(w["skill_map"].get("p2", 0)), 1)
+        # M or E side => p2
+        if ("M" in role_norm) or ("E" in role_norm):
+            w["skill_map"]["p2"] = max(int(w["skill_map"].get("p2", 0)), 1)
 
+    # merge with スキル集計
     for w in environment["worker_list"]:
         key = _norm_name(w["name"])
         excel_map = skill_levels.get(key)
