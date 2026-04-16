@@ -1543,20 +1543,10 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
     worker_roles = su_data.get("worker_roles", {}) if su_data else {}
     worked_index = {d: i for i, d in enumerate(worked_days)}
 
-    # configurable: how many compressed worked-day gaps are still treated as "not stopped yet"
     PURE_ME_STOP_GAP_TOLERANCE = 3
 
     def _rt(role_text: str) -> str:
         return _clean_text(role_text).upper()
-
-    def _has_qc(role_text: str) -> bool:
-        return "QC" in _rt(role_text)
-
-    def _has_m(role_text: str) -> bool:
-        return "M" in _rt(role_text)
-
-    def _has_e(role_text: str) -> bool:
-        return "E" in _rt(role_text)
 
     def _role_is_pure_qc(role_text: str) -> bool:
         rt = _rt(role_text)
@@ -1570,7 +1560,6 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
         rt = _rt(role_text)
         return ("E" in rt) and ("QC" not in rt) and ("M" not in rt)
 
-    # collect compressed worked indexes by worker for this module
     by_wid = defaultdict(list)
     for dt, wid, _disp in sorted(code_occ.get(code, []), key=lambda x: (x[0], x[1])):
         if dt in worked_index:
@@ -1579,9 +1568,7 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
     total_days = len(worked_days)
     latest_p2_end_idx = max(0, total_days - int(phase34_cap_days) - 1) if phase34_cap_days is not None else 0
 
-    # --------------------------------------------------
-    # 1) First priority: pure QC
-    # --------------------------------------------------
+    # 1) find first pure QC
     pure_qc_first_idx = None
     for wid, idxs in by_wid.items():
         role_text = worker_roles.get(wid, "")
@@ -1590,9 +1577,45 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
         first_idx = min(idxs)
         pure_qc_first_idx = first_idx if pure_qc_first_idx is None else min(pure_qc_first_idx, first_idx)
 
+    # 2) find pure M / pure E stop
+    pure_me_stop_idx = None
+    for wid, idxs in by_wid.items():
+        role_text = worker_roles.get(wid, "")
+        if not (_role_is_pure_m(role_text) or _role_is_pure_e(role_text)):
+            continue
+
+        idxs = sorted(set(idxs))
+        if not idxs:
+            continue
+
+        cluster_end = idxs[0]
+        for i in range(1, len(idxs)):
+            gap = idxs[i] - idxs[i - 1]
+            if gap <= (PURE_ME_STOP_GAP_TOLERANCE + 1):
+                cluster_end = idxs[i]
+            else:
+                break
+
+        candidate = cluster_end + 1
+        if candidate >= total_days:
+            continue
+
+        pure_me_stop_idx = candidate if pure_me_stop_idx is None else min(pure_me_stop_idx, candidate)
+
+    # 3) decision
     if pure_qc_first_idx is not None:
+        # QC exists from first worked day:
+        # still allow pure M/E stop to decide phase 3
         if pure_qc_first_idx == 0:
-            return 0, "pure QC exists from first worked day", pure_qc_first_idx
+            if pure_me_stop_idx is not None:
+                earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
+                phase3_start_idx = max(pure_me_stop_idx, earliest_from_cap)
+                if total_days >= 2:
+                    phase3_start_idx = min(phase3_start_idx, total_days - 1)
+                return phase3_start_idx, f"pure QC from start, pure M/E stopped before {_to_ymd(worked_days[phase3_start_idx])}", phase3_start_idx
+
+            # important: no pure M/E stop found -> force p2 = 0
+            return 0, "pure QC exists from first worked day and no pure M/E stop found", pure_qc_first_idx
 
         else:
             earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
@@ -1604,52 +1627,16 @@ def _find_qc_phase3_start_day(code: str, worked_days: list, code_occ: dict, su_d
                 f"pure QC first joined on {_to_ymd(worked_days[pure_qc_first_idx])}",
                 pure_qc_first_idx,
             )
-        
-    # --------------------------------------------------
-    # 2) No pure QC:
-    #    find pure M / pure E real stop-working point
-    # --------------------------------------------------
-    pure_me_stop_idx = None
 
-    for wid, idxs in by_wid.items():
-        role_text = worker_roles.get(wid, "")
-        if not (_role_is_pure_m(role_text) or _role_is_pure_e(role_text)):
-            continue
-
-        idxs = sorted(set(idxs))
-        if not idxs:
-            continue
-
-        # Find the final cluster end, allowing small temporary gaps.
-        # Example tolerance=3:
-        # 1,2,3,7,8 => still same working run
-        # 1,2,3,10  => stop at 3, re-enter later
-        cluster_end = idxs[0]
-        for i in range(1, len(idxs)):
-            gap = idxs[i] - idxs[i - 1]
-            if gap <= (PURE_ME_STOP_GAP_TOLERANCE + 1):
-                cluster_end = idxs[i]
-            else:
-                break
-
-        # Phase 3 starts AFTER that stop point
-        candidate = cluster_end + 1
-        if candidate >= total_days:
-            continue
-
-        pure_me_stop_idx = candidate if pure_me_stop_idx is None else min(pure_me_stop_idx, candidate)
-
+    # 4) if no pure QC, use pure M/E stop if available
     if pure_me_stop_idx is not None:
         earliest_from_cap = max(1, latest_p2_end_idx + 1) if total_days >= 2 else 0
         phase3_start_idx = max(pure_me_stop_idx, earliest_from_cap)
         if total_days >= 2:
             phase3_start_idx = min(phase3_start_idx, total_days - 1)
         return phase3_start_idx, f"pure M/E stopped before {_to_ymd(worked_days[phase3_start_idx])}", phase3_start_idx
-    
 
-    # --------------------------------------------------
-    # 3) No trigger found -> fallback
-    # --------------------------------------------------
+    # 5) real fallback: no QC and no M/E stop
     phase3_start_idx = latest_p2_end_idx + 1 if total_days >= 1 else 0
     if phase3_start_idx < 0:
         phase3_start_idx = 0
