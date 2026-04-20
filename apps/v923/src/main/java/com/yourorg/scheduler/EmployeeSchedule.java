@@ -162,6 +162,7 @@ public class EmployeeSchedule {
 
         public Map<String,Integer> regionPreference   = new HashMap<>();
         public Map<String,Integer> customerPreference = new HashMap<>();
+        public Map<String,String> workerTypeByOperation = new HashMap<>();
 
         // -------- HISTORY (fixed / past schedule summary) --------
         // total fixed hours over ALL history you want to consider (before cutoff, etc.)
@@ -179,6 +180,17 @@ public class EmployeeSchedule {
             this.id = id; this.wid = wid; this.name = name;
             if (skills != null) this.skills = new HashMap<>(skills);
             this.isManager = isManager; this.workerCompany = company;
+        }
+
+        public String workerTypeForOperation(String opId) {
+            if (opId == null || opId.isBlank()) return "regular";
+            String t = workerTypeByOperation.get(opId);
+            if (t == null || t.isBlank()) return "regular";
+            return t.trim().toLowerCase(Locale.ROOT);
+        }
+
+        public boolean isRegularForOperation(String opId) {
+            return !"spot".equals(workerTypeForOperation(opId));
         }
         // last fixed assignment info (latest fixed day in history)
         public int histLastFixedDayId = Integer.MIN_VALUE;  // -inf means none
@@ -215,7 +227,7 @@ static class OpTaskMeta {
 
     // ---------- Planning Entities (single pass) ----------
 
-    @PlanningEntity
+    @PlanningEntity(difficultyComparatorClass = BlockDecision.DifficultyComparator.class)
     public static class BlockDecision {
         @PlanningId public int id;
 
@@ -251,6 +263,30 @@ static class OpTaskMeta {
                 if (a == null) return (b == null) ? 0 : 1;
                 if (b == null) return -1;
                 return Integer.compare(a, b);
+            }
+        }
+
+        public static final class DifficultyComparator implements Comparator<BlockDecision> {
+            @Override
+            public int compare(BlockDecision a, BlockDecision b) {
+                if (a == b) return 0;
+                if (a == null) return -1;
+                if (b == null) return 1;
+
+                int aWindow = Math.max(1, a.windowEnd - a.windowStart + 1);
+                int bWindow = Math.max(1, b.windowEnd - b.windowStart + 1);
+
+                // Ascending = easy -> hard. Weakest-fit-decreasing will reverse this order.
+                if (a.requiredHours != b.requiredHours) {
+                    return Integer.compare(a.requiredHours, b.requiredHours);
+                }
+                if (aWindow != bWindow) {
+                    return Integer.compare(bWindow, aWindow); // larger window easier
+                }
+                if (a.maxHeads != b.maxHeads) {
+                    return Integer.compare(a.maxHeads, b.maxHeads);
+                }
+                return Integer.compare(a.id, b.id);
             }
         }
 
@@ -307,7 +343,7 @@ static class OpTaskMeta {
     }
 }
 
-    @PlanningEntity
+    @PlanningEntity(difficultyComparatorClass = CrewSeat.DifficultyComparator.class)
     public static class CrewSeat {
         @PlanningId public int id;
 
@@ -391,42 +427,43 @@ static class OpTaskMeta {
                 if (a == null) return 1;
                 if (b == null) return -1;
 
-                // UNASSIGNED should be last
                 boolean aUnassigned = (a.id == 0);
                 boolean bUnassigned = (b.id == 0);
-                if (aUnassigned != bUnassigned) {
-                    return aUnassigned ? 1 : -1;
+                if (aUnassigned != bUnassigned) return aUnassigned ? 1 : -1;
+
+                int aSkills = positiveSkillCount(a);
+                int bSkills = positiveSkillCount(b);
+                if (aSkills != bSkills) {
+                    return Integer.compare(aSkills, bSkills); // fewer skills first
                 }
 
-                // Weak-fit construction bias:
-                // fewer usable skills first = use specialist first, keep flexible worker for later
-                int aBreadth = positiveSkillCount(a);
-                int bBreadth = positiveSkillCount(b);
-                if (aBreadth != bBreadth) {
-                    return Integer.compare(aBreadth, bBreadth);
-                }
-
-                // Lower historical fixed load first
-                if (a.histFixedTotalHours != b.histFixedTotalHours) {
-                    return Integer.compare(a.histFixedTotalHours, b.histFixedTotalHours);
-                }
-
-                // Non-manager before manager for generic ordering
-                // (manager seats are already filtered separately in eligibleEmployeesForSeat)
                 if (a.isManager != b.isManager) {
-                    return a.isManager ? 1 : -1;
+                    return a.isManager ? 1 : -1; // non-manager first in generic order
                 }
 
                 return Integer.compare(a.id, b.id);
             }
+        }
 
-            private static int positiveSkillCount(EmployeeFact e) {
-                if (e == null || e.skills == null) return 0;
-                int c = 0;
-                for (Integer v : e.skills.values()) {
-                    if (v != null && v > 0) c++;
+        public static class DifficultyComparator implements Comparator<CrewSeat> {
+            @Override
+            public int compare(CrewSeat a, CrewSeat b) {
+                if (a == b) return 0;
+                if (a == null) return -1;
+                if (b == null) return 1;
+
+                if (a.needManager != b.needManager) {
+                    return a.needManager ? 1 : -1; // manager seat harder
                 }
-                return c;
+                int aCand = (a.candidateEmployees == null) ? Integer.MAX_VALUE : a.candidateEmployees.size();
+                int bCand = (b.candidateEmployees == null) ? Integer.MAX_VALUE : b.candidateEmployees.size();
+                if (aCand != bCand) {
+                    return Integer.compare(bCand, aCand); // more candidates easier
+                }
+                if (a.seatIndex != b.seatIndex) {
+                    return Integer.compare(b.seatIndex, a.seatIndex); // lower index harder
+                }
+                return Integer.compare(a.id, b.id);
             }
         }
     }
@@ -486,6 +523,33 @@ static class OpTaskMeta {
     static boolean isManager(EmployeeFact e) { return e != null && e.isManager; }
     static String company(EmployeeFact e) { return e == null ? "" : (e.workerCompany == null ? "" : e.workerCompany); }
     static double avgSkill(String opId) { return OP_AVG_SKILL.getOrDefault(opId, 3.0); }
+
+    static int positiveSkillCount(EmployeeFact e) {
+        if (e == null || e.skills == null) return 0;
+        int c = 0;
+        for (Integer v : e.skills.values()) {
+            if (v != null && v > 0) c++;
+        }
+        return c;
+    }
+
+    static int workerTypeRank(EmployeeFact e, String opId) {
+        if (e == null || e.id == 0) return 999;
+        return e.isRegularForOperation(opId) ? 0 : 1;
+    }
+
+    static int seatAwareWorkerOrderScore(CrewSeat s, EmployeeFact e) {
+        if (e == null || e.id == 0) return Integer.MAX_VALUE;
+        int score = 0;
+        score += workerTypeRank(e, s == null ? null : s.opId) * 1_000_000;
+        score += positiveSkillCount(e) * 1_000;
+        if (s != null && !s.needManager) {
+            score += e.isManager ? 100 : 0;
+        }
+        score += Math.max(0, e.histFixedTotalHours / 10);
+        score += e.id;
+        return score;
+    }
 
     // fixed task-count per employee per day (counts tasks, not hours)
     static Map<Integer, Map<Integer, Integer>> FIXED_TASKCOUNT_BY_EMP_DAY = new HashMap<>();
@@ -1067,10 +1131,7 @@ static class OpTaskMeta {
         static final int CONTINUOUS_REGION_STAY_W = 5;
         static final int FAB_PREFERENCE_W  = 5;
         static final int RECOMMEND_HEADS_W = 50; // tune
-        static final int WEAKEST_FIT_W              = 40;
-        static final int WEAKEST_FIT_MANAGER_SAVE_W = 80;
-        static final int WEAKEST_FIT_PREF_SAVE_W    = 15;
-        static final int WEAKEST_FIT_OVERSKILL_W    = 20;
+        static final int REGULAR_SPOT_W    = 40;
 
         @Override public Constraint[] defineConstraints(ConstraintFactory f) {
             return new Constraint[] {
@@ -1103,9 +1164,9 @@ static class OpTaskMeta {
                 softBalanceTotalHours(f), 
                 // softContinuousRegionStay(f), 
                 softFabPreference(f),
+                preferRegularOverSpot(f),
                 recommendHeadcount(f),
                 preferSeatPriorityByRecommendRange(f),
-                weakestFitAssignment(f),
             };
         }
 
@@ -1907,6 +1968,19 @@ static class OpTaskMeta {
                 )
                 .asConstraint("soft-fab-preference");
         }
+
+        Constraint preferRegularOverSpot(ConstraintFactory f) {
+            return f.forEach(CrewSeat.class)
+                .join(f.forEach(BlockDecision.class),
+                    Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+                .filter((s, b) -> !isUnassigned(s.employee))
+                .filter((s, b) -> !s.employee.isRegularForOperation(s.opId))
+                .penalize(
+                    HardMediumSoftScore.ONE_SOFT,
+                    (s, b) -> REGULAR_SPOT_W
+                )
+                .asConstraint("prefer-regular-over-spot");
+        }
         static int expPenalty(int diff) {
             // exponential growth but clamped to int
             // diff=0 => 0
@@ -1979,94 +2053,6 @@ static class OpTaskMeta {
 
     }
     
-static int positiveSkillCount(EmployeeFact e) {
-    if (e == null || e.skills == null) return 0;
-    int c = 0;
-    for (Integer v : e.skills.values()) {
-        if (v != null && v > 0) c++;
-    }
-    return c;
-}
-
-static int totalPreferencePower(EmployeeFact e) {
-    if (e == null) return 0;
-
-    int total = 0;
-    if (e.regionPreference != null) {
-        for (Integer v : e.regionPreference.values()) {
-            if (v != null && v > 1) total += v;
-        }
-    }
-    if (e.customerPreference != null) {
-        for (Integer v : e.customerPreference.values()) {
-            if (v != null && v > 1) total += v;
-        }
-    }
-    return total;
-}
-
-    static int weakestFitPenalty(CrewSeat s, BlockDecision b, EmployeeFact e) {
-        if (s == null || b == null || isUnassigned(e)) return 0;
-
-        int penalty = 0;
-
-        int opSkill = Math.max(0, skill(e, s.opId));
-        int breadth = positiveSkillCount(e);
-
-        String regionId = CAL.regionOfFab(s.factory);
-        String customerId = CAL.customerOfFab(s.factory);
-
-        int regionLevel = regionPref(e, regionId);
-        int customerLevel = customerPref(e, customerId);
-
-        // 1) Main weak-fit idea:
-        // use less flexible worker first, save broad worker for later
-        penalty += breadth * WEAKEST_FIT_W;
-
-        // 2) Save managers unless this seat really needs one
-        if (!s.needManager && e.isManager) {
-            penalty += WEAKEST_FIT_MANAGER_SAVE_W;
-        }
-
-        // 3) Save high-preference workers when seat does not really need that advantage
-        // level 0 should already be prevented elsewhere by candidate building if you use it that way
-        int prefPower = Math.max(0, regionLevel - 1) + Math.max(0, customerLevel - 1);
-        penalty += prefPower * WEAKEST_FIT_PREF_SAVE_W;
-
-        // 4) Overskilled generic worker on easy seat:
-        // if employee has very broad coverage and also high op skill,
-        // keep them for harder/later tasks unless needed
-        if (breadth >= 4 && opSkill >= 3) {
-            penalty += WEAKEST_FIT_OVERSKILL_W * (breadth - 3) * opSkill;
-        }
-
-        // 5) Slightly protect early recommended seats:
-        // seatIndex inside recommend range should be less penalized
-        int min = b.recommendMinHeads;
-        int max = b.recommendMaxHeads;
-        if (min <= 0 && max > 0) min = max;
-        if (max <= 0 && min > 0) max = min;
-        if (max < min) max = min;
-
-        boolean insideRecommended = (max > 0 && s.seatIndex < max);
-        if (insideRecommended) {
-            penalty = Math.max(0, penalty - 20);
-        }
-
-        return Math.max(0, penalty);
-    }
-
-    Constraint weakestFitAssignment(ConstraintFactory f) {
-    return f.forEach(CrewSeat.class)
-        .join(f.forEach(BlockDecision.class),
-            Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-        .filter((s, b) -> !isUnassigned(s.employee))
-        .penalize(
-            HardMediumSoftScore.ONE_SOFT,
-            (s, b) -> weakestFitPenalty(s, b, s.employee)
-        )
-        .asConstraint("soft-weakest-fit-assignment");
-    }
     // ---------------- Parsing ----------------
 
     static class OpDef {
@@ -2203,6 +2189,15 @@ static int totalPreferencePower(EmployeeFact e) {
                         ef.customerPreference.put(key, lvl);
                     }
                 }
+            }
+
+            Map<String,Object> typeMap = (Map<String,Object>) w.getOrDefault("worker_type_by_operation", Map.of());
+            for (Map.Entry<String,Object> te : typeMap.entrySet()) {
+                String opId = safeStr(te.getKey());
+                String workerType = safeStr(te.getValue()).trim().toLowerCase(Locale.ROOT);
+                if (workerType.isBlank()) workerType = "regular";
+                if (!"spot".equals(workerType)) workerType = "regular";
+                ef.workerTypeByOperation.put(opId, workerType);
             }
         }
 
@@ -3041,7 +3036,16 @@ static int totalPreferencePower(EmployeeFact e) {
                     );
                 }
             }
-            s.setCandidateEmployees(cand);
+
+            List<EmployeeFact> ordered = new ArrayList<>(cand);
+            ordered.sort(Comparator
+                    .comparingInt((EmployeeFact e) -> workerTypeRank(e, s.opId))
+                    .thenComparingInt(EmployeeSchedule::positiveSkillCount)
+                    .thenComparingInt(e -> (!s.needManager && e.isManager) ? 1 : 0)
+                    .thenComparingInt(e -> Math.max(0, e.histFixedTotalHours))
+                    .thenComparingInt(e -> e.id));
+
+            s.setCandidateEmployees(ordered);
 
         }
     }
@@ -3071,6 +3075,18 @@ static int totalPreferencePower(EmployeeFact e) {
             term.setUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedSeconds));
         }
         cfg.withTerminationConfig(term);
+        // NOTE:
+        // Do NOT force a single WEAKEST_FIT_DECREASING construction heuristic here,
+        // because this solver has multiple planning entity classes (BlockDecision and CrewSeat).
+        // With an explicit CH phase and no entityClass on the placer, Timefold throws:
+        // "QueuedEntityPlacerConfig ... has no entityClass configured ..."
+        //
+        // We still keep weakest-fit style through entity/value sorting support on the model:
+        // - @PlanningEntity(difficultyComparatorClass=...) on BlockDecision and CrewSeat
+        // - strengthComparatorClass on planning variables / value ranges
+        //
+        // If you later want explicit per-entity-class CH phases, define one CH phase for
+        // BlockDecision and another CH phase for CrewSeat, each with its own entity selector.
 
         return SolverFactory.create(cfg);
     }
