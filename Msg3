@@ -1,0 +1,371 @@
+Here’s exactly what I changed in the shadow patch file:
+
+[Patched file](sandbox:/mnt/data/EmployeeSchedule_shadow_patch.java)
+
+## 1. New imports
+
+I added the shadow-variable imports:
+
+```java
+import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
+import ai.timefold.solver.core.api.domain.variable.PiggybackShadowVariable;
+```
+
+These are needed so `BlockDecision` can hold maintained values instead of recalculating from joins every time.
+
+---
+
+## 2. New shadow fields in `BlockDecision`
+
+Inside `BlockDecision`, I added these 4 fields:
+
+```java
+public int assignedSeatCountShadow = 0;
+public int assignedSkillSumShadow = 0;
+public int assignedEmployeeCountShadow = 0;
+public int producedHoursTotalShadow = 0;
+```
+
+### Meaning of each one
+
+* `assignedSeatCountShadow`
+  number of **non-unassigned, non-fixed** seats currently assigned to this block
+
+* `assignedSkillSumShadow`
+  sum of `skill(employee, block.opId)` for assigned non-fixed seats in this block
+
+* `assignedEmployeeCountShadow`
+  count of assigned non-fixed employees in this block
+  this is used for average skill calculation
+
+* `producedHoursTotalShadow`
+  total produced hours for this block
+  = `fixedAssignedHoursActual` + dynamic produced hours from assigned flexible seats
+
+---
+
+## 3. Shadow annotations on `BlockDecision`
+
+I made `assignedSeatCountShadow` the main shadow target and connected it to both seat changes and block variable changes:
+
+```java
+@ShadowVariable.List({
+    @ShadowVariable(variableListenerClass = BlockShadowsFromSeatListener.class, sourceEntityClass = CrewSeat.class, sourceVariableName = "employee"),
+    @ShadowVariable(variableListenerClass = BlockShadowsFromBlockListener.class, sourceVariableName = "startDay"),
+    @ShadowVariable(variableListenerClass = BlockShadowsFromBlockListener.class, sourceVariableName = "days"),
+    @ShadowVariable(variableListenerClass = BlockShadowsFromBlockListener.class, sourceVariableName = "hours")
+})
+public int assignedSeatCountShadow = 0;
+```
+
+Then the other 3 are piggyback shadows:
+
+```java
+@PiggybackShadowVariable(shadowVariableName = "assignedSeatCountShadow")
+public int assignedSkillSumShadow = 0;
+
+@PiggybackShadowVariable(shadowVariableName = "assignedSeatCountShadow")
+public int assignedEmployeeCountShadow = 0;
+
+@PiggybackShadowVariable(shadowVariableName = "assignedSeatCountShadow")
+public int producedHoursTotalShadow = 0;
+```
+
+### Why this setup
+
+Because all 4 values are recalculated together from the same logic, so one listener trigger is enough.
+
+---
+
+## 4. New listeners
+
+I added 2 listener classes.
+
+### A. `BlockShadowsFromSeatListener`
+
+This reacts when a `CrewSeat.employee` changes.
+
+It recomputes the shadow values for that seat’s block.
+
+### B. `BlockShadowsFromBlockListener`
+
+This reacts when block variables change:
+
+* `startDay`
+* `days`
+* `hours`
+
+That matters because produced hours depend on those values.
+
+So even if the seat assignments stay the same, changing block timing/hours updates `producedHoursTotalShadow`.
+
+---
+
+## 5. New recompute helpers
+
+I added a small set of helper methods:
+
+### `initializeAllBlockShadows(SinglePassPlan plan)`
+
+Used to initialize all block shadow values before solving / score analysis.
+
+It builds `seatsByBlock` once and fills the shadow values on every block.
+
+### `recomputeBlockShadows(ScoreDirector<SinglePassPlan> scoreDirector, Integer blockId)`
+
+This is what the listeners call after a relevant variable changes.
+
+It finds the block, gathers seats belonging to that block, computes the 4 shadow values, and updates them through `beforeVariableChanged/afterVariableChanged`.
+
+### `recomputeBlockShadowValues(BlockDecision block, List<CrewSeat> seats)`
+
+Direct assignment version used for initial setup.
+
+### `computeBlockShadowValues(BlockDecision block, List<CrewSeat> seats)`
+
+This is the core calculation method.
+
+It returns:
+
+```java
+new int[]{seatCount, skillSum, empCount, producedTotal}
+```
+
+---
+
+## 6. How the new shadow values are computed
+
+Inside `computeBlockShadowValues(...)`:
+
+### Start values
+
+```java
+int seatCount = 0;
+int skillSum = 0;
+int empCount = 0;
+int producedTotal = block.fixedAssignedHoursActual;
+int hours = block.chosenHours();
+```
+
+### Then for each seat
+
+It skips:
+
+* null seat
+* unassigned seat
+* pinned fixed seat
+
+So the shadow values represent the **dynamic/flexible assignment part**, while fixed work is already included through:
+
+```java
+producedTotal = block.fixedAssignedHoursActual;
+```
+
+### For each valid seat
+
+It increments:
+
+* `seatCount`
+* `empCount`
+* `skillSum += skill(s.employee, block.opId)`
+
+Then if the block has valid `startDay/days`, it adds dynamic produced hours for each working day in the block.
+
+So the final `producedHoursTotalShadow` is:
+
+* real fixed assigned hours from data
+* plus dynamic current solve contribution
+
+---
+
+## 7. Constraints changed to use shadow values
+
+I changed 4 constraints.
+
+---
+
+### A. `noUnderfillByBlock(...)`
+
+### Before
+
+It grouped block + seats and called `producedHoursForBlock(b, seats)` every time.
+
+### After
+
+It now works directly on `BlockDecision`:
+
+```java
+.filter(b -> b.producedHoursTotalShadow < b.requiredHours)
+```
+
+Penalty uses:
+
+```java
+int gap = b.requiredHours - b.producedHoursTotalShadow;
+```
+
+### Benefit
+
+No more block-to-seat grouping for this constraint.
+
+---
+
+### B. `overfillAtMostOneDayByBlock(...)`
+
+### Before
+
+It grouped block + seats and recalculated:
+
+* produced hours
+* staffed count
+
+### After
+
+It now uses:
+
+```java
+int over = b.producedHoursTotalShadow - b.requiredHours;
+return over > b.assignedSeatCountShadow * hours;
+```
+
+Penalty also uses the same shadow values.
+
+### Benefit
+
+No more repeated seat scan inside this constraint.
+
+---
+
+### C. `softBalanceBlockAvgSkill(...)`
+
+### Before
+
+It grouped seats by block and recalculated assigned count + skill sum.
+
+### After
+
+It now uses:
+
+```java
+.filter(b -> b.assignedEmployeeCountShadow > 0)
+double avgAssigned = b.assignedSkillSumShadow / Math.max(1.0, b.assignedEmployeeCountShadow);
+```
+
+### Benefit
+
+Average skill is now already available on the block.
+
+---
+
+### D. `recommendHeadcount(...)`
+
+### Before
+
+It grouped seats to count staffed seats.
+
+### After
+
+It now uses:
+
+```java
+int staffed = b.assignedSeatCountShadow;
+```
+
+### Benefit
+
+Much cheaper and simpler.
+
+---
+
+## 8. What I did **not** change
+
+I did **not** refactor these yet:
+
+* `oneTaskPerEmpPerDay(...)`
+* `dailyCap12h(...)`
+* `softBalanceTotalHours(...)`
+* `softEncourageSkillVariety(...)`
+
+Reason:
+those are still employee/day-heavy or more complex grouped calculations, and they are not the best first shadow-variable targets.
+
+So this patch is focused only on **block-level repeated calculations**.
+
+---
+
+## 9. Initialization points added
+
+Because shadow values need to exist before score explanation / solving, I added initialization calls before the main solve stages.
+
+That way:
+
+* initial score snapshot can read correct shadow values
+* stage 2 starts with correct block summaries too
+
+Without that, the fields might stay zero until listeners begin firing.
+
+---
+
+## 10. Important design choice in this patch
+
+I treated fixed hours like this:
+
+```java
+producedHoursTotalShadow = fixedAssignedHoursActual + dynamic produced hours
+```
+
+So fixed data is still counted, but only through the real aggregated fixed amount already stored on the block.
+
+That means the patch respects your earlier direction:
+
+* do not re-expand fixed seats as rectangular block coverage
+* use actual fixed assigned hours already loaded into block data
+
+---
+
+## 11. Main expected effect
+
+This patch should mainly reduce repeated recalculation cost for block-level constraints.
+
+The biggest wins should be on:
+
+* underfill
+* overfill
+* recommend headcount
+* block average skill
+
+It will **not** solve all performance issues yet, but it is a good first refactor step before touching employee-day constraints.
+
+---
+
+## 12. One caution
+
+This patch uses real Timefold shadow-variable style, but your current model still uses:
+
+```java
+CrewSeat.blockId
+```
+
+instead of a direct `BlockDecision` reference.
+
+So the listeners must manually find the related block and seats by ID.
+
+That works conceptually, but it is not the cleanest possible design.
+A future larger refactor would probably change `blockId` into a direct reference for better shadow/inverse relation support.
+
+---
+
+## 13. In short
+
+The patch does 3 big things:
+
+1. **adds 4 block-level maintained values**
+2. **updates them automatically when seat/block variables change**
+3. **rewrites 4 expensive block-level constraints to use those values**
+
+If you want, next I can do the same style explanation for the exact listener flow step by step, like:
+
+* “when employee changes”
+* “when startDay changes”
+* “which listener fires”
+* “which shadow field updates”
