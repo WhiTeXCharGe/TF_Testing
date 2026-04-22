@@ -165,10 +165,10 @@ public class EmployeeSchedule {
         public Map<String,String> workerTypeByOperation = new HashMap<>();
 
         // -------- HISTORY (fixed / past schedule summary) --------
-        // total fixed hours over ALL history you want to consider (before cutoff, etc.)
+        // total fixed hours over ALL history want to consider (before cutoff, etc.)
         public int histFixedTotalHours = 0;
 
-        // fixed hours per dayId (only needed for active horizon days; can store all if you want)
+        // fixed hours per dayId (only needed for active horizon days;)
         public Map<Integer,Integer> histFixedHoursByDay = new HashMap<>();
 
         // fixed factories per dayId (same)
@@ -386,14 +386,14 @@ static class OpTaskMeta {
 
         @ValueRangeProvider(id = "eligibleEmployeesForSeat")
         public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
-            // Pinned → pin hard (or UNASSIGNED if you prefer; this doesn’t affect manager logic)
+            // Pinned → pin hard
             if (pinnedFixed && pinnedWid != null) {
                 for (EmployeeFact e : candidateEmployees) {
                     if (e != null && pinnedWid.equals(e.wid)) {
                         return new ListValueRange<>(List.of(e));
                     }
                 }
-                // For pinned but missing, you can still allow UNASSIGNED here if you want.
+                // For pinned but missing
                 return new ListValueRange<>(List.of(UNASSIGNED));
             }
 
@@ -516,7 +516,7 @@ static class OpTaskMeta {
     public static final boolean TRIM_FINISHED_MODULES = false;
     // if module ended more than this many days before cutOffDate,
     // it is considered finished and can be trimmed.
-    public static final int MODULE_TRIM_GRACE_DAYS = 6; // x days, change as you like
+    public static final int MODULE_TRIM_GRACE_DAYS = 6;
 
     static boolean isUnassigned(EmployeeFact e) { return e == null || e.id == 0; }
     static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
@@ -1150,8 +1150,8 @@ static class OpTaskMeta {
                 oneTaskPerEmpPerDay(f),
                 dailyCap12h(f),
                 regionTransitGap(f), 
-                // regionStayMaxOn(f), 
-                // regionAnnualStayMax(f),
+                regionStayMaxOn(f), 
+                regionAnnualStayMax(f),
                 // annualOvertimeLimit(f),  
                 // monthlyOvertimeLimit(f), 
 
@@ -1177,7 +1177,7 @@ static class OpTaskMeta {
                 .filter(b -> b.startDay != null && b.days != null
                         && (b.startDay + b.days - 1) > b.windowEnd)
                 .penalize(HardMediumSoftScore.ONE_HARD,
-                    b -> (b.startDay + b.days - 1) - b.windowEnd) // how far you overran
+                    b -> (b.startDay + b.days - 1) - b.windowEnd)
                 .asConstraint("block-end-within-window");
         }
 
@@ -1213,7 +1213,7 @@ static class OpTaskMeta {
             // FIXED seats: exact days only (no range span)
             if (s.pinnedFixed) {
                 if (s.pinnedWorkDays == null || s.pinnedWorkDays.isEmpty()) return false;
-                return s.pinnedWorkDays.contains(d.id); // already filtered to working days if you used isWorkingDay() above
+                return s.pinnedWorkDays.contains(d.id); // already filtered to working days if used isWorkingDay() above
             }
 
             // dynamic seats: range from block decision
@@ -1441,9 +1441,49 @@ static class OpTaskMeta {
             final EmployeeFact emp;
             final int dayId;
             final String region;
-            EmpDayRegion(EmployeeFact e, int d, String r) { emp = e; dayId = d; region = r; }
-        }
+            final boolean pinnedFixed;
+            final int phaseNum;
+            final int startDay;
+            final String module;
+            final String opId;
 
+            EmpDayRegion(EmployeeFact emp, int dayId, String region,
+                        boolean pinnedFixed, int phaseNum, int startDay,
+                        String module, String opId) {
+                this.emp = emp;
+                this.dayId = dayId;
+                this.region = region;
+                this.pinnedFixed = pinnedFixed;
+                this.phaseNum = phaseNum;
+                this.startDay = startDay;
+                this.module = module;
+                this.opId = opId;
+            }
+        }
+        private static List<EmpDayRegion> transitRelevantDays(List<EmpDayRegion> list) {
+            if (list == null || list.isEmpty()) return List.of();
+
+            boolean hasFlexible = list.stream().anyMatch(x -> x != null && !x.pinnedFixed);
+
+            List<EmpDayRegion> out = new ArrayList<>();
+            for (EmpDayRegion x : list) {
+                if (x == null || x.region == null || x.region.isBlank()) continue;
+
+                // avoid fixed vs fixed checking
+                if (!hasFlexible && x.pinnedFixed) {
+                    continue;
+                }
+
+                // for flex vs fixed:
+                // skip phase 1 / phase 2 start day of flexible task
+                if (!x.pinnedFixed && (x.phaseNum == 1 || x.phaseNum == 2) && x.dayId == x.startDay) {
+                    continue;
+                }
+
+                out.add(x);
+            }
+            return out;
+        }
         Constraint regionTransitGap(ConstraintFactory f) {
 
             var worked = f.forEach(DaySlot.class)
@@ -1452,7 +1492,18 @@ static class OpTaskMeta {
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .map((d, s, b) -> new EmpDayRegion(s.employee, d.id, CAL.regionOfFab(s.factory)))
+                .map((d, s, b) -> new EmpDayRegion(
+                        s.employee,
+                        d.id,
+                        CAL.regionOfFab(s.factory),
+                        s.pinnedFixed,
+                        s.phaseNum,
+                        (s.pinnedFixed
+                            ? (s.pinnedStart == null ? d.id : s.pinnedStart)
+                            : (b == null || b.startDay == null ? d.id : b.startDay)),
+                        s.module,
+                        s.opId
+                ))
                 .filter(x -> x.region != null && !x.region.isBlank())
                 .groupBy(x -> x.emp, ConstraintCollectors.toList(x -> x));
 
@@ -1460,7 +1511,15 @@ static class OpTaskMeta {
                 .filter((emp, list) -> emp != null && emp.id != 0 && list != null && !list.isEmpty())
                 .filter((emp, list) -> {
                     // Build deterministic per-day region map
+                    List<EmpDayRegion> relevant = transitRelevantDays(list);
                     java.util.TreeMap<Integer, String> dayToRegion = new java.util.TreeMap<>();
+                    for (EmpDayRegion x : relevant) {
+                        dayToRegion.merge(
+                            x.dayId,
+                            x.region,
+                            (a, b) -> (a.compareTo(b) <= 0) ? a : b
+                        );
+                    }
                     for (EmpDayRegion x : list) {
                         if (x == null || x.region == null || x.region.isBlank()) continue;
                         dayToRegion.merge(
@@ -1471,7 +1530,7 @@ static class OpTaskMeta {
                     }
                     if (dayToRegion.isEmpty()) return false;
 
-                    // Seed with last fixed history (optional but matches your concept)
+                    // Seed with last fixed history
                     int prevDay = Integer.MIN_VALUE;
                     String prevRegion = null;
 
@@ -1926,7 +1985,7 @@ static class OpTaskMeta {
                         // total days staying in this region (split by stay_off_interval)
                         int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
 
-                        // Optionally cap by legal limits (maxOn / maxAnnual) if you want:
+                        // Optionally cap by legal limits (maxOn / maxAnnual)
                         int maxOn     = CAL.maxStayOn(regionId);
                         int maxAnnual = CAL.annualMaxStay(regionId);
                         int allowedCap = totalSpan;
@@ -2590,7 +2649,7 @@ static class OpTaskMeta {
 
             rawRows.add(rr);
 
-            // keep your "any end" tracking for true fixed rows (used for pushing phase windows)
+            // keep "any end" tracking for true fixed rows (used for pushing phase windows)
             if ("fixed".equalsIgnoreCase(flex)) {
                 latestFixedEndAny.merge(module + "|" + phNum, eId, Math::max);
             }
@@ -2640,7 +2699,6 @@ static class OpTaskMeta {
                 fa.module = rr.module; fa.opId = rr.opId; fa.wid = rr.wid;
                 fa.phaseId = rr.phaseId; fa.phaseNum = rr.phaseNum;
                 fa.factory = rr.factory;
-                // optional: keep original s/e if you want; not required for coverage
                 fa.startDayId = rr.sId; fa.endDayId = rr.eId;
                 fa.hoursByDay.putAll(rr.byDay);
                 fixedRows.add(fa);
@@ -2694,7 +2752,7 @@ static class OpTaskMeta {
             }
         }
 
-        // IMPORTANT: assign these back to ParsedSchedule at end (same as you do now)
+        // IMPORTANT: assign these back to ParsedSchedule at end
         ParsedSchedule out = new ParsedSchedule();
         out.planStart = start;
         out.planEnd   = end;
@@ -2704,7 +2762,7 @@ static class OpTaskMeta {
         out.cutOffDayId = cutOffDayId;
         out.cutOffDate = cutOffDate;
 
-// and keep your window push logic below, using latestFixedEndInRange/latestFixedEndAny
+// and keep  window push logic below, using latestFixedEndInRange/latestFixedEndAny
 
         // ---- Push phase windows based on fixed ends (even if outside horizon) ----
         for (TaskWindow w : windows) {
@@ -2912,7 +2970,7 @@ static class OpTaskMeta {
                 // keep ONLY days inside plan_range/horizon
                 if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
 
-                // keep ONLY working days (optional but consistent with your constraints)
+                // keep ONLY working days
                 if (!isWorkingDay(dayId, factory)) continue;
 
                 workDays.add(dayId);
@@ -3085,7 +3143,7 @@ static class OpTaskMeta {
         // - @PlanningEntity(difficultyComparatorClass=...) on BlockDecision and CrewSeat
         // - strengthComparatorClass on planning variables / value ranges
         //
-        // If you later want explicit per-entity-class CH phases, define one CH phase for
+        // If later want explicit per-entity-class CH phases, define one CH phase for
         // BlockDecision and another CH phase for CrewSeat, each with its own entity selector.
 
         return SolverFactory.create(cfg);
@@ -3502,7 +3560,7 @@ static class OpTaskMeta {
                     + ", requiredKeys=" + (sch.requiredByKey == null ? 0 : sch.requiredByKey.size())
                     + ", activeModules=" + (sch.activeModules == null ? 0 : sch.activeModules.size()));
 
-            // warn if windows exceed solver daySlots (useful for your “0 hard but looks wrong” situation)
+            // warn if windows exceed solver daySlots
             if (sch.daySlots != null && !sch.daySlots.isEmpty() && sch.windows != null) {
                 long outCount = sch.windows.stream()
                         .filter(w -> w != null && (w.startDayId < minDay || w.endDayId > maxDay))
@@ -3549,7 +3607,7 @@ static class OpTaskMeta {
         // --------------------------------------------------
         // Solver horizon (ONLY these dayIds exist as DaySlot)
         // --------------------------------------------------
-        // clear history for all employees (skip UNASSIGNED if you want)
+        // clear history for all employees
         for (EmployeeFact e : env.employees) {
             if (e == null || e.id == 0) continue;
             e.histFixedTotalHours = 0;
@@ -3650,7 +3708,7 @@ static class OpTaskMeta {
                 // total fixed hours per employee
                 FIXED_TOTAL_HOURS_BY_EMP.merge(empId, h, Integer::sum);
 
-                // overtime maps (if you use these constraints later)
+                // overtime maps
                 LocalDate d  = sch.planStart.plusDays(dayId);
                 int year     = d.getYear();
                 int month    = d.getMonthValue();
@@ -3687,12 +3745,12 @@ static class OpTaskMeta {
         
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
-        // ---- Stage 1: your current settings (e.g., 90/90) ----
+        // ---- Stage 1: current settings (e.g., 90/90) ----
         SolverFactory<SinglePassPlan> factoryStage1 = buildSolverFactory(
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 300, 3600);
+                "0hard/*medium/*soft", 300, 600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         SinglePassPlan best1 = stage1.solve(p);
 
@@ -3716,8 +3774,8 @@ static class OpTaskMeta {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                300  /* spentMinutes */,
-                3600 /* unimprovedSeconds */);
+                180  /* spentMinutes */,
+                600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         SinglePassPlan best2 = stage2.solve(best1);
