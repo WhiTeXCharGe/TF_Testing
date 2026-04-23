@@ -479,3 +479,156 @@ You asked for 4 things. This patch does:
 After these changes, the code structure should stay compatible with your current file layout, because all edits are inside the classes and methods already present in the uploaded file. 
 
 If you want, next I can give you the same patch as a **single merged code block** that you can paste section by section without comparing manually.
+
+
+The 4 **errors** are from the patch, not from your project setup.
+
+## Real compile error
+
+This block is the problem:
+
+```java
+BlockDecision block = null;
+for (BlockDecision b : plan.blocks) {
+    if (b != null && b.id == blockId) {
+        block = b;
+        break;
+    }
+}
+...
+updateBlockShadowField(..., v -> block.assignedSeatCountShadow = v);
+```
+
+Because `block` is assigned more than once (`null` first, then later real value), Java says it is **not effectively final**, so it cannot be captured by lambda. That matches your line 574–577 area / later setter lambdas in the patch file. The patched file has those lambdas here. 
+
+## Fix
+
+Change `recomputeBlockShadows(...)` like this:
+
+```java
+static void recomputeBlockShadows(ScoreDirector<SinglePassPlan> scoreDirector, Integer blockId) {
+    if (scoreDirector == null || blockId == null) return;
+    SinglePassPlan plan = scoreDirector.getWorkingSolution();
+    if (plan == null || plan.blocks == null) return;
+
+    BlockDecision found = null;
+    for (BlockDecision b : plan.blocks) {
+        if (b != null && b.id == blockId) {
+            found = b;
+            break;
+        }
+    }
+    if (found == null) return;
+
+    final BlockDecision block = found;
+
+    List<CrewSeat> seats = new ArrayList<>();
+    if (plan.seats != null) {
+        for (CrewSeat s : plan.seats) {
+            if (s != null && s.blockId == blockId) {
+                seats.add(s);
+            }
+        }
+    }
+
+    int[] vals = computeBlockShadowValues(block, seats);
+
+    updateBlockShadowField(scoreDirector, block, "assignedSeatCountShadow",
+            block.assignedSeatCountShadow, vals[0],
+            v -> block.assignedSeatCountShadow = v);
+
+    updateBlockShadowField(scoreDirector, block, "assignedSkillSumShadow",
+            block.assignedSkillSumShadow, vals[1],
+            v -> block.assignedSkillSumShadow = v);
+
+    updateBlockShadowField(scoreDirector, block, "assignedEmployeeCountShadow",
+            block.assignedEmployeeCountShadow, vals[2],
+            v -> block.assignedEmployeeCountShadow = v);
+
+    updateBlockShadowField(scoreDirector, block, "producedHoursTotalShadow",
+            block.producedHoursTotalShadow, vals[3],
+            v -> block.producedHoursTotalShadow = v);
+}
+```
+
+The key part is:
+
+```java
+final BlockDecision block = found;
+```
+
+After that, lambdas are okay.
+
+---
+
+## About the warnings
+
+### 1. Platform encoding warnings
+
+These are not from the patch logic. They are Maven/project warnings, not code bugs.
+
+Examples:
+
+* `Using platform encoding`
+* `File encoding has not been set`
+
+You can ignore them for now.
+
+---
+
+### 2. `ShadowVariable` / `VariableListener` deprecated warnings
+
+Those warnings are real. In your 1.27 environment, the API still compiles but is marked deprecated for future removal.
+
+So:
+
+* it is **not a compile error**
+* but yes, the patch used an API style that is already marked deprecated in your version
+
+That means the patch direction may work temporarily, but it is **not ideal for long-term design**.
+
+---
+
+## Important honesty point
+
+Because of those deprecation warnings, and because your model still uses `blockId` instead of direct `BlockDecision` reference, this patch is not yet a “clean final solution”.
+
+It was a prototype direction.
+
+## My recommendation now
+
+Do this in order:
+
+### Option A — quickest
+
+Fix the lambda error above first and see if it compiles.
+
+### Option B — safer direction
+
+If you want fewer framework warnings and lower risk, stop trying full Timefold shadow-variable annotation right now and instead use:
+
+* normal helper recalculation methods
+* cached values refreshed before scoring / before solve stages
+
+That is less elegant, but safer in your current structure.
+
+---
+
+## My opinion
+
+For your current codebase, **true shadow-variable refactor is still too unstable right now** because:
+
+* your Timefold 1.27 shadow API path shows deprecation warnings
+* your entities are not modeled in the most shadow-friendly way
+* `CrewSeat -> blockId` makes listener logic awkward
+
+So the compile error can be fixed easily, but I would **not trust this patch as production-ready yet**.
+
+If you want, next I can rewrite this into a **safer non-shadow cached-field version** using the same 4 values:
+
+* `assignedSeatCountShadow`
+* `assignedSkillSumShadow`
+* `assignedEmployeeCountShadow`
+* `producedHoursTotalShadow`
+
+but without Timefold shadow annotations/listeners. That would fit your current structure better.
