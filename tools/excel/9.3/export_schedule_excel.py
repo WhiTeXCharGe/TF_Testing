@@ -1543,15 +1543,30 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
         except Exception:
             pass
     
-    # Collect per-worker working dates with their regions
-    perw_dates = defaultdict(list)  # wname -> list of (date, region_id)
+    # Collect per-worker working dates with their regions AND Fixed/Flexible scope.
+    # Important for breach split sheets:
+    #   - Fixed -> Fixed transit gap belongs to fix page.
+    #   - Any pair that touches Flexible (Fixed->Flexible, Flexible->Fixed, Flexible->Flexible) belongs to flex page.
+    perw_date_region_scopes = defaultdict(set)  # (wname, date, region_id) -> {'fix','flex'}
     worker_name = maps["worker_name"]
 
     for a in assignments:
         wname = worker_name.get(a["worker"], a["worker"])
         rid, _ = region_for_assignment(a)
         if rid:
-            perw_dates[wname].append((a["date"], rid))
+            perw_date_region_scopes[(wname, a["date"], rid)].add(_norm_flex(a.get("plan_flexibility")))
+
+    perw_dates = defaultdict(list)  # wname -> list of (date, region_id, scope)
+    for (wname, dt, rid), scopes in perw_date_region_scopes.items():
+        perw_dates[wname].append((dt, rid, _merge_scope(scopes)))
+
+    def _transition_scope(left_scope, right_scope):
+        vals = {left_scope, right_scope}
+        if "flex" in vals or "both" in vals:
+            return "flex"
+        if vals == {"fix"}:
+            return "fix"
+        return _merge_scope(vals)
 
     # Sort and build continuous presence segments
     presence_map = {}           # (wname, date) -> region_id
@@ -1569,7 +1584,8 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
         # Build raw "stops" grouped by region, with allowed gaps (stay_gap) for continuity
         i = 0
         while i < len(lst):
-            start_date, cur_r = lst[i]
+            start_date, cur_r, start_scope = lst[i]
+            segment_scope_values = {start_scope}
             (stay_limit, stay_gap) = _region_policy(regions, cur_r)
             if stay_gap is None: stay_gap = 0
             # If this is the first segment for this worker, also place an initial "in"
@@ -1585,16 +1601,18 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
             end_date = start_date
             j = i + 1
             while j < len(lst):
-                d, r = lst[j]
+                d, r, sc = lst[j]
                 if r != cur_r:
                     break
                 gap_days = (d - end_date).days - 1  # in-between non-working days count
                 if gap_days <= stay_gap:
                     end_date = d
+                    segment_scope_values.add(sc)
                     j += 1
                 else:
                     break
             seg_end = end_date
+            seg_scope = _merge_scope(segment_scope_values)
             segments[wname].append({
                 "region": cur_r,
                 "start": start_date,
@@ -1620,7 +1638,7 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
 
             i = j
             if i < len(lst):
-                next_start, next_r = lst[i]
+                next_start, next_r, next_scope0 = lst[i]
                 in_mark_day = next_start - timedelta(days=1)
                 if plan_start <= in_mark_day <= plan_end:
                     move_markers[wname].append({"type": "in", "date": in_mark_day, "region": next_r})
@@ -1642,10 +1660,11 @@ def build_region_presence(plan_start, plan_end, env, modules, assignments, maps,
                 actual_gap = (next_start - seg_end).days - 1
 
                 if actual_gap < required_gap:
+                    pair_scope = _transition_scope(seg_scope, next_scope0)
                     tbl_move_gap.append([
                         wname, cur_r, next_r,
                         seg_end.isoformat(), next_start.isoformat(),
-                        actual_gap, required_gap
+                        actual_gap, required_gap, pair_scope
                     ])
     return presence_map, segments, tbl_overstay, tbl_move_gap, move_markers
 
@@ -2815,6 +2834,12 @@ def write_sheet_breaches_employee(wb, vios, page_scope="fix", sheet_name="Bre Em
     def scope_worker_row(row):
         return _merge_scope({worker_scopes.get(row[0], "")})
 
+    def scope_move_gap(row):
+        # Pair-level scope: fix only for Fixed->Fixed; flex for Fixed->Flexible / Flexible->Fixed / Flexible->Flexible.
+        if len(row) >= 8:
+            return row[7]
+        return scope_worker_row(row)
+
     def scope_pref(row):
         return _merge_scope({worker_scopes.get(row[0], "")})
 
@@ -2823,7 +2848,7 @@ def write_sheet_breaches_employee(wb, vios, page_scope="fix", sheet_name="Bre Em
     tbl_no_manager = [r for r in (vios.get("tbl_no_manager", []) or []) if _scope_matches(page_scope, scope_no_manager(r))]
     tbl_unavail_emp = [r for r in (vios.get("tbl_unavail_emp", []) or []) if _scope_matches(page_scope, scope_unavail_emp(r))]
     tbl_overstay = [r for r in (vios.get("tbl_overstay", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
-    tbl_move_gap = [r for r in (vios.get("tbl_move_gap", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
+    tbl_move_gap = [r for r in (vios.get("tbl_move_gap", []) or []) if _scope_matches(page_scope, scope_move_gap(r))]
     tbl_ot_month = [r for r in (vios.get("tbl_ot_month", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
     tbl_ot_annual = [r for r in (vios.get("tbl_ot_annual", []) or []) if _scope_matches(page_scope, scope_worker_row(r))]
     tbl_pref_breach = [r for r in (vios.get("tbl_pref_breach", []) or []) if _scope_matches(page_scope, scope_pref(r))]
@@ -2894,7 +2919,7 @@ def write_sheet_breaches_employee(wb, vios, page_scope="fix", sheet_name="Bre Em
     write_table(
         "Region change without sufficient gap",
         ["worker", "from_region", "to_region", "out_date", "in_date", "gap_days", "required_gap"],
-        sorted(tbl_move_gap, key=lambda x: (x[0], x[3], x[4]))
+        [r[:7] for r in sorted(tbl_move_gap, key=lambda x: (x[0], x[3], x[4]))]
     )
 
     write_table(
