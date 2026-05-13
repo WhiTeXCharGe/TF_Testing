@@ -93,7 +93,7 @@ def create_workflow() -> WorkflowDef:
                     id=ope_id,
                     name=op_name,
                     workhours=[8, 10, 12],
-                    worker_range=(2, 3),
+                    worker_range=(operation_worker_min, operation_worker_max),
                 )
             )
 
@@ -108,6 +108,9 @@ def create_workflow() -> WorkflowDef:
 class RegionDef:
     id: str
     name: str
+    max_stay_on: int
+    max_annual_stay: int
+    stay_off_interval: int
     weekly_weekdays: list[str]
     single_days: list[str]
 
@@ -131,9 +134,9 @@ class RegionDef:
         return {
             "id": self.id,
             "name": self.name,
-            "max_stay_on": 80,
-            "max_annual_stay": 240,
-            "stay_off_interval": 3,
+            "max_stay_on": self.max_stay_on,
+            "max_annual_stay": self.max_annual_stay,
+            "stay_off_interval": self.stay_off_interval,
             "unavailable_dates": unavailable,
         }
 
@@ -178,26 +181,19 @@ class FabDef:
 
 
 def create_area_map() -> tuple[dict[str, FabDef], dict[str, RegionDef], dict[str, CompanyDef]]:
-    region_map: dict[str, RegionDef] = {
-        "r1": RegionDef(
-            id="r1",
-            name="America",
-            weekly_weekdays=["sat", "sun"],
-            single_days=[]
-        ),
-        "r2": RegionDef(
-            id="r2",
-            name="Germany",
-            weekly_weekdays=["sat", "sun"],
-            single_days=[]
-        ),
-        "r3": RegionDef(
-            id="r3",
-            name="Taiwan",
-            weekly_weekdays=["sat", "sun"],
-            single_days=[]
-        ),
-    }
+    # Build regions from config; id is assigned by list order
+    region_map: dict[str, RegionDef] = {}
+    for i, rdef in enumerate(region_definitions):
+        rid = f"r{i + 1}"
+        region_map[rid] = RegionDef(
+            id=rid,
+            name=rdef["name"],
+            max_stay_on=rdef["max_stay_on"],
+            max_annual_stay=rdef["max_annual_stay"],
+            stay_off_interval=rdef["stay_off_interval"],
+            weekly_weekdays=rdef["weekly_weekdays"],
+            single_days=rdef["single_days"],
+        )
 
     company_map: dict[str, CompanyDef] = {
         "c1": CompanyDef("c1", "AAA"),
@@ -238,6 +234,18 @@ def create_worker_company_map() -> dict[str, CompanyDef]:
     return company_map
 
 
+def create_transit_day_map(region_map: dict[str, RegionDef]) -> list[dict]:
+    """Generate transit entries for all ordered region pairs using configured options."""
+    transit_map = []
+    region_ids = list(region_map.keys())
+    for from_id in region_ids:
+        for to_id in region_ids:
+            if from_id != to_id:
+                days = random.choices(transit_day_options, transit_day_weights, k=1)[0]
+                transit_map.append({"from": from_id, "to": to_id, "days": days})
+    return transit_map
+
+
 # ---------------- Workers ----------------
 
 @dataclass
@@ -255,6 +263,13 @@ class WorkerDef:
     affinity: list[str]
 
     def to_dict(self) -> dict:
+        # Wrap all dates under a single "single" entry; empty list stays []
+        unavailable: list[dict] = (
+            [{"single": {"days": self.unavailable_dates}}]
+            if self.unavailable_dates
+            else []
+        )
+
         return {
             "id": self.id,
             "name": self.name,
@@ -273,7 +288,7 @@ class WorkerDef:
                     "suitability": InlineDict(self.customer_suitability),
                 },
             ],
-            "unavailable_dates": [{"date": d} for d in self.unavailable_dates],
+            "unavailable_dates": unavailable,
             "affinity": InlineList(self.affinity),
         }
 
@@ -423,6 +438,7 @@ def write_environment_yaml(
     worker_company_map: dict[str, CompanyDef],
     worker_list: list[WorkerDef],
     affinity_tags: list[dict],
+    transit_day_map: list[dict],
 ):
     env_data: dict[str, object] = {}
 
@@ -435,14 +451,7 @@ def write_environment_yaml(
     env_data["worker_company_list"] = [
         c.to_worker_dict() for c in worker_company_map.values()
     ]
-    env_data["transite_day_map"] = [
-        {"from": "r1", "to": "r2", "days": 3},
-        {"from": "r1", "to": "r3", "days": 4},
-        {"from": "r2", "to": "r1", "days": 3},
-        {"from": "r2", "to": "r3", "days": 4},
-        {"from": "r3", "to": "r1", "days": 4},
-        {"from": "r3", "to": "r2", "days": 4},
-    ]
+    env_data["transite_day_map"] = transit_day_map
     env_data["affinity_tag"] = affinity_tags
     env_data["worker_list"] = [w.to_dict() for w in worker_list]
 
@@ -712,6 +721,7 @@ def main():
     fab_map, region_map, customer_company_map = create_area_map()
     worker_company_map = create_worker_company_map()
 
+    transit_day_map = create_transit_day_map(region_map)
     affinity_tags = create_affinity_tags()
     worker_list = create_worker_list(
         WORKER_NUM,
@@ -731,6 +741,7 @@ def main():
         worker_company_map,
         worker_list,
         affinity_tags,
+        transit_day_map,
     )
 
     # ----- Schedule / equipment -----
