@@ -1,0 +1,8011 @@
+environment:
+  workflow_list:
+  - id: workflow
+    name: Equipment Setup
+    phase_list:
+    - id: p1
+      name: Module Setup
+      operation_list:
+      - id: p1o1
+        name: Heavy
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+      - id: p1o2
+        name: Mech
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+      - id: p1o3
+        name: Elec
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+    - id: p2
+      name: Hardware Setup
+      operation_list:
+      - id: p2o1
+        name: Mech
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+      - id: p2o2
+        name: Elec
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+    - id: p3
+      name: Function Setup
+      operation_list:
+      - id: p3o1
+        name: QC
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+    - id: p4
+      name: Acceptance Inspection
+      operation_list:
+      - id: p4o1
+        name: QC
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+      - id: p4o2
+        name: Mech
+        work_hours: [8, 10, 12]
+        min_worker_num: 2
+        max_worker_num: 3
+  fab_list:
+  - id: f1
+    name: AAA Fab1
+    region: r1
+    customer_company: c1
+    unavailable_dates: []
+  - id: f2
+    name: BBB Fab2
+    region: r1
+    customer_company: c2
+    unavailable_dates: []
+  - id: f3
+    name: AAA Fab3
+    region: r2
+    customer_company: c1
+    unavailable_dates: []
+  - id: f4
+    name: BBB Fab4
+    region: r2
+    customer_company: c2
+    unavailable_dates: []
+  - id: f5
+    name: AAA Fab5
+    region: r3
+    customer_company: c1
+    unavailable_dates: []
+  - id: f6
+    name: BBB Fab6
+    region: r3
+    customer_company: c2
+    unavailable_dates: []
+  region_list:
+  - id: r1
+    name: America
+    max_stay_on: 80
+    max_annual_stay: 240
+    stay_off_interval: 3
+    unavailable_dates:
+    - weekly:
+        weekdays: [sat, sun]
+  - id: r2
+    name: Germany
+    max_stay_on: 80
+    max_annual_stay: 240
+    stay_off_interval: 3
+    unavailable_dates:
+    - weekly:
+        weekdays: [sat, sun]
+  - id: r3
+    name: Taiwan
+    max_stay_on: 80
+    max_annual_stay: 240
+    stay_off_interval: 3
+    unavailable_dates:
+    - weekly:
+        weekdays: [sat, sun]
+  customer_company_list:
+  - id: c1
+    name: AAA
+    unavailable_dates: []
+  - id: c2
+    name: BBB
+    unavailable_dates: []
+  worker_company_list:
+  - id: c3
+    name: XXX
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 40
+    unavailable_dates: []
+  - id: c4
+    name: YYY
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 40
+    unavailable_dates: []
+  transite_day_map:
+  - from: r1
+    to: r2
+    days: 3
+  - from: r1
+    to: r3
+    days: 4
+  - from: r2
+    to: r1
+    days: 3
+  - from: r2
+    to: r3
+    days: 4
+  - from: r3
+    to: r1
+    days: 4
+  - from: r3
+    to: r2
+    days: 4
+  affinity_tag:
+  - id: a1
+    weight: 2
+  - id: a2
+    weight: 1
+  - id: a3
+    weight: 1
+  - id: a4
+    weight: -1
+  - id: a5
+    weight: 1
+  - id: a6
+    weight: 1
+  worker_list:
+  - id: w1
+    name: AA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o2: 3, p3o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o2: spot
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w2
+    name: AB
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p2o2: 3, p3o1: 4, p4o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/28
+    - date: 2025/10/17
+    - date: 2025/12/04
+    - date: 2025/12/09
+    - date: 2026/03/13
+    - date: 2026/03/27
+    affinity: []
+  - id: w3
+    name: AC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p1o3: 3, p2o2: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/17
+    - date: 2026/03/01
+    - date: 2026/03/25
+    affinity: []
+  - id: w4
+    name: AD
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 4, p3o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w5
+    name: AE
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 2, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/21
+    - date: 2026/03/28
+    affinity: []
+  - id: w6
+    name: AF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o2: 2, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/13
+    - date: 2025/12/24
+    - date: 2026/03/24
+    affinity: []
+  - id: w7
+    name: AG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w8
+    name: AH
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w9
+    name: AI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 4, p3o1: 4, p4o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p2o1: spot
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/10
+    - date: 2026/03/15
+    affinity: []
+  - id: w10
+    name: AJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 5, p2o1: 5, p2o2: 4, p3o1: 2, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w11
+    name: AK
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p1o3: 4, p2o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w12
+    name: AL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 1, p2o1: 3, p2o2: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/13
+    - date: 2026/03/28
+    affinity: []
+  - id: w13
+    name: AM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 3, p4o1: 2, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w14
+    name: AN
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/12
+    affinity: []
+  - id: w15
+    name: AO
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 2, p2o2: 3, p3o1: 3, p4o1: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/21
+    affinity: []
+  - id: w16
+    name: AP
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 1, p2o1: 4, p2o2: 4, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: [a4]
+  - id: w17
+    name: AQ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p2o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/22
+    - date: 2025/10/14
+    - date: 2025/12/16
+    - date: 2026/03/19
+    affinity: []
+  - id: w18
+    name: AR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 1, p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p2o1: regular
+      p2o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/21
+    - date: 2026/01/02
+    - date: 2026/01/31
+    affinity: []
+  - id: w19
+    name: AS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p2o2: 2, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/03/28
+    affinity: []
+  - id: w20
+    name: AT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 2, p2o2: 5, p3o1: 4, p4o1: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/11
+    - date: 2025/10/05
+    - date: 2025/12/03
+    - date: 2026/03/19
+    - date: 2026/03/28
+    affinity: []
+  - id: w21
+    name: AU
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p2o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w22
+    name: AV
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 1, p3o1: 5, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w23
+    name: AW
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 4, p3o1: 5, p4o1: 4}
+    worker_type_by_operation:
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/14
+    - date: 2025/10/15
+    - date: 2025/10/25
+    - date: 2025/11/01
+    - date: 2025/11/30
+    affinity: []
+  - id: w24
+    name: AX
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o2: 5, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/16
+    - date: 2025/11/17
+    - date: 2025/12/30
+    - date: 2026/01/11
+    affinity: [a2]
+  - id: w25
+    name: AY
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 1, p1o3: 5, p2o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w26
+    name: AZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w27
+    name: BA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 1, p2o2: 3, p3o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/18
+    - date: 2025/09/11
+    - date: 2025/11/15
+    - date: 2026/03/09
+    affinity: []
+  - id: w28
+    name: BB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w29
+    name: BC
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 3, p2o2: 2, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/14
+    - date: 2026/01/11
+    - date: 2026/01/27
+    - date: 2026/02/03
+    - date: 2026/03/12
+    - date: 2026/03/19
+    affinity: []
+  - id: w30
+    name: BD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/08
+    - date: 2026/02/03
+    affinity: []
+  - id: w31
+    name: BE
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 5, p2o2: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: [a5]
+  - id: w32
+    name: BF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 1, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w33
+    name: BG
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 0, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w34
+    name: BH
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 2, p2o1: 4, p2o2: 3, p3o1: 5, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/02/18
+    affinity: []
+  - id: w35
+    name: BI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w36
+    name: BJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o2: 4, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/20
+    - date: 2025/09/04
+    - date: 2025/09/22
+    - date: 2025/12/09
+    - date: 2026/02/12
+    affinity: []
+  - id: w37
+    name: BK
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 3, p2o2: 3, p3o1: 5, p4o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w38
+    name: BL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w39
+    name: BM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p3o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/02/08
+    - date: 2026/02/18
+    affinity: []
+  - id: w40
+    name: BN
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 2, p2o1: 5, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w41
+    name: BO
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o2: 2, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w42
+    name: BP
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 5, p2o2: 1, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w43
+    name: BQ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 4, p2o2: 3, p3o1: 2, p4o1: 5}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w44
+    name: BR
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p3o1: 4, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w45
+    name: BS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p2o2: 2, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/09
+    - date: 2025/12/09
+    - date: 2026/02/09
+    affinity: []
+  - id: w46
+    name: BT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 3, p2o2: 1, p3o1: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w47
+    name: BU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p2o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w48
+    name: BV
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 1, p2o1: 3, p2o2: 3, p4o1: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/06
+    - date: 2025/10/10
+    - date: 2025/11/13
+    - date: 2025/12/31
+    - date: 2026/01/10
+    - date: 2026/01/19
+    affinity: []
+  - id: w49
+    name: BW
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 2, p2o2: 2, p4o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/21
+    - date: 2025/12/22
+    affinity: [a6]
+  - id: w50
+    name: BX
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p2o2: 3, p3o1: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w51
+    name: BY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/08/05
+    - date: 2025/10/26
+    affinity: []
+  - id: w52
+    name: BZ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 4, p3o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/16
+    - date: 2025/11/14
+    affinity: [a1]
+  - id: w53
+    name: CA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/11
+    affinity: []
+  - id: w54
+    name: CB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 5, p3o1: 3, p4o1: 1, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w55
+    name: CC
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/08/02
+    - date: 2025/11/08
+    - date: 2026/01/23
+    - date: 2026/01/31
+    affinity: []
+  - id: w56
+    name: CD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 1, p4o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w57
+    name: CE
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w58
+    name: CF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w59
+    name: CG
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: [a5]
+  - id: w60
+    name: CH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 1, p1o3: 3, p2o1: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w61
+    name: CI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w62
+    name: CJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 5, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/03
+    affinity: []
+  - id: w63
+    name: CK
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p3o1: 4, p4o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w64
+    name: CL
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w65
+    name: CM
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w66
+    name: CN
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 4, p3o1: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w67
+    name: CO
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p3o1: 2, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w68
+    name: CP
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 5, p2o1: 3, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w69
+    name: CQ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/20
+    - date: 2026/03/06
+    affinity: []
+  - id: w70
+    name: CR
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w71
+    name: CS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o2: 4, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w72
+    name: CT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p2o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/23
+    affinity: []
+  - id: w73
+    name: CU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p2o2: 3, p3o1: 1, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/12
+    - date: 2026/03/01
+    affinity: []
+  - id: w74
+    name: CV
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w75
+    name: CW
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o2: 3, p3o1: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/18
+    - date: 2025/09/07
+    - date: 2025/09/26
+    - date: 2025/10/21
+    - date: 2025/11/28
+    - date: 2026/03/05
+    affinity: []
+  - id: w76
+    name: CX
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w77
+    name: CY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 4, p2o2: 4, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w78
+    name: CZ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 1, p1o3: 3, p2o1: 3, p2o2: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w79
+    name: DA
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o2: 3, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w80
+    name: DB
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w81
+    name: DC
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o2: 4, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w82
+    name: DD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 1, p2o1: 4, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/23
+    - date: 2025/12/04
+    - date: 2025/12/15
+    - date: 2026/03/16
+    affinity: []
+  - id: w83
+    name: DE
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 0, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w84
+    name: DF
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 4, p2o2: 3, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: spot
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/14
+    affinity: []
+  - id: w85
+    name: DG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 4, p2o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 0}
+    unavailable_dates:
+    - date: 2025/10/02
+    - date: 2026/02/07
+    affinity: []
+  - id: w86
+    name: DH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 4, p2o2: 4, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/16
+    - date: 2025/12/07
+    - date: 2026/01/12
+    affinity: []
+  - id: w87
+    name: DI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 2, p2o1: 4, p3o1: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w88
+    name: DJ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 4, p2o2: 3, p3o1: 5, p4o1: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/01
+    - date: 2026/02/20
+    - date: 2026/03/30
+    affinity: []
+  - id: w89
+    name: DK
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/02/13
+    affinity: [a2]
+  - id: w90
+    name: DL
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 5, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w91
+    name: DM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/28
+    - date: 2026/03/18
+    affinity: []
+  - id: w92
+    name: DN
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 3, p2o2: 2, p3o1: 4, p4o1: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/16
+    affinity: []
+  - id: w93
+    name: DO
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p2o2: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w94
+    name: DP
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p2o1: 5, p2o2: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/08/14
+    affinity: []
+  - id: w95
+    name: DQ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 2, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w96
+    name: DR
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p2o1: 3, p2o2: 4, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/23
+    affinity: [a4]
+  - id: w97
+    name: DS
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 3, p3o1: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/29
+    affinity: []
+  - id: w98
+    name: DT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/12
+    - date: 2026/03/25
+    affinity: []
+  - id: w99
+    name: DU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o3: 4, p2o1: 5, p3o1: 3, p4o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: spot
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/04
+    - date: 2026/03/15
+    - date: 2026/03/30
+    affinity: []
+  - id: w100
+    name: DV
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 3, p2o2: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w101
+    name: DW
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/16
+    - date: 2025/09/10
+    - date: 2025/10/25
+    - date: 2026/03/17
+    affinity: []
+  - id: w102
+    name: DX
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 5, p2o2: 2, p3o1: 2, p4o2: 5}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/09
+    - date: 2026/03/11
+    affinity: []
+  - id: w103
+    name: DY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p1o3: 3, p2o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/29
+    affinity: []
+  - id: w104
+    name: DZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o2: 4, p3o1: 4, p4o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/10
+    - date: 2026/01/11
+    - date: 2026/01/20
+    - date: 2026/02/04
+    affinity: []
+  - id: w105
+    name: EA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/19
+    - date: 2026/02/11
+    affinity: []
+  - id: w106
+    name: EB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 2, p2o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w107
+    name: EC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 2, p2o1: 4, p2o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/26
+    - date: 2025/09/03
+    - date: 2025/12/10
+    - date: 2026/01/02
+    affinity: []
+  - id: w108
+    name: ED
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 3, p2o2: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p2o2: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w109
+    name: EE
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 3, p2o2: 3, p3o1: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: spot
+      p2o2: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/01
+    - date: 2026/03/20
+    affinity: []
+  - id: w110
+    name: EF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 4, p2o2: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w111
+    name: EG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p1o3: 5, p2o1: 2, p2o2: 3, p4o1: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/04
+    - date: 2025/10/02
+    - date: 2026/01/08
+    - date: 2026/01/14
+    - date: 2026/03/27
+    affinity: []
+  - id: w112
+    name: EH
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 5, p2o2: 4, p3o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w113
+    name: EI
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 5, p2o2: 4, p3o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/08
+    affinity: []
+  - id: w114
+    name: EJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 5, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/11
+    - date: 2025/09/19
+    affinity: []
+  - id: w115
+    name: EK
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 3, p2o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 0, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w116
+    name: EL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p4o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w117
+    name: EM
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 5, p2o1: 3, p2o2: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w118
+    name: EN
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/22
+    affinity: []
+  - id: w119
+    name: EO
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w120
+    name: EP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o2: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w121
+    name: EQ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o1: 4, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/23
+    - date: 2025/10/11
+    - date: 2025/11/12
+    - date: 2026/01/05
+    affinity: [a4]
+  - id: w122
+    name: ER
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 4, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w123
+    name: ES
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 1, p2o2: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w124
+    name: ET
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p3o1: 4, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w125
+    name: EU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w126
+    name: EV
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p2o1: 5, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w127
+    name: EW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/09
+    affinity: []
+  - id: w128
+    name: EX
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w129
+    name: EY
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p2o1: 4, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: spot
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w130
+    name: EZ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p2o1: 4, p3o1: 5, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w131
+    name: FA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 5, p1o3: 4, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: [a4]
+  - id: w132
+    name: FB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 3, p2o1: 4, p2o2: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2026/01/09
+    - date: 2026/03/19
+    affinity: []
+  - id: w133
+    name: FC
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p2o1: 4, p2o2: 3, p3o1: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p2o1: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/22
+    - date: 2025/11/16
+    - date: 2025/12/16
+    - date: 2026/02/03
+    affinity: []
+  - id: w134
+    name: FD
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o1: 1, p2o2: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p2o2: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w135
+    name: FE
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 4, p3o1: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w136
+    name: FF
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 4, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o2: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w137
+    name: FG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p1o3: 1, p2o1: 2, p4o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w138
+    name: FH
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 2, p2o1: 3, p2o2: 3, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/29
+    - date: 2025/10/19
+    - date: 2025/10/22
+    - date: 2025/10/23
+    - date: 2025/11/05
+    - date: 2026/02/11
+    affinity: []
+  - id: w139
+    name: FI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w140
+    name: FJ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w141
+    name: FK
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 4, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/26
+    - date: 2025/11/01
+    - date: 2025/11/20
+    - date: 2025/11/21
+    affinity: []
+  - id: w142
+    name: FL
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p3o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/29
+    - date: 2025/10/19
+    affinity: []
+  - id: w143
+    name: FM
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 3, p2o1: 3, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w144
+    name: FN
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w145
+    name: FO
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 2, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w146
+    name: FP
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 1, p3o1: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w147
+    name: FQ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 5, p3o1: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: spot
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w148
+    name: FR
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p2o2: 4, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w149
+    name: FS
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p2o1: 4, p3o1: 4, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/10
+    affinity: []
+  - id: w150
+    name: FT
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 4, p3o1: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w151
+    name: FU
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 4, p1o3: 3, p2o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p1o3: spot
+      p2o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w152
+    name: FV
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 1, p2o1: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: spot
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/31
+    affinity: []
+  - id: w153
+    name: FW
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 3, p2o2: 5, p3o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w154
+    name: FX
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p2o2: 2, p3o1: 2, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/27
+    - date: 2025/12/27
+    - date: 2026/02/19
+    affinity: []
+  - id: w155
+    name: FY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 4, p2o2: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/16
+    affinity: [a3]
+  - id: w156
+    name: FZ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/11
+    affinity: []
+  - id: w157
+    name: GA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o2: 3, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/15
+    - date: 2025/10/10
+    affinity: []
+  - id: w158
+    name: GB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 3, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w159
+    name: GC
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o3: 3, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w160
+    name: GD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 5, p3o1: 3, p4o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/27
+    - date: 2025/11/17
+    - date: 2025/12/07
+    affinity: []
+  - id: w161
+    name: GE
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 3, p2o2: 5, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w162
+    name: GF
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 1, p2o1: 4, p2o2: 2, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w163
+    name: GG
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p1o3: 3, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/03
+    affinity: []
+  - id: w164
+    name: GH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p3o1: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w165
+    name: GI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 1, p4o1: 2, p4o2: 5}
+    worker_type_by_operation:
+      p1o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/05
+    - date: 2025/09/21
+    - date: 2025/11/05
+    - date: 2025/11/09
+    affinity: []
+  - id: w166
+    name: GJ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p3o1: 2, p4o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: spot
+      p3o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w167
+    name: GK
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p2o1: 5, p2o2: 5, p3o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w168
+    name: GL
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p2o1: 2, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/26
+    - date: 2025/12/25
+    affinity: []
+  - id: w169
+    name: GM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o2: 4, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/27
+    - date: 2025/10/24
+    - date: 2025/12/29
+    - date: 2026/01/31
+    - date: 2026/03/02
+    affinity: [a6]
+  - id: w170
+    name: GN
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 2, p4o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2026/01/02
+    - date: 2026/02/15
+    - date: 2026/03/29
+    affinity: []
+  - id: w171
+    name: GO
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/15
+    - date: 2025/11/01
+    - date: 2025/11/07
+    affinity: []
+  - id: w172
+    name: GP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/06
+    affinity: []
+  - id: w173
+    name: GQ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o2: 3, p3o1: 4, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w174
+    name: GR
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w175
+    name: GS
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 1, p3o1: 4, p4o1: 4, p4o2: 5}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w176
+    name: GT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 4, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w177
+    name: GU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w178
+    name: GV
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 5, p2o1: 3, p2o2: 4, p3o1: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/12
+    affinity: []
+  - id: w179
+    name: GW
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p2o2: 4, p3o1: 2, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w180
+    name: GX
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o2: 5, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o2: spot
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w181
+    name: GY
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o1: 4, p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: spot
+      p2o2: spot
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/17
+    affinity: []
+  - id: w182
+    name: GZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/02
+    affinity: []
+  - id: w183
+    name: HA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 5, p2o1: 5, p2o2: 4, p3o1: 1}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: spot
+      p2o2: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2026/03/16
+    affinity: []
+  - id: w184
+    name: HB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p2o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/09
+    - date: 2026/01/11
+    - date: 2026/03/24
+    affinity: []
+  - id: w185
+    name: HC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 2, p2o2: 5, p4o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/02/24
+    affinity: []
+  - id: w186
+    name: HD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w187
+    name: HE
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p2o1: 3, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w188
+    name: HF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w189
+    name: HG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 2, p2o2: 5, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/13
+    - date: 2026/01/09
+    - date: 2026/03/13
+    affinity: []
+  - id: w190
+    name: HH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p2o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w191
+    name: HI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 2, p2o1: 3, p3o1: 4, p4o1: 2}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/13
+    - date: 2026/03/13
+    affinity: []
+  - id: w192
+    name: HJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 3, p3o1: 3, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: [a4, a6]
+  - id: w193
+    name: HK
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o1: 3, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w194
+    name: HL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w195
+    name: HM
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p1o3: 2, p3o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 0, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w196
+    name: HN
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p1o3: 3, p2o1: 2, p3o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: spot
+      p2o1: spot
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/17
+    - date: 2025/12/28
+    - date: 2026/01/01
+    - date: 2026/02/22
+    - date: 2026/03/02
+    affinity: []
+  - id: w197
+    name: HO
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/14
+    affinity: []
+  - id: w198
+    name: HP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 4, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/25
+    - date: 2025/09/09
+    - date: 2025/09/12
+    affinity: []
+  - id: w199
+    name: HQ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 4, p3o1: 1, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w200
+    name: HR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 2, p3o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/13
+    affinity: []
+  - id: w201
+    name: HS
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/02
+    affinity: []
+  - id: w202
+    name: HT
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 2, p2o2: 3, p3o1: 1, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w203
+    name: HU
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 1, p2o1: 3, p3o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/11/20
+    - date: 2026/01/02
+    - date: 2026/03/12
+    affinity: []
+  - id: w204
+    name: HV
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 3, p2o2: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/21
+    - date: 2026/02/20
+    affinity: [a1]
+  - id: w205
+    name: HW
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 1, p2o1: 5, p2o2: 2, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/23
+    affinity: []
+  - id: w206
+    name: HX
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p2o2: 3, p3o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/12
+    - date: 2025/10/03
+    - date: 2025/11/17
+    - date: 2026/02/14
+    affinity: []
+  - id: w207
+    name: HY
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 2, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w208
+    name: HZ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w209
+    name: IA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p3o1: 5, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w210
+    name: IB
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 5, p1o3: 4, p2o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/02/25
+    affinity: []
+  - id: w211
+    name: IC
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 2, p2o1: 4, p2o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w212
+    name: ID
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o1: 3, p3o1: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/20
+    - date: 2025/10/29
+    - date: 2026/03/17
+    - date: 2026/03/31
+    affinity: []
+  - id: w213
+    name: IE
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p2o2: 3, p3o1: 4, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/23
+    - date: 2026/03/03
+    affinity: []
+  - id: w214
+    name: IF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 5, p2o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w215
+    name: IG
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p1o3: 4, p2o1: 2, p2o2: 3, p3o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/02
+    - date: 2025/09/20
+    - date: 2025/10/31
+    - date: 2025/11/04
+    affinity: []
+  - id: w216
+    name: IH
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 3, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/24
+    affinity: []
+  - id: w217
+    name: II
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 3, p2o2: 3, p4o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/26
+    affinity: []
+  - id: w218
+    name: IJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p3o1: 4, p4o1: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: spot
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/15
+    - date: 2025/12/16
+    affinity: []
+  - id: w219
+    name: IK
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p2o2: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/31
+    - date: 2025/11/11
+    - date: 2026/02/26
+    affinity: []
+  - id: w220
+    name: IL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 1, p1o3: 4, p2o1: 3, p2o2: 3, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/20
+    - date: 2026/01/11
+    affinity: []
+  - id: w221
+    name: IM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 1, p2o1: 2, p2o2: 3, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/15
+    - date: 2025/11/25
+    - date: 2025/12/31
+    affinity: []
+  - id: w222
+    name: IN
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 3, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/13
+    - date: 2026/01/15
+    - date: 2026/03/15
+    affinity: [a1]
+  - id: w223
+    name: IO
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 1, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 4, p4o1: 5}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w224
+    name: IP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p3o1: 4, p4o1: 3, p4o2: 1}
+    worker_type_by_operation:
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/02
+    - date: 2025/12/04
+    - date: 2026/02/06
+    - date: 2026/02/13
+    - date: 2026/03/30
+    affinity: []
+  - id: w225
+    name: IQ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 3, p2o2: 4, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w226
+    name: IR
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p1o3: 2, p2o1: 3, p2o2: 5, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/26
+    - date: 2025/12/08
+    - date: 2026/01/15
+    affinity: []
+  - id: w227
+    name: IS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p1o3: 3, p2o1: 4, p2o2: 1, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/12
+    affinity: []
+  - id: w228
+    name: IT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 2, p3o1: 5, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w229
+    name: IU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 5, p3o1: 1, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/27
+    - date: 2025/11/06
+    - date: 2026/03/01
+    affinity: []
+  - id: w230
+    name: IV
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 4, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w231
+    name: IW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 4, p2o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/10/05
+    - date: 2025/11/26
+    - date: 2025/12/27
+    - date: 2026/03/28
+    affinity: []
+  - id: w232
+    name: IX
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 3, p3o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/26
+    - date: 2025/10/12
+    affinity: [a4]
+  - id: w233
+    name: IY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 5, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w234
+    name: IZ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p2o2: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w235
+    name: JA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 2, p1o3: 2, p2o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/02/23
+    affinity: []
+  - id: w236
+    name: JB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o3: 5, p2o1: 2, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/10/03
+    - date: 2025/12/08
+    affinity: []
+  - id: w237
+    name: JC
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p2o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/22
+    - date: 2026/03/24
+    - date: 2026/03/26
+    affinity: []
+  - id: w238
+    name: JD
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p2o1: 4, p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p2o2: spot
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/14
+    - date: 2025/11/23
+    affinity: []
+  - id: w239
+    name: JE
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 2, p2o2: 3, p3o1: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w240
+    name: JF
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: [a2]
+  - id: w241
+    name: JG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 4, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w242
+    name: JH
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 5, p2o2: 3, p4o1: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/01
+    - date: 2026/01/05
+    affinity: []
+  - id: w243
+    name: JI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p2o2: 3, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/10
+    affinity: []
+  - id: w244
+    name: JJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p2o2: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/30
+    - date: 2025/11/25
+    - date: 2026/01/23
+    affinity: []
+  - id: w245
+    name: JK
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p1o3: 3, p2o2: 2, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: spot
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/10
+    - date: 2026/02/11
+    - date: 2026/03/19
+    affinity: []
+  - id: w246
+    name: JL
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p4o1: 2, p4o2: 2}
+    worker_type_by_operation:
+      p1o3: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/11
+    affinity: []
+  - id: w247
+    name: JM
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 5, p2o2: 4, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w248
+    name: JN
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 4, p2o2: 4, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w249
+    name: JO
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 4, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w250
+    name: JP
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 5, p3o1: 3, p4o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w251
+    name: JQ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 4, p2o2: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w252
+    name: JR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w253
+    name: JS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 4, p2o2: 4, p3o1: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w254
+    name: JT
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/14
+    - date: 2026/02/07
+    - date: 2026/03/14
+    affinity: []
+  - id: w255
+    name: JU
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p2o2: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o2: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/19
+    affinity: []
+  - id: w256
+    name: JV
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/23
+    - date: 2025/11/15
+    - date: 2025/11/26
+    - date: 2025/12/19
+    - date: 2026/01/10
+    affinity: [a6]
+  - id: w257
+    name: JW
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: [a6]
+  - id: w258
+    name: JX
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w259
+    name: JY
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o3: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/15
+    affinity: []
+  - id: w260
+    name: JZ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p2o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/10/16
+    - date: 2025/10/21
+    - date: 2025/11/15
+    - date: 2026/01/03
+    affinity: []
+  - id: w261
+    name: KA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: spot
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 0, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w262
+    name: KB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 2, p1o3: 2, p2o1: 5, p2o2: 2, p4o1: 2, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w263
+    name: KC
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 2, p2o2: 2, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/16
+    affinity: []
+  - id: w264
+    name: KD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 2, p2o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w265
+    name: KE
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 3, p2o2: 3, p3o1: 2, p4o1: 2, p4o2: 1}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/01
+    affinity: []
+  - id: w266
+    name: KF
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w267
+    name: KG
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p3o1: 4, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o2: spot
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w268
+    name: KH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 2, p2o1: 3, p2o2: 3, p3o1: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/03
+    - date: 2025/08/13
+    - date: 2025/10/01
+    - date: 2025/11/01
+    affinity: []
+  - id: w269
+    name: KI
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o1: 2, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/12
+    - date: 2026/01/28
+    - date: 2026/03/26
+    affinity: []
+  - id: w270
+    name: KJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w271
+    name: KK
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o2: 4, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/15
+    affinity: []
+  - id: w272
+    name: KL
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 2, p2o1: 2, p2o2: 2, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w273
+    name: KM
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p2o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w274
+    name: KN
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 1}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/11
+    affinity: []
+  - id: w275
+    name: KO
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 2, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/19
+    affinity: []
+  - id: w276
+    name: KP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p1o2: 4, p3o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w277
+    name: KQ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 5, p2o1: 3, p2o2: 4, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w278
+    name: KR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 3, p2o1: 1, p2o2: 3, p3o1: 4, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w279
+    name: KS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o3: 3, p2o1: 1, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2026/03/08
+    affinity: []
+  - id: w280
+    name: KT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p1o3: 3, p2o1: 4, p2o2: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o1: spot
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/12
+    - date: 2026/03/17
+    affinity: []
+  - id: w281
+    name: KU
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p1o3: 3, p2o1: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: [a4]
+  - id: w282
+    name: KV
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 4, p3o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o3: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/01/20
+    - date: 2026/02/27
+    affinity: []
+  - id: w283
+    name: KW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 4, p1o3: 4, p2o2: 4, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w284
+    name: KX
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w285
+    name: KY
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w286
+    name: KZ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p2o2: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/17
+    - date: 2025/10/02
+    - date: 2025/12/09
+    - date: 2026/02/05
+    - date: 2026/02/13
+    - date: 2026/03/25
+    affinity: []
+  - id: w287
+    name: LA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 2, p2o2: 3, p3o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/21
+    affinity: []
+  - id: w288
+    name: LB
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: spot
+      p2o2: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w289
+    name: LC
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p1o3: 5, p2o1: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 0}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/10/07
+    - date: 2026/01/07
+    affinity: []
+  - id: w290
+    name: LD
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 3, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w291
+    name: LE
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/01
+    - date: 2025/11/08
+    - date: 2025/12/26
+    affinity: []
+  - id: w292
+    name: LF
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 3, p3o1: 2, p4o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w293
+    name: LG
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 4, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/01/05
+    - date: 2026/01/28
+    - date: 2026/02/08
+    - date: 2026/02/16
+    affinity: []
+  - id: w294
+    name: LH
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p2o1: 3, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/20
+    - date: 2026/02/27
+    - date: 2026/03/06
+    - date: 2026/03/28
+    affinity: []
+  - id: w295
+    name: LI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p3o1: 4, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w296
+    name: LJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: spot
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w297
+    name: LK
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 5, p1o3: 3, p2o2: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w298
+    name: LL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o1: 3, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/10/08
+    - date: 2025/10/14
+    - date: 2025/12/14
+    - date: 2026/01/07
+    affinity: []
+  - id: w299
+    name: LM
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/19
+    - date: 2025/08/23
+    - date: 2025/09/28
+    affinity: [a3]
+  - id: w300
+    name: LN
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 3, p3o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w301
+    name: LO
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p2o1: 4, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p2o1: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w302
+    name: LP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 1, p2o1: 4, p2o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/22
+    - date: 2025/12/10
+    - date: 2026/02/18
+    affinity: []
+  - id: w303
+    name: LQ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 4, p1o3: 4, p3o1: 5, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w304
+    name: LR
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w305
+    name: LS
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 4, p2o2: 4, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w306
+    name: LT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 3, p3o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o2: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/03
+    affinity: []
+  - id: w307
+    name: LU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 2, p2o2: 5, p4o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/05
+    - date: 2025/10/03
+    affinity: []
+  - id: w308
+    name: LV
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 4, p2o2: 3, p3o1: 2, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/10/08
+    affinity: []
+  - id: w309
+    name: LW
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p3o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/18
+    affinity: []
+  - id: w310
+    name: LX
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 1, p1o3: 3, p2o1: 4, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w311
+    name: LY
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p2o2: 2, p3o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w312
+    name: LZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 1, p2o2: 3}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w313
+    name: MA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 2, p2o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w314
+    name: MB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/04
+    - date: 2025/12/01
+    affinity: []
+  - id: w315
+    name: MC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p3o1: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p3o1: spot
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w316
+    name: MD
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 1, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/15
+    - date: 2026/02/04
+    - date: 2026/02/06
+    - date: 2026/03/03
+    affinity: []
+  - id: w317
+    name: ME
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: [a3]
+  - id: w318
+    name: MF
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 5, p2o2: 4, p3o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/06
+    - date: 2026/01/10
+    affinity: []
+  - id: w319
+    name: MG
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 3, p2o2: 2, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/13
+    - date: 2026/01/02
+    affinity: []
+  - id: w320
+    name: MH
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o2: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w321
+    name: MI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w322
+    name: MJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 5, p1o3: 3, p2o2: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: [a3]
+  - id: w323
+    name: MK
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 2, p2o2: 5, p3o1: 2, p4o1: 1, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w324
+    name: ML
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p3o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w325
+    name: MM
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 2, p2o1: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: [a4]
+  - id: w326
+    name: MN
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 2, p2o2: 3, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/05
+    - date: 2025/11/13
+    affinity: []
+  - id: w327
+    name: MO
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p2o2: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w328
+    name: MP
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 5, p3o1: 5}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: regular
+      p3o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w329
+    name: MQ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o2: 2, p3o1: 5, p4o1: 4}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/12/23
+    affinity: []
+  - id: w330
+    name: MR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: [a6]
+  - id: w331
+    name: MS
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p2o1: 3, p3o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w332
+    name: MT
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p2o1: 3, p4o1: 1}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/21
+    - date: 2025/10/07
+    - date: 2025/10/28
+    - date: 2026/02/01
+    - date: 2026/03/01
+    - date: 2026/03/18
+    affinity: []
+  - id: w333
+    name: MU
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 2, p2o1: 3, p2o2: 3, p3o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p2o2: spot
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/18
+    - date: 2025/09/08
+    - date: 2025/11/26
+    - date: 2026/03/06
+    affinity: []
+  - id: w334
+    name: MV
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p2o2: 3, p3o1: 4, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 0}
+    unavailable_dates: []
+    affinity: []
+  - id: w335
+    name: MW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 5, p2o1: 4, p2o2: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/12
+    - date: 2026/01/23
+    - date: 2026/01/25
+    - date: 2026/01/29
+    - date: 2026/03/19
+    affinity: []
+  - id: w336
+    name: MX
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 4, p2o1: 3, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: spot
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/09
+    affinity: []
+  - id: w337
+    name: MY
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p2o1: 1, p2o2: 1, p3o1: 5, p4o1: 5, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 0, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/23
+    - date: 2026/03/20
+    affinity: []
+  - id: w338
+    name: MZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o2: spot
+      p3o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/10
+    - date: 2026/03/22
+    affinity: []
+  - id: w339
+    name: NA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o2: 2, p3o1: 4, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: spot
+      p3o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/22
+    - date: 2025/10/03
+    - date: 2025/10/29
+    - date: 2025/11/02
+    - date: 2026/01/20
+    affinity: []
+  - id: w340
+    name: NB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p3o1: 1, p4o1: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/26
+    affinity: []
+  - id: w341
+    name: NC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w342
+    name: ND
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 5, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w343
+    name: NE
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p1o3: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/29
+    - date: 2025/11/18
+    - date: 2026/03/18
+    affinity: []
+  - id: w344
+    name: NF
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p3o1: 3, p4o1: 5, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: spot
+      p1o3: regular
+      p2o1: spot
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 0, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w345
+    name: NG
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 4, p3o1: 5}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w346
+    name: NH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w347
+    name: NI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 2, p3o1: 3, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w348
+    name: NJ
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p3o1: 1, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/21
+    - date: 2025/12/02
+    affinity: [a3]
+  - id: w349
+    name: NK
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 4, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w350
+    name: NL
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: spot
+      p1o3: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/01
+    affinity: []
+  - id: w351
+    name: NM
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 1, p2o2: 3, p3o1: 5, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/13
+    affinity: []
+  - id: w352
+    name: NN
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 1, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/27
+    affinity: []
+  - id: w353
+    name: 'NO'
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p2o2: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/02
+    - date: 2025/11/13
+    - date: 2026/01/29
+    affinity: []
+  - id: w354
+    name: NP
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p2o1: 3, p3o1: 2, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w355
+    name: NQ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 4, p2o1: 4, p4o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w356
+    name: NR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 5, p2o1: 2, p2o2: 4}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/08/05
+    - date: 2025/10/06
+    - date: 2026/01/24
+    - date: 2026/03/20
+    affinity: []
+  - id: w357
+    name: NS
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 2, p3o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/02/05
+    affinity: []
+  - id: w358
+    name: NT
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 4, p2o2: 4, p4o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/08/25
+    affinity: []
+  - id: w359
+    name: NU
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 3, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/13
+    - date: 2025/12/22
+    - date: 2026/03/03
+    affinity: []
+  - id: w360
+    name: NV
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 4, p2o2: 4, p3o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o3: spot
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/30
+    affinity: []
+  - id: w361
+    name: NW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p3o1: 4, p4o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w362
+    name: NX
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 1, p2o1: 4, p3o1: 4, p4o2: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/24
+    affinity: []
+  - id: w363
+    name: NY
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p1o3: 3, p2o1: 2, p3o1: 2, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w364
+    name: NZ
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 1, p1o3: 3, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/22
+    affinity: []
+  - id: w365
+    name: OA
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 1, p1o2: 3, p2o1: 3, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/11/06
+    - date: 2025/12/01
+    - date: 2026/03/01
+    - date: 2026/03/06
+    - date: 2026/03/22
+    - date: 2026/03/29
+    affinity: []
+  - id: w366
+    name: OB
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 3, p3o1: 4, p4o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: [a1]
+  - id: w367
+    name: OC
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 4, p2o1: 3, p4o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w368
+    name: OD
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w369
+    name: OE
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/29
+    affinity: []
+  - id: w370
+    name: OF
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 3, p2o2: 4, p4o1: 1, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: spot
+      p2o2: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 0, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/10/06
+    - date: 2026/01/22
+    affinity: []
+  - id: w371
+    name: OG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 3, p4o1: 2}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o3: regular
+      p2o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w372
+    name: OH
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p2o1: 5, p3o1: 4, p4o1: 4, p4o2: 4}
+    worker_type_by_operation:
+      p2o1: spot
+      p3o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/20
+    affinity: []
+  - id: w373
+    name: OI
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 2, p2o1: 3, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: spot
+      p1o3: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w374
+    name: OJ
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 4, p2o2: 3, p3o1: 2, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o2: regular
+      p3o1: spot
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/25
+    - date: 2025/11/20
+    - date: 2026/02/27
+    - date: 2026/03/27
+    affinity: []
+  - id: w375
+    name: OK
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p2o2: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: spot
+      p2o2: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w376
+    name: OL
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 5, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w377
+    name: OM
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 3, p2o1: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w378
+    name: 'ON'
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p2o1: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: spot
+      p3o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w379
+    name: OO
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 4, p3o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w380
+    name: OP
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w381
+    name: OQ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 4, p2o1: 3, p2o2: 3, p4o1: 3}
+    worker_type_by_operation:
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w382
+    name: OR
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p2o1: 1, p3o1: 4, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o2: spot
+      p2o1: spot
+      p3o1: spot
+      p4o1: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w383
+    name: OS
+    worker_company: c3
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p2o1: 4, p3o1: 2, p4o1: 3, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p2o1: regular
+      p3o1: spot
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w384
+    name: OT
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o3: 3, p2o2: 5, p3o1: 3, p4o1: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/02
+    - date: 2025/09/18
+    affinity: []
+  - id: w385
+    name: OU
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o3: 4, p2o1: 5, p3o1: 3, p4o2: 1}
+    worker_type_by_operation:
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2026/03/05
+    affinity: []
+  - id: w386
+    name: OV
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 3, p3o1: 4, p4o1: 2, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w387
+    name: OW
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 1, p1o3: 4, p4o1: 4, p4o2: 5}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p4o1: spot
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w388
+    name: OX
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 4, p3o1: 3, p4o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o2: regular
+      p3o1: regular
+      p4o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 2, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/09/03
+    - date: 2026/03/18
+    affinity: []
+  - id: w389
+    name: OY
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 3, p3o1: 4, p4o2: 1}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w390
+    name: OZ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 3, p3o1: 3, p4o1: 3, p4o2: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: spot
+      p2o1: spot
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w391
+    name: PA
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 3, p2o1: 4, p2o2: 3, p3o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+      p3o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w392
+    name: PB
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 5, p1o2: 1, p2o1: 3, p4o1: 3, p4o2: 5}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p2o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2025/09/30
+    - date: 2025/10/23
+    - date: 2025/12/20
+    - date: 2025/12/30
+    - date: 2026/02/20
+    affinity: []
+  - id: w393
+    name: PC
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o3: 4, p2o1: 3, p3o1: 1, p4o1: 3}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: [a3]
+  - id: w394
+    name: PD
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 3, p2o2: 4, p4o2: 2}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: regular
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates:
+    - date: 2026/02/07
+    affinity: []
+  - id: w395
+    name: PE
+    worker_company: c4
+    is_manager: false
+    role: ''
+    skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p2o2: 3, p3o1: 1}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: regular
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates: []
+    affinity: []
+  - id: w396
+    name: PF
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o3: 3, p2o1: 1, p3o1: 5, p4o1: 5, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o3: regular
+      p2o1: regular
+      p3o1: regular
+      p4o1: regular
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w397
+    name: PG
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p4o1: 3, p4o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p4o1: regular
+      p4o2: spot
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 1}
+    unavailable_dates:
+    - date: 2025/12/25
+    - date: 2026/01/21
+    affinity: []
+  - id: w398
+    name: PH
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o2: 4, p4o2: 4}
+    worker_type_by_operation:
+      p1o1: regular
+      p1o2: regular
+      p1o3: regular
+      p2o2: spot
+      p4o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates: []
+    affinity: []
+  - id: w399
+    name: PI
+    worker_company: c4
+    is_manager: true
+    role: ''
+    skill_map: {p1o1: 2, p1o2: 3, p2o1: 3, p2o2: 3}
+    worker_type_by_operation:
+      p1o1: spot
+      p1o2: regular
+      p2o1: regular
+      p2o2: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 1, r3: 1}
+    - kind: customer_company
+      suitability: {c1: 2, c2: 2}
+    unavailable_dates:
+    - date: 2025/11/10
+    affinity: []
+  - id: w400
+    name: PJ
+    worker_company: c3
+    is_manager: true
+    role: ''
+    skill_map: {p1o2: 3, p1o3: 4, p2o1: 2, p3o1: 4}
+    worker_type_by_operation:
+      p1o2: regular
+      p1o3: spot
+      p2o1: spot
+      p3o1: regular
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 1, r2: 2, r3: 2}
+    - kind: customer_company
+      suitability: {c1: 1, c2: 0}
+    unavailable_dates:
+    - date: 2025/08/16
+    - date: 2025/09/05
+    - date: 2026/03/21
+    affinity: []

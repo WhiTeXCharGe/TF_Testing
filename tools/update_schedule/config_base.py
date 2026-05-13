@@ -1,0 +1,63 @@
+WORKER_NUM = 80
+EQ_PER_DAYS = 0.7
+EQ_PER_DAYS_SIGMA = 0.7
+EQ_NUM = 50
+
+skill_level_list = (1, 2, 3, 4, 5)
+skill_level_weights = (0.05, 0.1, 0.5, 0.25, 0.1)
+
+region_suitability_list = (0, 1, 2)
+region_suitability_weights = (0.03, 0.6, 0.37)
+
+customer_suitability_list = (0, 1, 2)
+customer_suitability_weights = (0.03, 0.6, 0.37)
+
+# (phase_total_days, [workload_days_per_operation]) — days format; converted to hours when writing
+normal_worklength = [
+    (15, [30, 20, 20]),
+    (12, [30, 25]),
+    (6, [15]),
+    (7, [12, 8]),
+]
+
+vip_worklength = [
+    (12, [30, 20, 20]),
+    (10, [30, 25]),
+    (6, [15]),
+    (8, [12, 8]),
+]
+
+manager_rate = 0.7
+
+worker_company_num = 2
+
+is_skip_weekend = True
+
+# --- worker_type_by_operation ---
+# Probability that a skilled operation is assigned "regular" (remainder is "spot")
+worker_type_regular_chance = 0.70
+
+# --- affinity tags ---
+affinity_group_num = 10
+# Possible weight values for each affinity tag and their selection probabilities
+affinity_weight_options = (-2, -1, 1, 2)
+affinity_weight_chances = (0.15, 0.25, 0.40, 0.20)
+# Number of workers assigned to each affinity tag (inclusive min/max)
+affinity_group_size = (2, 5)
+
+# --- worker unavailable dates ---
+unavailable_date_range_start = "2025/09/01"
+unavailable_date_range_end = "2026/03/31"
+# Index = number of unavailable dates assigned; lower index = more common
+unavailable_max_dates = 6
+unavailable_count_weights = (0.50, 0.20, 0.12, 0.08, 0.05, 0.03, 0.02)
+
+# --- workload format ---
+# "hours": write workload_hours = workload_days * workload_units
+# "days":  write workload_days as-is
+workload_format = "hours"
+workload_units = 8   # hours per working day
+
+# --- recommended workers per operation task ---
+recommends_worker_options = [(1, 1), (2, 2), (2, 3), (3, 3)]
+recommends_worker_weights = (0.10, 0.30, 0.40, 0.20)
