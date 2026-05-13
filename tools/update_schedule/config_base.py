@@ -33,6 +33,46 @@ worker_company_num = 2
 
 is_skip_weekend = True
 
+# --- operation worker count ---
+# min/max workers required per operation in the workflow definition
+operation_worker_min = 1
+operation_worker_max = 4
+
+# --- region definitions ---
+# id is auto-assigned r1, r2, ... based on list order
+region_definitions = [
+    {
+        "name": "America",
+        "max_stay_on": 80,
+        "max_annual_stay": 240,
+        "stay_off_interval": 3,
+        "weekly_weekdays": ["sat", "sun"],
+        "single_days": [],
+    },
+    {
+        "name": "Germany",
+        "max_stay_on": 80,
+        "max_annual_stay": 240,
+        "stay_off_interval": 3,
+        "weekly_weekdays": ["sat", "sun"],
+        "single_days": [],
+    },
+    {
+        "name": "Taiwan",
+        "max_stay_on": 80,
+        "max_annual_stay": 240,
+        "stay_off_interval": 3,
+        "weekly_weekdays": ["sat", "sun"],
+        "single_days": [],
+    },
+]
+
+# --- transit days between regions ---
+# All region pairs (r_i → r_j, i ≠ j) are auto-generated.
+# Day count is randomly selected from options with the given weights.
+transit_day_options = [1]
+transit_day_weights = [1.0]
+
 # --- worker_type_by_operation ---
 # Probability that a skilled operation is assigned "regular" (remainder is "spot")
 worker_type_regular_chance = 0.70
