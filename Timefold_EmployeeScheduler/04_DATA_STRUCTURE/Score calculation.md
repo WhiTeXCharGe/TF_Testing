@@ -148,19 +148,18 @@ chosenHours：各作業ブロックの作業時間
 Score -= 10 × |blockAvgSkill − opAvgSkill| × 100  
 blockAvgSkill：各作業ブロック内の割り当て作業者スキルレベルの平均値  
 opAvgSkill：対象作業種別（opId）における全作業者のスキルレベル平均値  
-
 ### 4.5 移動コストの最小化  
-作業者が前回と異なる地域で作業する日が発生するたびに移動コストをペナルティとして加算する。  
-同一地域内での連続作業はペナルティなし、地域をまたぐ割り当てが増えるほど合計ペナルティが大きくなる。  
-Score -= 5 × 地域間移動が発生した日数
+Score -= 5 × 地域間移動が発生した日数  
+地域間移動が発生した日数：ある作業者が前日と異なる地域で作業する日の合計日数
 ### 4.6 作業者間相性  
-各ブロック内で割り当てられた作業者の全ペアについて、共通の affinity タグを持つ場合にそのタグ重みの合計（エッジ重み）を計算する。  
+Score += AFFINITY_W × edgeWeight  
 edgeWeight = Σ weight(tag) for tag ∈ (emp1.affinityTags ∩ emp2.affinityTags)  
-Score += 5 × edgeWeight  （正なら報酬、負なら実質ペナルティ）  
+weight(tag)：各グループタグに設定された関係性の重み
+affinityTags：各作業者が所属するグループタグの一覧
 ### 4.7 作業者区分  
 Score -= 40  （スポット区分での割り当て1件ごと）  
 worker_type_by_operation にて各作業者・作業の区分を "regular" または "spot" で定義し、スポット区分での割り当てが発生するたびにペナルティを加算する
-### 4.8 推奨作業者数（Mediumスコア）  
+### 4.8 推奨作業者数  
 Score -= 50 × 3^diff  
 diff：推奨作業者数の範囲（recommends_worker_min〜recommends_worker_max）と実際の割り当て人数との差  
 範囲内であれば diff=0（ペナルティなし）、範囲外では差分に対して指数的ペナルティを適用する
