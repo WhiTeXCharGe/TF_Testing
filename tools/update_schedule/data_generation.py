@@ -322,6 +322,23 @@ def _generate_unavailable_dates() -> list[str]:
     return [d.strftime("%Y/%m/%d") for d in chosen]
 
 
+def create_worker_company_tags(worker_company_map: dict[str, CompanyDef]) -> list[dict]:
+    """One wct tag per worker company, all sharing the same configured weight."""
+    tags = []
+    for i, company_id in enumerate(worker_company_map.keys()):
+        tags.append({"id": f"wct{i + 1}", "weight": worker_company_tag_weight, "_company_id": company_id})
+    return tags
+
+
+def assign_worker_company_tags(worker_list: list[WorkerDef], wc_tags: list[dict]) -> None:
+    # _company_id is a build-time helper key, not written to YAML
+    company_to_tag = {t["_company_id"]: t["id"] for t in wc_tags}
+    for worker in worker_list:
+        tag_id = company_to_tag.get(worker.company.id)
+        if tag_id and tag_id not in worker.affinity:
+            worker.affinity.append(tag_id)
+
+
 def create_affinity_tags() -> list[dict]:
     tags = []
     for i in range(affinity_group_num):
@@ -452,7 +469,12 @@ def write_environment_yaml(
         c.to_worker_dict() for c in worker_company_map.values()
     ]
     env_data["transite_day_map"] = transit_day_map
-    env_data["affinity_tag"] = affinity_tags
+    # strip internal helper key before serialising
+    clean_affinity_tags = [
+        {k: v for k, v in t.items() if k != "_company_id"}
+        for t in affinity_tags
+    ]
+    env_data["affinity_tag"] = clean_affinity_tags
     env_data["worker_list"] = [w.to_dict() for w in worker_list]
 
     root_data = {
@@ -722,7 +744,12 @@ def main():
     worker_company_map = create_worker_company_map()
 
     transit_day_map = create_transit_day_map(region_map)
-    affinity_tags = create_affinity_tags()
+
+    wc_tags = create_worker_company_tags(worker_company_map)
+    random_tags = create_affinity_tags()
+    # wct tags come first so company groupings are easy to spot in the YAML
+    all_affinity_tags = wc_tags + random_tags
+
     worker_list = create_worker_list(
         WORKER_NUM,
         worker_company_map,
@@ -730,7 +757,8 @@ def main():
         region_map,
         customer_company_map,
     )
-    assign_affinity_tags(worker_list, affinity_tags)
+    assign_worker_company_tags(worker_list, wc_tags)
+    assign_affinity_tags(worker_list, random_tags)
 
     write_environment_yaml(
         "EnvConfig.yaml",
@@ -740,7 +768,7 @@ def main():
         customer_company_map,
         worker_company_map,
         worker_list,
-        affinity_tags,
+        all_affinity_tags,
         transit_day_map,
     )
 

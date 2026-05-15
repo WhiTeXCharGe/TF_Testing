@@ -1,4 +1,4 @@
-WORKER_NUM = 80
+WORKER_NUM = 200
 EQ_PER_DAYS = 0.7
 EQ_PER_DAYS_SIGMA = 0.7
 EQ_NUM = 50
@@ -73,12 +73,16 @@ region_definitions = [
 transit_day_options = [1]
 transit_day_weights = [1.0]
 
+# --- worker company affinity tags ---
+# One tag (wct1, wct2, ...) is created per worker company; all workers in that company receive it.
+worker_company_tag_weight = 2
+
 # --- worker_type_by_operation ---
 # Probability that a skilled operation is assigned "regular" (remainder is "spot")
-worker_type_regular_chance = 0.70
+worker_type_regular_chance = 0.8
 
 # --- affinity tags ---
-affinity_group_num = 10
+affinity_group_num = 25
 # Possible weight values for each affinity tag and their selection probabilities
 affinity_weight_options = (-2, -1, 1, 2)
 affinity_weight_chances = (0.15, 0.25, 0.40, 0.20)
