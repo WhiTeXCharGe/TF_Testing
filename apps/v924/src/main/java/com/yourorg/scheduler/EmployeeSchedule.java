@@ -304,7 +304,7 @@ public class EmployeeSchedule {
 
         @ValueRangeProvider(id = "vrStartWithinWindow")
         public CountableValueRange<Integer> vrStartWithinWindow() {
-            if (phaseNum == 2) {
+            if (phaseNum == 1) {
                 return ValueRangeFactory.createIntValueRange(windowStart, windowStart + 1);
             }
             return ValueRangeFactory.createIntValueRange(windowStart, windowEnd + 1);
@@ -1058,6 +1058,17 @@ public class EmployeeSchedule {
         return n;
     }
 
+    // Returns the list of working day IDs in [startDay, startDay+days-1] for fabId.
+    // Used by flattenLast-based constraints to avoid the Joiners.filtering cartesian product.
+    static List<Integer> getWorkingDayList(int startDay, int days, String fabId) {
+        List<Integer> result = new ArrayList<>(days);
+        int end = startDay + days - 1;
+        for (int d = startDay; d <= end; d++) {
+            if (isWorkingDay(d, fabId)) result.add(d);
+        }
+        return result;
+    }
+
     static void validateHorizonOverlaps(SinglePassPlan plan, int minDay, int maxDay) {
         if (plan == null || plan.seats == null || plan.blocks == null) return;
 
@@ -1131,7 +1142,7 @@ public class EmployeeSchedule {
         static final int SKILL_DIVERSITY_W = 3;
         static final int SKILL_AVG_W       = 10;
         static final int BASE_HOURS_PER_DAY = 8;
-        static final int CONTINUOUS_REGION_STAY_W = 5;
+        static final int REGION_TRANSITION_W = 5;
         static final int FAB_PREFERENCE_W  = 5;
         static final int RECOMMEND_HEADS_W = 50; // tune
         static final int REGULAR_SPOT_W    = 40;
@@ -1166,7 +1177,7 @@ public class EmployeeSchedule {
                 softEncourageSkillVariety(f),
                 softBalanceBlockAvgSkill(f), 
                 softBalanceTotalHours(f), 
-                softContinuousRegionStay(f), 
+                softContinuousRegionStay(f),
                 softFabPreference(f),
                 preferRegularOverSpot(f),
                 recommendHeadcount(f),
@@ -1361,19 +1372,47 @@ public class EmployeeSchedule {
             @Override public int hashCode() { return 31 * empId + dayId; }
         }
 
+        // Carries (empId, dayId) for the task-count constraint.
+        // Extends EmpDayKey semantics; EmpDayKey already has equals/hashCode.
+        static final class EmpDayHours {
+            final int empId; final int dayId; final int hours;
+            EmpDayHours(int e, int d, int h) { empId=e; dayId=d; hours=h; }
+        }
+
+        // Expands one (seat, block) into one EmpDayKey per working day in the block range.
+        // Used with flattenLast so Timefold scores only working days, not all 127 DaySlots.
+        private static List<EmpDayKey> expandToEmpDays(int empId, int start, int days, String fab) {
+            List<EmpDayKey> out = new ArrayList<>(days);
+            for (int d = start, end = start + days - 1; d <= end; d++) {
+                if (isWorkingDay(d, fab)) out.add(new EmpDayKey(empId, d));
+            }
+            return out;
+        }
+
+        // Same as expandToEmpDays but also carries hours per day (for the cap constraint).
+        private static List<EmpDayHours> expandToEmpDayHours(int empId, int start, int days, String fab, int hrs) {
+            List<EmpDayHours> out = new ArrayList<>(days);
+            for (int d = start, end = start + days - 1; d <= end; d++) {
+                if (isWorkingDay(d, fab)) out.add(new EmpDayHours(empId, d, hrs));
+            }
+            return out;
+        }
+
         Constraint oneTaskPerEmpPerDay(ConstraintFactory f) {
-            return f.forEach(DaySlot.class)
-                .join(f.forEach(CrewSeat.class),
-                    Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee) && !s.isPinned()))
+            // Strategy: map (seat, block) → List<EmpDayKey> (one entry per working day),
+            // then flattenLast(list → list) → UniConstraintStream<EmpDayKey>.
+            // This replaces the Joiners.filtering DaySlot×Seat cartesian product that was
+            // O(127 DaySlots) per incremental move; now it's O(working_days_in_block).
+            return f.forEach(CrewSeat.class)
+                .filter(s -> !isUnassigned(s.employee) && !s.isPinned())
                 .join(f.forEach(BlockDecision.class),
-                    Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter(SinglePassConstraints::seatCoversDayAndWorking)
-
-                // ---- Tri -> Uni (now collectors are Uni collectors, no type mismatch)
-                .map((d, s, b) -> new EmpDayKey(s.employee.id, d.id))
-
-                .groupBy(key -> key, ConstraintCollectors.count()) // dynamic task count per emp-day
-
+                    Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+                .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
+                .map((CrewSeat s, BlockDecision b) ->
+                        expandToEmpDays(s.employee.id, b.startDay, b.days, s.factory))
+                .flattenLast(list -> list)
+                // UniConstraintStream<EmpDayKey>
+                .groupBy(key -> key, ConstraintCollectors.count())
                 .filter((key, dynCount) -> {
                     int fixedCount = FIXED_TASKCOUNT_BY_EMP_DAY
                         .getOrDefault(key.empId, Collections.emptyMap())
@@ -1390,33 +1429,33 @@ public class EmployeeSchedule {
         }
 
         Constraint dailyCap12h(ConstraintFactory f) {
-            return f.forEach(DaySlot.class)
-                .join(f.forEach(CrewSeat.class),
-                    //  ignore pinned, hours come from FIXED_HOURS_BY_EMP_DAY instead
-                    Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee) && !s.isPinned()))
+            // Same flattenLast pattern. Pinned seats excluded — their hours are in FIXED_HOURS_BY_EMP_DAY.
+            return f.forEach(CrewSeat.class)
+                .filter(s -> !isUnassigned(s.employee) && !s.isPinned())
                 .join(f.forEach(BlockDecision.class),
-                    Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .groupBy((d, s, b) -> Arrays.asList(s.employee.id, d.id),
-                        ConstraintCollectors.sum((d, s, b) -> b.chosenHours()))
+                    Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
+                .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
+                .map((CrewSeat s, BlockDecision b) ->
+                        expandToEmpDayHours(s.employee.id, b.startDay, b.days, s.factory, b.chosenHours()))
+                .flattenLast(list -> list)
+                // UniConstraintStream<EmpDayHours>
+                .groupBy(
+                    edh -> Arrays.asList(edh.empId, edh.dayId),
+                    ConstraintCollectors.sum(edh -> edh.hours))
                 .filter((key, dynamicHours) -> {
                     int empId = (int) key.get(0);
                     int dayId = (int) key.get(1);
-
                     int fixedHours = FIXED_HOURS_BY_EMP_DAY
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(dayId, 0);
-
                     return dynamicHours + fixedHours > DAILY_CAP;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicHours) -> {
                     int empId = (int) key.get(0);
                     int dayId = (int) key.get(1);
-
                     int fixedHours = FIXED_HOURS_BY_EMP_DAY
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(dayId, 0);
-
                     int total = dynamicHours + fixedHours;
                     return total - DAILY_CAP;
                 })
@@ -1918,55 +1957,20 @@ public class EmployeeSchedule {
                 .asConstraint("soft-balance-total-hours");
         }
         Constraint softContinuousRegionStay(ConstraintFactory f) {
-            var items = f.forEach(DaySlot.class)
-                .join(f.forEach(CrewSeat.class),
-                    Joiners.filtering((DaySlot d, CrewSeat s) -> !isUnassigned(s.employee)))
-                .join(f.forEach(BlockDecision.class),
-                    Joiners.equal((DaySlot d, CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter(SinglePassConstraints::seatCoversDayAndWorking)
-                .groupBy(
-                    (d, s, b) -> Arrays.asList(s.employee, CAL.regionOfFab(s.factory)),
-                    ConstraintCollectors.toList((d, s, b) -> d.id)
-                )
-                .filter((key, dayList) -> key.get(1) != null);
-
-            return items
-                .reward(
-                    HardMediumSoftScore.ONE_SOFT,
-                    (key, dayList) -> {
-                        EmployeeFact emp = (EmployeeFact) key.get(0);
-                        String regionId = (String) key.get(1);
-                        int offInt = CAL.stayOffInterval(regionId);
-
-                        List<Integer> days = new ArrayList<>();
-                        if (dayList != null) days.addAll(dayList);
-
-                        // seed from last fixed history if same region
-                        if (emp != null
-                                && emp.histLastFixedDayId != Integer.MIN_VALUE
-                                && emp.histLastFixedRegion != null
-                                && emp.histLastFixedRegion.equals(regionId)) {
-                            days.add(emp.histLastFixedDayId);
-                        }
-
-                        if (days.isEmpty()) return 0;
-
-                        int totalSpan = totalSegmentSpanWithBreak(days, offInt);
-
-                        int maxOn     = CAL.maxStayOn(regionId);
-                        int maxAnnual = CAL.annualMaxStay(regionId);
-                        int allowedCap = totalSpan;
-                        if (maxOn != Integer.MAX_VALUE) {
-                            allowedCap = Math.min(allowedCap, maxOn);
-                        }
-                        if (maxAnnual != Integer.MAX_VALUE) {
-                            allowedCap = Math.min(allowedCap, maxAnnual);
-                        }
-
-                        return CONTINUOUS_REGION_STAY_W * Math.max(0, allowedCap);
-                    }
-                )
-                .asConstraint("soft-continuous-region-stay");
+            return f.forEach(CrewSeat.class)
+                .filter(s -> !isUnassigned(s.employee))
+                .join(f.forEach(CrewSeat.class)
+                    .filter(s -> !isUnassigned(s.employee)),
+                    Joiners.equal(s -> s.employee.id),
+                    Joiners.lessThan(s -> s.blockId))
+                .filter((s1, s2) -> {
+                    String r1 = CAL.regionOfFab(s1.factory);
+                    String r2 = CAL.regionOfFab(s2.factory);
+                    return r1 != null && r2 != null && !r1.equals(r2);
+                })
+                .penalize(HardMediumSoftScore.ONE_SOFT,
+                    (s1, s2) -> REGION_TRANSITION_W)
+                .asConstraint("soft-minimize-region-transitions");
         }
 
         Constraint softFabPreference(ConstraintFactory f) {
@@ -3255,6 +3259,38 @@ public class EmployeeSchedule {
     }
 
 
+    // Appends one line per best-score improvement to score_progress.txt.
+    // Call from a BestSolutionChangedEvent listener so you can watch which constraints
+    // are still firing and how fast the score is improving over time.
+    static void appendScoreProgress(String stage, long msElapsed, HardMediumSoftScore score,
+                                    SolutionManager<SinglePassPlan, HardMediumSoftScore> sm,
+                                    SinglePassPlan solution) {
+        Path logFile = Paths.get("score_progress.txt");
+        try (BufferedWriter bw = Files.newBufferedWriter(logFile,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+            bw.write(String.format("%-7s | t+%5ds | total=%-40s%n",
+                    stage, msElapsed / 1000, score));
+
+            // Per-constraint breakdown (slightly expensive; kept because it's best-effort)
+            try {
+                ScoreExplanation<SinglePassPlan, HardMediumSoftScore> ex = sm.explain(solution);
+                ex.getConstraintMatchTotalMap().forEach((name, cmt) -> {
+                    HardMediumSoftScore cs = cmt.getScore();
+                    if (cs.hardScore() == 0 && cs.mediumScore() == 0) return; // skip zero-hard
+                    int matches = (cmt.getConstraintMatchSet() == null) ? -1
+                            : cmt.getConstraintMatchSet().size();
+                    try {
+                        String shortName = name.contains("/") ? name.substring(name.lastIndexOf('/') + 1) : name;
+                        bw.write(String.format("          %-45s score=%-30s matches=%d%n",
+                                shortName, cs, matches));
+                    } catch (IOException ex2) { throw new UncheckedIOException(ex2); }
+                });
+            } catch (Exception ignored) { /* explain may fail mid-solve; skip */ }
+
+        } catch (IOException e) { /* best-effort; don't crash the solver */ }
+    }
+
         static final class ScoreFiles {
             static void writeText(java.nio.file.Path path, String header, String body) {
                 try (var bw = java.nio.file.Files.newBufferedWriter(
@@ -3707,6 +3743,15 @@ public class EmployeeSchedule {
             1);
         writeInitialScoreAnalysis(factoryForInitial, p, "initial_score.txt",200);
         
+        // Init score_progress.txt for this run
+        try (BufferedWriter _pw = Files.newBufferedWriter(Paths.get("score_progress.txt"),
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            _pw.write("Stage   | elapsed | total score                             | per-constraint (hard/medium only)");
+            _pw.newLine();
+            _pw.write("------- | ------- | --------------------------------------- | --------------------------------------------------");
+            _pw.newLine();
+        } catch (IOException ignored) {}
+
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
         // ---- Stage 1: current settings (e.g., 90/90) ----
@@ -3714,8 +3759,18 @@ public class EmployeeSchedule {
                 SinglePassPlan.class,
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
-                "0hard/*medium/*soft", 120, 180);
+                "0hard/*medium/*soft", 300, 600);
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
+        {
+            SolutionManager<SinglePassPlan, HardMediumSoftScore> smS1 =
+                    SolutionManager.create(factoryStage1);
+            stage1.addEventListener(event -> {
+                if (event.getNewBestScore() == null) return;
+                appendScoreProgress("Stage1", event.getTimeMillisSpent(),
+                        (HardMediumSoftScore) event.getNewBestScore(),
+                        smS1, event.getNewBestSolution());
+            });
+        }
         SinglePassPlan best1 = stage1.solve(p);
 
         long t1 = System.nanoTime();
@@ -3729,6 +3784,7 @@ public class EmployeeSchedule {
         // Warm-start is NOT pinned anymore, so there is nothing to "unpin".
         // Just refresh candidate lists based on the stage1 solution.
         fillSeatCandidatesSinglePass(best1.seats, best1.blocks, env.employees);
+        writeFinalScoreAnalysis(factoryStage1, best1, "stage1_score.txt", 100);
 
         // ---- Stage 2 (polish): 60 minutes, start from stage1 result ----
         System.out.println("Start POLISH (stage2, 60m) at " + nowClock());
@@ -3738,10 +3794,20 @@ public class EmployeeSchedule {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                60  /* spentMinutes */,
-                180 /* unimprovedSeconds */);
+                180  /* spentMinutes */,
+                600 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
+        {
+            SolutionManager<SinglePassPlan, HardMediumSoftScore> smS2 =
+                    SolutionManager.create(factoryStage2);
+            stage2.addEventListener(event -> {
+                if (event.getNewBestScore() == null) return;
+                appendScoreProgress("Stage2", event.getTimeMillisSpent(),
+                        (HardMediumSoftScore) event.getNewBestScore(),
+                        smS2, event.getNewBestSolution());
+            });
+        }
         SinglePassPlan best2 = stage2.solve(best1);
 
         long t2 = System.nanoTime();
