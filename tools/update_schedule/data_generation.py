@@ -254,7 +254,6 @@ class WorkerDef:
     name: str
     company: CompanyDef
     is_manager: bool
-    role: str
     skill_map: list[tuple[OperationDef, int]]
     worker_type_by_operation: dict[str, str]
     region_suitability: dict[str, int]
@@ -275,7 +274,6 @@ class WorkerDef:
             "name": self.name,
             "worker_company": self.company.id,
             "is_manager": self.is_manager,
-            "role": self.role,
             "skill_map": InlineDict({op.id: lvl for (op, lvl) in self.skill_map}),
             "worker_type_by_operation": dict(self.worker_type_by_operation),
             "fab_suitability_map": [
@@ -431,7 +429,6 @@ def create_worker_list(
             name=name,
             company=company,
             is_manager=is_manager,
-            role="",
             skill_map=list(zip(skills, skill_levels)),
             worker_type_by_operation=worker_type_by_operation,
             region_suitability=region_suitability,
@@ -537,20 +534,23 @@ def to_eq_operation_dict(
         workload_key = "workload_days"
         workload_value = workload_days
 
-    rec_min, rec_max = random.choices(
-        recommends_worker_options,
-        recommends_worker_weights,
-        k=1,
-    )[0]
-
-    return {
+    op_dict = {
         "id": op_task_id,
         "name": operation.name,
         "operation": operation.id,
         workload_key: workload_value,
-        "recommends_worker_min": rec_min,
-        "recommends_worker_max": rec_max,
     }
+
+    if recommends_worker_enabled:
+        rec_min, rec_max = random.choices(
+            recommends_worker_options,
+            recommends_worker_weights,
+            k=1,
+        )[0]
+        op_dict["recommends_worker_min"] = rec_min
+        op_dict["recommends_worker_max"] = rec_max
+
+    return op_dict
 
 
 def to_eq_phase_dict(

@@ -1,7 +1,7 @@
-WORKER_NUM = 200
-EQ_PER_DAYS = 0.7
-EQ_PER_DAYS_SIGMA = 0.7
-EQ_NUM = 50
+WORKER_NUM = 400
+EQ_PER_DAYS = 2.5
+EQ_PER_DAYS_SIGMA = 2.5
+EQ_NUM = 300
 
 skill_level_list = (1, 2, 3, 4, 5)
 skill_level_weights = (0.05, 0.1, 0.5, 0.25, 0.1)
@@ -35,8 +35,8 @@ is_skip_weekend = True
 
 # --- operation worker count ---
 # min/max workers required per operation in the workflow definition
-operation_worker_min = 1
-operation_worker_max = 4
+operation_worker_min = 2
+operation_worker_max = 3
 
 # --- region definitions ---
 # id is auto-assigned r1, r2, ... based on list order
@@ -103,5 +103,6 @@ workload_format = "hours"
 workload_units = 8   # hours per working day
 
 # --- recommended workers per operation task ---
+recommends_worker_enabled = False
 recommends_worker_options = [(1, 1), (2, 2), (2, 3), (3, 3)]
 recommends_worker_weights = (0.10, 0.30, 0.40, 0.20)
