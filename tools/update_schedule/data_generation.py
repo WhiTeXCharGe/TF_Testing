@@ -221,17 +221,10 @@ def create_area_map() -> tuple[dict[str, FabDef], dict[str, RegionDef], dict[str
 
 
 def create_worker_company_map() -> dict[str, CompanyDef]:
-    companies = [
-        CompanyDef("c3", "XXX"),
-        CompanyDef("c4", "YYY"),
-    ]
-
-    company_map: dict[str, CompanyDef] = {}
-    for i in range(worker_company_num):
-        company = companies[i]
-        company_map[company.id] = company
-
-    return company_map
+    return {
+        wdef["id"]: CompanyDef(wdef["id"], wdef["name"])
+        for wdef in worker_company_definitions
+    }
 
 
 def create_transit_day_map(region_map: dict[str, RegionDef]) -> list[dict]:

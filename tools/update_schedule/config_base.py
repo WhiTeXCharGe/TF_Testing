@@ -29,9 +29,20 @@ vip_worklength = [
 
 manager_rate = 0.7
 
-worker_company_num = 2
-
 is_skip_weekend = True
+
+# --- worker company definitions ---
+# id and name for each worker company; add or remove entries to change the count
+worker_company_definitions = [
+    {"id": "wc1", "name": "AAA"},
+    {"id": "wc2", "name": "BBB"},
+    {"id": "wc3", "name": "CCC"},
+    {"id": "wc4", "name": "DDD"},
+    {"id": "wc5", "name": "EEE"},
+    {"id": "wc6", "name": "FFF"},
+    {"id": "wc7", "name": "GGG"},
+    {"id": "wc8", "name": "HHH"},
+]
 
 # --- operation worker count ---
 # min/max workers required per operation in the workflow definition
