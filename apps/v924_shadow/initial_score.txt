@@ -1,0 +1,28 @@
+========== INITIAL Score (pre-solve ) ==========
+Total initial score: 0hard/0medium/0soft
+Explanation of score (0hard/0medium/0soft):
+    Constraint matches:
+        0: constraint (soft-affinity-reward) has no matches.
+        0: constraint (soft-fab-preference) has no matches.
+        0: constraint (prefer-regular-over-spot) has no matches.
+        0: constraint (soft-affinity-penalty) has no matches.
+        0: constraint (soft-balance-block-avg-skill) has no matches.
+        0: constraint (soft-balance-total-hours) has no matches.
+        0: constraint (soft-earlier-start) has no matches.
+        0: constraint (soft-encourage-skill-variety) has no matches.
+        0: constraint (soft-minimize-region-transitions) has no matches.
+        0: constraint (soft-smaller-hours) has no matches.
+        0: constraint (block-recommend-headcount-range) has no matches.
+        0: constraint (block-end-within-window) has no matches.
+        0: constraint (block-hours-in-allowed) has no matches.
+        0: constraint (block-no-underfill) has no matches.
+        0: constraint (block-overfill-at-most-one-day) has no matches.
+        0: constraint (emp-annual-overtime-limit) has no matches.
+        0: constraint (emp-monthly-overtime-limit) has no matches.
+        0: constraint (emp-one-task-per-day) has no matches.
+        0: constraint (emp-region-annual-stay-max) has no matches.
+        0: constraint (emp-region-stay-max-on) has no matches.
+        0: constraint (emp-region-transit-gap) has no matches.
+        0: constraint (phase-order) has no matches.
+        0: constraint (seat-daily-cap-12h) has no matches.
+

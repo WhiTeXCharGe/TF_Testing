@@ -1,0 +1,35 @@
+============================================================
+Run at: 2026-05-15T20:36:42.599799100
+Stage1 duration: 03:36:22.459
+Stage2 duration: 03:00:01.471
+Final score: 0hard/-99300medium/-285580soft
+Plan range (plan_range): 2025-09-01 .. 2026-01-05
+Cut-off date (cut_off_date): 2025-09-01  (cutOffDayId=0)
+DaySlots in solver: id=0..126 (count=127), dates=2025-09-01 .. 2026-01-05
+Active modules by trim logic (gap <= 6 days): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e6, e7, e8, e9
+Modules with dynamic blocks (BlockDecision.id > 0): e1, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e2, e20, e21, e22, e23, e24, e25, e26, e27, e28, e29, e3, e30, e31, e32, e33, e34, e35, e36, e37, e38, e39, e4, e40, e41, e42, e43, e44, e45, e46, e47, e48, e49, e5, e50, e6, e7, e8, e9
+Modules with pinned seats (fixed assignments visible to constraints): [none]
+Per-constraint scores:
+  com.yourorg.scheduler/block-end-within-window score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-hours-in-allowed score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-no-underfill score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-overfill-at-most-one-day score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/block-recommend-headcount-range score=0hard/-99300medium/0soft matches=400
+  com.yourorg.scheduler/emp-annual-overtime-limit score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/emp-monthly-overtime-limit score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/emp-one-task-per-day score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/emp-region-annual-stay-max score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/emp-region-stay-max-on score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/emp-region-transit-gap score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/phase-order score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/prefer-regular-over-spot score=0hard/0medium/-9840soft matches=246
+  com.yourorg.scheduler/seat-daily-cap-12h score=0hard/0medium/0soft matches=0
+  com.yourorg.scheduler/soft-affinity-penalty score=0hard/0medium/-10soft matches=1896
+  com.yourorg.scheduler/soft-affinity-reward score=0hard/0medium/10145soft matches=1896
+  com.yourorg.scheduler/soft-balance-block-avg-skill score=0hard/0medium/-49123soft matches=400
+  com.yourorg.scheduler/soft-balance-total-hours score=0hard/0medium/-67914soft matches=200
+  com.yourorg.scheduler/soft-earlier-start score=0hard/0medium/-6886soft matches=401
+  com.yourorg.scheduler/soft-encourage-skill-variety score=0hard/0medium/-1857soft matches=354
+  com.yourorg.scheduler/soft-fab-preference score=0hard/0medium/11460soft matches=1426
+  com.yourorg.scheduler/soft-minimize-region-transitions score=0hard/0medium/-14595soft matches=2919
+  com.yourorg.scheduler/soft-smaller-hours score=0hard/0medium/-156960soft matches=401
