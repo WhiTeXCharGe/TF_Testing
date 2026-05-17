@@ -59,11 +59,13 @@ BROWN_UNAV_BREACH = "C79D6B"  # assignment placed on a closed day (breach)
 
 # ------------------------------- CONFIG --------------------------------
 # Required hours from Schedule.yaml only:
-#   required_task = workload_days * 8
+#   if workload_hours present -> use directly
+#   if workload_days present  -> multiply by UNIT_HOUR
 REQUIRED_HOURS_MODE = True
 
 OT_THRESHOLD = 8
 CAP_HOURS    = 12
+UNIT_HOUR    = 10  # hours per workload_day (used when workload_days is given)
 
 # Team quality scoring constants
 BALANCE_K = 25.0  # higher = stricter penalty per dev from op_avg_skill
@@ -225,6 +227,8 @@ def load_env(env_path):
                     "min_worker_num": op.get("min_worker_num", 1),
                     "max_worker_num": op.get("max_worker_num", 99),
                 }
+    affinity_tags = {t["id"]: t.get("weight", 0) for t in env.get("affinity_tag", [])}
+
     return {
         "workflows": workflows,
         "fabs": fabs,
@@ -234,6 +238,7 @@ def load_env(env_path):
         "worker_companies": wcompanies,
         "op_meta": op_meta,
         "transite_day_map": env.get("transite_day_map", []),
+        "affinity_tags": affinity_tags,
     }
 
 def load_schedule(path):
@@ -848,20 +853,23 @@ def build_preference_match_rows(env, modules, assignments, maps):
 # ----------------------- REQUIRED HOURS (task/module) ------------------
 def compute_required_hours_task_module(modules):
     """Return:
-       - req_task[(m_id, op_id)] = workload_days * 8
-       - req_module[m_id]        = sum of its tasks
+       - req_task[(m_id, op_id)] = required hours (workload_hours directly, or workload_days * UNIT_HOUR)
+       - req_module[m_id]        = sum of its tasks in hours
     """
     req_task   = defaultdict(int)
     req_module = defaultdict(int)
     for m in modules:
         m_id = m["id"]
-        total_days = 0
+        total_hours = 0
         for ph in m.get("phase_task_list", []):
             for ot in ph.get("operation_task_list", []):
-                days = int(ot.get("workload_days", 0))
-                req_task[(m_id, ot["operation"])] += days * 10
-                total_days += days
-        req_module[m_id] = total_days * 10
+                if "workload_hours" in ot:
+                    hours = int(ot["workload_hours"])
+                else:
+                    hours = int(ot.get("workload_days", 0)) * UNIT_HOUR
+                req_task[(m_id, ot["operation"])] += hours
+                total_hours += hours
+        req_module[m_id] = total_hours
     return req_task, req_module
 
 # --------------------------- VIOLATION DETECTION -----------------------
@@ -3234,6 +3242,251 @@ def write_sheet_wftool_module_phase_gaps(wb, plan_start, plan_end, modules, maps
 
     ws.auto_filter.ref = f"A2:{get_column_letter(len(hdr))}{ws.max_row}"
 
+# ----------------------- AFFINITY ANALYSIS -----------------------
+def build_affinity_analysis(env, modules, assignments, maps):
+    """
+    Analyse pair-level affinity for workers assigned to the same (module, operation).
+
+    Affinity score for a pair = sum of weights of tags shared by both workers.
+    Positive weight tags contribute positively; negative weight tags lower the score.
+
+    Returns:
+        group_rows  – one dict per (m_id, op_id) group
+        pair_rows   – one dict per unique (worker_a, worker_b, m_id, op_id) pair
+    """
+    tag_weights = env.get("affinity_tags", {})          # tag_id -> weight
+    workers     = env.get("workers", {})
+    worker_name = maps["worker_name"]
+
+    # worker_id -> frozenset of tag ids
+    worker_tags = {}
+    for wid, cfg in workers.items():
+        worker_tags[wid] = frozenset(cfg.get("affinity") or [])
+
+    # Collect unique workers per (m_id, op_id) group
+    op_task_index = maps["op_task_index"]
+    group_workers = defaultdict(set)   # (m_id, op_id) -> {wid}
+    for a in assignments:
+        ot_id = a["operation_task"]
+        meta  = op_task_index.get(ot_id)
+        if not meta:
+            continue
+        group_workers[(meta["m_id"], meta["op_id"])].add(a["worker"])
+
+    # Build module/op name lookup
+    op_name_map = {}  # (m_id, op_id) -> op_name
+    mod_name_map = {}
+    for m in modules:
+        mod_name_map[m["id"]] = m.get("name", m["id"])
+        for ph in m.get("phase_task_list", []):
+            for ot in ph.get("operation_task_list", []):
+                op_name_map[(m["id"], ot["operation"])] = ot.get("name", ot["operation"])
+
+    pair_rows  = []
+    group_rows = []
+
+    for (m_id, op_id), wids in sorted(group_workers.items()):
+        wid_list = sorted(wids)
+        pairs = list(combinations(wid_list, 2))
+
+        group_total = 0
+        group_pos   = 0
+        group_neg   = 0
+
+        for w1, w2 in pairs:
+            tags1  = worker_tags.get(w1, frozenset())
+            tags2  = worker_tags.get(w2, frozenset())
+            shared = tags1 & tags2
+            score  = sum(tag_weights.get(t, 0) for t in shared)
+            pos    = sum(tag_weights.get(t, 0) for t in shared if tag_weights.get(t, 0) > 0)
+            neg    = sum(tag_weights.get(t, 0) for t in shared if tag_weights.get(t, 0) < 0)
+
+            pair_rows.append({
+                "module":      m_id,
+                "module_name": mod_name_map.get(m_id, m_id),
+                "op_id":       op_id,
+                "op_name":     op_name_map.get((m_id, op_id), op_id),
+                "worker_a":    worker_name.get(w1, w1),
+                "worker_b":    worker_name.get(w2, w2),
+                "shared_tags": ", ".join(sorted(shared)) if shared else "-",
+                "score":       score,
+                "pos_score":   pos,
+                "neg_score":   neg,
+            })
+            group_total += score
+            group_pos   += pos
+            group_neg   += neg
+
+        n_workers = len(wid_list)
+        n_pairs   = len(pairs)
+        avg_score = round(group_total / n_pairs, 2) if n_pairs else 0
+
+        group_rows.append({
+            "module":      m_id,
+            "module_name": mod_name_map.get(m_id, m_id),
+            "op_id":       op_id,
+            "op_name":     op_name_map.get((m_id, op_id), op_id),
+            "n_workers":   n_workers,
+            "n_pairs":     n_pairs,
+            "total_score": group_total,
+            "avg_score":   avg_score,
+            "pos_score":   group_pos,
+            "neg_score":   group_neg,
+        })
+
+    # Sort: lowest (worst) avg_score first so problematic groups are visible at top
+    group_rows.sort(key=lambda r: (r["avg_score"], r["module"], r["op_id"]))
+    pair_rows.sort(key=lambda r: (r["score"], r["module"], r["op_id"], r["worker_a"], r["worker_b"]))
+
+    return group_rows, pair_rows
+
+
+def write_sheet_affinity(wb, env, modules, assignments, maps):
+    """Affinity analysis sheet – inserted before Moving plan."""
+    ws = wb.create_sheet("Affinity")
+
+    bold   = Font(bold=True, name="Arial", size=10)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+    right  = Alignment(horizontal="right",  vertical="center")
+
+    # ---- Colors ----
+    HDR_FILL    = PatternFill("solid", start_color="2F5496", end_color="2F5496")  # dark blue
+    HDR_FONT    = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+    TITLE_FONT  = Font(bold=True, name="Arial", size=13)
+    SUB_FONT    = Font(bold=True, name="Arial", size=11)
+    POS_FILL    = PatternFill("solid", start_color="C6EFCE", end_color="C6EFCE")  # green
+    NEG_FILL    = PatternFill("solid", start_color="FFC7CE", end_color="FFC7CE")  # red
+    ZERO_FILL   = PatternFill("solid", start_color="FFEB9C", end_color="FFEB9C")  # yellow
+    STRIPE_FILL = PatternFill("solid", start_color="F2F2F2", end_color="F2F2F2")  # light grey
+    SECT_FILL   = PatternFill("solid", start_color="D9E1F2", end_color="D9E1F2")  # light blue
+
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    tag_weights = env.get("affinity_tags", {})
+    group_rows, pair_rows = build_affinity_analysis(env, modules, assignments, maps)
+
+    # ---- helper ----
+    def score_fill(score):
+        if score > 0:  return POS_FILL
+        if score < 0:  return NEG_FILL
+        return ZERO_FILL
+
+    cur_row = 1
+
+    # ===== TITLE =====
+    ws.cell(row=cur_row, column=1, value="Affinity Analysis").font = TITLE_FONT
+    ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=10)
+    cur_row += 1
+
+    # ===== Tag legend =====
+    ws.cell(row=cur_row, column=1, value="Tag Legend").font = SUB_FONT
+    cur_row += 1
+    tag_hdr = ["Tag ID", "Weight", "Direction"]
+    for ci, h in enumerate(tag_hdr, 1):
+        c = ws.cell(row=cur_row, column=ci, value=h)
+        c.font = HDR_FONT; c.fill = HDR_FILL; c.alignment = center; c.border = border
+    cur_row += 1
+    for tid, w in sorted(tag_weights.items()):
+        direction = "Positive" if w > 0 else ("Negative" if w < 0 else "Neutral")
+        vals = [tid, w, direction]
+        for ci, v in enumerate(vals, 1):
+            c = ws.cell(row=cur_row, column=ci, value=v)
+            c.alignment = center; c.border = border
+            if ci == 2:
+                c.fill = score_fill(w)
+        cur_row += 1
+    cur_row += 1  # blank separator
+    tag_legend_freeze_row = cur_row  # everything above this row will be frozen
+
+    # ===== SECTION 1 : Group Summary =====
+    ws.cell(row=cur_row, column=1, value="Section 1 – Group Affinity Summary").font = SUB_FONT
+    ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=10)
+    ws.cell(row=cur_row, column=1).fill = SECT_FILL
+    cur_row += 1
+
+    grp_hdrs = [
+        "Module", "Module Name", "Op ID", "Op Name",
+        "Workers", "Pairs", "Total Score", "Avg Pair Score",
+        "Positive", "Negative",
+    ]
+    for ci, h in enumerate(grp_hdrs, 1):
+        c = ws.cell(row=cur_row, column=ci, value=h)
+        c.font = HDR_FONT; c.fill = HDR_FILL; c.alignment = center; c.border = border
+    grp_hdr_row = cur_row
+    cur_row += 1
+
+    for ri, r in enumerate(group_rows):
+        fill = STRIPE_FILL if ri % 2 == 1 else None
+        vals = [
+            r["module"], r["module_name"], r["op_id"], r["op_name"],
+            r["n_workers"], r["n_pairs"], r["total_score"], r["avg_score"],
+            r["pos_score"], r["neg_score"],
+        ]
+        for ci, v in enumerate(vals, 1):
+            c = ws.cell(row=cur_row, column=ci, value=v)
+            c.border = border
+            c.alignment = left if ci in (1, 2, 3, 4) else center
+            if fill:
+                c.fill = fill
+        # Score coloring on total and avg columns
+        ws.cell(row=cur_row, column=7).fill = score_fill(r["total_score"])
+        ws.cell(row=cur_row, column=8).fill = score_fill(r["avg_score"])
+        cur_row += 1
+
+    grp_data_end = cur_row - 1
+    cur_row += 2  # blank separator
+
+    # ===== SECTION 2 : Pair Detail =====
+    ws.cell(row=cur_row, column=1, value="Section 2 – Pair Detail").font = SUB_FONT
+    ws.merge_cells(start_row=cur_row, start_column=1, end_row=cur_row, end_column=10)
+    ws.cell(row=cur_row, column=1).fill = SECT_FILL
+    cur_row += 1
+
+    pair_hdrs = [
+        "Module", "Module Name", "Op ID", "Op Name",
+        "Worker A", "Worker B", "Shared Tags", "Score",
+        "Positive", "Negative",
+    ]
+    for ci, h in enumerate(pair_hdrs, 1):
+        c = ws.cell(row=cur_row, column=ci, value=h)
+        c.font = HDR_FONT; c.fill = HDR_FILL; c.alignment = center; c.border = border
+    pair_hdr_row = cur_row
+    cur_row += 1
+
+    for ri, r in enumerate(pair_rows):
+        fill = STRIPE_FILL if ri % 2 == 1 else None
+        vals = [
+            r["module"], r["module_name"], r["op_id"], r["op_name"],
+            r["worker_a"], r["worker_b"], r["shared_tags"], r["score"],
+            r["pos_score"], r["neg_score"],
+        ]
+        for ci, v in enumerate(vals, 1):
+            c = ws.cell(row=cur_row, column=ci, value=v)
+            c.border = border
+            c.alignment = left if ci in (1, 2, 3, 4, 5, 6, 7) else center
+            if fill:
+                c.fill = fill
+        ws.cell(row=cur_row, column=8).fill = score_fill(r["score"])
+        cur_row += 1
+
+    pair_data_end = cur_row - 1
+
+    # ===== Auto-filter =====
+    ws.auto_filter.ref = (
+        f"A{grp_hdr_row}:{get_column_letter(len(grp_hdrs))}{grp_data_end}"
+    )
+
+    # ===== Column widths =====
+    col_widths = [12, 20, 8, 16, 10, 7, 13, 14, 10, 10]
+    for ci, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+    # Freeze tag legend at top; Section 1 and Section 2 scroll freely
+    ws.freeze_panes = f"A{tag_legend_freeze_row}"
+
+
 # ----------------------- SHEET : MOVING PLAN CALENDAR -----------------------
 def write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios):
     """
@@ -3392,6 +3645,8 @@ def main():
     write_sheet_wftool_module_phase_gaps(
         wb, plan_start, plan_end, modules, maps, assignments
     )
+    # ===== Affinity analysis =====
+    write_sheet_affinity(wb, env, modules, assignments, maps)
     # ===== SHEET 8: Moving plan =====
     write_sheet_moving_plan(wb, plan_start, plan_end, env, maps, vios)
 
