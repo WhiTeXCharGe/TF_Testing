@@ -1,240 +1,395 @@
-# Azure Functions Usage Idea for Timefold Project  
-  
-## Purpose  
-  
-The current Timefold project is built and executed locally using Java and Maven.  
-  
-As the next step, Azure Functions can be considered to run the Timefold scheduling process through an HTTP API.    
-The main idea is to allow a web application to send input files, trigger the Timefold solver, and receive or access the result after execution.  
-  
----  
-  
-## 1. Deployment Idea  
-  
-Azure Functions supports Java projects and can be deployed using Maven.    
-Because the current Timefold project already uses Maven, it may be possible to convert or wrap the project as an Azure Functions project and deploy it with Maven.  
-  
-However, the Java runtime version must be checked carefully.    
-Maven can build and deploy the Azure Functions project, but the target Java version must be supported by Azure Functions.  
-  
-For Azure Functions Runtime 4.x, the Java developer reference lists Java 8, 11, 17, and 21 as supported Java versions for Windows and Linux Function Apps. The Maven project can specify the Java version used by the compiler and the Java version hosted by the Function App. These values should match the supported Azure Functions Java runtime versions. 
-  
-This is important for the Timefold project because Timefold Solver 2.x requires Java 21 or later.    
-Therefore, if the project upgrades to Timefold Solver 2.x, the safest target version for Azure Functions is Java 21.  
+# Azure Functions Design — Timefold Scheduler
+
   
 
-Local Java version: Java 24.0.2  
-Recommended Azure Functions Java runtime: Java 21  
+---
+
   
-Reason:  
-- Azure Functions supports Java 21  
-- Timefold Solver 2.x requires Java 21 or later  
-- Java 22, 23, and 24 should not be used as the normal Azure Functions Java runtime target
 
-Maven deployment itself is possible, but the deployment target should be Java 21, not Java 24.
+## Overall Architecture
 
-Example Maven compiler setting:
+  
 
-<properties>  
-  <maven.compiler.source>21</maven.compiler.source>  
-  <maven.compiler.target>21</maven.compiler.target>  
+```mermaid
+
+graph TD
+
+    A([User / Browser]) -->|upload config + trigger| B[Web App]
+
+    B -->|upload YAML| C[(Azure Blob Storage)]
+
+    B -->|POST job request| D[Azure Functions\nHTTP Trigger]
+
+    D -->|read input YAML| C
+
+    D -->|run| E[Timefold Solver\nJava 21]
+
+    E -->|write result| C
+
+    D -->|job accepted / run ID| B
+
+    B -->|poll status| D
+
+    B -->|download result| C
+
+```
+
+  
+
+---
+
+  
+
+## 1. Java Version
+
+  
+
+| Item | Value |
+
+|---|---|
+
+| Local Java | 24.0.2 |
+
+| Azure Functions target | **Java 21** |
+
+| Timefold Solver 1.x | Java 17 or 21 |
+
+| Timefold Solver 2.x | Java 21 required |
+
+| Java 22 / 23 / 24 on Azure Functions | Not supported as runtime target |
+
+  
+
+Required `pom.xml` settings:
+
+  
+
+```xml
+
+<properties>
+
+  <maven.compiler.source>21</maven.compiler.source>
+
+  <maven.compiler.target>21</maven.compiler.target>
+
 </properties>
 
-If Azure Functions Maven Plugin is used, the Function App runtime should also be set to Java 21.
+  
+
+<!-- Azure Functions Maven Plugin -->
 
 <javaVersion>21</javaVersion>
 
-In short:
+```
 
-|Item|Direction|
-|---|---|
-|Maven deploy to Azure Functions|Possible|
-|Java 21 deploy|Possible|
-|Java 22+ / Java 24 deploy|Not recommended as normal Azure Functions Java runtime target|
-|Current local Java|Java 24.0.2|
-|Recommended Azure Functions Java|Java 21|
-|Timefold Solver 1.x|Java 17 or Java 21 can be considered|
-|Timefold Solver 2.x|Java 21 should be used|
+  
 
 ---
 
-## 2. HTTP Request and Response
+  
 
-Azure Functions can use an HTTP Trigger.  
-This means the solver can be executed when a web application sends an HTTP request.
+## 2. HTTP Trigger Flow
 
-Basic flow:
+  
 
-Web App  
-  ↓ HTTP POST  
-Azure Functions  
-  ↓  
-Read EnvConfig.yaml and Schedule.yaml  
-  ↓  
-Run Timefold Solver  
-  ↓  
-Save output  
-  ↓  
-Return response
+```mermaid
 
-The HTTP response can return either the full result or only the output file path.
+sequenceDiagram
 
-For this project, returning only the output path is probably better because the scheduling result may become large.
+    participant W as Web App
 
-Example response:
+    participant F as Azure Functions
 
-{  
-  "status": "success",  
-  "outputPath": "output/result_schedule.yaml"  
-}
+    participant B as Blob Storage
+
+    participant S as Timefold Solver
+
+  
+
+    W->>B: upload EnvConfig.yaml, Schedule.yaml
+
+    W->>F: POST /runSolver { envConfigPath, schedulePath, runId }
+
+    F-->>W: 202 Accepted { runId }
+
+    F->>B: read input files
+
+    F->>S: run solver (Stage1 10min, Stage2 3hr)
+
+    S-->>F: solution
+
+    F->>B: write result_schedule.yaml, summary.json
+
+    W->>F: GET /status/{runId}
+
+    F-->>W: { status, outputPath }
+
+    W->>B: download result
+
+```
+
+  
+
+- The Function returns `202 Accepted` immediately — the user does not wait for solve to finish
+
+- The web app polls `/status/{runId}` to check completion
+
+- Parallel runs use separate `runId` folders in Blob Storage
+
+  
 
 ---
 
-## 3. Trigger and Input File Handling
+  
 
-The simplest trigger is an HTTP Trigger.
+## 3. Input File Handling
 
-There are several possible ways to send `EnvConfig.yaml` and `Schedule.yaml`.
+  
 
-|Method|Description|Advantage|Concern|
+Three options — Blob path method is recommended:
+
+  
+
+| Method | How | Good for | Watch out |
+
 |---|---|---|---|
-|Send YAML directly in HTTP body|Send the content of both YAML files in the request|Simple for small tests|Not good for large files|
-|Send Blob Storage paths|Upload YAML files to Blob Storage first, then send file paths to the Function|Better for large files|Needs Blob read/write logic|
-|Convert YAML to JSON|Send input data as JSON instead of YAML|Easier for web app integration|Requires changing current YAML-based logic|
 
-For this project, using Azure Blob Storage for input files is probably the most realistic option.
+| YAML in HTTP body | Send file content directly in POST | Small test / dev | Not suited for large files |
 
-Example request:
+| **Blob Storage paths** | Upload files first, pass paths in POST | **Production** | Needs Blob read/write logic |
 
-{  
-  "envConfigPath": "input/EnvConfig.yaml",  
-  "schedulePath": "input/Schedule.yaml",  
-  "outputPath": "output/result_schedule.yaml"  
-}
+| JSON payload | Send data as JSON instead of YAML | Frontend-friendly | Requires changing Java parsing |
 
-This way, Azure Functions does not need to receive large YAML content directly through the HTTP request.  
-It only receives the file paths, then reads the actual files from Blob Storage.
-
----
-
-## 4. Output Handling
-
-The Timefold solver output can be saved to Azure Blob Storage.
-
-Possible output methods:
-
-| Output Method | Description                                  |
-| ------------- | -------------------------------------------- |
-| HTTP Response | Return small result data directly (for test) |
-| Blob Storage  | Save result files such as YAML,  or Excel    |
-| Database      | Log                                          |
-
-Since the scheduling result may become large, Blob Storage is suitable for storing output files.
-
-Example Blob Storage structure:
-```
-
-Blob Storage  
-├─ input/  
-│  ├─ EnvConfig.yaml  
-│  └─ Schedule.yaml  
-├─ output/  
-│  ├─ result_schedule.yaml  
-│  └─ result_summary.json
-```
-The Azure Function can return the output path after saving the result.
-```
-{  
-  "status": "success",  
-  "outputPath": "output/result_schedule.yaml",  
-  "summaryPath": "output/result_summary.json"  
-}
-```
-If needed, each execution can have a unique folder name.
-```
-output/  
-├─ run-20260428-001/  
-│  ├─ result_schedule.yaml  
-│  └─ result_summary.json  
-├─ run-20260428-002/  
-│  ├─ result_schedule.yaml  
-│  └─ result_summary.json
-```
-This makes it easier to avoid overwriting files when multiple users run the solver.
-
----
-
-## 5. Web App Calling Idea
-
-A web application can call Azure Functions after the user uploads input files.
-
-Possible flow:
-```
-User  
-  ↓  
-Web App  
-  ↓ Upload YAML files  
-Azure Blob Storage  
-  ↓  
-Web App calls Azure Functions  
-  ↓  
-Azure Functions runs Timefold Solver  
-  ↓  
-Output is saved to Blob Storage  
-  ↓  
-Web App displays or downloads the result
-```
-Simple JavaScript example:
-```
-
-async function runSolver() {  
-  const response = await fetch("https://example-function.azurewebsites.net/api/runSolver", {  
-    method: "POST",  
-    headers: {  
-      "Content-Type": "application/json"  
-    },  
-    body: JSON.stringify({  
-      envConfigPath: "input/EnvConfig.yaml",  
-      schedulePath: "input/Schedule.yaml",  
-      outputPath: "output/result_schedule.yaml"  
-    })  
-  });  
   
-  const result = await response.json();  
-  console.log(result);  
+
+Recommended request body:
+
+  
+
+```json
+
+{
+
+  "envConfigPath": "input/EnvConfig.yaml",
+
+  "schedulePath":  "input/Schedule.yaml",
+
+  "runId":         "run-20260428-001"
+
 }
+
 ```
-The web application does not need to execute Timefold directly.  
-It only uploads files, calls the Azure Function, and displays the result.
+
+  
 
 ---
 
-## 6. Azure Functions Side Image
-
-The Azure Function receives the request, reads the YAML files, runs Timefold, and saves the result.
-
-Simple Java image:
-```
-@FunctionName("runSolver")  
-public HttpResponseMessage runSolver(  
-    @HttpTrigger(  
-        name = "req",  
-        methods = {HttpMethod.POST},  
-        authLevel = AuthorizationLevel.FUNCTION  
-    )  
-    HttpRequestMessage<Optional<String>> request,  
-    final ExecutionContext context  
-) {  
-    // 1. Read envConfigPath, schedulePath, and outputPath from request body  
-    // 2. Read EnvConfig.yaml and Schedule.yaml from Blob Storage  
-    // 3. Run Timefold Solver  
-    // 4. Save result to Blob Storage  
-    // 5. Return output path as HTTP response  
   
-    return request.createResponseBuilder(HttpStatus.OK)  
-        .body("{\"status\":\"success\"}")  
-        .build();  
-}
+
+## 4. Blob Storage Layout
+
+  
+
 ```
-This is only an image of the structure.  
-Actual implementation still needs Blob Storage reading/writing logic and solver execution logic.
+
+blob-container/
+
+├── input/
+
+│   ├── EnvConfig.yaml
+
+│   └── Schedule.yaml
+
+└── output/
+
+    ├── run-20260428-001/
+
+    │   ├── result_schedule.yaml
+
+    │   └── summary.json
+
+    └── run-20260428-002/
+
+        ├── result_schedule.yaml
+
+        └── summary.json
+
+```
+
+  
+
+- Each run gets its own folder — no overwrite conflicts between parallel runs
+
+- Summary JSON holds score, violation list, and top-level stats (small, safe to return in HTTP response)
+
+  
+
+---
+
+  
+
+## 5. Azure Function — Code Skeleton
+
+  
+
+```java
+
+@FunctionName("runSolver")
+
+public HttpResponseMessage runSolver(
+
+    @HttpTrigger(
+
+        name = "req",
+
+        methods = {HttpMethod.POST},
+
+        authLevel = AuthorizationLevel.FUNCTION
+
+    )
+
+    HttpRequestMessage<Optional<String>> request,
+
+    final ExecutionContext context
+
+) {
+
+    // 1. Parse runId, envConfigPath, schedulePath from request body
+
+    // 2. Read YAML files from Blob Storage
+
+    // 3. Run EmployeeSchedule solver (Stage1 + Stage2)
+
+    // 4. Write result to Blob Storage under output/{runId}/
+
+    // 5. Return { status, outputPath }
+
+  
+
+    return request.createResponseBuilder(HttpStatus.ACCEPTED)
+
+        .body("{\"status\":\"running\",\"runId\":\"...\"}")
+
+        .build();
+
+}
+
+```
+
+  
+
+---
+
+  
+
+## 6. Web Server Options for the Web App
+
+  
+
+The web app sits in front of Azure Functions — it handles the UI and delegates all heavy work to Functions + Blob.
+
+  
+
+```mermaid
+
+graph LR
+
+    subgraph Frontend only
+
+        A1[React / Vue / plain JS\nhosted on Azure Static Web Apps]
+
+    end
+
+    subgraph Full-stack
+
+        A2[Next.js / Nuxt\nhosted on Azure App Service or Container Apps]
+
+    end
+
+    subgraph Lightweight backend
+
+        A3[Spring Boot / FastAPI\nhosted on Azure App Service]
+
+    end
+
+  
+
+    A1 -->|calls directly| F[Azure Functions]
+
+    A2 -->|server-side proxy| F
+
+    A3 -->|proxy / auth layer| F
+
+```
+
+  
+
+| Option | Stack | Host | Best when |
+
+|---|---|---|---|
+
+| Azure Static Web Apps | React / Vue / plain JS | Azure Static Web Apps | UI only, Functions handle all logic |
+
+| Next.js / Nuxt | JS full-stack | Azure App Service | Need server-side rendering or API routes |
+
+| Spring Boot | Java | Azure App Service / Container Apps | Java team, want one language end-to-end |
+
+| FastAPI | Python | Azure App Service / Container Apps | Python team, quick REST layer |
+
+  
+
+**Simplest path:** React SPA on Azure Static Web Apps calling Azure Functions directly.
+
+- Static Web Apps has a built-in `/api` proxy to Functions — no CORS setup needed
+
+- No server to manage
+
+  
+
+**If auth / session is needed:** add Azure AD (Entra ID) — both Static Web Apps and App Service support it with minimal config.
+
+  
+
+---
+
+  
+
+## 7. Full Stack Summary
+
+  
+
+```mermaid
+
+graph TD
+
+    U([User]) --> FE[Web App\ne.g. React on Static Web Apps]
+
+    FE -->|auth| AD[Azure Entra ID\noptional]
+
+    FE -->|POST runSolver\nGET status| AF[Azure Functions]
+
+    FE -->|download result| BS[(Azure Blob Storage)]
+
+    AF -->|read / write| BS
+
+    AF -->|run| TS[Timefold Solver\nJava 21 on Functions]
+
+    AF -->|log| DB[(Cosmos DB / Table Storage\nrun log - optional)]
+
+```
+
+  
+
+---
+
+  
+
+## Key Constraints to Remember
+
+  
+
+- Azure Functions has a default timeout of 5 min (Consumption plan) — the Stage 2 solve is 3 hr, so use **Premium plan** or **Dedicated (App Service) plan** with `functionTimeout` set
+
+- Memory: Timefold holds the full model in heap — monitor and set appropriate App Service plan size
+
+- Cold start: Java Functions have noticeable cold start — consider **always-on** setting or Premium plan for production
