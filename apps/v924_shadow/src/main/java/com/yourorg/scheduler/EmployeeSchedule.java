@@ -336,6 +336,11 @@ public class EmployeeSchedule {
         // constraints read this cached list instead of re-deriving the span,
         // which removes the DaySlot-vs-CrewSeat cartesian-product joins that
         // previously dominated incremental score calculation.
+        // "removal" is suppressed because the variableListenerClass form of
+        // @ShadowVariable is deprecated in Timefold 1.27. It still works on the
+        // Community Edition (the version this project pins) and is kept for
+        // that reason; the warning is only relevant on a future major upgrade.
+        @SuppressWarnings({"deprecation", "removal"})
         @ShadowVariable(variableListenerClass = BlockSpanVariableListener.class,
                         sourceVariableName = "startDay")
         @ShadowVariable(variableListenerClass = BlockSpanVariableListener.class,
@@ -361,6 +366,10 @@ public class EmployeeSchedule {
     // single shadow variable means it is rebuilt once per block-span change,
     // rather than being recomputed inside every day-based constraint and for
     // every seat attached to the block.
+    // VariableListener is deprecated in Timefold 1.27 but is a Community
+    // Edition feature and still fully functional; "removal" is suppressed for
+    // the same reason as the @ShadowVariable annotation above.
+    @SuppressWarnings({"deprecation", "removal"})
     public static class BlockSpanVariableListener
             implements VariableListener<SinglePassPlan, BlockDecision> {
 
@@ -3249,12 +3258,11 @@ public class EmployeeSchedule {
         }
         cfg.withTerminationConfig(term);
 
-        // Performance redesign: evaluate moves in parallel across CPU cores.
-        // "AUTO" lets Timefold pick a thread count from the available
-        // processors. The constraints and the shadow-variable listener only
-        // read immutable per-solve state, so multi-threaded solving is safe.
-        // Remove this line to fall back to single-threaded solving.
-        cfg.withMoveThreadCount("AUTO");
+        // NOTE: multi-threaded solving (moveThreadCount) is intentionally NOT
+        // set here. It requires Timefold Solver Enterprise Edition; on the
+        // Community Edition it throws at solve time. The speed-up in this
+        // redesign comes purely from the shadow variable and the removal of
+        // the DaySlot cartesian-product joins, which need no Enterprise build.
 
         // NOTE:
         // Do NOT force a single WEAKEST_FIT_DECREASING construction heuristic here,
