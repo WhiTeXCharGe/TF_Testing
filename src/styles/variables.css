@@ -1,0 +1,57 @@
+:root {
+  /* Brand blue */
+  --blue:       #1a73e8;
+  --blue-dk:    #1558b0;
+  --blue-lt:    #e8f0fe;
+  --blue-mid:   #4285f4;
+
+  /* Neutrals */
+  --bg:         #f8f9fa;
+  --surface:    #ffffff;
+  --bdr:        #dadce0;
+  --bdr-dk:     #bec3cb;
+
+  /* Text */
+  --text:       #202124;
+  --text-sec:   #5f6368;
+  --text-dis:   #9aa0a6;
+
+  /* Status */
+  --green:      #188038;
+  --green-lt:   #e6f4ea;
+  --red:        #c5221f;
+  --red-lt:     #fce8e6;
+  --orange:     #e37400;
+  --orange-lt:  #fef7e0;
+  --grey:       #80868b;
+  --grey-lt:    #f1f3f4;
+
+  /* Gantt */
+  --gantt-weekend:  #f1f3f4;
+  --gantt-cutoff:   #1a73e8;
+  --gantt-today:    #e37400;
+  --gantt-unavail:  #f28b82;
+
+  /* Layout */
+  --sidebar-w:  200px;
+  --topbar-h:   52px;
+  --row-h:      36px;
+
+  /* Shadows */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.10);
+  --shadow-md:  0 2px 8px rgba(0,0,0,.12);
+
+  /* Typography */
+  --font:       'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:  'SF Mono', Consolas, 'Courier New', monospace;
+  --fs-sm:      12px;
+  --fs-base:    13px;
+  --fs-md:      14px;
+  --fs-lg:      16px;
+  --fs-xl:      20px;
+
+  /* Radius */
+  --r-sm:  3px;
+  --r-md:  6px;
+  --r-lg:  10px;
+}

@@ -1,0 +1,178 @@
+@import './variables.css';
+
+/* ── Gantt page wrapper ───────────────────────────────────────── */
+/* The page scrolls inside .page-content; the grid itself is height-capped
+   so its sticky headers keep working, and the New Run panel sits below it. */
+.gantt-page { display: flex; flex-direction: column; }
+.gantt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 14px;
+  flex-shrink: 0;
+}
+.gantt-toolbar-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+}
+.gantt-toolbar-spacer { flex: 1; }
+
+/* ── Outer scroll wrapper ─────────────────────────────────────── */
+.gantt-scroll-outer {
+  flex: 0 1 auto;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+/* ── Table ────────────────────────────────────────────────────── */
+.gantt-table {
+  border-collapse: collapse;
+  width: max-content;
+  table-layout: fixed;
+}
+
+/* ── Header rows ─────────────────────────────────────────────── */
+.gantt-table thead th {
+  position: sticky;
+  background: var(--surface);
+  border-bottom: 1px solid var(--bdr);
+  border-right: 1px solid var(--bdr);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-sec);
+  white-space: nowrap;
+  padding: 0;
+  line-height: 22px;
+  z-index: 10;
+}
+
+/* Row 0: month labels */
+.gantt-table thead tr:nth-child(1) th { top: 0; height: 22px; }
+/* Row 1: day numbers */
+.gantt-table thead tr:nth-child(2) th { top: 22px; height: 22px; }
+/* Row 2: weekday */
+.gantt-table thead tr:nth-child(3) th { top: 44px; height: 22px; }
+
+/* Left-column header cells (fixed left AND fixed top) */
+.gantt-table thead th.col-company { left: 0;     z-index: 25; min-width: 88px; }
+.gantt-table thead th.col-name    { left: 88px;  z-index: 25; min-width: 84px; }
+.gantt-table thead th.col-role    { left: 172px; z-index: 25; min-width: 50px; }
+.gantt-table thead th.col-mgr     { left: 222px; z-index: 25; min-width: 36px; }
+
+/* ── Body rows ────────────────────────────────────────────────── */
+.gantt-table tbody tr { height: 26px; }
+.gantt-table tbody td {
+  border-right: 1px solid var(--bdr);
+  border-bottom: 1px solid var(--bdr);
+  font-size: 11px;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Left columns sticky in tbody */
+.gantt-table tbody td.col-company {
+  position: sticky; left: 0;
+  z-index: 5;
+  background: var(--surface);
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.gantt-table tbody td.col-name {
+  position: sticky; left: 88px;
+  z-index: 5;
+  background: var(--surface);
+  padding: 0 6px;
+}
+.gantt-table tbody td.col-role {
+  position: sticky; left: 172px;
+  z-index: 5;
+  background: var(--surface);
+  padding: 0 4px;
+  color: var(--text-sec);
+  font-size: 11px;
+}
+.gantt-table tbody td.col-mgr {
+  position: sticky; left: 222px;
+  z-index: 5;
+  background: var(--surface);
+  text-align: center;
+  font-size: 11px;
+  color: var(--blue);
+}
+
+/* ── Date cells ───────────────────────────────────────────────── */
+/* Wider so the module code text fits inside each cell. */
+.gantt-cell { width: 46px; min-width: 46px; max-width: 46px; text-align: center; }
+.gantt-cell.weekend { background: var(--gantt-weekend); }
+.gantt-cell.unavail { background: var(--gantt-unavail); }
+.gantt-cell.today-left  { border-left: 2px solid var(--gantt-today) !important; }
+
+/* Module code label inside a work cell */
+.cell-code {
+  display: block;
+  font-size: 8px;
+  line-height: 1.1;
+  font-weight: 600;
+  color: #1a2332;
+  padding: 0 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Weekday labels ───────────────────────────────────────────── */
+.wd-sat { color: var(--blue); }
+.wd-sun { color: var(--red); }
+.wd-hol { color: var(--red); }
+
+/* ── Legend ───────────────────────────────────────────────────── */
+.gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 0 0;
+  flex-shrink: 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); }
+.legend-swatch {
+  width: 14px; height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(0,0,0,.12);
+  flex-shrink: 0;
+}
+.legend-line-cutoff {
+  width: 3px; height: 14px;
+  background: var(--gantt-cutoff);
+  flex-shrink: 0;
+}
+.legend-line-today {
+  width: 3px; height: 14px;
+  background: var(--gantt-today);
+  flex-shrink: 0;
+}
+
+/* ── Constraint panel ─────────────────────────────────────────── */
+.constraint-panel {
+  background: var(--surface);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-md);
+  padding: 14px 18px;
+  margin-top: 14px;
+  flex-shrink: 0;
+}
+.constraint-panel h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
