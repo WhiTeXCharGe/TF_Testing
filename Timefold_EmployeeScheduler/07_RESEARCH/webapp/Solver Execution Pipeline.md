@@ -1,379 +1,331 @@
-# Solver Execution Pipeline
+## Architecture (Azure)
 
+  
 
-The Timefold solver (Java 21) needs an external compute host — it can run for up to 8 hours per Stage 2 solve. Azure Functions are excluded (timeout limits). Below are recommended options.
+### Azure batch
 
-
----
-## GCP Cloud Run Jobs
-
+  
+  
 
 ```mermaid
+
+  
 
 sequenceDiagram
 
-    participant W as Web App
+  
 
-    participant API as Cloud Run (API wrapper)
-
-    participant J as Cloud Run Job (Timefold JVM)
-
-    participant GCS as Google Cloud Storage
-
-    participant FS as Excel
+    participant W as Web App
 
   
 
-    W->>API: POST /runSolver { datasetId, runId, params }
+    participant API as API Controller<br/>(Azure Container Apps)
 
-    API->>GCS: upload EnvConfig.yaml + Schedule.yaml
+  
 
-    API->>J: create Job execution (runId, gcsInputPath)
+    participant BLOB as Azure Blob Storage
 
-    API-->>W: 202 { runId }
+  
 
-    J->>GCS: read input YAMLs
+    participant SB as Service Bus Queue
 
-    J->>J: Stage 1 solve (10 min)
+  
 
-    J->>FS: update status=stage1_done
+    participant WK as Worker (Azure Function)
 
-    J->>J: Stage 2 solve (up to 3 hr)
+  
 
-    J->>GCS: write result_schedule.yaml + summary.json
+    participant BATCH as Azure Batch (GPU Pool)
 
-    J->>FS: update status=Completed
+  
 
-    W->>API: GET /status/{runId}
+    participant NODE as Compute Node<br/>(Timefold JVM)
 
-    API->>FS: query status
+  
 
-    API-->>W: { status, outputPath }
+  
 
-    W->>GCS: download result (signed URL)
+    W->>API: POST /runSolver (EnvConfig.yaml + Schedule.yaml)
+
+  
+
+  
+
+    API->>BLOB: upload input/{runId}/EnvConfig.yaml + Schedule.yaml
+
+  
+
+    API->>SB: enqueue job message (runId, blob paths)
+
+  
+
+    API-->>W: 202 { runId }
+
+  
+
+  
+
+    SB->>WK: trigger on new message
+
+  
+
+    WK->>BATCH: submit job (runId, input/output paths)
+
+  
+
+  
+
+    BATCH->>NODE: assign task to compute node
+
+  
+
+  
+
+    NODE->>BLOB: read input/{runId}/*.yaml
+
+  
+
+    NODE->>NODE: Stage 1 solve → Stage 2 solve (Timefold, long run)
+
+  
+
+    NODE->>BLOB: write output/{runId}/result_Schedule.yaml
+
+  
+
+  
+
+    W->>API: GET /download/{runId}
+
+  
+
+  
+
+    API->>BLOB: check output blob
+
+  
+
+    API->>BLOB: generate short-lived SAS URL
+
+  
+
+    API-->>W: 200 { url } (or 404 if not ready)
+
+  
+
+  
+
+    W->>BLOB: GET via SAS URL → download file
+
+  
 
 ```
 
   
 
-### Why Cloud Run Jobs
-
-
-| Feature      | Detail                                                      |
-| ------------ | ----------------------------------------------------------- |
-| Max run time | **24 hours** (no timeout problem)                           |
-| Scaling      | Each job = isolated container; parallel runs by default     |
-| Java support | Any JDK version in a Docker image                           |
-| Pricing      | ~$0.00002400/vCPU-sec; 8 hr × 2 vCPU ≈ **$1.38/run**        |
-| Storage      | Google Cloud Storage (GCS) — cheap, durable, signed URLs    |
-| Status       | Firestore — real-time updates, free tier covers small usage |
+### Azure Container app job
 
   
 
-### GCS Layout
+  ```mermaid
+
+  sequenceDiagram
 
   
 
-```
+  
 
-gs://timefold-scheduler/
-
-├── input/
-
-│   └── {runId}/
-
-│       ├── EnvConfig.yaml
-
-│       └── Schedule.yaml
-
-└── output/
-
-    └── {runId}/
-
-        ├── result_schedule.yaml
-
-        └── summary.json
-
-```
+    participant W as Web App
 
   
 
----
+    participant API as API Controller<br/>(Azure Container Apps)
 
   
 
-## Alternative: AWS ECS Fargate
+    participant BLOB as Azure Blob Storage
 
   
 
-```mermaid
-
-graph LR
-
-    W[Web App] -->|POST /runSolver| L[Lambda trigger]
-
-    L -->|ECS RunTask| T["Fargate Task <br> Timefold JVM"]
-
-    T -->|read/write| S3["(S3 Bucket)"]
-
-    T -->|status update| DDB["Excel"]
-
-    W -->|"GET /status/{runId}"| L
-
-    L -->|query| DDB
-
-```
+    participant SB as Service Bus Queue
 
   
 
-
-| Feature      | Detail                                           |
-| ------------ | ------------------------------------------------ |
-| Max run time | No hard cap on Fargate task duration             |
-| Memory       | Up to 120 GB per task                            |
-| Pricing      | ~$0.04048/vCPU-hr; 4 vCPU × 8 hr ≈ **$1.30/run** |
-  
-
-Fargate is a solid AWS-native alternative if the team is already on AWS.
+    participant JOB as ACA Job<br/>(Event-driven / Timefold JVM)
 
   
 
----
+  
+
+    W->>API: POST /runSolver (EnvConfig.yaml + Schedule.yaml)
 
   
 
-## Alternative: Fly.io Machines
+  
+
+    API->>BLOB: upload input/{runId}/EnvConfig.yaml + Schedule.yaml
 
   
 
-- Spin up a machine on demand for each run, auto-stop when done
-
-- Max 24 hr machine lifetime per run
-
-- Simpler ops than ECS; good for smaller teams
-
-- ~$0.078/CPU-hr on `performance-4x` → 8 hr × 4 CPU ≈ **$2.50/run**
+    API->>SB: enqueue job message (runId, blob paths)
 
   
 
-```bash
-
-flyctl machine run \
-
-  --image registry.fly.io/timefold-solver \
-
-  --vm-memory 8192 \
-
-  --vm-cpu-kind performance \
-
-  --vm-cpus 4 \
-
-  --env RUN_ID=run-001 \
-
-  --env GCS_BUCKET=timefold-scheduler \
-
-  --restart no
-
-```
+    API-->>W: 202 { runId }
 
   
 
----
+  
+
+    SB->>JOB: trigger job (via KEDA event-driven scaling)
 
   
 
-## HTTP API Design (solver wrapper)
+  
+
+    JOB->>BLOB: read input/{runId}/*.yaml
 
   
 
-A thin REST wrapper (Spring Boot or FastAPI) deployed on Cloud Run (always-on) handles job coordination.
+    JOB->>JOB: Stage 1 solve → Stage 2 solve (Timefold, long run)
 
   
 
-### POST /runSolver
-
-```json
-
-Request:
-
-{
-
-  "runId": "run-20260428-001",
-
-  "datasetId": "2025SU_OTHER",
-
-  "envConfigPath": "input/run-20260428-001/EnvConfig.yaml",
-
-  "schedulePath":  "input/run-20260428-001/Schedule.yaml",
-
-  "solveDurationMinutes": 180,
-
-  "allowOvertime": false
-
-}
+    JOB->>BLOB: write output/{runId}/result_Schedule.yaml
 
   
 
-Response 202:
+  
 
-{
-
-  "runId": "run-20260428-001",
-
-  "status": "Queued"
-
-}
-
-```
+    W->>API: GET /download/{runId}
 
   
 
-### GET /status/{runId}
+  
 
-```json
-
-Response:
-
-{
-
-  "runId": "run-20260428-001",
-
-  "status": "Completed",
-
-  "startedAt": "2026-04-28T09:00:00Z",
-
-  "finishedAt": "2026-04-28T12:10:00Z",
-
-  "outputPath": "output/run-20260428-001/",
-
-  "hardScore": 0,
-
-  "softScore": -142
-
-}
-
-```
+    API->>BLOB: check output blob
 
   
 
-### GET /download/{runId}/{file}
-
-Returns a signed GCS URL (valid 1 hour) for downloading `result_schedule.yaml` or `summary.json`.
+    API->>BLOB: generate short-lived SAS URL
 
   
 
----
+    API-->>W: 200 { url } (or 404 if not ready)
 
   
 
-## Cost Summary
+  
+
+    W->>BLOB: GET via SAS URL → download file
+
+  ```
 
   
 
-| Platform             | vCPU | Memory | 8 hr run | Notes                                 |
-| -------------------- | ---- | ------ | -------- | ------------------------------------- |
-| GCP Cloud Run Jobs   | 4    | 8 GB   | ~$1.40   | Recommended                           |
-| AWS ECS Fargate      | 4    | 16 GB  | ~$1.30   | AWS-native                            |
-| Fly.io Machines      | 4    | 8 GB   | ~$2.50   | Simple ops                            |
-| Azure Container Apps | 4    | 8 GB   | ~$1.60   | Azure-native alternative to Functions |
+### Comparison: ACA Jobs vs Azure Batch
 
   
 
-| Category              | AWS                             | GCP                           |
-| --------------------- | ------------------------------- | ----------------------------- |
-| **Frontend**          | Web App                         | Web App                       |
-| **API layer**         | Lambda                          | Cloud Run (HTTP service)      |
-| **Compute job**       | ECS Fargate Task                | Cloud Run Job                 |
-| **Trigger job**       | `RunTask`                       | Job execution                 |
-| **Container runtime** | ECS/Fargate                     | Cloud Run                     |
-| **File storage**      | S3                              | Google Cloud Storage (GCS)    |
-| **Database (status)** | Excel                           | Excel                         |
-| **Scaling model**     | Manual task per request         | Fully managed job per request |
-| **Max runtime**       | Essentially unlimited           | Up to 24 hours                |
-| **Pricing model**     | per vCPU/sec (Fargate) + Lambda | per vCPU/sec (Cloud Run)      |
-| **Complexity**        | Higher (ECS configs, roles)     | Simpler (less setup)          |
-| **Integration**       | Strong AWS ecosystem            | Strong GCP ecosystem          |
-| **Best for**          | AWS-native systems              | Simpler serverless pipelines  |
+The two diagrams above describe the same end-to-end shape — the only real difference is
 
-  
-## Architecture (recommended)
+**how the queue message gets turned into a running solver**.
 
   
 
-```mermaid
+| Dimension                            | **Azure Container Apps Jobs**                                                          | **Azure Batch**                                                                                    |
 
-sequenceDiagram
+| ------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 
-    participant W as Web App
+| Native Service Bus trigger           | **Yes** — KEDA Service Bus scaler is built in; queue → job execution directly          | **No** — needs an external trigger (Function, Logic Apps Standard, or an always-on ACA worker) to call Batch's REST/SDK |
 
-    participant API as API Controller<br/>(Azure Container Apps)
+| Max runtime per execution            | `replicaTimeout` configurable up to **7 days**                                         | Effectively **unlimited**                                                                          |
 
-    participant BLOB as Azure Blob Storage
+| Compute model                        | Serverless container, **scale to zero** between runs                                   | Managed **VM pool** (Linux/Windows); you pick the SKU                                              |
 
-    participant JOB as Solver Job<br/>(Container Apps Job / Timefold JVM)
+| VM / SKU choice                      | vCPU + memory only (no GPU, no HPC SKUs)                                               | Full VM catalog incl. **Fsv2/Fasv6** (compute-optimized) and **HBv4** (HPC)                        |
 
-  
+| Parallelism model                    | One job execution per message; concurrency knob                                        | First-class **job/task** model — thousands of tasks per pool                                       |
 
-    W->>API: POST /runSolver (EnvConfig.yaml + Schedule.yaml)
+| Idle cost                            | $0 (scale to zero)                                                                     | Pool VMs cost while allocated (auto-scale to 0 possible, extra setup)                              |
 
-    API->>BLOB: upload input/{runId}/EnvConfig.yaml + Schedule.yaml
+| Setup complexity                     | **Low** — same Container Apps environment as the API controller                        | **Higher** — Batch account, pools, autoscale formula, app packages                                 |
 
-    API->>JOB: start job execution (runId, input/output blob paths)
+| Needs Azure Function in the pipeline | **No**                                                                                 | **Yes** (or a non-Function substitute — see below)                                                 |
 
-    API-->>W: 202 { runId }
+| Best when…                           | Up to "a few" concurrent runs, moderate CPU, simplest ops                              | Heavy concurrent solves, specialized SKUs, big batch workloads                                     |
 
-  
-
-    JOB->>BLOB: read input/{runId}/*.yaml
-
-    JOB->>JOB: Stage 1 solve (~10 min) → Stage 2 solve (up to ~3-8 hr)
-
-    JOB->>BLOB: write output/{runId}/result_Schedule.yaml
+| Cost (4 vCPU × 8 hr)                 | ~$1.60                                                                                 | ~$1.50 (similar; pool overhead may add a bit)                                                      |
 
   
 
+**Recommendation for this project:** start with **ACA Jobs** — KEDA gives you the event
 
-    W->>API: GET /download/{runId}
+listener for free, scale-to-zero, the same environment as the API controller, and no
 
-    API->>BLOB: check output blob, mint short-lived SAS URL
+Function in the loop. Move to Batch later only if you need many parallel solves or a
 
-    API-->>W: 200 { url }  (or 404 if not ready)
+specialized VM SKU.
 
-    W->>BLOB: GET via SAS URL → file downloads to local
+  
 
-```
+#### Triggering Azure Batch without an Azure Function
+
+  
+
+The "no Azure Functions" rule was about **compute** — Functions can't host an 8 hr solve.
+
+A *trigger* Function (seconds of work to read a message and call Batch) doesn't hit that
+
+limit and is genuinely fine. If you want to keep Functions out entirely, the realistic
+
+non-Function triggers for the Batch path are:
+
+  
+
+- **Logic Apps Standard** — built-in Service Bus trigger + HTTP action calling the Batch REST API. No code to write.
+
+- **Always-on ACA HTTP/worker app** — runs a Service Bus SDK listener and calls Batch via SDK. Custom code, no Functions.
+
+- **Skip Service Bus entirely** — the API controller (`POST /runSolver`) calls Batch directly. Service Bus only earns its place when you want buffering, retries, or burst smoothing.
+
+  
+
+The same "skip Service Bus" shortcut also works for ACA Jobs (the API can start a job
+
+execution directly); the queue is purely a buffering/throttling layer in either path.
 
   
 
 ### Azure service mapping
 
   
+  
 
-| Layer              | Azure product (recommended)        | Role |
+| Layer              | Azure product                       | Role                                                                                         |
 
-| ------------------ | ---------------------------------- | ---- |
+| ------------------ | ----------------------------------- | -------------------------------------------------------------------------------------------- |
 
 | **API controller** | **Azure Container Apps** (HTTP app) | Receives submit/download calls, uploads inputs, starts the solver job, mints download links. |
 
-| **Storage**        | **Azure Blob Storage**             | Holds `input/{runId}/` and `output/{runId}/`. Download = SAS URL straight to the browser. |
+| **Storage**        | **Azure Blob Storage**              | Holds `input/{runId}/` and `output/{runId}/`. Download = SAS URL straight to the browser.    |
 
-| **Compute job**    | **Azure Container Apps Jobs**      | Runs the Timefold JVM container to completion, scale-to-zero between runs. |
+| **Compute job**    | **Azure Container Apps Jobs** *(recommended)* — fallback **Azure Batch** for heavy / specialized workloads | Runs the Timefold JVM container to completion, scale-to-zero between runs.                   |
 
+  
   
 
 ---
 
   
 
-## Compute options (no Azure Functions)
+## Compute options
 
   
 
-The solver is long-running and CPU-bound. These Azure services can host it; pick one.
+### 1. Azure Container Apps Job
 
   
-
-### 1. Azure Container Apps  — *recommended*
 
 - Serverless **manual/scheduled jobs** designed to run a container to completion.
 
@@ -381,42 +333,53 @@ The solver is long-running and CPU-bound. These Azure services can host it; pick
 
 - Scales to zero between runs (pay only while solving); one execution per run, isolated.
 
-- Started from the API via the Azure SDK/REST (`jobs start`), passing `runId` + blob paths as env vars.
-
 - Same platform as the API controller → one environment, simplest ops.
 
   
 
 ### 2. Azure Container Instances (ACI) — *simple alternative*
 
+  
+
 - Launch a single container per run; it runs until the process exits (**no hard timeout**).
 
 - Per-second billing; create with `az container create`, container exits when the solve finishes.
 
-- Slightly more to wire up (lifecycle/cleanup) than Container Apps Jobs.
+- Slightly more to wire up
 
   
 
 ### 3. Azure Batch — *for heavy / many parallel solves*
 
+  
+
 - Purpose-built for large-scale batch compute; pools of VMs, queue of tasks, no runtime cap.
 
-- Best if you later run many solves in parallel or need bigger VM SKUs.
+- Best if  later run many solves in parallel or need bigger VM SKUs.
 
-- Heaviest to set up (pools, job/task model); overkill for a handful of runs.
+- Heaviest to set up
 
   
+
+### 4.Azure Virtual Machines
+
   
-### 4.Azure Virtual Machines (simplest)
 
 Just spin up a VM, install JDK 21+, deploy app, and run it. Pick a **compute-optimized SKU** since solving is CPU-bound:
 
+  
+
 - **Fsv2-series** or **Fasv6-series** — high CPU clock, good for single-threaded solver phases
-- **HBv4 / HX-series** — if you have huge problems and want to parallelize aggressively
+
+- **HBv4 / HX-series** —
+
+  
 
   
 
 ---
+
+  
 
   
 
@@ -424,29 +387,21 @@ Just spin up a VM, install JDK 21+, deploy app, and run it. Pick a **compute-opt
 
   
 
-The controller is a small HTTP service (e.g. Spring Boot or Node/Express) in a container.
+| Option                   | Notes                                                                                                |
 
-  
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
 
-| Option                              | Notes |
+| **Azure Container Apps** | Serverless HTTP container; same environment as the solver job; scale-to-zero; easy Managed Identity. |
 
-| ----------------------------------- | ----- |
+| **Azure App Service**    | Fully managed always-on host; good                                                                   |
 
-| **Azure Container Apps** *(recommended)* | Serverless HTTP container; same environment as the solver job; scale-to-zero; easy Managed Identity. |
-
-| **Azure App Service** (Web App for Containers / code) | Fully managed always-on host; good if you prefer App Service tooling and slots. |
-
-| **Azure API Management** *(optional, in front)* | API gateway for auth, rate-limiting, keys — layer over either option above if needed. |
-
-  
-
-It uses a **Managed Identity** to (a) read/write Blob Storage and (b) start the Container Apps Job —
-
-no secrets in code.
+| **Azure API Management** | API gateway for auth, rate-limiting, keys —                                                          |
 
   
 
 ---
+
+  
 
   
 
@@ -454,13 +409,13 @@ no secrets in code.
 
   
 
-| Option                         | Notes |
+| Option                 | Notes                                                          |
 
-| ------------------------------ | ----- |
+| ---------------------- | -------------------------------------------------------------- |
 
-| **Azure Blob Storage** *(recommended)* | Cheap, durable object storage. The *Download* button gets a short-lived **SAS URL** and the browser downloads the output blob directly to local — no server streaming needed. |
+| **Azure Blob Storage** | Cheap, durable object storage. <br>No server streaming needed. |
 
-| **Azure Files** *(alternative)* | SMB/NFS file share; pick this only if a job or VM needs to **mount** the folder like a local disk. |
+| **Azure Files**        |                                                                |
 
   
 
@@ -468,25 +423,47 @@ no secrets in code.
 
   
 
+  
+
 ```
+
+  
 
 https://<account>.blob.core.windows.net/timefold/
 
+  
+
 ├── input/
+
+  
 
 │   └── {runId}/
 
+  
+
 │       ├── EnvConfig.yaml
+
+  
 
 │       └── Schedule.yaml
 
+  
+
 └── output/
+
+  
 
     └── {runId}/
 
+  
+
         └── result_Schedule.yaml
 
+  
+
 ```
+
+  
 
   
 
@@ -494,7 +471,11 @@ https://<account>.blob.core.windows.net/timefold/
 
   
 
+  
+
 ---
+
+  
 
   
 
@@ -502,63 +483,107 @@ https://<account>.blob.core.windows.net/timefold/
 
   
 
+  
+
 A thin REST wrapper on the API controller. Note there is **no `/status`** — we don't track status.
+
+  
 
   
 
 ### POST /runSolver
 
+  
+
 Uploads the two YAML files to `input/{runId}/` and starts the solver job.
+
+  
 
   
 
 ```jsonc
 
+  
+
 // Request: multipart/form-data with runId + the two YAML files
+
+  
 
 // (or JSON if the files are already in Blob)
 
   
 
+  
+
 // Response 202
+
+  
 
 { "runId": "20260521" }
 
+  
+
 ```
+
+  
 
   
 
 ### GET /download/{runId}
 
+  
+
 Checks whether `output/{runId}/result_Schedule.yaml` exists.
+
+  
 
   
 
 ```jsonc
 
+  
+
 // 200 — ready: a short-lived (e.g. 15 min) SAS URL the browser downloads directly
+
+  
 
 { "url": "https://<account>.blob.core.windows.net/timefold/output/20260521/result_Schedule.yaml?<sas>" }
 
   
 
+  
+
 // 404 — not ready yet (solver still running or never run)
 
+  
+
 { "ready": false }
+
+  
 
 ```
 
   
 
+  
+
 That's the whole contract: **submit a run**, and **download the output when it's there**.
 
+  
+
 The web app's *Fetch Result* / *Download* button calls `GET /download/{runId}`; on `200` it
+
+  
 
 follows the SAS URL to save the file locally, on `404` it stays disabled.
 
   
 
+  
+
 ---
+
+  
 
   
 
@@ -566,15 +591,27 @@ follows the SAS URL to save the file locally, on `404` it stays disabled.
 
   
 
+  
+
 | Component            | Azure product           | Approx. cost / run | Notes |
+
+  
 
 | -------------------- | ----------------------- | ------------------ | ----- |
 
+  
+
 | Compute              | Container Apps Job (4 vCPU / 8 GB) | ~$1.60 | Billed only while solving; scale-to-zero idle. |
+
+  
 
 | Storage              | Blob Storage            | pennies | A few MB of YAML per run + minimal egress on download. |
 
+  
+
 | API controller       | Container Apps (HTTP)   | ~$0 idle | Scale-to-zero; trivial cost for occasional calls. |
+
+  
 
   
 
@@ -582,7 +619,11 @@ Total ≈ **$1.50–$2.00 per run**, dominated by compute time.
 
   
 
+  
+
 ---
+
+  
 
   
 
@@ -590,10 +631,18 @@ Total ≈ **$1.50–$2.00 per run**, dominated by compute time.
 
   
 
+  
+
 - **Container Apps Jobs** removes the Functions timeout problem while staying serverless.
+
+  
 
 - **Blob + SAS** makes "download to local" a single client-side fetch — no DB, no app server in the data path.
 
+  
+
 - **Dropping status tracking** removes an entire stateful component (and its cost/ops): the
+
+  
 
   presence of the output blob is the only signal we need.
