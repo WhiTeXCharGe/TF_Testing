@@ -19,9 +19,20 @@ export interface Run {
   // When null, the Gantt uses the mock fallback grid.
   inputDir: string | null;
   output: OutputState;   // result folder state
-  // Whether the output folder actually contains 2 YAML files.
-  // Only when true does the *result* Gantt button become enabled.
+  // Whether the output folder actually contains a YAML file.
   outputHasYaml: boolean;
+  // Original disk paths the user pasted/typed in the New Run modal
+  // (browsers don't expose the real path of a File input, so these
+  // are user-supplied strings, not derived from the upload itself).
+  originalEnvPath?: string;
+  originalSchedPath?: string;
+  // Saved copy paths under public/local/<id>/input/ (set by the
+  // /api/upload middleware after a successful copy).
+  savedEnvPath?: string;
+  savedSchedPath?: string;
+  // Saved output path under public/local/<id>/output/ (set when a
+  // result yaml is present).
+  savedOutputPath?: string;
 }
 
 // ─── Core domain ───────────────────────────────────────────────────────────

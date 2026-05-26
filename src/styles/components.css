@@ -355,8 +355,35 @@ tr:hover td { background: var(--grey-lt); }
   font-size: 10px; color: var(--text-sec); font-weight: 600; white-space: nowrap;
 }
 .file-chip svg { color: var(--blue); }
+.file-chip-clickable { cursor: pointer; transition: background .12s, border-color .12s; }
+.file-chip-clickable:hover { background: var(--blue-lt); border-color: var(--blue); color: var(--blue); }
 
-.result-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.result-cell    { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.result-cell-v2 { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.output-path-box {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-sec);
+  background: var(--bg);
+  border: 1px solid var(--bdr);
+  border-radius: 3px;
+  padding: 4px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.output-path-empty { color: var(--text-dis); font-style: italic; }
+
+/* Danger button (Delete) */
+.btn-danger {
+  background: var(--surface);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+.btn-danger:hover { background: var(--red-lt); }
+
 .ready-tag {
   font-size: 10px; color: var(--green);
   display: inline-flex; align-items: center; gap: 3px;
@@ -367,9 +394,9 @@ tr:hover td { background: var(--grey-lt); }
 .path-popup {
   position: fixed; z-index: 500;
   background: var(--text); color: #fff;
-  border-radius: 5px; padding: 8px 12px;
-  font-size: 11px; font-family: var(--font-mono); line-height: 1.7;
-  box-shadow: var(--shadow-md); max-width: 420px; white-space: pre;
+  border-radius: 5px; padding: 10px 14px;
+  font-size: 11px; font-family: var(--font-mono); line-height: 1.55;
+  box-shadow: var(--shadow-md); max-width: 430px; word-break: break-all;
 }
 
 /* ── Modal ───────────────────────────────────────────────────── */
@@ -399,6 +426,9 @@ tr:hover td { background: var(--grey-lt); }
   display: flex; justify-content: flex-end; gap: 8px; background: var(--bg);
 }
 .upzone {
+  display: block;                     /* label is inline by default — force block so border doesn't split */
+  box-sizing: border-box;
+  width: 100%;
   border: 2px dashed var(--bdr); border-radius: 5px;
   padding: 16px; text-align: center; color: var(--text-sec);
   background: var(--bg); cursor: pointer; font-size: var(--fs-sm);
