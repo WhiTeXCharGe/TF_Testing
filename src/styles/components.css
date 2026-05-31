@@ -438,6 +438,35 @@ tr:hover td { background: var(--grey-lt); }
 .upzone.has-file { border-color: var(--green); color: var(--green); background: var(--green-lt); }
 .upzone input[type='file'] { display: none; }
 
+/* ── Drop-zone (drag-drop + click-to-pick) ─────────────────────── */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 76px;
+  border: 2px dashed var(--bdr); border-radius: 6px;
+  padding: 14px;
+  background: var(--bg); color: var(--text-sec);
+  cursor: pointer; user-select: none;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+  text-align: center;
+}
+.dropzone:hover { border-color: var(--blue); color: var(--blue); }
+.dropzone.is-dragging {
+  border-color: var(--blue);
+  background: var(--blue-lt);
+  color: var(--blue);
+  transform: scale(1.01);
+}
+.dropzone.has-file {
+  border-color: var(--green);
+  background: var(--green-lt);
+  color: var(--green);
+}
+.dropzone.is-disabled { opacity: .55; cursor: not-allowed; }
+.dropzone-line-1 { font-size: var(--fs-sm); font-weight: 600; }
+.dropzone-line-2 { font-size: 10px; margin-top: 3px; opacity: .85; }
+
 /* ── New Run panel (Gantt page) ──────────────────────────────── */
 .nr-panel {
   margin-top: 14px; border: 1px solid var(--bdr);

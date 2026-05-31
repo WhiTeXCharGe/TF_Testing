@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UI } from '@/config/uiConfig';
 import { Icon } from '@/components/common/Icon';
 import { Dialog } from '@/components/common/Dialog';
@@ -121,8 +121,10 @@ function NewRunModal({ onClose, onSubmit }: {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const canSubmit = !!envFile && !!schedFile && !uploading;
+
   async function submit() {
-    if (!envFile || !schedFile) return;
+    if (!canSubmit || !envFile || !schedFile) return;
     setUploading(true);
     setError(null);
     try {
@@ -135,7 +137,7 @@ function NewRunModal({ onClose, onSubmit }: {
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !uploading) onClose(); }}>
-      <div className="modal" style={{ width: 520 }}>
+      <div className="modal" style={{ width: 540 }}>
         <div className="modal-hd">
           <div className="modal-title">{UI.runLog.modalTitle}</div>
           <button className="modal-close" onClick={onClose} disabled={uploading}>
@@ -147,53 +149,32 @@ function NewRunModal({ onClose, onSubmit }: {
             {UI.runLog.modalHint}
           </p>
 
-          {/* ─── EnvConfig ─── */}
-          <div className="form-group">
-            <label className="form-label">{UI.runLog.envLabel}</label>
-            <label className={'upzone' + (envFile ? ' has-file' : '')}>
-              <div>{envFile ? `✓ ${envFile.name}` : `⬆ ${UI.runLog.selectFile} ${UI.runLog.envLabel}`}</div>
-              <div style={{ fontSize: 10, marginTop: 2 }}>{envFile ? UI.runLog.fileSelected : UI.runLog.envHint}</div>
-              <input type="file" accept=".yaml,.yml"
-                     onChange={e => setEnvFile(e.target.files?.[0] ?? null)} />
-            </label>
-            <input
-              className="form-input"
-              style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--font-mono)' }}
-              placeholder={UI.runLog.originalPathPlaceholder}
-              value={originalEnvPath}
-              onChange={e => setOriginalEnvPath(e.target.value)}
-            />
-            <div style={{ fontSize: 10, color: 'var(--text-sec)', marginTop: 2 }}>
-              {UI.runLog.originalPathLabel}
-            </div>
-          </div>
+          <DropZoneField
+            file={envFile}
+            onFile={setEnvFile}
+            label={UI.runLog.envLabel}
+            hint={UI.runLog.envHint}
+            originalPath={originalEnvPath}
+            onOriginalPath={setOriginalEnvPath}
+            disabled={uploading}
+          />
 
-          {/* ─── Schedule ─── */}
-          <div className="form-group">
-            <label className="form-label">{UI.runLog.schedLabel}</label>
-            <label className={'upzone' + (schedFile ? ' has-file' : '')}>
-              <div>{schedFile ? `✓ ${schedFile.name}` : `⬆ ${UI.runLog.selectFile} ${UI.runLog.schedLabel}`}</div>
-              <div style={{ fontSize: 10, marginTop: 2 }}>{schedFile ? UI.runLog.fileSelected : UI.runLog.schedHint}</div>
-              <input type="file" accept=".yaml,.yml"
-                     onChange={e => setSchedFile(e.target.files?.[0] ?? null)} />
-            </label>
-            <input
-              className="form-input"
-              style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--font-mono)' }}
-              placeholder={UI.runLog.originalPathPlaceholder}
-              value={originalSchedPath}
-              onChange={e => setOriginalSchedPath(e.target.value)}
-            />
-            <div style={{ fontSize: 10, color: 'var(--text-sec)', marginTop: 2 }}>
-              {UI.runLog.originalPathLabel}
-            </div>
-          </div>
+          <DropZoneField
+            file={schedFile}
+            onFile={setSchedFile}
+            label={UI.runLog.schedLabel}
+            hint={UI.runLog.schedHint}
+            originalPath={originalSchedPath}
+            onOriginalPath={setOriginalSchedPath}
+            disabled={uploading}
+          />
 
           {error && (
             <div style={{
               background: 'var(--red-lt)', color: 'var(--red)',
               border: '1px solid var(--red)', borderRadius: 5,
               padding: '8px 12px', fontSize: 12, marginTop: 8,
+              fontFamily: 'var(--font-mono)',
             }}>
               {UI.runLog.uploadError} {error}
             </div>
@@ -203,11 +184,7 @@ function NewRunModal({ onClose, onSubmit }: {
           <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={uploading}>
             {UI.runLog.cancel}
           </button>
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={!envFile || !schedFile || uploading}
-            onClick={submit}
-          >
+          <button className="btn btn-primary btn-sm" disabled={!canSubmit} onClick={submit}>
             <Icon name="play" size={13} />
             {uploading ? UI.runLog.uploading : UI.runLog.submit}
           </button>
@@ -217,9 +194,108 @@ function NewRunModal({ onClose, onSubmit }: {
   );
 }
 
+// ── Drop-zone field: drag-drop OR click to pick + optional path text ────────
+function DropZoneField({
+  file, onFile, label, hint, originalPath, onOriginalPath, disabled,
+}: {
+  file: File | null;
+  onFile: (f: File | null) => void;
+  label: string;
+  hint: string;
+  originalPath: string;
+  onOriginalPath: (s: string) => void;
+  disabled: boolean;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function pickFirstYaml(list: FileList | null): File | null {
+    if (!list || list.length === 0) return null;
+    // Prefer a .yaml/.yml, but accept anything if that's what was dropped.
+    for (let i = 0; i < list.length; i++) {
+      const f = list.item(i);
+      if (!f) continue;
+      if (/\.ya?ml$/i.test(f.name)) return f;
+    }
+    return list.item(0);
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    if (!dragging) setDragging(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    const f = pickFirstYaml(e.dataTransfer?.files ?? null);
+    if (f) onFile(f);
+  }
+
+  return (
+    <div className="form-group">
+      <label className="form-label">{label}</label>
+      <div
+        className={
+          'dropzone' +
+          (file ? ' has-file' : '') +
+          (dragging ? ' is-dragging' : '') +
+          (disabled ? ' is-disabled' : '')
+        }
+        onDragOver={onDragOver}
+        onDragEnter={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => !disabled && inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="dropzone-line-1">
+          {file
+            ? <>✓ {file.name}</>
+            : <>⬆ {dragging ? UI.runLog.dropHintActive : UI.runLog.dropHint}</>}
+        </div>
+        <div className="dropzone-line-2">
+          {file
+            ? `${Math.max(1, Math.round(file.size / 1024))} KB · ${UI.runLog.fileSelected}`
+            : hint}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".yaml,.yml"
+          style={{ display: 'none' }}
+          onChange={e => onFile(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      <input
+        className="form-input"
+        style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}
+        placeholder={UI.runLog.originalPathPlaceholder}
+        value={originalPath}
+        onChange={e => onOriginalPath(e.target.value)}
+        disabled={disabled}
+        onClick={e => e.stopPropagation()}
+      />
+      <div style={{ fontSize: 10, color: 'var(--text-sec)', marginTop: 2 }}>
+        {UI.runLog.originalPathLabel}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 export function RunLogPage() {
-  const { runs, submitNewRun, checkOutput, removeRun, refresh } = useRuns();
+  const { runs, loading, error, submitNewRun, checkOutput, removeRun } = useRuns();
   const [popup, setPopup] = useState<PopupState | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
@@ -258,8 +334,7 @@ export function RunLogPage() {
       const out = await checkOutput(run.id);
       if (out.hasYaml) {
         // We have a local yaml — open the gantt editor placeholder.
-        // (Also refresh the row so savedOutputPath is populated.)
-        refresh();
+        // (checkOutput already refreshed the row so savedOutputPath is populated.)
         setGanttDialog({ run, source: 'result' });
       } else {
         // No local yaml. In future: try Azure Blob with the runId.
@@ -332,7 +407,21 @@ export function RunLogPage() {
                   </td>
                 </tr>
               ))}
-              {runs.length === 0 && (
+              {loading && runs.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--text-sec)' }}>
+                    Loading runs.json…
+                  </td>
+                </tr>
+              )}
+              {error && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: 16, color: 'var(--red)' }}>
+                    Failed to load runs.json — {error}
+                  </td>
+                </tr>
+              )}
+              {!loading && !error && runs.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--text-sec)' }}>
                     No runs yet. Click <strong>New Run</strong> to upload inputs.
