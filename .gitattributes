@@ -1,0 +1,16 @@
+# Files that MUST use LF line endings, regardless of OS / git settings.
+# These run inside Linux containers, where CRLF breaks shebangs and shell scripts.
+
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+# Java source — LF is the universal convention and IDE-agnostic.
+*.java       text eol=lf
+*.xml        text eol=lf
+
+# Documentation — LF, so diffs/PRs render cleanly on every OS.
+*.md         text eol=lf
+*.txt        text eol=lf
