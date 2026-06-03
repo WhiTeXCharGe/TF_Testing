@@ -1,0 +1,26 @@
+# Things we don't want sent into the build context (faster builds, smaller image).
+target/
+.git/
+.gitignore
+.claude/
+.vscode/
+.idea/
+
+# Local logs / artefacts from previous runs.
+*.log
+*.txt
+score_progress_*.txt
+
+# Local YAML inputs/outputs come in via volume mounts at runtime, not COPY.
+work/
+
+# We don't bundle sample YAMLs into the JAR — the user always mounts real ones.
+src/main/resource/*.yaml
+src/main/resource/*.yml
+
+# Docs and reports — not part of the runtime image.
+*.md
+*.html
+*.png
+*.jpg
+*.xlsx

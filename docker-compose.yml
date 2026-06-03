@@ -1,0 +1,32 @@
+# Convenience for local dev. Run with:
+#
+#   docker compose up --build solver
+#
+# What it does:
+#   - Builds the image from this folder's Dockerfile
+#   - Mounts ./work/{input,output,status} into the container
+#   - Sets RUN_ID to a fixed value so you can find the status file easily
+#
+# Cancel it with Ctrl+C — Docker sends SIGTERM and the entrypoint writes
+# status = Cancelled before exiting.
+
+services:
+  solver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: timefold-scheduler:local
+    container_name: tf-solver
+    environment:
+      RUN_ID: "local-run-001"
+      JVM_MAX_HEAP: "6g"
+    volumes:
+      - ./work/input:/work/input:ro      # read-only — solver must never modify input
+      - ./work/output:/work/output
+      - ./work/status:/work/status
+    # 4 CPU + 8 GB matches the planned ACA Job sizing so local timings are honest.
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G

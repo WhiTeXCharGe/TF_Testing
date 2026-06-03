@@ -1,0 +1,78 @@
+UPDATE LOG - scheduler performance redesign
+===========================================
+
+Scope: src/main/java/com/yourorg/scheduler/EmployeeSchedule.java only.
+       Resources (src/main/resource) and ExportSchedule.java are unchanged.
+       Optimization result (scores) is intended to be identical to before -
+       only the speed of incremental score calculation changes.
+
+Why
+---
+The day-based constraints joined every DaySlot to every CrewSeat with a
+filtering joiner (no equal joiner). That is a cartesian product: with H
+horizon days and N seats it maintains H*N tuples per constraint, and each
+solver move re-evaluates a large slice of them. With big input this is the
+main reason a solve takes very long.
+
+Changes
+-------
+1. SHADOW VARIABLE - BlockDecision.coveredWorkingDays (List<Integer>)
+   - New shadow variable holding the factory-working dayIds inside a block's
+     [startDay, startDay+days-1] span, clamped to the solver horizon.
+   - It is a pure function of the planning variables startDay and days, so it
+     is maintained by a new VariableListener (BlockSpanVariableListener):
+     recomputed once per block-span change instead of once per seat per
+     constraint.
+   - New helper computeCoveredWorkingDays(BlockDecision) builds the value.
+
+2. REMOVED THE DaySlot CARTESIAN PRODUCT IN 6 CONSTRAINTS
+   Rewritten to "forEach(CrewSeat) -> join(BlockDecision by blockId) ->
+   expand via the coveredWorkingDays shadow variable":
+     - emp-region-transit-gap
+     - emp-region-stay-max-on
+     - emp-region-annual-stay-max
+     - emp-annual-overtime-limit
+     - emp-monthly-overtime-limit
+     - soft-balance-total-hours
+   Each seat now joins exactly one block, so tuple count drops from
+   O(horizon * seats) to O(seats). soft-balance-total-hours no longer
+   flattens per day at all (hours = coveredDays * chosenHours).
+
+3. DAY-TO-DATE CACHES - DAY_TO_YEAR / DAY_TO_YM
+   The overtime constraints used to join DaySlot only to read the year/month
+   of a dayId. These maps (filled once per solve from the parsed daySlots)
+   give the same data without the join.
+
+4. Deleted the now-unused helper seatCoversDayAndWorking (its job is done
+   by the shadow variable + seatCoveredDays).
+
+NOTE on multi-threading
+-----------------------
+moveThreadCount is NOT used. Multi-threaded solving requires Timefold
+Solver Enterprise Edition; on the Community Edition it throws at solve
+time ("Multi-threaded solving requested but Timefold Solver Enterprise
+Edition not found on classpath"). All speed-ups in this redesign work on
+the Community Edition - they come from the shadow variable and from
+removing the DaySlot cartesian-product joins, not from extra threads.
+
+NOTE on deprecation warnings
+----------------------------
+The shadow variable uses the @ShadowVariable(variableListenerClass=...)
+form plus a VariableListener. In Timefold 1.27 that API is deprecated
+("marked for removal") in favour of a declarative supplier API, but it
+is still a Community Edition feature and works correctly on the pinned
+1.27.0 version. The warnings are suppressed with @SuppressWarnings.
+If Timefold is upgraded to a major version that removes it, switch the
+shadow variable to the declarative form (@ShadowVariable(supplierName=)
+plus an @ShadowSources-annotated supplier method).
+
+Not changed
+-----------
+- Constraint weights, score formulas and the hard/medium/soft model.
+- oneTaskPerEmpPerDay and seat-daily-cap-12h (already used flattenLast,
+  no cartesian product).
+- Solver termination limits in solveFromYaml. They can be lowered
+  separately if a shorter run is wanted; the faster moves above let the
+  solver converge sooner inside the same limits.
+
+Build verified with: mvn -DskipTests compile  (BUILD SUCCESS)

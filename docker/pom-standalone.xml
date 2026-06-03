@@ -1,0 +1,80 @@
+<!--
+  Standalone Maven POM used INSIDE the Docker build.
+
+  Why this exists:
+    The real pom.xml at web/Timefold/pom.xml references a parent at ../../pom.xml
+    (the multi-module "eight-parent" project). That parent isn't present in the
+    Docker build context, so a plain `mvn package` inside the container would
+    fail with "Non-resolvable parent POM".
+
+    This file is the SAME pom with the <parent> block removed and groupId +
+    version added explicitly so it can stand on its own. Keep it in sync with
+    the real pom (timefold.version, snakeyaml.version) if the project's
+    pom.xml changes.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.yourorg</groupId>
+  <artifactId>employee-scheduler</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <timefold.version>1.27.0</timefold.version>
+    <snakeyaml.version>2.2</snakeyaml.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>ai.timefold.solver</groupId>
+      <artifactId>timefold-solver-core</artifactId>
+      <version>${timefold.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>${snakeyaml.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- The project uses src/main/resource (singular) rather than the Maven
+         default src/main/resources. Sample YAMLs live there but they are NOT
+         needed inside the JAR — at runtime the user supplies real YAMLs via
+         the /work/input volume mount. -->
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <source>${maven.compiler.source}</source>
+          <target>${maven.compiler.target}</target>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.6.1</version>
+        <executions>
+          <execution>
+            <id>copy-dependencies</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/dependency</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
