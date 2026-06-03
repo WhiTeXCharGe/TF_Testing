@@ -1,19 +1,6 @@
 {
   "runs": [
     {
-      "id": "20260601_080457389",
-      "solveDate": "2026-05-31T23:04:57.405Z",
-      "label": "New run",
-      "folderPath": "./local/20260601_080457389/",
-      "inputEnvName": "EnvConfig.yaml",
-      "inputSchedName": "Schedule.yaml",
-      "inputDir": "/local/20260601_080457389/input",
-      "output": "none",
-      "outputHasYaml": false,
-      "savedEnvPath": "/local/20260601_080457389/input/EnvConfig.yaml",
-      "savedSchedPath": "/local/20260601_080457389/input/Schedule.yaml"
-    },
-    {
       "id": "20260601_073357211",
       "solveDate": "2026-05-31T22:33:57.226Z",
       "label": "New run",
