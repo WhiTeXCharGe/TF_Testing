@@ -397,13 +397,23 @@ export function RunLogPage() {
                     />
                   </td>
                   <td>
-                    <button
-                      className="btn btn-danger btn-xs"
-                      onClick={() => setConfirmDel(run)}
-                      title={UI.runLog.deleteBtn}
-                    >
-                      <Icon name="x" size={12} />{UI.runLog.deleteBtn}
-                    </button>
+                    {(() => {
+                      // If the output yaml exists, the run is finished → "Delete".
+                      // If not, the run is either in-progress or never started → "Cancel".
+                      // Both buttons do the same thing locally (remove row + folder).
+                      // On the Azure side, Cancel will also terminate the running Batch task.
+                      const finished = run.outputHasYaml;
+                      const label = finished ? UI.runLog.deleteBtn : UI.runLog.cancelBtn;
+                      return (
+                        <button
+                          className="btn btn-danger btn-xs"
+                          onClick={() => setConfirmDel(run)}
+                          title={label}
+                        >
+                          <Icon name="x" size={12} />{label}
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -472,24 +482,32 @@ export function RunLogPage() {
         />
       )}
 
-      {confirmDel && (
-        <Dialog
-          title={UI.runLog.deleteConfirmTitle}
-          body={
-            <>
-              {UI.runLog.deleteConfirmBody}
-              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {confirmDel.id}
-              </div>
-            </>
-          }
-          buttons={[
-            { label: UI.runLog.deleteConfirmNo,  onClick: () => setConfirmDel(null), variant: 'secondary' },
-            { label: UI.runLog.deleteConfirmYes, onClick: handleConfirmDelete,       variant: 'danger' },
-          ]}
-          onClose={() => setConfirmDel(null)}
-        />
-      )}
+      {confirmDel && (() => {
+        // Choose Delete vs Cancel wording based on whether the run has finished.
+        const finished = confirmDel.outputHasYaml;
+        const title = finished ? UI.runLog.deleteConfirmTitle : UI.runLog.cancelConfirmTitle;
+        const body  = finished ? UI.runLog.deleteConfirmBody  : UI.runLog.cancelConfirmBody;
+        const yes   = finished ? UI.runLog.deleteConfirmYes   : UI.runLog.cancelConfirmYes;
+        const no    = finished ? UI.runLog.deleteConfirmNo    : UI.runLog.cancelConfirmNo;
+        return (
+          <Dialog
+            title={title}
+            body={
+              <>
+                {body}
+                <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                  Run id: {confirmDel.id}
+                </div>
+              </>
+            }
+            buttons={[
+              { label: no,  onClick: () => setConfirmDel(null), variant: 'secondary' },
+              { label: yes, onClick: handleConfirmDelete,       variant: 'danger' },
+            ]}
+            onClose={() => setConfirmDel(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
