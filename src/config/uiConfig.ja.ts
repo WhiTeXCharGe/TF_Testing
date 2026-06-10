@@ -3,7 +3,7 @@
 
 export const UI = {
   app: {
-    title: 'Timefold スケジューラ',
+    title: ' スケジューラ',
     subtitle: '従業員スケジュール最適化',
   },
 
@@ -14,7 +14,7 @@ export const UI = {
 
   runLog: {
     heading: '実行ログ',
-    subheading: 'Timefold ソルブ履歴',
+    subheading: ' ソルブ履歴',
     newRun: '新規実行',
     columnDate: '実行日時',
     columnInput: '入力ファイル',
@@ -56,10 +56,19 @@ export const UI = {
     ganttDialogTitle: 'ガントチャートエディタ',
     ganttDialogBody: '別チームが開発予定のガントチャートエディタが開きます。現在は未接続のためプレースホルダーです。',
     ganttDialogClose: '閉じる',
-    // Result-not-ready dialog
+    // Result-not-ready dialog (ローカル専用モード)
     notReadyTitle: '結果が利用できません',
     notReadyBody: 'public/local/<id>/output/ に出力ファイルが見つからず、Azure Blob Storage はまだ接続されていません。ソルブが未完了か、実行 ID が無効です。',
     notReadyClose: '閉じる',
+    // Solver status dialog (VITE_API_BASE_URL が設定されている場合)
+    solverStatusTitle: 'ソルブ実行中',
+    solverStatusSubmitted: '実行はキューに入り、開始待ちです。',
+    solverStatusRunning: 'ソルバはまだ実行中です。',
+    solverFailedTitle: 'ソルバが失敗しました',
+    solverFailedLabel: 'エラー:',
+    solverFailedUnknown: 'エラー詳細が記録されていません。',
+    solverErrorTitle: 'サービスエラー',
+    solverStatusClose: '閉じる',
     // Delete confirm dialog (output yaml が存在 — 実行完了済み)
     deleteConfirmTitle: 'この実行を削除しますか?',
     deleteConfirmBody: 'この行を削除し、public/local/<id>/ をディスクから削除します。この操作は取り消せません。',
@@ -67,7 +76,7 @@ export const UI = {
     deleteConfirmNo: 'いいえ',
     // Cancel confirm dialog (output yaml が未生成 — 実行中)
     cancelConfirmTitle: 'この実行をキャンセルしますか?',
-    cancelConfirmBody: '進行中の Timefold プロセスをキャンセルし、この行および public/local/<id>/ をディスクから削除します。この操作は取り消せません。',
+    cancelConfirmBody: '進行中の  プロセスをキャンセルし、この行および public/local/<id>/ をディスクから削除します。この操作は取り消せません。',
     cancelConfirmYes: '実行をキャンセル',
     cancelConfirmNo: '続行',
   },
@@ -154,7 +163,7 @@ export const UI = {
     srcExistDesc: 'アップロード済みデータセットから選択。',
     srcNewTitle: '新規ファイルをアップロード',
     srcNewDesc: 'EnvConfig.yaml と Schedule.yaml をアップロード。',
-    mergeNote: '両ソース選択済み — Timefold がマージします (EnvConfig × 2 + Schedule × 2)。',
+    mergeNote: '両ソース選択済み —  がマージします (EnvConfig × 2 + Schedule × 2)。',
     labelExistDataset: 'データセット',
     labelEnvConfig: 'EnvConfig.yaml',
     labelSchedule: 'Schedule.yaml',

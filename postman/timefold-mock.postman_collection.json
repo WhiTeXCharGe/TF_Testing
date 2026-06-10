@@ -1,0 +1,193 @@
+{
+  "info": {
+    "_postman_id": "timefold-api-mock-v1",
+    "name": "Timefold API Mock",
+    "description": "Mock collection for testing the Timefold Scheduler webapp.\n\nHow to create the mock server:\n1. Import this file into Postman (File → Import)\n2. In your workspace, click New → Mock Server\n3. Select 'Select an existing collection' → pick 'Timefold API Mock'\n4. Copy the mock URL (e.g. https://abc123.mock.pstmn.io)\n5. Paste it into webapp/.env as VITE_API_BASE_URL=<that url>\n6. Restart the webapp (npm run dev)\n\nSwitching scenarios for GET /status/:runId:\n- The mock uses the FIRST saved response in the list as default\n- Scenario 1 (Running) is first by default\n- To switch to Scenario 2 (Completed): open the request, go to Examples tab, drag 'Scenario 2 - Completed' to the top",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST /runSolver — New Run",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "env",
+              "type": "file",
+              "src": "",
+              "description": "EnvConfig.yaml"
+            },
+            {
+              "key": "sched",
+              "type": "file",
+              "src": "",
+              "description": "Schedule.yaml"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/runSolver",
+          "host": ["{{base_url}}"],
+          "path": ["runSolver"]
+        },
+        "description": "Upload the two YAML input files. The mock always returns 202 with a fixed runId.\n\nNote: Postman mock does NOT store the uploaded files — it just returns the saved response. This is enough to test that the webapp sends the request correctly and the New Run modal closes."
+      },
+      "response": [
+        {
+          "name": "202 Submitted",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/runSolver",
+              "host": ["{{base_url}}"],
+              "path": ["runSolver"]
+            }
+          },
+          "status": "Accepted",
+          "code": 202,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"runId\": \"test-run-001\",\n  \"status\": \"Submitted\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "GET /status/:runId — Check Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/status/:runId",
+          "host": ["{{base_url}}"],
+          "path": ["status", ":runId"],
+          "variable": [
+            {
+              "key": "runId",
+              "value": "",
+              "description": "The run ID from the webapp"
+            }
+          ]
+        },
+        "description": "Returns the current solve status.\n\nTwo saved examples — the mock uses whichever is FIRST in the Examples list:\n- Scenario 1 (Running): drag this to top → webapp shows 'Solve in progress' dialog\n- Scenario 2 (Completed): drag this to top → webapp downloads the output YAML\n\nTo switch: open this request → Examples tab → drag the one you want to the top."
+      },
+      "response": [
+        {
+          "name": "Scenario 1 — Running (not ready)",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/status/:runId",
+              "host": ["{{base_url}}"],
+              "path": ["status", ":runId"],
+              "variable": [{ "key": "runId", "value": "" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"status\": \"Running\",\n  \"stage\": 1,\n  \"progress\": 0.35,\n  \"error\": null\n}",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "Scenario 2 — Completed (ready to download)",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/status/:runId",
+              "host": ["{{base_url}}"],
+              "path": ["status", ":runId"],
+              "variable": [{ "key": "runId", "value": "" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"status\": \"Completed\",\n  \"stage\": 2,\n  \"progress\": 1,\n  \"error\": null\n}",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "Scenario 3 — Failed (solver error)",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/status/:runId",
+              "host": ["{{base_url}}"],
+              "path": ["status", ":runId"],
+              "variable": [{ "key": "runId", "value": "" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": "{\n  \"status\": \"Failed\",\n  \"stage\": 1,\n  \"progress\": 0.2,\n  \"error\": \"Java heap space exceeded at Stage 1 after 8 minutes\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "GET /download/:runId — Download Output YAML",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/download/:runId",
+          "host": ["{{base_url}}"],
+          "path": ["download", ":runId"],
+          "variable": [
+            {
+              "key": "runId",
+              "value": "",
+              "description": "The run ID from the webapp"
+            }
+          ]
+        },
+        "description": "Returns the output YAML as a file download.\n\nThe webapp calls this automatically after /status returns Completed.\nThe response body is a sample YAML — replace it with your real result_Schedule.yaml content if needed.\n\nIMPORTANT: The Content-Disposition header must be present for the webapp to extract the filename."
+      },
+      "response": [
+        {
+          "name": "200 result_Schedule.yaml",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/download/:runId",
+              "host": ["{{base_url}}"],
+              "path": ["download", ":runId"],
+              "variable": [{ "key": "runId", "value": "" }]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            { "key": "Content-Type",        "value": "application/octet-stream" },
+            { "key": "Content-Disposition", "value": "attachment; filename=\"result_Schedule.yaml\"" }
+          ],
+          "body": "schedule:\n  plan_range:\n    start_date: '2026-01-01'\n    end_date: '2026-03-31'\n  workflow_task_list:\n    - id: wf_001\n      name: SU 1001A\n      workflow: wf_main\n  assignment_list:\n    - worker: worker_001\n      operation_task: task_001\n      work_date_list:\n        - date: '2026-01-05'\n    - worker: worker_002\n      operation_task: task_002\n      work_date_list:\n        - date: '2026-01-06'\n",
+          "_postman_previewlanguage": "text"
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://your-mock-id.mock.pstmn.io",
+      "description": "Replace this with your actual Postman mock server URL after creating the mock"
+    }
+  ]
+}

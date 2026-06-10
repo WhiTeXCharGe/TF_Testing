@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { saveAs } from 'file-saver';
 import { UI } from '@/config/uiConfig';
 import { Icon } from '@/components/common/Icon';
 import { Dialog } from '@/components/common/Dialog';
 import { useRuns } from '@/hooks/useRuns';
 import { nowLabel } from '@/utils/dateUtils';
 import type { Run } from '@/types';
+import type { RunStatus } from '@/services/runService';
 
 // ── Path tooltip popup ──────────────────────────────────────────────────────
 interface PopupState {
@@ -293,17 +295,33 @@ function DropZoneField({
   );
 }
 
+// ── Solver status dialog state ────────────────────────────────────────────────
+interface SolverStatusDialog {
+  run:    Run;
+  status: RunStatus;
+}
+interface SolverErrorDialog {
+  run:     Run;
+  message: string;
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 export function RunLogPage() {
-  const { runs, loading, error, submitNewRun, checkOutput, removeRun } = useRuns();
+  const {
+    runs, loading, error,
+    submitNewRun, checkOutput, removeRun,
+    solverEnabled, submitToSolver, checkRunStatus, triggerDownload,
+  } = useRuns();
   const [popup, setPopup] = useState<PopupState | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
   // Dialog state — only one of these is open at a time.
-  const [ganttDialog,  setGanttDialog]  = useState<{ run: Run; source: 'copy' | 'result' } | null>(null);
-  const [notReady,     setNotReady]     = useState<Run | null>(null);
-  const [confirmDel,   setConfirmDel]   = useState<Run | null>(null);
+  const [ganttDialog,    setGanttDialog]    = useState<{ run: Run; source: 'copy' | 'result' } | null>(null);
+  const [notReady,       setNotReady]       = useState<Run | null>(null);
+  const [solverStatus,   setSolverStatus]   = useState<SolverStatusDialog | null>(null);
+  const [solverError,    setSolverError]    = useState<SolverErrorDialog | null>(null);
+  const [confirmDel,     setConfirmDel]     = useState<Run | null>(null);
 
   function showPaths(e: React.MouseEvent, run: Run, which: 'env' | 'sched') {
     e.stopPropagation();
@@ -324,23 +342,50 @@ export function RunLogPage() {
     envFile: File; schedFile: File;
     originalEnvPath: string; originalSchedPath: string;
   }) {
-    await submitNewRun(p);
+    // 1. Save files locally so the run appears in the list.
+    const run = await submitNewRun(p);
+
+    // 2. If a backend is configured, also send the files to the solver.
+    if (solverEnabled) {
+      try {
+        await submitToSolver(run.id, p.envFile, p.schedFile);
+      } catch (err) {
+        // Non-fatal: local row was already created; show a warning but close the modal.
+        setSolverError({ run, message: String((err as Error).message || err) });
+      }
+    }
+
     setModalOpen(false);
   }
 
   async function handleShowResult(run: Run) {
     setBusy(prev => new Set(prev).add(run.id));
     try {
-      const out = await checkOutput(run.id);
-      if (out.hasYaml) {
-        // We have a local yaml — open the gantt editor placeholder.
-        // (checkOutput already refreshed the row so savedOutputPath is populated.)
-        setGanttDialog({ run, source: 'result' });
+      if (solverEnabled) {
+        // ── Solver API mode ─────────────────────────────────────────────────
+        // GET /status/:runId → check if solve is done
+        const status = await checkRunStatus(run.id);
+
+        if (status.status === 'Completed') {
+          // GET /download/:runId → receive YAML blob → save to disk
+          const { blob, filename } = await triggerDownload(run.id);
+          saveAs(blob, filename);
+        } else {
+          // Still running, submitted, or failed — show status dialog
+          setSolverStatus({ run, status });
+        }
       } else {
-        // No local yaml. In future: try Azure Blob with the runId.
-        // For now Azure is not connected → show "not ready" dialog.
-        setNotReady(run);
+        // ── Local-only mode ─────────────────────────────────────────────────
+        // Check whether the output YAML landed in public/local/<id>/output/
+        const out = await checkOutput(run.id);
+        if (out.hasYaml) {
+          setGanttDialog({ run, source: 'result' });
+        } else {
+          setNotReady(run);
+        }
       }
+    } catch (err) {
+      setSolverError({ run, message: String((err as Error).message || err) });
     } finally {
       setBusy(prev => { const n = new Set(prev); n.delete(run.id); return n; });
     }
@@ -479,6 +524,64 @@ export function RunLogPage() {
           }
           buttons={[{ label: UI.runLog.notReadyClose, onClick: () => setNotReady(null), variant: 'primary' }]}
           onClose={() => setNotReady(null)}
+        />
+      )}
+
+      {/* Solver status dialog — shown when status is Running or Submitted */}
+      {solverStatus && (
+        <Dialog
+          title={
+            solverStatus.status.status === 'Failed'
+              ? UI.runLog.solverFailedTitle
+              : UI.runLog.solverStatusTitle
+          }
+          body={
+            <>
+              {solverStatus.status.status === 'Failed' ? (
+                <>
+                  <div>{UI.runLog.solverFailedLabel}</div>
+                  <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--red, #c0392b)' }}>
+                    {solverStatus.status.error ?? UI.runLog.solverFailedUnknown}
+                  </div>
+                </>
+              ) : (
+                <div>
+                  {solverStatus.status.status === 'Submitted'
+                    ? UI.runLog.solverStatusSubmitted
+                    : UI.runLog.solverStatusRunning}
+                  {solverStatus.status.stage != null && (
+                    <span style={{ marginLeft: 6, opacity: 0.7 }}>
+                      (Stage {solverStatus.status.stage}, {Math.round((solverStatus.status.progress ?? 0) * 100)}%)
+                    </span>
+                  )}
+                </div>
+              )}
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                Run id: {solverStatus.run.id}
+              </div>
+            </>
+          }
+          buttons={[{ label: UI.runLog.solverStatusClose, onClick: () => setSolverStatus(null), variant: 'primary' }]}
+          onClose={() => setSolverStatus(null)}
+        />
+      )}
+
+      {/* Solver error dialog — shown when the network call itself fails */}
+      {solverError && (
+        <Dialog
+          title={UI.runLog.solverErrorTitle}
+          body={
+            <>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--red, #c0392b)', wordBreak: 'break-word' }}>
+                {solverError.message}
+              </div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                Run id: {solverError.run.id}
+              </div>
+            </>
+          }
+          buttons={[{ label: UI.runLog.solverStatusClose, onClick: () => setSolverError(null), variant: 'primary' }]}
+          onClose={() => setSolverError(null)}
         />
       )}
 

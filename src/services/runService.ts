@@ -1,37 +1,99 @@
 /**
- * Run service — handles solver job submission and status polling.
- * Replace APP_CONFIG.apiBaseUrl with your Cloud Run Jobs endpoint.
+ * Solver API client — talks to the backend service (local Express or Azure ACA).
+ * Set VITE_API_BASE_URL in webapp/.env to enable; leave blank for local-only mode.
  */
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { APP_CONFIG } from '@/config/appConfig';
-import type { RunLog, NewRunForm } from '@/types';
-import { getRunLogs } from './databaseService';
 
 export interface SubmitResult {
   runId: string;
   status: string;
 }
 
-/** Submit a new solver run to the backend. */
-export async function submitRun(form: NewRunForm): Promise<SubmitResult> {
-  if (!APP_CONFIG.apiBaseUrl) {
-    // Dev mode: simulate acceptance
-    return { runId: `run-${Date.now()}`, status: 'accepted' };
-  }
-  const res = await axios.post<SubmitResult>(`${APP_CONFIG.apiBaseUrl}/runSolver`, form);
-  return res.data;
+export interface RunStatus {
+  status: 'Submitted' | 'Running' | 'Completed' | 'Failed';
+  stage:    number | null;
+  progress: number;
+  error:    string | null;
 }
 
-/** Poll status of a run by runId. */
-export async function pollRunStatus(runId: string): Promise<{ status: string; outputPath?: string }> {
-  if (!APP_CONFIG.apiBaseUrl) {
-    return { status: 'Executing' };
+/**
+ * POST /runSolver
+ * Upload EnvConfig + Schedule YAMLs to the solver backend.
+ * Pass the same runId used for the local upload so both sides stay in sync.
+ */
+export async function submitRun(
+  runId:     string,
+  envFile:   File,
+  schedFile: File,
+): Promise<SubmitResult> {
+  const form = new FormData();
+  form.append('runId', runId);
+  form.append('env',   envFile,   envFile.name);
+  form.append('sched', schedFile, schedFile.name);
+
+  try {
+    const res = await axios.post<SubmitResult>(
+      `${APP_CONFIG.apiBaseUrl}/runSolver`,
+      form,
+    );
+    return res.data;
+  } catch (err) {
+    throw new Error(extractMessage(err, 'Upload to solver failed'));
   }
-  const res = await axios.get(`${APP_CONFIG.apiBaseUrl}/status/${runId}`);
-  return res.data;
 }
 
-/** Fetch run logs for a dataset (delegates to databaseService). */
-export async function fetchRunLogs(datasetId: string): Promise<RunLog[]> {
-  return getRunLogs(datasetId);
+/**
+ * GET /status/:runId
+ * Returns the current solve status. Throws a human-readable Error on failure.
+ */
+export async function checkStatus(runId: string): Promise<RunStatus> {
+  try {
+    const res = await axios.get<RunStatus>(
+      `${APP_CONFIG.apiBaseUrl}/status/${encodeURIComponent(runId)}`,
+    );
+    return res.data;
+  } catch (err) {
+    throw new Error(extractMessage(err, 'Failed to get run status'));
+  }
+}
+
+/**
+ * GET /download/:runId
+ * Downloads the output YAML as a Blob. Only call when status === 'Completed'.
+ * Returns { blob, filename } — pass both to file-saver's saveAs().
+ */
+export async function downloadOutput(
+  runId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  try {
+    const res = await axios.get(
+      `${APP_CONFIG.apiBaseUrl}/download/${encodeURIComponent(runId)}`,
+      { responseType: 'blob' },
+    );
+
+    // Extract filename from Content-Disposition if the server sends it.
+    const disposition: string = (res.headers['content-disposition'] as string) ?? '';
+    const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+    const filename = match?.[1]?.replace(/['"]/g, '') || 'result_Schedule.yaml';
+
+    return { blob: res.data as Blob, filename };
+  } catch (err) {
+    throw new Error(extractMessage(err, 'Download failed'));
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function extractMessage(err: unknown, fallback: string): string {
+  if (err instanceof AxiosError) {
+    // Try to read a JSON { error: "..." } body from the server.
+    const data = err.response?.data;
+    if (data && typeof data === 'object' && 'error' in data) {
+      return String((data as Record<string, unknown>).error);
+    }
+    if (err.message) return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return fallback;
 }

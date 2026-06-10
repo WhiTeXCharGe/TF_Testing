@@ -57,10 +57,19 @@ export const UI = {
     ganttDialogTitle: 'Gantt Editor',
     ganttDialogBody: 'This will open the Gantt editor tool (built by another team). Not connected yet — this is a placeholder.',
     ganttDialogClose: 'Close',
-    // Result-not-ready dialog
+    // Result-not-ready dialog (local-only mode)
     notReadyTitle: 'Result not available',
     notReadyBody: 'No output file found in public/local/<id>/output/ and Azure Blob Storage is not connected yet. Either the solve hasn\'t finished, or the run id is invalid.',
     notReadyClose: 'Close',
+    // Solver status dialog (when VITE_API_BASE_URL is set)
+    solverStatusTitle: 'Solve in progress',
+    solverStatusSubmitted: 'The run is queued and waiting to start.',
+    solverStatusRunning: 'Solver is still running.',
+    solverFailedTitle: 'Solver failed',
+    solverFailedLabel: 'Error:',
+    solverFailedUnknown: 'No error detail was recorded.',
+    solverErrorTitle: 'Service error',
+    solverStatusClose: 'Close',
     // Delete confirm dialog (output yaml exists — run is finished)
     deleteConfirmTitle: 'Delete this run?',
     deleteConfirmBody: 'This will remove the row and delete public/local/<id>/ on disk. This cannot be undone.',
