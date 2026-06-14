@@ -2,14 +2,13 @@
 # Container entrypoint for the Timefold solver (web/Timefold version).
 #
 # Flow:
-#   1. Read /work/input/EnvConfig.yaml + /work/input/Schedule.yaml
-#   2. Copy Schedule.yaml to /work/output/result_Schedule.yaml (solver mutates
-#      its argument in place — we work on the COPY so the input stays pristine)
-#   3. Run the solver against (env, output-copy)
-#   4. Maintain /work/status/<RUN_ID>.json throughout (Submitted → Running → Completed/Failed/Cancelled)
+#   1. Validate /work/input/EnvConfig.yaml + Schedule.yaml
+#   2. Copy Schedule.yaml → /work/output/result_Schedule.yaml (solver mutates in place)
+#   3. Run solver
+#   4. Maintain /work/status/<RUN_ID>.json with full spec schema throughout
 #
-# Cancel = SIGTERM (e.g. `docker stop` or ACA Job execution stop)
-#   → handler writes status = Cancelled and exits 143.
+# Cancel = SIGTERM (docker stop, ACA Job stop)
+#   → writes status=Cancelled, exits 143
 set -euo pipefail
 
 RUN_ID="${RUN_ID:-local-$(date +%Y%m%d_%H%M%S)}"
@@ -22,40 +21,97 @@ SCHED_FILE_IN="${INPUT_DIR}/Schedule.yaml"
 SCHED_FILE_OUT="${OUTPUT_DIR}/result_Schedule.yaml"
 STATUS_FILE="${STATUS_DIR}/${RUN_ID}.json"
 
-mkdir -p "${OUTPUT_DIR}" "${STATUS_DIR}"
+mkdir -p "${STATUS_DIR}"
 
-# ─── status helpers ────────────────────────────────────────────────────────
+# ─── helpers ─────────────────────────────────────────────────────────────────
+
 now_iso() { date -u +%Y-%m-%dT%H:%M:%S.000Z; }
+STARTED_AT="$(now_iso)"
 
-write_status() {
-  # write_status <state> [error_message]
-  local state="$1"
-  local err="${2:-}"
-  local err_json="null"
-  if [[ -n "${err}" ]]; then
-    err_escaped=$(printf '%s' "${err}" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    err_json="{\"message\":\"${err_escaped}\"}"
-  fi
-  cat > "${STATUS_FILE}" <<EOF
+# Atomic write: write to .tmp then rename so readers never see partial JSON.
+_write_json() {
+  local tmp="${STATUS_FILE}.tmp"
+  cat > "${tmp}"
+  mv -f "${tmp}" "${STATUS_FILE}"
+}
+
+write_running() {
+  local stage="${1:-1}" progress="${2:-0}"
+  _write_json <<EOF
 {
-  "runId":     "${RUN_ID}",
-  "status":    "${state}",
-  "startedAt": "${STARTED_AT}",
-  "updatedAt": "$(now_iso)",
-  "error":     ${err_json},
-  "output":    "${SCHED_FILE_OUT}"
+  "runId":      "${RUN_ID}",
+  "status":     "Running",
+  "stage":      ${stage},
+  "progress":   ${progress},
+  "startedAt":  "${STARTED_AT}",
+  "updatedAt":  "$(now_iso)",
+  "finishedAt": null,
+  "error":      null,
+  "output":     null
 }
 EOF
 }
 
-STARTED_AT="$(now_iso)"
-write_status "Submitted"
+write_completed() {
+  _write_json <<EOF
+{
+  "runId":      "${RUN_ID}",
+  "status":     "Completed",
+  "stage":      1,
+  "progress":   1,
+  "startedAt":  "${STARTED_AT}",
+  "updatedAt":  "$(now_iso)",
+  "finishedAt": "$(now_iso)",
+  "error":      null,
+  "output":     "${SCHED_FILE_OUT}"
+}
+EOF
+}
 
-# ─── cancel handling ───────────────────────────────────────────────────────
+write_failed() {
+  # write_failed <error_type> <message> <stage_or_null>
+  local err_type="$1"
+  local err_msg="$2"
+  local stage="${3:-null}"
+  local msg_escaped
+  msg_escaped=$(printf '%s' "${err_msg}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  _write_json <<EOF
+{
+  "runId":      "${RUN_ID}",
+  "status":     "Failed",
+  "stage":      ${stage},
+  "progress":   0,
+  "startedAt":  "${STARTED_AT}",
+  "updatedAt":  "$(now_iso)",
+  "finishedAt": "$(now_iso)",
+  "error":      {"type": "${err_type}", "message": "${msg_escaped}"},
+  "output":     null
+}
+EOF
+}
+
+write_cancelled() {
+  local stage="${CURRENT_STAGE:-1}" progress="${CURRENT_PROGRESS:-0}"
+  _write_json <<EOF
+{
+  "runId":      "${RUN_ID}",
+  "status":     "Cancelled",
+  "stage":      ${stage},
+  "progress":   ${progress},
+  "startedAt":  "${STARTED_AT}",
+  "updatedAt":  "$(now_iso)",
+  "finishedAt": "$(now_iso)",
+  "error":      null,
+  "output":     null
+}
+EOF
+}
+
+# ─── cancel handling ──────────────────────────────────────────────────────────
+
 on_term() {
-  echo "[entrypoint] caught signal — marking Cancelled" >&2
-  write_status "Cancelled"
-  # 143 = 128 + SIGTERM(15). ACA / k8s expect non-zero on cancel.
+  echo "[entrypoint] caught SIGTERM — marking Cancelled" >&2
+  write_cancelled
   if [[ -n "${SOLVER_PID:-}" ]] && kill -0 "${SOLVER_PID}" 2>/dev/null; then
     kill -TERM "${SOLVER_PID}" 2>/dev/null || true
   fi
@@ -63,24 +119,33 @@ on_term() {
 }
 trap on_term SIGTERM SIGINT
 
-# ─── input validation ──────────────────────────────────────────────────────
+# ─── input validation ────────────────────────────────────────────────────────
+
 if [[ ! -f "${ENV_FILE}" ]]; then
-  write_status "Failed" "EnvConfig.yaml not found at ${ENV_FILE}"
+  write_failed "InvalidInputData" "EnvConfig.yaml not found at ${ENV_FILE}" "null"
   exit 2
 fi
 if [[ ! -f "${SCHED_FILE_IN}" ]]; then
-  write_status "Failed" "Schedule.yaml not found at ${SCHED_FILE_IN}"
+  write_failed "InvalidInputData" "Schedule.yaml not found at ${SCHED_FILE_IN}" "null"
   exit 2
 fi
 
-# Work on a copy so input stays pristine.
-cp -f "${SCHED_FILE_IN}" "${SCHED_FILE_OUT}"
+# ─── prepare output copy ─────────────────────────────────────────────────────
 
-# ─── run the solver ────────────────────────────────────────────────────────
-write_status "Running"
+mkdir -p "${OUTPUT_DIR}"
 
-# Run in background so the trap above can react to SIGTERM immediately
-# (otherwise bash waits for the foreground process to return first).
+if ! cp -f "${SCHED_FILE_IN}" "${SCHED_FILE_OUT}"; then
+  write_failed "OutputError" "Cannot create output file at ${SCHED_FILE_OUT}" "null"
+  exit 3
+fi
+
+# ─── solve ───────────────────────────────────────────────────────────────────
+
+CURRENT_STAGE=1
+CURRENT_PROGRESS=0
+write_running 1 0
+echo "[entrypoint] solve started (runId=${RUN_ID})"
+
 java -Xms1g -Xmx"${JVM_MAX_HEAP:-6g}" \
      -cp '/app/lib/*' \
      com.yourorg.scheduler.EmployeeSchedule \
@@ -91,9 +156,16 @@ wait "${SOLVER_PID}"
 SOLVER_EXIT=$?
 
 if [[ "${SOLVER_EXIT}" -ne 0 ]]; then
-  write_status "Failed" "solver exited with code ${SOLVER_EXIT}"
+  write_failed "SolverError" "solver exited with code ${SOLVER_EXIT}" "1"
   exit "${SOLVER_EXIT}"
 fi
 
-write_status "Completed"
-echo "[entrypoint] done. result at ${SCHED_FILE_OUT}"
+# ─── verify output ───────────────────────────────────────────────────────────
+
+if [[ ! -f "${SCHED_FILE_OUT}" ]]; then
+  write_failed "OutputError" "Solver finished but result_Schedule.yaml is missing at ${SCHED_FILE_OUT}" "1"
+  exit 4
+fi
+
+write_completed
+echo "[entrypoint] done — result at ${SCHED_FILE_OUT}"
