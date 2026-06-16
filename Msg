@@ -1,1 +1,32 @@
-https://www.figma.com/design/Es6uF6iF2ztOwUbCAgqPMs/Untitled?node-id=2-5&t=s7aKFZj81o0dleqC-1
+お世話になっております。田島です。
+
+① 構成変更について
+
+井川さんの構成変更は、現在の処理フローに対して問題ないと考えております。
+
+ACR Premium + Private Endpoint：アプリ側の変更は不要です。イメージの pull は引き続き同じ方法で動作します。
+Container Apps VNet統合 + 内部LB：ユーザーはSCREEN社内ネットワーク（またはVPN）からアクセスするため、内部LBへの切り替えは問題ありません。フロントエンド（React）側で参照するAPIのURLがVNet内のエンドポイントになる点のみ注意が必要です。
+Ingress「VNetに限定」：社内利用前提のため問題ありません。
+なお、Container Apps環境はVNet統合を後から変更できないため、環境の再作成が必要な点は了解しました。
+
+Table 1 — イントラネット → Azure
+
+Source	Destination	Protocol
+SCREEN社内 (User PC)	Container Apps ca-tf-api	HTTPS (443)
+SCREEN社内 (User PC)	Blob Storage (SAS URL)	HTTPS (443)
+SCREEN社内 (Developer PC)	Container Registry (ACR)	HTTPS (443)
+SCREEN社内 (Developer PC)	Container Apps (ACA)	HTTPS (443)
+
+
+Table 5 — Azure → Azure (VNetを跨ぐ場合)
+
+Source	Destination	Protocol
+Container Apps ca-tf-api	Blob Storage	HTTPS (443)
+Container Apps ca-tf-api	Azure Batch	HTTPS (443)
+Container Apps ca-tf-api	Container Registry (ACR)	HTTPS (443)
+Azure Batch (pool nodes)	Container Registry (ACR)	HTTPS (443)
+Azure Batch (pool nodes)	Blob Storage	HTTPS (443)
+
+
+以上になります。不足や認識誤りがあればご指摘いただけますと幸いです。
+よろしくお願いいたします。
