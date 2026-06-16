@@ -10,23 +10,34 @@ Ingress「VNetに限定」：社内利用前提のため問題ありません。
 なお、Container Apps環境はVNet統合を後から変更できないため、環境の再作成が必要な点は了解しました。
 
 なお、Container Apps環境はVNet統合を後から変更できないため、環境の再作成が必要な点は了解しました。
+Table 1 — イントラネット → Azure
 
-② 通信仕様シート（洗い出し）
+Source	Destination	Protocol	用途
+SCREEN社内 (User PC)	Container Apps ca-tf-api	HTTPS (443)	YAMLファイルのアップロード、ソルバ実行リクエスト（POST /runSolver）、ステータス確認（GET /status）、ダウンロードURL取得（GET /download）
+SCREEN社内 (User PC)	Blob Storage	HTTPS (443)	SAS URLを使った結果ファイル（result_Schedule.yaml）のダウンロード
+SCREEN社内 (Developer PC)	Container Registry (ACR)	HTTPS (443)	DockerイメージのPush（api-controller:v1、timefold:v1）
+SCREEN社内 (Developer PC)	Container Apps (ACA)	HTTPS (443)	APIアプリのデプロイ・リビジョン更新
+Table 2 — Azure → イントラネット
 
-▼ 社内 → Azure（ユーザー・開発者PC起点）
+Source	Destination	Protocol	用途
+(なし)	—	—	—
+Table 3 — Azure → インターネット
 
-送信元	送信先	プロトコル	用途
-SCREEN社内（ユーザーPC）	Container Apps（ca-tf-api）	HTTPS（443）	HTTPリクエスト＋YAMLファイル送受信、ステータス確認、結果ダウンロード
-SCREEN社内（開発者PC）	Container Registry（ACR）	HTTPS（443）	Dockerイメージのpush（api-controller、timefold）
-SCREEN社内（開発者PC）	Container Apps（ACA）	HTTPS（443）	デプロイ・リビジョン更新
-▼ Azure ⇒ Azure（VNet内）
+Source	Destination	Protocol	用途
+(なし)	—	—	—
+Table 4 — インターネット → Azure
 
-送信元	送信先	プロトコル	用途
-Container Apps（ca-tf-api）	Blob Storage	HTTPS（443）	入力YAMLアップロード、ステータスJSON読み書き、SAS URL生成
-Container Apps（ca-tf-api）	Azure Batch	HTTPS（443）	ソルバタスクの作成・投入
-Container Apps（ca-tf-api）	Container Registry（ACR）	HTTPS（443）	デプロイ時・コールドスタート時のイメージpull
-Azure Batch（計算ノード）	Container Registry（ACR）	HTTPS（443）	Timefoldソルバコンテナイメージのpull
-Azure Batch（計算ノード）	Blob Storage	HTTPS（443）	入力YAML読み込み、出力YAML・status.json書き込み
+Source	Destination	Protocol	用途
+(なし)	—	—	—
+Table 5 — Azure → Azure（VNetを跨ぐ場合）
+
+Source	Destination	Protocol	用途
+Container Apps ca-tf-api	Blob Storage	HTTPS (443)	入力YAMLアップロード（input/{runId}/*.yaml）、ステータスJSON読み書き（status/{runId}.json）、SAS URL生成
+Container Apps ca-tf-api	Azure Batch	HTTPS (443)	ソルバタスクの作成・投入（常設ジョブへのタスク追加）
+Container Apps ca-tf-api	Container Registry (ACR)	HTTPS (443)	デプロイ時・コールドスタート時のAPIイメージpull（api-controller:v1）
+Azure Batch (pool nodes)	Container Registry (ACR)	HTTPS (443)	Timefoldソルバコンテナイメージのpull（timefold:v1）
+Azure Batch (pool nodes)	Blob Storage	HTTPS (443)	入力YAML読み込み（input/{runId}/*.yaml）、出力YAMLおよびステータスJSON書き込み（output/{runId}/、status/{runId}.json）
+
 以上になります。不足や認識誤りがあればご指摘いただけますと幸いです。
 よろしくお願いいたします。
 
