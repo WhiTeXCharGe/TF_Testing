@@ -13,10 +13,10 @@ Ingress「VNetに限定」：社内利用前提のため問題ありません。
 Table 1 — イントラネット → Azure
 
 Source	Destination	Protocol	用途
-SCREEN社内 (User PC)	Container Apps ca-tf-api	HTTPS (443)	YAMLファイルのアップロード、ソルバ実行リクエスト（POST /runSolver）、ステータス確認（GET /status）、ダウンロードURL取得（GET /download）
-SCREEN社内 (User PC)	Blob Storage	HTTPS (443)	SAS URLを使った結果ファイル（result_Schedule.yaml）のダウンロード
-SCREEN社内 (Developer PC)	Container Registry (ACR)	HTTPS (443)	DockerイメージのPush（api-controller:v1、timefold:v1）
-SCREEN社内 (Developer PC)	Container Apps (ACA)	HTTPS (443)	APIアプリのデプロイ・リビジョン更新
+SCREEN社内 (User PC)	Container Apps ca-tf-api	HTTPS (443)	スケジュール最適化の実行指示、処理状況の確認、結果ファイルのダウンロード操作
+SCREEN社内 (User PC)	Blob Storage	HTTPS (443)	最適化完了後の結果ファイル取得
+SCREEN社内 (Developer PC)	Container Registry (ACR)	HTTPS (443)	アプリケーションの新バージョンをレジストリへ登録（デプロイ準備）
+SCREEN社内 (Developer PC)	Container Apps (ACA)	HTTPS (443)	アプリケーションの更新・展開作業
 Table 2 — Azure → イントラネット
 
 Source	Destination	Protocol	用途
@@ -32,11 +32,12 @@ Source	Destination	Protocol	用途
 Table 5 — Azure → Azure（VNetを跨ぐ場合）
 
 Source	Destination	Protocol	用途
-Container Apps ca-tf-api	Blob Storage	HTTPS (443)	入力YAMLアップロード（input/{runId}/*.yaml）、ステータスJSON読み書き（status/{runId}.json）、SAS URL生成
-Container Apps ca-tf-api	Azure Batch	HTTPS (443)	ソルバタスクの作成・投入（常設ジョブへのタスク追加）
-Container Apps ca-tf-api	Container Registry (ACR)	HTTPS (443)	デプロイ時・コールドスタート時のAPIイメージpull（api-controller:v1）
-Azure Batch (pool nodes)	Container Registry (ACR)	HTTPS (443)	Timefoldソルバコンテナイメージのpull（timefold:v1）
-Azure Batch (pool nodes)	Blob Storage	HTTPS (443)	入力YAML読み込み（input/{runId}/*.yaml）、出力YAMLおよびステータスJSON書き込み（output/{runId}/、status/{runId}.json）
+Container Apps ca-tf-api	Blob Storage	HTTPS (443)	最適化に必要な入力データの保存、処理状況の記録・更新、結果ファイルへの一時アクセス権の発行
+Container Apps ca-tf-api	Azure Batch	HTTPS (443)	最適化処理の実行依頼（計算ジョブの登録）
+Container Apps ca-tf-api	Container Registry (ACR)	HTTPS (443)	アプリ起動時に必要なプログラムの取得
+Azure Batch (pool nodes)	Container Registry (ACR)	HTTPS (443)	最適化エンジン起動時に必要なプログラムの取得
+Azure Batch (pool nodes)	Blob Storage	HTTPS (443)	最適化処理に使う入力データの読み込み、処理結果および進捗状況の書き込み
+
 
 以上になります。不足や認識誤りがあればご指摘いただけますと幸いです。
 よろしくお願いいたします。
