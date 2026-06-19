@@ -10,11 +10,21 @@ export interface SubmitResult {
   status: string;
 }
 
+export interface RunError {
+  type?: string;
+  message?: string;
+}
+
 export interface RunStatus {
-  status: 'Submitted' | 'Running' | 'Completed' | 'Failed';
-  stage:    number | null;
-  progress: number;
-  error:    string | null;
+  runId?: string;
+  status: 'Submitted' | 'Running' | 'Completed' | 'Failed' | 'Cancelled';
+  stage: number | string | null;
+  progress?: number;
+  startedAt?: string | null;
+  updatedAt?: string | null;
+  finishedAt?: string | null;
+  error?: string | RunError | null;
+  output?: string | null;
 }
 
 /**

@@ -88,12 +88,11 @@ function InputCell({ run, onShowPaths, onShowCopy }: {
 }
 
 // ── Result cell ─────────────────────────────────────────────────────────────
-function ResultCell({ run, busy, onShowResult }: {
-  run: Run;
+function ResultCell({ busy, onShowResult, outputPath }: {
   busy: boolean;
   onShowResult: () => void;
+  outputPath: string;
 }) {
-  const outputPath = run.savedOutputPath ?? '';
   return (
     <div className="result-cell-v2">
       <button className="btn btn-primary btn-xs" onClick={onShowResult} disabled={busy}>
@@ -300,9 +299,20 @@ interface SolverStatusDialog {
   run:    Run;
   status: RunStatus;
 }
+interface SolverCompletedDialog {
+  run: Run;
+  status: RunStatus;
+}
+interface SolverFailedDialog {
+  run: Run;
+  status: RunStatus;
+}
 interface SolverErrorDialog {
   run:     Run;
   message: string;
+}
+interface UploadDoneDialog {
+  run: Run;
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
@@ -320,8 +330,26 @@ export function RunLogPage() {
   const [ganttDialog,    setGanttDialog]    = useState<{ run: Run; source: 'copy' | 'result' } | null>(null);
   const [notReady,       setNotReady]       = useState<Run | null>(null);
   const [solverStatus,   setSolverStatus]   = useState<SolverStatusDialog | null>(null);
+  const [solverCompleted,setSolverCompleted]= useState<SolverCompletedDialog | null>(null);
+  const [solverFailed,   setSolverFailed]   = useState<SolverFailedDialog | null>(null);
   const [solverError,    setSolverError]    = useState<SolverErrorDialog | null>(null);
+  const [uploadDone,     setUploadDone]     = useState<UploadDoneDialog | null>(null);
+  const [downloadedPaths,setDownloadedPaths]= useState<Record<string, string>>({});
   const [confirmDel,     setConfirmDel]     = useState<Run | null>(null);
+
+  const outputDirForRun = (runId: string) => `/local/${runId}/output/`;
+  const progressPercent = (progress?: number) => {
+    const n = Number(progress ?? 0);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n > 1 ? n : Math.round(n * 100)));
+  };
+
+  const solverErrorText = (status: RunStatus) => {
+    const err = status.error;
+    if (!err) return UI.runLog.solverFailedUnknown;
+    if (typeof err === 'string') return err;
+    return err.message || err.type || UI.runLog.solverFailedUnknown;
+  };
 
   function showPaths(e: React.MouseEvent, run: Run, which: 'env' | 'sched') {
     e.stopPropagation();
@@ -356,22 +384,32 @@ export function RunLogPage() {
     }
 
     setModalOpen(false);
+    setUploadDone({ run });
   }
 
   async function handleShowResult(run: Run) {
     setBusy(prev => new Set(prev).add(run.id));
     try {
+      // Once downloaded from API, treat it as local output and stop calling solver APIs.
+      if (downloadedPaths[run.id]) {
+        setGanttDialog({
+          run: { ...run, inputDir: downloadedPaths[run.id], savedOutputPath: downloadedPaths[run.id] },
+          source: 'copy',
+        });
+        return;
+      }
+
       if (solverEnabled) {
         // ── Solver API mode ─────────────────────────────────────────────────
         // GET /status/:runId → check if solve is done
         const status = await checkRunStatus(run.id);
 
         if (status.status === 'Completed') {
-          // GET /download/:runId → receive YAML blob → save to disk
-          const { blob, filename } = await triggerDownload(run.id);
-          saveAs(blob, filename);
+          setSolverCompleted({ run, status });
+        } else if (status.status === 'Failed') {
+          setSolverFailed({ run, status });
         } else {
-          // Still running, submitted, or failed — show status dialog
+          // Submitted / Running / Cancelled
           setSolverStatus({ run, status });
         }
       } else {
@@ -384,6 +422,26 @@ export function RunLogPage() {
           setNotReady(run);
         }
       }
+    } catch (err) {
+      setSolverError({ run, message: String((err as Error).message || err) });
+    } finally {
+      setBusy(prev => { const n = new Set(prev); n.delete(run.id); return n; });
+    }
+  }
+
+  async function handleDownloadFromCompleted(run: Run) {
+    setBusy(prev => new Set(prev).add(run.id));
+    try {
+      const { blob, filename } = await triggerDownload(run.id);
+      saveAs(blob, filename);
+
+      const localOutputDir = outputDirForRun(run.id);
+      setDownloadedPaths(prev => ({ ...prev, [run.id]: localOutputDir }));
+      setSolverCompleted(null);
+      setGanttDialog({
+        run: { ...run, inputDir: localOutputDir, savedOutputPath: localOutputDir },
+        source: 'copy',
+      });
     } catch (err) {
       setSolverError({ run, message: String((err as Error).message || err) });
     } finally {
@@ -436,7 +494,7 @@ export function RunLogPage() {
                   </td>
                   <td>
                     <ResultCell
-                      run={run}
+                      outputPath={downloadedPaths[run.id] ?? run.savedOutputPath ?? ''}
                       busy={busy.has(run.id)}
                       onShowResult={() => handleShowResult(run)}
                     />
@@ -492,6 +550,23 @@ export function RunLogPage() {
 
       {modalOpen && <NewRunModal onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />}
 
+      {uploadDone && (
+        <Dialog
+          title={UI.runLog.uploadDoneTitle}
+          body={
+            <>
+              <div>{solverEnabled ? UI.runLog.uploadDoneBodyApi : UI.runLog.uploadDoneBodyLocal}</div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                Run id: {uploadDone.run.id}<br />
+                Input dir: {uploadDone.run.inputDir}
+              </div>
+            </>
+          }
+          buttons={[{ label: UI.runLog.uploadDoneClose, onClick: () => setUploadDone(null), variant: 'primary' }]}
+          onClose={() => setUploadDone(null)}
+        />
+      )}
+
       {ganttDialog && (
         <Dialog
           title={UI.runLog.ganttDialogTitle}
@@ -530,32 +605,21 @@ export function RunLogPage() {
       {/* Solver status dialog — shown when status is Running or Submitted */}
       {solverStatus && (
         <Dialog
-          title={
-            solverStatus.status.status === 'Failed'
-              ? UI.runLog.solverFailedTitle
-              : UI.runLog.solverStatusTitle
-          }
+          title={UI.runLog.solverStatusTitle}
           body={
             <>
-              {solverStatus.status.status === 'Failed' ? (
-                <>
-                  <div>{UI.runLog.solverFailedLabel}</div>
-                  <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--red, #c0392b)' }}>
-                    {solverStatus.status.error ?? UI.runLog.solverFailedUnknown}
-                  </div>
-                </>
-              ) : (
-                <div>
-                  {solverStatus.status.status === 'Submitted'
-                    ? UI.runLog.solverStatusSubmitted
+              <div>
+                {solverStatus.status.status === 'Submitted'
+                  ? UI.runLog.solverStatusSubmitted
+                  : solverStatus.status.status === 'Cancelled'
+                    ? UI.runLog.solverStatusCancelled
                     : UI.runLog.solverStatusRunning}
-                  {solverStatus.status.stage != null && (
-                    <span style={{ marginLeft: 6, opacity: 0.7 }}>
-                      (Stage {solverStatus.status.stage}, {Math.round((solverStatus.status.progress ?? 0) * 100)}%)
-                    </span>
-                  )}
-                </div>
-              )}
+                {solverStatus.status.stage != null && (
+                  <span style={{ marginLeft: 6, opacity: 0.7 }}>
+                    (Stage {String(solverStatus.status.stage)}, {progressPercent(solverStatus.status.progress)}%)
+                  </span>
+                )}
+              </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
                 Run id: {solverStatus.run.id}
               </div>
@@ -563,6 +627,53 @@ export function RunLogPage() {
           }
           buttons={[{ label: UI.runLog.solverStatusClose, onClick: () => setSolverStatus(null), variant: 'primary' }]}
           onClose={() => setSolverStatus(null)}
+        />
+      )}
+
+      {solverCompleted && (
+        <Dialog
+          title={UI.runLog.solverCompletedTitle}
+          body={
+            <>
+              <div>{UI.runLog.solverCompletedBody}</div>
+              <div style={{ marginTop: 8, opacity: 0.7 }}>
+                ({progressPercent(solverCompleted.status.progress)}%)
+              </div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                Run id: {solverCompleted.run.id}
+              </div>
+            </>
+          }
+          buttons={[
+            { label: UI.runLog.solverCompletedCancel, onClick: () => setSolverCompleted(null), variant: 'secondary' },
+            {
+              label: busy.has(solverCompleted.run.id)
+                ? UI.runLog.fetching
+                : UI.runLog.solverCompletedDownload,
+              onClick: () => { void handleDownloadFromCompleted(solverCompleted.run); },
+              variant: 'primary',
+            },
+          ]}
+          onClose={() => setSolverCompleted(null)}
+        />
+      )}
+
+      {solverFailed && (
+        <Dialog
+          title={UI.runLog.solverFailedTitle}
+          body={
+            <>
+              <div>{UI.runLog.solverFailedLabel}</div>
+              <div style={{ marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--red, #c0392b)' }}>
+                {solverErrorText(solverFailed.status)}
+              </div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                Run id: {solverFailed.run.id}
+              </div>
+            </>
+          }
+          buttons={[{ label: UI.runLog.solverStatusClose, onClick: () => setSolverFailed(null), variant: 'primary' }]}
+          onClose={() => setSolverFailed(null)}
         />
       )}
 

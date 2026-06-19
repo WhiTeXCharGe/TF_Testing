@@ -4,7 +4,7 @@
 
 export const UI = {
   app: {
-    title: 'Timefold Scheduler',
+    title: ' Scheduler',
     subtitle: 'Employee Schedule Optimizer',
   },
 
@@ -15,7 +15,7 @@ export const UI = {
 
   runLog: {
     heading: 'Run Log',
-    subheading: 'Timefold solve history',
+    subheading: ' solve history',
     newRun: 'New Run',
     columnDate: 'Solve Date',
     columnInput: 'Input Files',
@@ -53,6 +53,10 @@ export const UI = {
     cancel: 'Cancel',
     uploading: 'Uploading…',
     uploadError: 'Upload failed:',
+    uploadDoneTitle: 'Upload completed',
+    uploadDoneBodyLocal: 'Input files were saved successfully.',
+    uploadDoneBodyApi: 'Input files were saved and API submission was sent.',
+    uploadDoneClose: 'Close',
     // Gantt editor placeholder dialog
     ganttDialogTitle: 'Gantt Editor',
     ganttDialogBody: 'This will open the Gantt editor tool (built by another team). Not connected yet — this is a placeholder.',
@@ -65,6 +69,11 @@ export const UI = {
     solverStatusTitle: 'Solve in progress',
     solverStatusSubmitted: 'The run is queued and waiting to start.',
     solverStatusRunning: 'Solver is still running.',
+    solverStatusCancelled: 'This run was cancelled.',
+    solverCompletedTitle: 'Solve completed',
+    solverCompletedBody: 'You can download the result file now.',
+    solverCompletedDownload: 'Download',
+    solverCompletedCancel: 'Close',
     solverFailedTitle: 'Solver failed',
     solverFailedLabel: 'Error:',
     solverFailedUnknown: 'No error detail was recorded.',
@@ -77,7 +86,7 @@ export const UI = {
     deleteConfirmNo: 'Cancel',
     // Cancel confirm dialog (output yaml NOT yet present — run still in progress)
     cancelConfirmTitle: 'Cancel this run?',
-    cancelConfirmBody: 'This will cancel the running Timefold process AND remove the row + public/local/<id>/ on disk. This cannot be undone.',
+    cancelConfirmBody: 'This will cancel the running  process AND remove the row + public/local/<id>/ on disk. This cannot be undone.',
     cancelConfirmYes: 'Cancel run',
     cancelConfirmNo: 'Keep',
   },
@@ -164,7 +173,7 @@ export const UI = {
     srcExistDesc: 'Select a previously uploaded dataset.',
     srcNewTitle: 'Upload New Files',
     srcNewDesc: 'Upload EnvConfig.yaml and Schedule.yaml.',
-    mergeNote: 'Both sources selected — Timefold will merge them (2 × EnvConfig + 2 × Schedule).',
+    mergeNote: 'Both sources selected —  will merge them (2 × EnvConfig + 2 × Schedule).',
     labelExistDataset: 'Dataset',
     labelEnvConfig: 'EnvConfig.yaml',
     labelSchedule: 'Schedule.yaml',
