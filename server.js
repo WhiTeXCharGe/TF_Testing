@@ -58,6 +58,14 @@ const STATUS_DIR = path.join(DATA_DIR, 'status');
   fs.mkdirSync(d, { recursive: true })
 );
 
+// ── Concurrency queue ─────────────────────────────────────────────────────────
+// MAX_CONCURRENT_RUNS env var sets the cap (default: 2).
+// Extra runs wait in `pendingQueue` and auto-start when a slot opens.
+
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS || '2', 10);
+let activeCount = 0;
+const pendingQueue = []; // Array of { runId, inputDir }
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Generate a run ID like 20260610_143022500 */
@@ -89,12 +97,24 @@ function writeStatus(runId, payload) {
   );
 }
 
+/** Free one concurrency slot and start the next queued run (if any). */
+function releaseSlot() {
+  activeCount--;
+  console.log(`[queue] slot released — active: ${activeCount}/${MAX_CONCURRENT}, pending: ${pendingQueue.length}`);
+  if (pendingQueue.length > 0) {
+    const next = pendingQueue.shift();
+    launchContainer(next.runId, next.inputDir);
+  }
+}
+
 /**
- * Start the Timefold solver container for a run.
- * Mounts the per-run input/output dirs and the shared status dir.
- * The container writes status.json itself; we just watch the process.
+ * Actually spawn the Docker container for a run.
+ * Only called when a concurrency slot is available.
  */
-function triggerDocker(runId, inputDir) {
+function launchContainer(runId, inputDir) {
+  activeCount++;
+  console.log(`[queue] launching ${runId} — active: ${activeCount}/${MAX_CONCURRENT}, pending: ${pendingQueue.length}`);
+
   // path.join() on Windows produces backslashes; Docker needs forward slashes.
   const dp = p => p.replace(/\\/g, '/');
 
@@ -125,11 +145,11 @@ function triggerDocker(runId, inputDir) {
       progress: 0,
       error: { type: 'UnknownError', message: `Cannot start Docker: ${err.message}` },
     });
+    releaseSlot();
   });
 
   proc.on('close', code => {
     console.log(`[docker:${runId}] container exited (code ${code})`);
-    // If the container crashed before its entrypoint could write status, set it ourselves.
     if (code !== 0) {
       const current = readStatus(runId);
       if (!current || current.status === 'Submitted') {
@@ -144,7 +164,22 @@ function triggerDocker(runId, inputDir) {
         });
       }
     }
+    releaseSlot();
   });
+}
+
+/**
+ * Queue a run for execution. Starts immediately if a slot is free;
+ * otherwise adds to the pending queue (status stays "Submitted" until launched).
+ * Max concurrent containers is controlled by MAX_CONCURRENT_RUNS env var (default 2).
+ */
+function triggerDocker(runId, inputDir) {
+  if (activeCount < MAX_CONCURRENT) {
+    launchContainer(runId, inputDir);
+  } else {
+    pendingQueue.push({ runId, inputDir });
+    console.log(`[queue:${runId}] queued at position ${pendingQueue.length} (active: ${activeCount}/${MAX_CONCURRENT})`);
+  }
 }
 
 /** Find the first YAML file in the output folder for a run. */
@@ -294,6 +329,21 @@ app.get('/download/:runId', (req, res) => {
   }
 });
 
+// ── GET /queue ────────────────────────────────────────────────────────────────
+//
+// Returns the current concurrency state: how many containers are running,
+// the limit, and what's waiting in the queue.
+//
+// Response 200: { maxConcurrent, active, pending: string[] }
+
+app.get('/queue', (_req, res) => {
+  return res.status(200).json({
+    maxConcurrent: MAX_CONCURRENT,
+    active:  activeCount,
+    pending: pendingQueue.map(r => r.runId),
+  });
+});
+
 // ── PUT /status/:runId  (TEST HELPER — simulates Docker writing status) ───────
 //
 // Body: { "status": "Running", "stage": 1, "progress": 0.4, "error": null }
@@ -381,11 +431,13 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(`\nTimefold API service running at http://localhost:${PORT}`);
-  console.log(`Data directory: ${DATA_DIR}\n`);
+  console.log(`Data directory: ${DATA_DIR}`);
+  console.log(`Max concurrent containers: ${MAX_CONCURRENT} (set MAX_CONCURRENT_RUNS env var to change)\n`);
   console.log('Endpoints:');
   console.log(`  POST http://localhost:${PORT}/runSolver`);
   console.log(`  GET  http://localhost:${PORT}/status/:runId`);
   console.log(`  GET  http://localhost:${PORT}/download/:runId`);
+  console.log(`  GET  http://localhost:${PORT}/queue`);
   console.log('\nTest helpers (Postman only):');
   console.log(`  PUT  http://localhost:${PORT}/status/:runId`);
   console.log(`  POST http://localhost:${PORT}/output/:runId\n`);
