@@ -1,0 +1,102 @@
+// All UI label strings in one place — change language here without touching components
+
+export const UI = {
+  // App title
+  appTitle: 'Gantt Chart Editor',
+
+  // Menu bar
+  fileMenu: 'ファイル',
+  editMenu: '編集',
+  viewMenu: '表示',
+  helpMenu: 'ヘルプ',
+
+  // File menu items
+  open: '開く',
+  save: '上書き保存',
+  saveAs: '名前を付けて保存',
+
+  // File open dialog
+  fileOpenDialogTitle: 'ファイルを開く',
+  envConfigFileLabel: 'EnvConfig ファイル',
+  scheduleFileLabel: 'スケジュール ファイル',
+  chooseFile: 'ファイル選択',
+  noFileChosen: 'ファイルを選択してください',
+
+  // Toolbar — actions
+  undo: '元に戻す',
+  redo: 'やり直し',
+  addTask: '+ 追加',
+  bulkFlexEdit: '柔軟性一括編集',
+  search: '検索',
+  clear: 'クリア',
+
+  // Toolbar — view toggle
+  deviceView: '装置ビュー',
+  workerView: 'ワーカービュー',
+
+  // Toolbar — date period
+  startDateLabel: '開始',
+  endDateLabel: '終了',
+  periodSeparator: '〜',
+
+  // Search
+  workerNamePlaceholder: '作業者名',
+  deviceCodeLabel: '製番',
+
+  // Side panel
+  sidePanelTitle: '詳細情報',
+  noSelectionMessage: 'タスクを選択してください',
+  workerLabel: '作業者',
+  taskLabel: 'タスク',
+  startLabel: '開始日',
+  endLabel: '終了日',
+  flexibilityLabel: '柔軟性',
+  workloadLabel: '工数',
+  hoursUnit: '時間',
+  deleteButton: '削除',
+
+  // Task add dialog
+  addDialogTitle: 'Assignment 追加',
+  dialogDeviceLabel: '装置',
+  dialogPhaseLabel: '工程',
+  dialogOperationLabel: '作業',
+  dialogWorkerLabel: '作業者',
+  dialogStartLabel: '開始日',
+  dialogEndLabel: '終了日',
+  dialogHoursLabel: '作業時間 (時間/日)',
+  dialogFlexLabel: '計画柔軟性',
+  dialogOk: 'OK',
+  dialogCancel: 'キャンセル',
+  dialogConfirm: '追加',
+
+  // Error dialog
+  errorTitle: 'エラー',
+  errorClose: '閉じる',
+
+  // Status bar
+  fileLoaded: 'ファイルを読み込みました',
+  noFile: 'ファイル未読み込み',
+  undoCount: (n: number) => `Undo: ${n}`,
+  redoCount: (n: number) => `Redo: ${n}`,
+  shortcutHint: 'Ctrl+O: 開く  Ctrl+S: 保存  Ctrl+Z: Undo  Delete: 削除',
+
+  // Plan flexibility options
+  flexible: 'Flexible',
+  flexibleDesc: 'Flexible（自由に変更可）',
+  reluctant: 'Reluctant',
+  reluctantDesc: 'Reluctant（できるだけ変更しない）',
+  fixed: 'Fixed',
+  fixedDesc: 'Fixed（変更不可）',
+
+  // Bulk flexibility dialog
+  bulkDialogTitle: '柔軟性一括編集',
+  bulkTargetLabel: '対象',
+  bulkTargetSelected: '選択中の作業',
+  bulkTargetAll: 'すべての作業',
+  bulkFlexLabel: '変更先の柔軟性',
+  bulkDateFilter: '指定日付以前に開始する作業のみ',
+  bulkApply: 'OK',
+
+  // Gantt row labels
+  phaseSummaryRowLabel: '工程',
+} as const;

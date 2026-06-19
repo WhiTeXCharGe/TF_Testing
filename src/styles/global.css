@@ -1,0 +1,42 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'MS Gothic', 'Meiryo', monospace;
+  font-size: 13px;
+  color: #222;
+  background: #fff;
+}
+
+button:focus-visible {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
+}
+
+input:focus, select:focus {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
