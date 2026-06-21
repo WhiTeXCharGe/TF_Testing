@@ -65,7 +65,7 @@ export function NewScheduleDialog() {
   const { state, dispatch } = useAppContext();
   const { envConfig, schedule } = state;
 
-  const [tab, setTab] = useState<'upload' | 'form'>('upload');
+  const [tab, setTab] = useState<'upload' | 'form'>('form');
 
   // Upload tab
   const [schedFile, setSchedFile] = useState<File | null>(null);
@@ -82,7 +82,7 @@ export function NewScheduleDialog() {
 
   const handleClose = () => {
     dispatch({ type: 'CLOSE_NEW_SCHEDULE_DIALOG' });
-    setTab('upload');
+    setTab('form');
     setSchedFile(null);
     setEnvFile(null);
     setEntries([makeEntry(planStart)]);
@@ -163,7 +163,7 @@ export function NewScheduleDialog() {
 
         {/* Tab bar */}
         <div style={S.tabBar}>
-          {(['upload', 'form'] as const).map(t => (
+          {(['form', 'upload'] as const).map(t => (
             <button
               key={t}
               style={tab === t ? S.tabActive : S.tabInactive}

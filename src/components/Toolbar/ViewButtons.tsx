@@ -20,16 +20,16 @@ export function ViewButtons() {
   return (
     <div style={{ display: 'flex', gap: 0 }}>
       <button
-        onClick={() => toggle('device')}
-        style={{ ...base, borderRadius: '3px 0 0 3px', backgroundColor: state.currentView === 'device' ? '#1976d2' : '#fff', color: state.currentView === 'device' ? '#fff' : '#333' }}
-      >
-        {UI.deviceView}
-      </button>
-      <button
         onClick={() => toggle('worker')}
-        style={{ ...base, borderRadius: '0 3px 3px 0', borderLeft: 'none', backgroundColor: state.currentView === 'worker' ? '#1976d2' : '#fff', color: state.currentView === 'worker' ? '#fff' : '#333' }}
+        style={{ ...base, borderRadius: '3px 0 0 3px', backgroundColor: state.currentView === 'worker' ? '#1976d2' : '#fff', color: state.currentView === 'worker' ? '#fff' : '#333' }}
       >
         {UI.workerView}
+      </button>
+      <button
+        onClick={() => toggle('device')}
+        style={{ ...base, borderRadius: '0 3px 3px 0', borderLeft: 'none', backgroundColor: state.currentView === 'device' ? '#1976d2' : '#fff', color: state.currentView === 'device' ? '#fff' : '#333' }}
+      >
+        {UI.deviceView}
       </button>
     </div>
   );

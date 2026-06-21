@@ -282,3 +282,147 @@ GanttChartEditor/
 
 **要確認事項：**「制約チェック」ボタンはツールバーに常時表示すべきか、メニュー内に入れるべきか？  
 また、違反はバーの赤ハイライト表示・ポップアップリスト表示、あるいはその両方で表示すべきか？
+
+---
+
+## 9. データアーキテクチャ — 各バージョンのデータの扱い方
+
+---
+
+### 9.1 — 2025年版（Python）
+
+**データの保存場所：Python サーバー（Pydantic モデル）**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML ファイル]
+    PD[(Pydantic モデル\nサーバー上)]
+    UI[ブラウザ UI\nガントバー]
+
+    YAML -->|アップロード| PD
+    PD -->|JSON| UI
+    UI -->|編集のたびに HTTP| PD
+```
+
+**バー移動時：**
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant UI as ブラウザ UI
+    participant UV as Uvicorn（Python サーバー）
+    participant PD as Pydantic モデル
+
+    User->>UI: バーを新しい日付にドラッグ
+    UI->>UV: POST /update（新しい日付）
+    UV->>PD: 割付を更新
+    PD->>UV: 全制約チェック実行
+    UV-->>UI: 更新データ＋違反情報
+    UI-->>User: バーを再描画、違反を表示
+```
+
+> ✅ 全制約ロジックがサーバー上 — 信頼性が高く、データの一元管理が可能  
+> ✅ UI は常に検証済みの正しい状態を反映  
+> ❌ 編集のたびにサーバーへの通信が必要 — 応答が遅い  
+> ❌ Python サーバーが常時起動している必要がある
+
+---
+
+### 9.2 — 2026年版（Tauri）
+
+**データの保存場所：React State（アプリ内）**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML ファイル]
+    RS[(React State\nアプリ内)]
+    UI[ガントバー]
+    BE[バックエンド]
+
+    YAML -->|js-yaml で解析| RS
+    RS -->|描画| UI
+    UI -->|移動 → 即時更新| RS
+    RS -.->|非同期バリデーション| BE
+    BE -.->|違反情報| UI
+```
+
+**バー移動時：**
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant UI as React アプリ
+    participant RS as React State
+    participant BE as バックエンド
+
+    User->>UI: バーを新しい日付にドラッグ
+    UI->>RS: 即時更新
+    RS-->>UI: バーを即時再描画
+    UI-)BE: POST /validate（非同期）
+    BE--)UI: 違反結果（遅延あり）
+    UI-->>User: 違反を表示
+```
+
+> ✅ UI が即時反応 — 移動のたびにサーバー待ちなし  
+> ✅ 基本編集はサーバーなしで動作  
+> ❌ 複雑な制約をフロントエンドで実装すると JS が重くなり保守も困難  
+> ❌ 非同期バリデーションのため、UI と検証結果が一時的にズレる
+
+---
+
+### 9.3 — 新バージョン：ハイブリッドアプローチ
+
+**データの保存場所：React State — 制約チェックを複雑さで分割**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML ファイル]
+    RS[(React State)]
+    UI[ガントバー]
+    FC{フロントエンド\n簡易チェック}
+    BE[Node.js バックエンド\n重い制約チェック]
+
+    YAML -->|js-yaml| RS
+    RS -->|描画| UI
+    UI -->|バー移動| RS
+    RS --> FC
+    FC -->|即時違反表示| UI
+    UI -->|制約チェック ボタン| BE
+    BE -->|全違反リスト| UI
+```
+
+**ステップ 1 — バー移動のたびに自動実行（サーバー呼び出しなし）：**
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant UI as React アプリ
+    participant RS as React State
+    participant FC as フロントエンド制約チェック
+
+    User->>UI: バーを新しい日付にドラッグ
+    UI->>RS: 即時更新
+    RS-->>UI: バーを即時再描画
+    UI->>FC: 簡易制約チェック実行
+    Note over FC: 重複・スキルマップ・作業不可日<br/>作業時間・最小/最大作業者数・日付範囲
+    FC-->>User: 違反を即時ハイライト
+```
+
+**ステップ 2 — 制約チェック ボタン押下時（オンデマンド）：**
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant UI as React アプリ
+    participant BE as Node.js バックエンド
+
+    User->>UI: 制約チェック をクリック
+    UI->>BE: POST /gantt/check-constraints
+    Note over BE: 工程間順序・必要作業量・移動日制<br/>作業責任者・残業時間・地域適性...
+    BE-->>UI: 全違反リスト
+    UI-->>User: バー上に全違反をハイライト
+```
+
+> ✅ よくある問題（重複・スキル・不可日）を即時フィードバック — サーバー呼び出し不要  
+> ✅ 完全な制約チェックはいつでもオンデマンドで実行可能  
+> ✅ バックエンドロジックはフェーズ 6 で Rust へ移行 — フロントエンドの変更は不要

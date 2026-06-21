@@ -278,3 +278,147 @@ This gives immediate feedback on simple issues (overlap, skill mismatch, unavail
 
 **Question to decide:** Should the 制約チェック button be in the toolbar always visible, or inside a menu?  
 And should violations be shown as red bar highlights, a popup list, or both?
+
+---
+
+## 9. Data Architecture — How Each Version Handles Data
+
+---
+
+### 9.1 — 2025 Python Version
+
+**Where data lives: Python server (Pydantic models)**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML files]
+    PD[(Pydantic Models\non Server)]
+    UI[Browser UI\nGantt bars]
+
+    YAML -->|upload| PD
+    PD -->|JSON| UI
+    UI -->|HTTP on every edit| PD
+```
+
+**On bar move:**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Browser UI
+    participant UV as Uvicorn (Python Server)
+    participant PD as Pydantic Models
+
+    User->>UI: Drag bar to new date
+    UI->>UV: POST /update (new dates)
+    UV->>PD: Update assignment
+    PD->>UV: Run ALL constraint checks
+    UV-->>UI: Updated data + violations
+    UI-->>User: Re-render bars, show violations
+```
+
+> ✅ All constraint logic on server — reliable, single source of truth  
+> ✅ UI always reflects true validated state  
+> ❌ Every edit needs a server round-trip — slower response  
+> ❌ Requires Python server running at all times
+
+---
+
+### 9.2 — 2026 Tauri Version
+
+**Where data lives: React State (inside the app)**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML files]
+    RS[(React State\nin App)]
+    UI[Gantt bars]
+    BE[Backend]
+
+    YAML -->|js-yaml parse| RS
+    RS -->|render| UI
+    UI -->|move → instant update| RS
+    RS -.->|async validate| BE
+    BE -.->|violations| UI
+```
+
+**On bar move:**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as React App
+    participant RS as React State
+    participant BE as Backend
+
+    User->>UI: Drag bar to new date
+    UI->>RS: Update immediately
+    RS-->>UI: Re-render bars (instant)
+    UI-)BE: POST /validate (async)
+    BE--)UI: Violation results (delayed)
+    UI-->>User: Show violations
+```
+
+> ✅ Instant UI — no waiting for server on every move  
+> ✅ Works without server for basic editing  
+> ❌ Complex constraints on frontend = heavy JS, hard to maintain  
+> ❌ Async validation means UI and validation are briefly out of sync
+
+---
+
+### 9.3 — New Version: Hybrid Approach
+
+**Where data lives: React State — constraint checking split by complexity**
+
+```mermaid
+flowchart LR
+    YAML[📄 YAML files]
+    RS[(React State)]
+    UI[Gantt bars]
+    FC{Frontend\nSimple Check}
+    BE[Node.js Backend\nHeavy Check]
+
+    YAML -->|js-yaml| RS
+    RS -->|render| UI
+    UI -->|move bar| RS
+    RS --> FC
+    FC -->|instant violations| UI
+    UI -->|click 制約チェック| BE
+    BE -->|full violation list| UI
+```
+
+**Step 1 — On every bar move (automatic, no server call):**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as React App
+    participant RS as React State
+    participant FC as Frontend Constraint Check
+
+    User->>UI: Drag bar to new date
+    UI->>RS: Update immediately
+    RS-->>UI: Re-render bars (instant)
+    UI->>FC: Run simple constraints
+    Note over FC: overlap · skill map · unavailable day<br/>work hours · min/max workers · date range
+    FC-->>User: Highlight violations instantly
+```
+
+**Step 2 — On 制約チェック button (on demand):**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as React App
+    participant BE as Node.js Backend
+
+    User->>UI: Click 制約チェック
+    UI->>BE: POST /gantt/check-constraints
+    Note over BE: phase order · work volume · travel days<br/>supervisor · overtime · region fitness...
+    BE-->>UI: Full violation list
+    UI-->>User: Highlight all violations on bars
+```
+
+> ✅ Instant feedback on common issues — no server call needed  
+> ✅ Full constraint check available any time on demand  
+> ✅ Backend logic moves cleanly to Rust in Phase 6 — frontend unchanged

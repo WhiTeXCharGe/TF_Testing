@@ -5,7 +5,7 @@ import { reducer } from './reducer';
 const initialState: AppState = {
   envConfig: null,
   schedule: null,
-  currentView: 'device',
+  currentView: 'worker',
   violations: [],
   undoStack: [],
   redoStack: [],
