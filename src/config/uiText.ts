@@ -46,10 +46,19 @@ export const UI = {
   // Side panel
   sidePanelTitle: '詳細情報',
   noSelectionMessage: 'タスクを選択してください',
+  sidePanelWorkerDetailTitle: '作業情報',
   workerLabel: '作業者',
   taskLabel: 'タスク',
   startLabel: '開始日',
   endLabel: '終了日',
+  fabLabel: '製番 / FAB',
+  phaseOperationLabel: '工程 / 作業',
+  dailyWorkHoursLabel: '日別作業時間 (MM/DD)',
+  violationTitle: '制約違反',
+  violationTargetDateLabel: '対象日',
+  invalidDateRangeMessage: '開始日と終了日の関係が不正です。',
+  saveButton: '保存',
+  deleteConfirm: '選択したタスクを削除しますか？',
   flexibilityLabel: '柔軟性',
   workloadLabel: '工数',
   hoursUnit: '時間',
@@ -99,4 +108,13 @@ export const UI = {
 
   // Gantt row labels
   phaseSummaryRowLabel: '工程',
+
+  // Worker grid
+  workerGridCompany: '企業名',
+  workerGridName: '氏名',
+  workerGridRemarks: '備考欄',
+  workerGridManager: '責任者',
+  filterTitle: 'Filter',
+  filterClearAll: 'すべて解除',
+  filterNoValues: '値なし',
 } as const;

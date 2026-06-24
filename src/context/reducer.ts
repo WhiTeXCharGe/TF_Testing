@@ -2,6 +2,7 @@ import { AppState, ActionType } from '../types/appState';
 import { ScheduleData, PlanFlexibility } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { MAX_UNDO_STACK } from '../config/appConfig';
+import { generateDateRange } from '../utils/dateUtils';
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
   const existingIds = new Set(existing.map(x => x.id));
@@ -11,6 +12,36 @@ function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] 
 function pushUndo(state: AppState): ScheduleData[] {
   if (!state.schedule) return state.undoStack;
   return [...state.undoStack, state.schedule].slice(-MAX_UNDO_STACK);
+}
+
+const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getWeekdayName(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return DOW_NAMES[d.getDay()] ?? '';
+}
+
+function isWeeklyDate(worker: { unavailableDates: Array<{ weekly?: { weekdays: string[] }; single?: { days: string[] } }> }, date: string): boolean {
+  const targetDay = getWeekdayName(date).toLowerCase();
+  return worker.unavailableDates.some(e =>
+    e.weekly?.weekdays.some(wd => wd.trim().toLowerCase() === targetDay || wd.trim().toLowerCase().startsWith(targetDay.slice(0, 3))),
+  );
+}
+
+function removeWeekdayFromWorker<T extends { unavailableDates: Array<{ weekly?: { weekdays: string[] }; single?: { days: string[] } }> }>(worker: T, date: string): T {
+  const targetDay = getWeekdayName(date).toLowerCase();
+  const newDates = worker.unavailableDates
+    .map(entry => {
+      if (!entry.weekly) return entry;
+      const filtered = entry.weekly.weekdays.filter(wd => {
+        const norm = wd.trim().toLowerCase();
+        return norm !== targetDay && !norm.startsWith(targetDay.slice(0, 3));
+      });
+      if (filtered.length === entry.weekly.weekdays.length) return entry;
+      return filtered.length > 0 ? { ...entry, weekly: { weekdays: filtered } } : null;
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
+  return { ...worker, unavailableDates: newDates };
 }
 
 export function reducer(state: AppState, action: ActionType): AppState {
@@ -66,7 +97,139 @@ export function reducer(state: AppState, action: ActionType): AppState {
     }
 
     case 'SELECT_ASSIGNMENT':
-      return { ...state, selectedAssignmentIndex: action.payload };
+      return { ...state, selectedAssignmentIndex: action.payload, selectedUnavailableInfo: null };
+
+    case 'SELECT_UNAVAILABLE':
+      return {
+        ...state,
+        selectedUnavailableInfo: action.payload
+          ? { workerId: action.payload.workerId, startDate: action.payload.startDate, endDate: action.payload.endDate }
+          : null,
+        selectedAssignmentIndex: null,
+      };
+
+    case 'DELETE_UNAVAILABLE_DATE': {
+      if (!state.envConfig) return state;
+      const { workerId, date } = action.payload;
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        if (isWeeklyDate(w, date)) {
+          return removeWeekdayFromWorker(w, date);
+        }
+        const newDates = w.unavailableDates
+          .map(entry => {
+            if (!entry.single) return entry;
+            const filtered = entry.single.days.filter(d => d.replace(/\//g, '-') !== date);
+            return filtered.length > 0 ? { ...entry, single: { days: filtered } } : null;
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null);
+        return { ...w, unavailableDates: newDates };
+      });
+      return { ...state, envConfig: { ...state.envConfig, workerList }, selectedUnavailableInfo: null };
+    }
+
+    case 'DELETE_UNAVAILABLE_RANGE': {
+      if (!state.envConfig) return state;
+      const { workerId, startDate, endDate } = action.payload;
+      const rangeDates = new Set(generateDateRange(startDate, endDate));
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        const newDates = w.unavailableDates
+          .map(entry => {
+            if (entry.weekly) {
+              const filtered = entry.weekly.weekdays.filter(wd => {
+                const key = wd.trim().toLowerCase();
+                const dowMap: Record<string, number> = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+                const dow = dowMap[key] ?? dowMap[key.slice(0, 3)] ?? -1;
+                if (dow < 0) return true;
+                return ![...rangeDates].some(d => new Date(`${d}T00:00:00`).getDay() === dow);
+              });
+              return filtered.length > 0 ? { ...entry, weekly: { weekdays: filtered } } : null;
+            }
+            if (entry.single) {
+              const filtered = entry.single.days.filter(d => !rangeDates.has(d.replace(/\//g, '-')));
+              return filtered.length > 0 ? { ...entry, single: { days: filtered } } : null;
+            }
+            return entry;
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null);
+        return { ...w, unavailableDates: newDates };
+      });
+      return { ...state, envConfig: { ...state.envConfig, workerList }, selectedUnavailableInfo: null };
+    }
+
+    case 'MOVE_UNAVAILABLE_DATE': {
+      if (!state.envConfig) return state;
+      const { workerId, oldDate, newDate } = action.payload;
+      if (oldDate === newDate) return state;
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        // Remove oldDate from either weekly or single
+        let removed: typeof w.unavailableDates;
+        if (isWeeklyDate(w, oldDate)) {
+          removed = removeWeekdayFromWorker(w, oldDate).unavailableDates;
+        } else {
+          removed = w.unavailableDates
+            .map(entry => {
+              if (!entry.single) return entry;
+              const filtered = entry.single.days.filter(d => d.replace(/\//g, '-') !== oldDate);
+              return filtered.length > 0 ? { ...entry, single: { days: filtered } } : null;
+            })
+            .filter((e): e is NonNullable<typeof e> => e !== null);
+        }
+        // Add newDate as a single entry
+        const existingSingle = removed.find(e => e.single);
+        if (existingSingle?.single) {
+          return {
+            ...w,
+            unavailableDates: removed.map(e =>
+              e === existingSingle ? { ...e, single: { days: [...(e.single?.days ?? []), newDate] } } : e,
+            ),
+          };
+        }
+        return { ...w, unavailableDates: [...removed, { single: { days: [newDate] } }] };
+      });
+      return {
+        ...state,
+        envConfig: { ...state.envConfig, workerList },
+        selectedUnavailableInfo: { workerId, startDate: newDate, endDate: newDate },
+      };
+    }
+
+    case 'UPDATE_WORKER_DEFINITION': {
+      if (!state.envConfig) return state;
+      const { workerId, definition } = action.payload;
+      const workerList = state.envConfig.workerList.map(w =>
+        w.id === workerId ? { ...w, definition } : w,
+      );
+      return { ...state, envConfig: { ...state.envConfig, workerList } };
+    }
+
+    case 'UPDATE_WORKFLOW_TASK_COLOR': {
+      if (!state.schedule) return state;
+      const { workflowTaskId, colorCode } = action.payload;
+      const workflowTaskList = state.schedule.workflowTaskList.map(wt =>
+        wt.id === workflowTaskId ? { ...wt, colorCode } : wt,
+      );
+      const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
+      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+    }
+
+    case 'UPDATE_OPERATION_TASK_COLOR': {
+      if (!state.schedule) return state;
+      const { operationTaskId, colorCode } = action.payload;
+      const workflowTaskList = state.schedule.workflowTaskList.map(wt => ({
+        ...wt,
+        phaseTaskList: wt.phaseTaskList.map(pt => ({
+          ...pt,
+          operationTaskList: pt.operationTaskList.map(ot =>
+            ot.id === operationTaskId ? { ...ot, colorCode } : ot,
+          ),
+        })),
+      }));
+      const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
+      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+    }
 
     case 'TOGGLE_DEVICE': {
       const newExpanded = new Set(state.expandedDeviceIds);
@@ -97,6 +260,22 @@ export function reducer(state: AppState, action: ActionType): AppState {
       const newList = [...state.schedule.assignmentList];
       newList[index] = { ...newList[index], ...updates };
       const newSchedule: ScheduleData = { ...state.schedule, assignmentList: newList };
+      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+    }
+
+    case 'UPDATE_PHASE_TASK': {
+      if (!state.schedule) return state;
+      const { workflowTaskId, phaseTaskId, updates } = action.payload;
+      const workflowTaskList = state.schedule.workflowTaskList.map(wt => {
+        if (wt.id !== workflowTaskId) return wt;
+        return {
+          ...wt,
+          phaseTaskList: wt.phaseTaskList.map(pt =>
+            pt.id === phaseTaskId ? { ...pt, ...updates } : pt,
+          ),
+        };
+      });
+      const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
       return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
     }
 
@@ -202,6 +381,81 @@ export function reducer(state: AppState, action: ActionType): AppState {
         currentEnvPath: action.payload.envPath ?? state.currentEnvPath,
         currentSchedulePath: action.payload.schedulePath ?? state.currentSchedulePath,
       };
+
+    case 'ADD_UNAVAILABLE_DATES': {
+      if (!state.envConfig) return state;
+      let workerList = [...state.envConfig.workerList];
+      for (const entry of action.payload) {
+        if (entry.dates.length === 0) continue;
+        workerList = workerList.map(w => {
+          if (w.id !== entry.workerId) return w;
+          const existingSingle = w.unavailableDates.find(e => e.single);
+          if (existingSingle?.single) {
+            const existingSet = new Set(existingSingle.single.days.map(d => d.replace(/\//g, '-')));
+            const toAdd = entry.dates.filter(d => !existingSet.has(d));
+            if (toAdd.length === 0) return w;
+            return {
+              ...w,
+              unavailableDates: w.unavailableDates.map(e =>
+                e === existingSingle ? { ...e, single: { days: [...(e.single?.days ?? []), ...toAdd] } } : e,
+              ),
+            };
+          }
+          return { ...w, unavailableDates: [...w.unavailableDates, { single: { days: entry.dates } }] };
+        });
+      }
+      return { ...state, envConfig: { ...state.envConfig, workerList } };
+    }
+
+    case 'RESIZE_UNAVAILABLE_RANGE': {
+      if (!state.envConfig) return state;
+      const { workerId, oldStartDate, oldEndDate, newStartDate, newEndDate } = action.payload;
+      const oldSet = new Set(generateDateRange(oldStartDate, oldEndDate));
+      const newDates = generateDateRange(newStartDate, newEndDate);
+      const newSet = new Set(newDates);
+      const removedDates = new Set([...oldSet].filter(d => !newSet.has(d)));
+      const addedDates = newDates.filter(d => !oldSet.has(d));
+
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        // Remove old dates (both single and weekly-generated)
+        let unavailDates = w.unavailableDates
+          .map(entry => {
+            if (entry.weekly) {
+              // Remove weekdays that are entirely within removed dates
+              const filtered = entry.weekly.weekdays.filter(wd => {
+                const key = wd.trim().toLowerCase();
+                const map: Record<string, number> = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+                const dow = map[key] ?? map[key.slice(0, 3)] ?? -1;
+                if (dow < 0) return true;
+                // Remove weekday if ALL its occurrences in old range are being removed
+                const occurrences = [...oldSet].filter(d => new Date(`${d}T00:00:00`).getDay() === dow);
+                return !occurrences.every(d => removedDates.has(d));
+              });
+              return filtered.length > 0 ? { ...entry, weekly: { weekdays: filtered } } : null;
+            }
+            if (entry.single) {
+              const filtered = entry.single.days.filter(d => !removedDates.has(d.replace(/\//g, '-')));
+              return filtered.length > 0 ? { ...entry, single: { days: filtered } } : null;
+            }
+            return entry;
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null);
+        // Add new dates as single
+        if (addedDates.length > 0) {
+          const existingSingle = unavailDates.find(e => e.single);
+          if (existingSingle?.single) {
+            unavailDates = unavailDates.map(e =>
+              e === existingSingle ? { ...e, single: { days: [...(e.single?.days ?? []), ...addedDates] } } : e,
+            );
+          } else {
+            unavailDates = [...unavailDates, { single: { days: addedDates } }];
+          }
+        }
+        return { ...w, unavailableDates: unavailDates };
+      });
+      return { ...state, envConfig: { ...state.envConfig, workerList } };
+    }
 
     default:
       return state;

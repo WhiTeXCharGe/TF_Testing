@@ -1,6 +1,6 @@
 import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
-import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml } from './yamlService';
+import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml, stringifyEnvConfigYaml } from './yamlService';
 
 export interface LoadedFiles {
   envConfig: EnvConfig;
@@ -30,6 +30,18 @@ export async function openTwoYamlFiles(): Promise<LoadedFiles> {
 // Trigger browser download of the current schedule as YAML
 export function downloadScheduleYaml(data: ScheduleData, filename = 'Schedule.yaml'): void {
   const text = stringifyScheduleYaml(data);
+  const blob = new Blob([text], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Trigger browser download of EnvConfig as YAML
+export function downloadEnvConfigYaml(data: EnvConfig, filename = 'EnvConfig.yaml'): void {
+  const text = stringifyEnvConfigYaml(data);
   const blob = new Blob([text], { type: 'text/yaml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

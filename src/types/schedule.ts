@@ -29,6 +29,7 @@ export interface OperationTask {
   workloadHours: number;
   recommendsWorkerMin?: number;
   recommendsWorkerMax?: number;
+  colorCode?: string;
 }
 
 export interface PhaseTask {
@@ -46,7 +47,9 @@ export interface WorkflowTask {
   name?: string;
   description?: string;
   workflow: string;
-  fab: string;
+  fab?: string;
+  region?: string;
+  colorCode?: string;
   phaseTaskList: PhaseTask[];
 }
 

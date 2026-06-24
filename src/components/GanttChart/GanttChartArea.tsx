@@ -46,9 +46,10 @@ interface Props {
   onToggleRow: (id: string) => void;
   onBarClick: (assignmentIndex: number) => void;
   onBarDragEnd: (assignmentIndex: number, newStart: string, newEnd: string) => void;
+  isDragDisabled?: boolean;
 }
 
-export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDragEnd }: Props) {
+export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDragEnd, isDragDisabled }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -61,6 +62,11 @@ export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDrag
 
   const handleBarMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, bar: GanttBar) => {
+      if (isDragDisabled) {
+        onBarClick(bar.assignmentIndex);
+        return;
+      }
+
       e.preventDefault();
       e.stopPropagation();
 
@@ -145,18 +151,18 @@ export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDrag
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     },
-    [onBarClick, onBarDragEnd],
+    [onBarClick, onBarDragEnd, isDragDisabled],
   );
 
   const handleBarMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (dragRef.current) return;
+    if (isDragDisabled || dragRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ox = e.clientX - rect.left;
     e.currentTarget.style.cursor =
       ox <= EDGE_PX ? 'w-resize' :
       ox >= rect.width - EDGE_PX ? 'e-resize' :
       'grab';
-  }, []);
+  }, [isDragDisabled]);
 
   if (dates.length === 0) return null;
   const viewStart = dates[0];
@@ -336,7 +342,7 @@ export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDrag
                       height: ROW_HEIGHT - 10,
                       backgroundColor: bar.color,
                       borderRadius: 4,
-                      cursor: bar.assignmentIndex >= 0 ? 'grab' : 'default',
+                      cursor: bar.assignmentIndex >= 0 && !isDragDisabled ? 'grab' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       paddingLeft: 6,
@@ -360,18 +366,22 @@ export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDrag
                     title={`${bar.label}\n${bar.startDate} → ${bar.endDate}`}
                   >
                     {/* Left resize handle hint */}
-                    <div style={{
-                      position: 'absolute', left: 0, top: 0, width: EDGE_PX, height: '100%',
-                      cursor: 'w-resize', borderRadius: '4px 0 0 4px',
-                    }} />
+                    {!isDragDisabled && (
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0, width: EDGE_PX, height: '100%',
+                        cursor: 'w-resize', borderRadius: '4px 0 0 4px',
+                      }} />
+                    )}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
                       {bar.label}
                     </span>
                     {/* Right resize handle hint */}
-                    <div style={{
-                      position: 'absolute', right: 0, top: 0, width: EDGE_PX, height: '100%',
-                      cursor: 'e-resize', borderRadius: '0 4px 4px 0',
-                    }} />
+                    {!isDragDisabled && (
+                      <div style={{
+                        position: 'absolute', right: 0, top: 0, width: EDGE_PX, height: '100%',
+                        cursor: 'e-resize', borderRadius: '0 4px 4px 0',
+                      }} />
+                    )}
                   </div>
                 );
               })}

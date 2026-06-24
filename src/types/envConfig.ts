@@ -19,6 +19,7 @@ export interface Worker {
   isManager?: boolean;
   skillMap?: Record<string, number>;
   unavailableDates: UnavailableDateEntry[];
+  definition?: string;
 }
 
 export interface WorkerCompany {

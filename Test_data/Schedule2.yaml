@@ -1,0 +1,388 @@
+﻿schedule:
+  plan_range:
+    start_date: 2025/09/01
+    end_date: 2025/11/21
+  workflow_task_list:
+  - id: e11
+    name: SU 1011A
+    workflow: workflow
+    fab: f6
+    phase_task_list:
+    - id: e11p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/16
+      end_date: 2025/10/06
+      operation_task_list:
+      - id: e11p1o1
+        name: Heavy
+        operation: p1o1
+        workload_hours: 240
+        color_code: 
+      - id: e11p1o2
+        name: Mech
+        operation: p1o2
+        workload_hours: 160
+        color_code: 
+      - id: e11p1o3
+        name: Elec
+        operation: p1o3
+        workload_hours: 160
+        color_code: 
+    - id: e11p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/16
+      end_date: 2025/10/22
+      operation_task_list:
+      - id: e11p2o1
+        name: Mech
+        operation: p2o1
+        workload_hours: 240
+        color_code: 
+      - id: e11p2o2
+        name: Elec
+        operation: p2o2
+        workload_hours: 200
+        color_code: 
+    - id: e11p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/16
+      end_date: 2025/10/30
+      operation_task_list:
+      - id: e11p3o1
+        name: QC
+        operation: p3o1
+        workload_hours: 120
+        color_code: 
+    - id: e11p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/16
+      end_date: 2025/11/10
+      operation_task_list:
+      - id: e11p4o1
+        name: QC
+        operation: p4o1
+        workload_hours: 96
+        color_code: 
+      - id: e11p4o2
+        name: Mech
+        operation: p4o2
+        workload_hours: 64
+        color_code: 
+  - id: e12
+    name: SU 1012A
+    workflow: workflow
+    fab: f3
+    phase_task_list:
+    - id: e12p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/17
+      end_date: 2025/10/07
+      operation_task_list:
+      - id: e12p1o1
+        name: Heavy
+        operation: p1o1
+        workload_hours: 240
+        color_code: 
+      - id: e12p1o2
+        name: Mech
+        operation: p1o2
+        workload_hours: 160
+        color_code: 
+      - id: e12p1o3
+        name: Elec
+        operation: p1o3
+        workload_hours: 160
+        color_code: 
+    - id: e12p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/17
+      end_date: 2025/10/23
+      operation_task_list:
+      - id: e12p2o1
+        name: Mech
+        operation: p2o1
+        workload_hours: 240
+        color_code: 
+      - id: e12p2o2
+        name: Elec
+        operation: p2o2
+        workload_hours: 200
+        color_code: 
+    - id: e12p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/17
+      end_date: 2025/10/31
+      operation_task_list:
+      - id: e12p3o1
+        name: QC
+        operation: p3o1
+        workload_hours: 120
+        color_code: 
+    - id: e12p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/17
+      end_date: 2025/11/11
+      operation_task_list:
+      - id: e12p4o1
+        name: QC
+        operation: p4o1
+        workload_hours: 96
+        color_code: 
+      - id: e12p4o2
+        name: Mech
+        operation: p4o2
+        workload_hours: 64
+        color_code: 
+  - id: e13
+    name: SU 1013A
+    workflow: workflow
+    fab: f4
+    phase_task_list:
+    - id: e13p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/23
+      end_date: 2025/10/13
+      operation_task_list:
+      - id: e13p1o1
+        name: Heavy
+        operation: p1o1
+        workload_hours: 240
+        color_code: 
+      - id: e13p1o2
+        name: Mech
+        operation: p1o2
+        workload_hours: 160
+        color_code: 
+      - id: e13p1o3
+        name: Elec
+        operation: p1o3
+        workload_hours: 160
+        color_code: 
+    - id: e13p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/23
+      end_date: 2025/10/29
+      operation_task_list:
+      - id: e13p2o1
+        name: Mech
+        operation: p2o1
+        workload_hours: 240
+        color_code: 
+      - id: e13p2o2
+        name: Elec
+        operation: p2o2
+        workload_hours: 200
+        color_code: 
+    - id: e13p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/23
+      end_date: 2025/11/06
+      operation_task_list:
+      - id: e13p3o1
+        name: QC
+        operation: p3o1
+        workload_hours: 120
+        color_code: 
+    - id: e13p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/23
+      end_date: 2025/11/17
+      operation_task_list:
+      - id: e13p4o1
+        name: QC
+        operation: p4o1
+        workload_hours: 96
+        color_code: 
+      - id: e13p4o2
+        name: Mech
+        operation: p4o2
+        workload_hours: 64
+        color_code: 
+  - id: e14
+    name: SU 1014A
+    workflow: workflow
+    fab: f2
+    phase_task_list:
+    - id: e14p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/23
+      end_date: 2025/10/13
+      operation_task_list:
+      - id: e14p1o1
+        name: Heavy
+        operation: p1o1
+        workload_hours: 240
+        color_code: 
+      - id: e14p1o2
+        name: Mech
+        operation: p1o2
+        workload_hours: 160
+        color_code: 
+      - id: e14p1o3
+        name: Elec
+        operation: p1o3
+        workload_hours: 160
+        color_code: 
+    - id: e14p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/23
+      end_date: 2025/10/29
+      operation_task_list:
+      - id: e14p2o1
+        name: Mech
+        operation: p2o1
+        workload_hours: 240
+        color_code: 
+      - id: e14p2o2
+        name: Elec
+        operation: p2o2
+        workload_hours: 200
+        color_code: 
+    - id: e14p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/23
+      end_date: 2025/11/06
+      operation_task_list:
+      - id: e14p3o1
+        name: QC
+        operation: p3o1
+        workload_hours: 120
+        color_code: 
+    - id: e14p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/23
+      end_date: 2025/11/17
+      operation_task_list:
+      - id: e14p4o1
+        name: QC
+        operation: p4o1
+        workload_hours: 96
+        color_code: 
+      - id: e14p4o2
+        name: Mech
+        operation: p4o2
+        workload_hours: 64
+        color_code: 
+  - id: e15
+    name: SU 1015A
+    workflow: workflow
+    fab: f3
+    phase_task_list:
+    - id: e15p1
+      name: Module Setup
+      phase: p1
+      start_date: 2025/09/24
+      end_date: 2025/10/14
+      operation_task_list:
+      - id: e15p1o1
+        name: Heavy
+        operation: p1o1
+        workload_hours: 240
+        color_code: 
+      - id: e15p1o2
+        name: Mech
+        operation: p1o2
+        workload_hours: 160
+        color_code: 
+      - id: e15p1o3
+        name: Elec
+        operation: p1o3
+        workload_hours: 160
+        color_code: 
+    - id: e15p2
+      name: Hardware Setup
+      phase: p2
+      start_date: 2025/09/24
+      end_date: 2025/10/30
+      operation_task_list:
+      - id: e15p2o1
+        name: Mech
+        operation: p2o1
+        workload_hours: 240
+        color_code: 
+      - id: e15p2o2
+        name: Elec
+        operation: p2o2
+        workload_hours: 200
+        color_code: 
+    - id: e15p3
+      name: Function Setup
+      phase: p3
+      start_date: 2025/09/24
+      end_date: 2025/11/07
+      operation_task_list:
+      - id: e15p3o1
+        name: QC
+        operation: p3o1
+        workload_hours: 120
+        color_code: 
+    - id: e15p4
+      name: Acceptance Inspection
+      phase: p4
+      start_date: 2025/09/24
+      end_date: 2025/11/18
+      operation_task_list:
+      - id: e15p4o1
+        name: QC
+        operation: p4o1
+        workload_hours: 96
+        color_code: 
+      - id: e15p4o2
+        name: Mech
+        operation: p4o2
+        workload_hours: 64
+        color_code: 
+  - id: misc_3
+    name: Training
+    workflow: wf_misc
+    region: r1
+    color_code: 50C878
+  assignment_list:
+  - worker: w4
+    operation_task: misc_3
+    start_date: 2025/10/20
+    end_date: 2025/10/24
+    work_date_list:
+    - date: 2025/10/20
+      hour: 8
+    - date: 2025/10/21
+      hour: 8
+    - date: 2025/10/22
+      hour: 8
+    - date: 2025/10/23
+      hour: 8
+    - date: 2025/10/24
+      hour: 8
+    plan_flexibility: Fixed
+  - worker: w5
+    operation_task: misc_3
+    start_date: 2025/10/20
+    end_date: 2025/10/24
+    work_date_list:
+    - date: 2025/10/20
+      hour: 8
+    - date: 2025/10/21
+      hour: 8
+    - date: 2025/10/22
+      hour: 8
+    - date: 2025/10/23
+      hour: 8
+    - date: 2025/10/24
+      hour: 8
+    plan_flexibility: Fixed

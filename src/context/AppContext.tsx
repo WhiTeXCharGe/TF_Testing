@@ -10,6 +10,7 @@ const initialState: AppState = {
   undoStack: [],
   redoStack: [],
   selectedAssignmentIndex: null,
+  selectedUnavailableInfo: null,
   expandedDeviceIds: new Set(),
   searchQuery: { keyword: '', mode: '' },
   displayStartDate: null,

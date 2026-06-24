@@ -35,7 +35,9 @@ function parseWorkflowTask(raw: unknown): WorkflowTask {
     name: r.name as string | undefined,
     description: r.description as string | undefined,
     workflow: String(r.workflow ?? ''),
-    fab: String(r.fab ?? ''),
+    fab: r.fab ? String(r.fab) : undefined,
+    region: r.region as string | undefined,
+    colorCode: r.color_code ? String(r.color_code) : undefined,
     phaseTaskList: ((r.phase_task_list ?? []) as unknown[]).map(parsePhaseTask),
   };
 }
@@ -67,6 +69,15 @@ function parseOperationTask(raw: unknown): OperationTask {
     description: r.description as string | undefined,
     operation: String(r.operation ?? ''),
     workloadHours,
+    recommendsWorkerMin:
+      r.recommends_worker_min != null ? Number(r.recommends_worker_min)
+      : r.recommendsWorkerMin != null ? Number(r.recommendsWorkerMin)
+      : undefined,
+    recommendsWorkerMax:
+      r.recommends_worker_max != null ? Number(r.recommends_worker_max)
+      : r.recommendsWorkerMax != null ? Number(r.recommendsWorkerMax)
+      : undefined,
+    colorCode: r.color_code ? String(r.color_code) : undefined,
   };
 }
 
@@ -98,28 +109,40 @@ export function stringifyScheduleYaml(data: ScheduleData): string {
         start_date: data.planRange.startDate,
         end_date: data.planRange.endDate,
       },
-      workflow_task_list: data.workflowTaskList.map(wt => ({
-        id: wt.id,
-        name: wt.name,
-        description: wt.description,
-        workflow: wt.workflow,
-        fab: wt.fab,
-        phase_task_list: wt.phaseTaskList.map(pt => ({
-          id: pt.id,
-          name: pt.name,
-          description: pt.description,
-          phase: pt.phase,
-          start_date: pt.startDate,
-          end_date: pt.endDate,
-          operation_task_list: pt.operationTaskList.map(ot => ({
-            id: ot.id,
-            name: ot.name,
-            description: ot.description,
-            operation: ot.operation,
-            workload_hours: ot.workloadHours,
+      workflow_task_list: data.workflowTaskList.map(wt => {
+        if (wt.phaseTaskList.length === 0) {
+          return {
+            id: wt.id,
+            name: wt.name,
+            workflow: wt.workflow,
+            ...(wt.region !== undefined ? { region: wt.region } : {}),
+            ...(wt.colorCode !== undefined ? { color_code: wt.colorCode } : {}),
+          };
+        }
+        return {
+          id: wt.id,
+          name: wt.name,
+          description: wt.description,
+          workflow: wt.workflow,
+          fab: wt.fab,
+          phase_task_list: wt.phaseTaskList.map(pt => ({
+            id: pt.id,
+            name: pt.name,
+            description: pt.description,
+            phase: pt.phase,
+            start_date: pt.startDate,
+            end_date: pt.endDate,
+            operation_task_list: pt.operationTaskList.map(ot => ({
+              id: ot.id,
+              name: ot.name,
+              description: ot.description,
+              operation: ot.operation,
+              workload_hours: ot.workloadHours,
+              color_code: ot.colorCode ?? '',
+            })),
           })),
-        })),
-      })),
+        };
+      }),
       assignment_list: data.assignmentList.map(a => ({
         worker: a.worker,
         operation_task: a.operationTask,
@@ -180,6 +203,7 @@ function parseWorker(raw: unknown): Worker {
     isManager: Boolean(r.is_manager ?? false),
     skillMap: (r.skill_map as Record<string, number>) ?? {},
     unavailableDates: parseUnavailableDates((r.unavailable_dates as unknown[]) ?? []),
+    definition: r.definition as string | undefined,
   };
 }
 
@@ -262,4 +286,68 @@ function parseTransiteDay(raw: unknown): TransiteDayMap {
     to: String(r.to ?? ''),
     days: Number(r.days ?? 0),
   };
+}
+
+// ── EnvConfig YAML stringify ─────────────────────────────────────────────────
+
+export function stringifyEnvConfigYaml(config: EnvConfig): string {
+  const out = {
+    environment: {
+      workflow_list: config.workflowList.map(wf => ({
+        id: wf.id,
+        name: wf.name,
+        phase_list: wf.phaseList.map(ph => ({
+          id: ph.id,
+          name: ph.name,
+          operation_list: ph.operationList.map(op => ({
+            id: op.id,
+            name: op.name,
+            work_hours: op.workHours,
+            min_worker_num: op.minWorkerNum,
+            max_worker_num: op.maxWorkerNum,
+          })),
+        })),
+      })),
+      fab_list: config.fabList.map(f => ({
+        id: f.id,
+        name: f.name,
+        region: f.region,
+        customer_company: f.customerCompany,
+      })),
+      region_list: config.regionList.map(r => ({
+        id: r.id,
+        name: r.name,
+      })),
+      customer_company_list: config.customerCompanyList.map(c => ({
+        id: c.id,
+        name: c.name,
+      })),
+      worker_company_list: config.workerCompanyList.map(wc => ({
+        id: wc.id,
+        name: wc.name,
+        annual_overtime_limit: wc.annualOvertimeLimit,
+        monthly_overtime_limit: wc.monthlyOvertimeLimit,
+      })),
+      worker_list: config.workerList.map(w => ({
+        id: w.id,
+        name: w.name,
+        worker_company: w.workerCompany,
+        is_manager: w.isManager,
+        skill_map: w.skillMap,
+        unavailable_dates: w.unavailableDates.map(entry => {
+          const out: Record<string, unknown> = {};
+          if (entry.weekly) out.weekly = { weekdays: entry.weekly.weekdays };
+          if (entry.single) out.single = { days: entry.single.days };
+          return out;
+        }),
+        ...(w.definition !== undefined ? { definition: w.definition } : {}),
+      })),
+      transite_day_map: config.transiteDayMap.map(t => ({
+        from: t.from,
+        to: t.to,
+        days: t.days,
+      })),
+    },
+  };
+  return yaml.dump(out, { lineWidth: -1 });
 }

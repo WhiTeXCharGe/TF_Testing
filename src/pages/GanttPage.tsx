@@ -11,8 +11,10 @@ import { generateDateRange } from '../utils/dateUtils';
 
 
 export function GanttPage() {
-  const { state } = useAppContext();
-  const { schedule, currentView, undoStack, redoStack } = state;
+  const { state, dispatch } = useAppContext();
+  const { schedule, currentView, undoStack, redoStack, selectedAssignmentIndex, selectedUnavailableInfo } = state;
+  const showStickySidePanel = !!schedule && currentView === 'worker' &&
+    (selectedAssignmentIndex !== null || selectedUnavailableInfo !== null);
 
   const dates = useMemo(() => {
     const start = state.displayStartDate ?? schedule?.planRange.startDate;
@@ -30,7 +32,7 @@ export function GanttPage() {
       <Toolbar />
 
       {/* Main content */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
         {!schedule ? (
           <div style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -49,11 +51,19 @@ export function GanttPage() {
           </div>
         ) : (
           <>
-            {currentView === 'device'
-              ? <DeviceViewGantt dates={dates} />
-              : <WorkerViewGantt dates={dates} />
-            }
-            <SidePanel />
+            <div
+              style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: showStickySidePanel ? 300 : 0 }}
+              onClick={() => {
+                if (selectedAssignmentIndex !== null) dispatch({ type: 'SELECT_ASSIGNMENT', payload: null });
+                if (selectedUnavailableInfo !== null) dispatch({ type: 'SELECT_UNAVAILABLE', payload: null });
+              }}
+            >
+              {currentView === 'device'
+                ? <DeviceViewGantt dates={dates} />
+                : <WorkerViewGantt dates={dates} />
+              }
+            </div>
+            {showStickySidePanel && <SidePanel />}
           </>
         )}
       </div>

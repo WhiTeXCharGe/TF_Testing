@@ -1,12 +1,20 @@
-import { ScheduleData } from './schedule';
+import { ScheduleData, PhaseTask } from './schedule';
 import { EnvConfig } from './envConfig';
 
 export type ViewMode = 'device' | 'worker';
 
 export interface Violation {
-  type: 'OVERLAP' | 'WORKER_UNAVAILABLE' | 'PHASE_OVERRUN';
+  type:
+    | 'OVERLAP'
+    | 'WORKER_UNAVAILABLE'
+    | 'PHASE_OVERRUN'
+    | 'WORK_HOUR_RANGE'
+    | 'SKILL_MISMATCH'
+    | 'TASK_WORKER_COUNT';
   assignmentIndices: number[];
   message: string;
+  date?: string;
+  severity?: 'error' | 'warning';
 }
 
 export interface SearchQuery {
@@ -22,6 +30,7 @@ export interface AppState {
   undoStack: ScheduleData[];
   redoStack: ScheduleData[];
   selectedAssignmentIndex: number | null;
+  selectedUnavailableInfo: { workerId: string; startDate: string; endDate: string } | null;
   expandedDeviceIds: Set<string>;
   searchQuery: SearchQuery;
   displayStartDate: string | null;
@@ -47,6 +56,7 @@ export type ActionType =
   | { type: 'SET_DISPLAY_PERIOD'; payload: { startDate: string; endDate: string } }
   | { type: 'ADD_ASSIGNMENT'; payload: ScheduleData['assignmentList'][0] }
   | { type: 'UPDATE_ASSIGNMENT'; payload: { index: number; updates: Partial<ScheduleData['assignmentList'][0]> } }
+  | { type: 'UPDATE_PHASE_TASK'; payload: { workflowTaskId: string; phaseTaskId: string; updates: Partial<PhaseTask> } }
   | { type: 'DELETE_ASSIGNMENT'; payload: number }
   | { type: 'BULK_UPDATE_FLEXIBILITY'; payload: { flexibility: string; target: 'all' | 'selected'; targetDate?: string } }
   | { type: 'SET_ERROR'; payload: string | null }
@@ -58,4 +68,13 @@ export type ActionType =
   | { type: 'CLOSE_NEW_SCHEDULE_DIALOG' }
   | { type: 'ADD_WORKFLOW_TASKS'; payload: ScheduleData['workflowTaskList'] }
   | { type: 'MERGE_DATA'; payload: { schedule?: ScheduleData; envConfig?: EnvConfig } }
-  | { type: 'SAVE_PATHS'; payload: { envPath?: string; schedulePath?: string } };
+  | { type: 'SAVE_PATHS'; payload: { envPath?: string; schedulePath?: string } }
+  | { type: 'SELECT_UNAVAILABLE'; payload: { workerId: string; startDate: string; endDate: string } | null }
+  | { type: 'DELETE_UNAVAILABLE_DATE'; payload: { workerId: string; date: string } }
+  | { type: 'DELETE_UNAVAILABLE_RANGE'; payload: { workerId: string; startDate: string; endDate: string } }
+  | { type: 'MOVE_UNAVAILABLE_DATE'; payload: { workerId: string; oldDate: string; newDate: string } }
+  | { type: 'UPDATE_OPERATION_TASK_COLOR'; payload: { operationTaskId: string; colorCode: string } }
+  | { type: 'UPDATE_WORKFLOW_TASK_COLOR'; payload: { workflowTaskId: string; colorCode: string } }
+  | { type: 'UPDATE_WORKER_DEFINITION'; payload: { workerId: string; definition: string } }
+  | { type: 'ADD_UNAVAILABLE_DATES'; payload: Array<{ workerId: string; dates: string[] }> }
+  | { type: 'RESIZE_UNAVAILABLE_RANGE'; payload: { workerId: string; oldStartDate: string; oldEndDate: string; newStartDate: string; newEndDate: string } };
