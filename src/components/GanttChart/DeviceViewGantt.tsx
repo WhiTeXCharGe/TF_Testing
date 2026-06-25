@@ -33,7 +33,7 @@ function barGeom(start: string | null, end: string | null, viewStart: string, vi
 
 export function DeviceViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
-  const { schedule, envConfig } = state;
+  const { schedule, envConfig, moduleViewFilter } = state;
 
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
@@ -46,19 +46,60 @@ export function DeviceViewGantt({ dates }: Props) {
     return buildModuleViewModel(envConfig, schedule, dates);
   }, [schedule, envConfig, dates]);
 
+  // Apply module view global filter
+  const filteredModules = useMemo(() => {
+    const { workerIds, fabIds, regionIds } = moduleViewFilter;
+    const noFilter = !workerIds.length && !fabIds.length && !regionIds.length;
+    if (noFilter) return model.modules;
+
+    const fabToRegion = new Map(envConfig?.fabList.map(f => [f.id, f.region ?? '']) ?? []);
+
+    // Build workerIds per module from assignments
+    const moduleWorkers = new Map<string, Set<string>>();
+    if (schedule && workerIds.length > 0) {
+      const opToModule = new Map<string, string>();
+      for (const wt of schedule.workflowTaskList) {
+        for (const pt of wt.phaseTaskList) {
+          for (const ot of pt.operationTaskList) opToModule.set(ot.id, wt.id);
+        }
+      }
+      for (const a of schedule.assignmentList) {
+        const mid = opToModule.get(a.operationTask);
+        if (!mid) continue;
+        if (!moduleWorkers.has(mid)) moduleWorkers.set(mid, new Set());
+        moduleWorkers.get(mid)!.add(a.worker);
+      }
+    }
+
+    return model.modules.filter(m => {
+      if (workerIds.length > 0) {
+        const mw = moduleWorkers.get(m.moduleId);
+        if (!mw || !workerIds.some(id => mw.has(id))) return false;
+      }
+      if (fabIds.length > 0) {
+        if (!m.fab || !fabIds.includes(m.fab)) return false;
+      }
+      if (regionIds.length > 0) {
+        const reg = m.region ?? (m.fab ? fabToRegion.get(m.fab) : undefined) ?? '';
+        if (!regionIds.includes(reg)) return false;
+      }
+      return true;
+    });
+  }, [model.modules, moduleViewFilter, schedule, envConfig]);
+
   const viewStart = dates[0];
   const viewEnd = dates[dates.length - 1];
   const timelineWidth = dates.length * CELL_W;
   const totalRows = useMemo(() => {
     let n = 0;
-    for (const m of model.modules) {
+    for (const m of filteredModules) {
       n += 1;
       if (expanded.has(m.moduleId)) {
         n += Math.max(...m.phases.map(p => p.tasks.length), 0);
       }
     }
     return n;
-  }, [model.modules, expanded]);
+  }, [filteredModules, expanded]);
 
   const toggle = (id: string) =>
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -70,7 +111,7 @@ export function DeviceViewGantt({ dates }: Props) {
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
-    for (const m of model.modules) {
+    for (const m of filteredModules) {
       const isExp = expanded.has(m.moduleId);
       out.push({ type: 'koutei', key: `k_${m.moduleId}`, module: m, expanded: isExp });
       if (isExp) {
@@ -80,22 +121,22 @@ export function DeviceViewGantt({ dates }: Props) {
       }
     }
     return out;
-  }, [model.modules, expanded]);
+  }, [filteredModules, expanded]);
 
   const selectedPhase = useMemo<{ phase: ModulePhase; module: ModuleNode } | null>(() => {
     if (selection?.kind !== 'koutei') return null;
-    const m = model.modules.find(x => x.moduleId === selection.moduleId);
+    const m = filteredModules.find(x => x.moduleId === selection.moduleId);
     const phase = m?.phases.find(p => p.phaseId === selection.phaseId);
     return phase && m ? { phase, module: m } : null;
-  }, [selection, model.modules]);
+  }, [selection, filteredModules]);
 
   const selectedTask = useMemo<{ task: ModuleTask; phase: ModulePhase; module: ModuleNode } | null>(() => {
     if (selection?.kind !== 'task') return null;
-    const m = model.modules.find(x => x.moduleId === selection.moduleId);
+    const m = filteredModules.find(x => x.moduleId === selection.moduleId);
     const phase = m?.phases.find(p => p.phaseId === selection.phaseId);
     const task = phase?.tasks.find(t => t.taskId === selection.taskId);
     return task && phase && m ? { task, phase, module: m } : null;
-  }, [selection, model.modules]);
+  }, [selection, filteredModules]);
 
   if (!schedule || !envConfig || dates.length === 0) return <div style={{ flex: 1, background: '#f8f9fa' }} />;
 

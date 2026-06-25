@@ -17,11 +17,13 @@ export function GanttPage() {
     (selectedAssignmentIndex !== null || selectedUnavailableInfo !== null);
 
   const dates = useMemo(() => {
-    const start = state.displayStartDate ?? schedule?.planRange.startDate;
-    const end = state.displayEndDate ?? schedule?.planRange.endDate;
+    const { currentView, workerViewFilter, moduleViewFilter } = state;
+    const viewFilter = currentView === 'worker' ? workerViewFilter : moduleViewFilter;
+    const start = viewFilter.startDate ?? schedule?.planRange.startDate;
+    const end = viewFilter.endDate ?? schedule?.planRange.endDate;
     if (!start || !end) return [];
     return generateDateRange(start, end);
-  }, [state.displayStartDate, state.displayEndDate, schedule]);
+  }, [state.currentView, state.workerViewFilter, state.moduleViewFilter, schedule]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>

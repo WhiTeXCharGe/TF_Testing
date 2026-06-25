@@ -17,10 +17,33 @@ export interface Violation {
   severity?: 'error' | 'warning';
 }
 
-export interface SearchQuery {
-  keyword: string;
-  mode: 'device' | 'worker' | '';
+export interface WorkerViewFilter {
+  barName: string;       // free-text search in bar label
+  moduleIds: string[];   // 装置 (製番) workflowTask IDs
+  phaseIds: string[];    // 工程 phase IDs from EnvConfig
+  fabIds: string[];
+  regionIds: string[];
+  startDate: string | null;
+  endDate: string | null;
 }
+
+export interface ModuleViewFilter {
+  workerIds: string[];
+  fabIds: string[];
+  regionIds: string[];
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export const DEFAULT_WORKER_VIEW_FILTER: WorkerViewFilter = {
+  barName: '', moduleIds: [], phaseIds: [], fabIds: [], regionIds: [],
+  startDate: null, endDate: null,
+};
+
+export const DEFAULT_MODULE_VIEW_FILTER: ModuleViewFilter = {
+  workerIds: [], fabIds: [], regionIds: [],
+  startDate: null, endDate: null,
+};
 
 export interface AppState {
   envConfig: EnvConfig | null;
@@ -32,9 +55,8 @@ export interface AppState {
   selectedAssignmentIndex: number | null;
   selectedUnavailableInfo: { workerId: string; startDate: string; endDate: string } | null;
   expandedDeviceIds: Set<string>;
-  searchQuery: SearchQuery;
-  displayStartDate: string | null;
-  displayEndDate: string | null;
+  workerViewFilter: WorkerViewFilter;
+  moduleViewFilter: ModuleViewFilter;
   currentEnvPath: string | null;
   currentSchedulePath: string | null;
   errorMessage: string | null;
@@ -52,8 +74,8 @@ export type ActionType =
   | { type: 'REDO' }
   | { type: 'SELECT_ASSIGNMENT'; payload: number | null }
   | { type: 'TOGGLE_DEVICE'; payload: string }
-  | { type: 'SET_SEARCH_QUERY'; payload: SearchQuery }
-  | { type: 'SET_DISPLAY_PERIOD'; payload: { startDate: string; endDate: string } }
+  | { type: 'SET_WORKER_VIEW_FILTER'; payload: Partial<WorkerViewFilter> }
+  | { type: 'SET_MODULE_VIEW_FILTER'; payload: Partial<ModuleViewFilter> }
   | { type: 'ADD_ASSIGNMENT'; payload: ScheduleData['assignmentList'][0] }
   | { type: 'UPDATE_ASSIGNMENT'; payload: { index: number; updates: Partial<ScheduleData['assignmentList'][0]> } }
   | { type: 'UPDATE_PHASE_TASK'; payload: { workflowTaskId: string; phaseTaskId: string; updates: Partial<PhaseTask> } }

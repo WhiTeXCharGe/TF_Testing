@@ -27,9 +27,48 @@ const EMPTY_FILTERS: WorkerFilters = {
   remarks: new Set<string>(),
 };
 
+// Build lookup: workerId → { wfTaskIds, phaseIds, fabIds, regionIds }
+function buildWorkerAssignmentIndex(
+  schedule: import('../../types/schedule').ScheduleData,
+  fabToRegion: Map<string, string>,
+): Map<string, { wfTaskIds: Set<string>; phaseIds: Set<string>; fabIds: Set<string>; regionIds: Set<string> }> {
+  const opToWf = new Map<string, string>();
+  const opToPhase = new Map<string, string>();
+  const wfFab = new Map<string, string>();
+  const wfRegion = new Map<string, string>();
+
+  for (const wt of schedule.workflowTaskList) {
+    wfFab.set(wt.id, wt.fab ?? '');
+    wfRegion.set(wt.id, wt.region ?? (wt.fab ? (fabToRegion.get(wt.fab) ?? '') : ''));
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        opToWf.set(ot.id, wt.id);
+        opToPhase.set(ot.id, pt.phase);
+      }
+    }
+  }
+
+  const idx = new Map<string, { wfTaskIds: Set<string>; phaseIds: Set<string>; fabIds: Set<string>; regionIds: Set<string> }>();
+  for (const a of schedule.assignmentList) {
+    if (!idx.has(a.worker)) idx.set(a.worker, { wfTaskIds: new Set(), phaseIds: new Set(), fabIds: new Set(), regionIds: new Set() });
+    const e = idx.get(a.worker)!;
+    const wfId = opToWf.get(a.operationTask) ?? '';
+    if (wfId) {
+      e.wfTaskIds.add(wfId);
+      const fab = wfFab.get(wfId) ?? '';
+      const region = wfRegion.get(wfId) ?? '';
+      if (fab) e.fabIds.add(fab);
+      if (region) e.regionIds.add(region);
+    }
+    const phase = opToPhase.get(a.operationTask) ?? '';
+    if (phase) e.phaseIds.add(phase);
+  }
+  return idx;
+}
+
 export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
-  const { schedule, envConfig, selectedAssignmentIndex, violations } = state;
+  const { schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter } = state;
 
   const [filters, setFilters] = useState<WorkerFilters>(EMPTY_FILTERS);
   const [selectedDateForCellFilter, setSelectedDateForCellFilter] = useState('');
@@ -69,7 +108,8 @@ export function WorkerViewGantt({ dates }: Props) {
     };
   }, [model.rows]);
 
-  const filteredRows = useMemo(() => {
+  // Column-level filter (company/name/manager/remarks + cell date filter)
+  const columnFilteredRows = useMemo(() => {
     if (model.rows.length === 0) return [];
     const dateCol = selectedDateForCellFilter ? dateIndex.get(selectedDateForCellFilter) : undefined;
     return model.rows.filter(row => {
@@ -84,6 +124,37 @@ export function WorkerViewGantt({ dates }: Props) {
       return true;
     });
   }, [model.rows, dateIndex, filters, selectedDateForCellFilter, selectedDateTasks]);
+
+  // Global top-bar filter (barName, moduleIds, phaseIds, fabIds, regionIds)
+  const filteredRows = useMemo(() => {
+    const { barName, moduleIds, phaseIds, fabIds, regionIds } = workerViewFilter;
+    const noFilter = !barName && !moduleIds.length && !phaseIds.length && !fabIds.length && !regionIds.length;
+    if (noFilter) return columnFilteredRows;
+
+    const fabToRegion = new Map(envConfig?.fabList.map(f => [f.id, f.region ?? '']) ?? []);
+    const workerIdx = schedule ? buildWorkerAssignmentIndex(schedule, fabToRegion) : new Map();
+
+    return columnFilteredRows.filter(row => {
+      if (barName) {
+        const q = barName.toLowerCase();
+        if (!row.segments.some(s => s.label.toLowerCase().includes(q))) return false;
+      }
+      const entry = workerIdx.get(row.workerId);
+      if (moduleIds.length > 0) {
+        if (!entry || !moduleIds.some(id => entry.wfTaskIds.has(id))) return false;
+      }
+      if (phaseIds.length > 0) {
+        if (!entry || !phaseIds.some(id => entry.phaseIds.has(id))) return false;
+      }
+      if (fabIds.length > 0) {
+        if (!entry || !fabIds.some(id => entry.fabIds.has(id))) return false;
+      }
+      if (regionIds.length > 0) {
+        if (!entry || !regionIds.some(id => entry.regionIds.has(id))) return false;
+      }
+      return true;
+    });
+  }, [columnFilteredRows, workerViewFilter, schedule, envConfig]);
 
   const toggleMetaFilter = (key: WorkerFilterKey, value: string) => {
     setFilters(prev => {

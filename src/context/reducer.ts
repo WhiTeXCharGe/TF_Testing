@@ -1,4 +1,4 @@
-import { AppState, ActionType } from '../types/appState';
+import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER } from '../types/appState';
 import { ScheduleData, PlanFlexibility } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { MAX_UNDO_STACK } from '../config/appConfig';
@@ -58,6 +58,8 @@ export function reducer(state: AppState, action: ActionType): AppState {
         redoStack: [],
         violations: [],
         selectedAssignmentIndex: null,
+        workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
+        moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
       };
 
     case 'SET_SCHEDULE':
@@ -238,11 +240,11 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, expandedDeviceIds: newExpanded };
     }
 
-    case 'SET_SEARCH_QUERY':
-      return { ...state, searchQuery: action.payload };
+    case 'SET_WORKER_VIEW_FILTER':
+      return { ...state, workerViewFilter: { ...state.workerViewFilter, ...action.payload } };
 
-    case 'SET_DISPLAY_PERIOD':
-      return { ...state, displayStartDate: action.payload.startDate, displayEndDate: action.payload.endDate };
+    case 'SET_MODULE_VIEW_FILTER':
+      return { ...state, moduleViewFilter: { ...state.moduleViewFilter, ...action.payload } };
 
     case 'ADD_ASSIGNMENT': {
       if (!state.schedule) return state;

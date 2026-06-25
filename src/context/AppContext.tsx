@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, Dispatch, ReactNode } from 'react';
-import { AppState, ActionType } from '../types/appState';
+import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER } from '../types/appState';
 import { reducer } from './reducer';
 
 const initialState: AppState = {
@@ -12,9 +12,8 @@ const initialState: AppState = {
   selectedAssignmentIndex: null,
   selectedUnavailableInfo: null,
   expandedDeviceIds: new Set(),
-  searchQuery: { keyword: '', mode: '' },
-  displayStartDate: null,
-  displayEndDate: null,
+  workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
+  moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
   currentEnvPath: null,
   currentSchedulePath: null,
   errorMessage: null,

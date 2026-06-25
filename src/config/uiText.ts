@@ -117,4 +117,28 @@ export const UI = {
   filterTitle: 'Filter',
   filterClearAll: 'すべて解除',
   filterNoValues: '値なし',
+
+  // Global filter bar — Worker View
+  wvFilterBarName: 'バー名検索',
+  wvFilterBarNamePlaceholder: 'バー名で絞り込み...',
+  wvFilterModule: '装置',
+  wvFilterPhase: '工程',
+  wvFilterFab: 'Fab',
+  wvFilterRegion: 'Region',
+  wvFilterDateRange: '期間',
+
+  // Global filter bar — Module View
+  mvFilterWorker: '作業者',
+  mvFilterFab: 'Fab',
+  mvFilterRegion: 'Region',
+  mvFilterDateRange: '期間',
+
+  // Filter shared
+  filterStartDate: '開始',
+  filterEndDate: '終了',
+  filterDateSep: '〜',
+  filterClear: 'クリア',
+  filterSelectAll: 'すべて選択',
+  filterSearchPlaceholder: '検索...',
+  filterItemCount: (n: number) => `${n} 件選択`,
 } as const;
