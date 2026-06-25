@@ -263,6 +263,28 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
     }
 
+    case 'UPDATE_OPERATION_TASK': {
+      if (!state.schedule) return state;
+      const { workflowTaskId, phaseTaskId, operationTaskId, updates } = action.payload;
+      const workflowTaskList = state.schedule.workflowTaskList.map(wt => {
+        if (wt.id !== workflowTaskId) return wt;
+        return {
+          ...wt,
+          phaseTaskList: wt.phaseTaskList.map(pt => {
+            if (pt.id !== phaseTaskId) return pt;
+            return {
+              ...pt,
+              operationTaskList: pt.operationTaskList.map(ot =>
+                ot.id === operationTaskId ? { ...ot, ...updates } : ot,
+              ),
+            };
+          }),
+        };
+      });
+      const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
+      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+    }
+
     case 'UPDATE_PHASE_TASK': {
       if (!state.schedule) return state;
       const { workflowTaskId, phaseTaskId, updates } = action.payload;

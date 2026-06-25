@@ -202,7 +202,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={valueStyle}>{assignment.startDate} 〜 {assignment.endDate}</span>
         </div>
 
-        <WorkHourTable assignment={assignment} />
+        <WorkHourTable assignment={assignment} assignmentIndex={assignmentIndex} />
 
         <div style={rowStyle}>
           <span style={labelStyle}>バーカラー</span>
@@ -244,7 +244,15 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
 
 // ── Work Hour Table ───────────────────────────────────────────────────────────
 
-function WorkHourTable({ assignment }: { assignment: { startDate: string; endDate: string; workDateList: Array<{ date: string; hour: number }> } }) {
+function WorkHourTable({
+  assignment,
+  assignmentIndex,
+}: {
+  assignment: { startDate: string; endDate: string; workDateList: Array<{ date: string; hour: number }> };
+  assignmentIndex: number;
+}) {
+  const { dispatch } = useAppContext();
+
   const dates = useMemo(
     () => generateDateRange(assignment.startDate, assignment.endDate),
     [assignment.startDate, assignment.endDate],
@@ -258,13 +266,24 @@ function WorkHourTable({ assignment }: { assignment: { startDate: string; endDat
     return m;
   }, [assignment.workDateList]);
 
-  const rows = dates.map(d => ({ date: d, hour: hourMap.get(d) ?? 0 }));
+  const commitHour = (date: string, newHour: number) => {
+    const clamped = Math.max(0, Math.min(24, isNaN(newHour) ? 0 : newHour));
+    const existing = hourMap.get(date) ?? 0;
+    if (clamped === existing) return;
+    const newList = dates
+      .map(d => {
+        const h = d === date ? clamped : (hourMap.get(d) ?? 0);
+        return h > 0 ? { date: d, hour: h } : null;
+      })
+      .filter((x): x is { date: string; hour: number } => x !== null);
+    dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { workDateList: newList } } });
+  };
 
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ color: '#666', fontSize: 11, marginBottom: 4 }}>稼働時間 / 日</div>
       <div style={{
-        maxHeight: 150,
+        maxHeight: 160,
         overflowY: 'auto',
         border: '1px solid #dde5ef',
         borderRadius: 3,
@@ -273,7 +292,7 @@ function WorkHourTable({ assignment }: { assignment: { startDate: string; endDat
       }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1fr 72px',
           backgroundColor: '#e8eef6',
           padding: '3px 8px',
           fontWeight: 'bold',
@@ -284,7 +303,8 @@ function WorkHourTable({ assignment }: { assignment: { startDate: string; endDat
           <span>日付</span>
           <span style={{ textAlign: 'right' }}>時間</span>
         </div>
-        {rows.map(({ date, hour }) => {
+        {dates.map(date => {
+          const hour = hourMap.get(date) ?? 0;
           const [, mm, dd] = date.split('-');
           const isZero = hour === 0;
           return (
@@ -292,17 +312,38 @@ function WorkHourTable({ assignment }: { assignment: { startDate: string; endDat
               key={date}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                padding: '2px 8px',
-                backgroundColor: isZero ? '#f9f0f0' : 'transparent',
+                gridTemplateColumns: '1fr 72px',
+                padding: '1px 8px',
+                backgroundColor: isZero ? '#fdf5f5' : 'transparent',
                 borderTop: '1px solid #edf2f8',
-                color: isZero ? '#b0a0a0' : '#1c2b3a',
+                alignItems: 'center',
               }}
             >
-              <span>{mm}/{dd}</span>
-              <span style={{ textAlign: 'right', fontWeight: isZero ? 'normal' : 'bold' }}>
-                {isZero ? '—' : `${hour}h`}
-              </span>
+              <span style={{ color: isZero ? '#b0a0a0' : '#1c2b3a' }}>{mm}/{dd}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}>
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  defaultValue={hour}
+                  key={`${date}-${hour}`}
+                  onBlur={e => commitHour(date, Number(e.target.value))}
+                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  style={{
+                    width: 40,
+                    padding: '1px 4px',
+                    border: '1px solid #c8d5e5',
+                    borderRadius: 3,
+                    fontSize: 11,
+                    fontFamily: 'Meiryo, sans-serif',
+                    textAlign: 'right',
+                    color: isZero ? '#b0a0a0' : '#1c2b3a',
+                    backgroundColor: isZero ? '#fdf5f5' : '#fff',
+                    outline: 'none',
+                  }}
+                />
+                <span style={{ color: '#888', fontSize: 10, width: 10 }}>h</span>
+              </div>
             </div>
           );
         })}

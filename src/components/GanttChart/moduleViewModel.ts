@@ -25,6 +25,7 @@ export interface ModuleTask {
   operationId: string;     // operationTask.operation
   minWorker: number;
   maxWorker: number;
+  workloadHours: number;   // from operationTask.workloadHours or envConfig op.workHours[0]
   slots: ModuleWorkerSlot[];
   startDate: string | null; // earliest assigned worker start
   endDate: string | null;   // latest assigned worker end
@@ -47,6 +48,8 @@ export interface ModulePhase {
 export interface ModuleNode {
   moduleId: string;
   moduleName: string;       // 製番
+  fab: string | null;
+  region: string | null;
   phases: ModulePhase[];
 }
 
@@ -122,7 +125,7 @@ export function buildModuleViewModel(
     assignmentsByOpTask.set(a.operationTask, list);
   });
 
-  const modules: ModuleNode[] = schedule.workflowTaskList.map(wt => {
+  const modules: ModuleNode[] = schedule.workflowTaskList.filter(wt => wt.phaseTaskList && wt.phaseTaskList.length > 0).map(wt => {
     const moduleId = wt.id;
     const moduleName = wt.name ?? wt.id;
 
@@ -135,6 +138,7 @@ export function buildModuleViewModel(
       const tasks: ModuleTask[] = pt.operationTaskList.map(ot => {
         const op = operationMap.get(ot.operation);
         const minWorker = ot.recommendsWorkerMin ?? op?.minWorkerNum ?? 1;
+        const workloadHours = ot.workloadHours ?? op?.workHours?.[0] ?? 8;
 
         const rawAssignments = assignmentsByOpTask.get(ot.id) ?? [];
         const slots: ModuleWorkerSlot[] = rawAssignments.map(ra => ({
@@ -169,6 +173,7 @@ export function buildModuleViewModel(
           operationId: ot.operation,
           minWorker,
           maxWorker,
+          workloadHours,
           slots,
           startDate: taskStart,
           endDate: taskEnd,
@@ -190,7 +195,7 @@ export function buildModuleViewModel(
       };
     });
 
-    return { moduleId, moduleName, phases };
+    return { moduleId, moduleName, fab: wt.fab ?? null, region: wt.region ?? null, phases };
   });
 
   return { modules, monthGroups };

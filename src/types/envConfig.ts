@@ -57,6 +57,7 @@ export interface Operation {
   id: string;
   name?: string;
   workHours?: number[];
+  workloadHours?: number;
   minWorkerNum?: number;
   maxWorkerNum?: number;
 }

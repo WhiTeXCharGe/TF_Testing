@@ -57,6 +57,7 @@ export type ActionType =
   | { type: 'ADD_ASSIGNMENT'; payload: ScheduleData['assignmentList'][0] }
   | { type: 'UPDATE_ASSIGNMENT'; payload: { index: number; updates: Partial<ScheduleData['assignmentList'][0]> } }
   | { type: 'UPDATE_PHASE_TASK'; payload: { workflowTaskId: string; phaseTaskId: string; updates: Partial<PhaseTask> } }
+  | { type: 'UPDATE_OPERATION_TASK'; payload: { workflowTaskId: string; phaseTaskId: string; operationTaskId: string; updates: Partial<import('./schedule').OperationTask> } }
   | { type: 'DELETE_ASSIGNMENT'; payload: number }
   | { type: 'BULK_UPDATE_FLEXIBILITY'; payload: { flexibility: string; target: 'all' | 'selected'; targetDate?: string } }
   | { type: 'SET_ERROR'; payload: string | null }

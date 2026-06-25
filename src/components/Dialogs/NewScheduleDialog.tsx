@@ -3,8 +3,15 @@ import { useAppContext } from '../../context/AppContext';
 import { parseEnvConfigYaml, parseScheduleYaml } from '../../services/yamlService';
 import { WorkflowTask, PhaseTask, OperationTask } from '../../types/schedule';
 import { Workflow } from '../../types/envConfig';
+import { SearchableSelect, SelectOption } from '../common/SearchableSelect';
 
 // ── Per-製番 form entry ───────────────────────────────────────────────────────
+
+interface OpEntry {
+  workloadHours: number;
+  minWorker: number;
+  maxWorker: number;
+}
 
 interface WTEntry {
   key: string;
@@ -12,23 +19,27 @@ interface WTEntry {
   workflowId: string;
   fabId: string;
   startDate: string;
-  endDate: string;
+  phaseEndDates: string[];  // one per phase
   collapsed: boolean;
-  opHours: number[][];  // [phaseIdx][opIdx] = total workload hours
+  opEntries: OpEntry[][];   // [phaseIdx][opIdx]
 }
 
 function makeEntry(startDate: string): WTEntry {
   return {
     key: `e_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
     name: '', workflowId: '', fabId: '',
-    startDate, endDate: '',
-    collapsed: false, opHours: [],
+    startDate, phaseEndDates: [],
+    collapsed: false, opEntries: [],
   };
 }
 
-function initOpHours(workflow: Workflow): number[][] {
+function initOpEntries(workflow: Workflow): OpEntry[][] {
   return workflow.phaseList.map(phase =>
-    phase.operationList.map(op => op.workHours?.[0] ?? 8)
+    phase.operationList.map(op => ({
+      workloadHours: op.workloadHours ?? op.workHours?.[0] ?? 8,
+      minWorker: op.minWorkerNum ?? 1,
+      maxWorker: op.maxWorkerNum ?? 1,
+    }))
   );
 }
 
@@ -39,7 +50,7 @@ function buildWorkflowTask(entry: WTEntry, workflow: Workflow): WorkflowTask {
     id: base,
     name: entry.name,
     workflow: entry.workflowId,
-    fab: entry.fabId,
+    fab: entry.fabId || undefined,
     phaseTaskList: workflow.phaseList.map((phase, pi): PhaseTask => {
       const ptId = `${base}_p${pi}`;
       return {
@@ -47,13 +58,18 @@ function buildWorkflowTask(entry: WTEntry, workflow: Workflow): WorkflowTask {
         name: phase.name,
         phase: phase.id,
         startDate: entry.startDate,
-        endDate: entry.endDate,
-        operationTaskList: phase.operationList.map((op, oi): OperationTask => ({
-          id: `${ptId}_o${oi}`,
-          name: op.name,
-          operation: op.id,
-          workloadHours: entry.opHours[pi]?.[oi] ?? 8,
-        })),
+        endDate: entry.phaseEndDates[pi] ?? entry.startDate,
+        operationTaskList: phase.operationList.map((op, oi): OperationTask => {
+          const oe = entry.opEntries[pi]?.[oi];
+          return {
+            id: `${ptId}_o${oi}`,
+            name: op.name,
+            operation: op.id,
+            workloadHours: oe?.workloadHours ?? op.workloadHours ?? op.workHours?.[0] ?? 8,
+            recommendsWorkerMin: oe?.minWorker ?? op.minWorkerNum ?? 1,
+            recommendsWorkerMax: oe?.maxWorker ?? op.maxWorkerNum ?? 1,
+          };
+        }),
       };
     }),
   };
@@ -79,6 +95,15 @@ export function NewScheduleDialog() {
   const [entries, setEntries] = useState<WTEntry[]>([makeEntry(planStart)]);
 
   if (!state.isNewScheduleDialogOpen) return null;
+
+  // Workflows that have actual phases (filter out wf_misc / empty phaseList)
+  const validWorkflows = envConfig?.workflowList.filter(w => w.phaseList && w.phaseList.length > 0) ?? [];
+
+  const workflowOptions: SelectOption[] = validWorkflows.map(w => ({ value: w.id, label: w.name ?? w.id }));
+  const fabOptions: SelectOption[] = [
+    { value: '', label: '--- 選択なし ---' },
+    ...(envConfig?.fabList.map(f => ({ value: f.id, label: f.name ?? f.id })) ?? []),
+  ];
 
   const handleClose = () => {
     dispatch({ type: 'CLOSE_NEW_SCHEDULE_DIALOG' });
@@ -125,56 +150,59 @@ export function NewScheduleDialog() {
     setEntries(prev => prev.map(e => e.key === key ? { ...e, ...patch } : e));
 
   const handleWorkflowChange = (key: string, workflowId: string) => {
-    const wf = envConfig?.workflowList.find(w => w.id === workflowId);
-    patchEntry(key, { workflowId, opHours: wf ? initOpHours(wf) : [] });
+    const wf = validWorkflows.find(w => w.id === workflowId);
+    patchEntry(key, {
+      workflowId,
+      opEntries: wf ? initOpEntries(wf) : [],
+      phaseEndDates: wf ? wf.phaseList.map(() => '') : [],
+    });
   };
 
-  const setOpHour = (key: string, pi: number, oi: number, val: number) =>
+  const setPhaseEndDate = (key: string, pi: number, val: string) =>
     setEntries(prev => prev.map(e => {
       if (e.key !== key) return e;
-      const next = e.opHours.map((row, r) =>
-        r === pi ? row.map((h, c) => c === oi ? val : h) : row
+      const next = [...e.phaseEndDates];
+      next[pi] = val;
+      return { ...e, phaseEndDates: next };
+    }));
+
+  const setOpField = (key: string, pi: number, oi: number, field: keyof OpEntry, val: number) =>
+    setEntries(prev => prev.map(e => {
+      if (e.key !== key) return e;
+      const next = e.opEntries.map((row, r) =>
+        r === pi ? row.map((entry, c) => c === oi ? { ...entry, [field]: val } : entry) : row
       );
-      return { ...e, opHours: next };
+      return { ...e, opEntries: next };
     }));
 
   const handleFormOk = () => {
     if (!envConfig) return;
     const tasks: WorkflowTask[] = entries
-      .filter(e => e.name.trim() && e.workflowId && e.startDate && e.endDate)
-      .map(e => buildWorkflowTask(e, envConfig.workflowList.find(w => w.id === e.workflowId)!));
+      .filter(e => e.name.trim() && e.workflowId && e.startDate)
+      .map(e => buildWorkflowTask(e, validWorkflows.find(w => w.id === e.workflowId)!));
     if (tasks.length === 0) return;
     dispatch({ type: 'ADD_WORKFLOW_TASKS', payload: tasks });
     handleClose();
   };
 
   const canUpload = (schedFile || envFile) && !uploading;
-  const canFormSubmit = entries.some(e => e.name.trim() && e.workflowId && e.startDate && e.endDate);
-
-  // ── Styles ─────────────────────────────────────────────────────────────────
+  const canFormSubmit = entries.some(e => e.name.trim() && e.workflowId && e.startDate);
 
   const S = styles;
 
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && handleClose()}>
       <div style={S.modal}>
-        {/* Title */}
         <div style={S.titleBar}>新規製番追加</div>
 
-        {/* Tab bar */}
         <div style={S.tabBar}>
           {(['form', 'upload'] as const).map(t => (
-            <button
-              key={t}
-              style={tab === t ? S.tabActive : S.tabInactive}
-              onClick={() => setTab(t)}
-            >
+            <button key={t} style={tab === t ? S.tabActive : S.tabInactive} onClick={() => setTab(t)}>
               {t === 'upload' ? 'ファイルからインポート' : 'フォームで追加'}
             </button>
           ))}
         </div>
 
-        {/* Body */}
         <div style={S.body}>
 
           {/* ── UPLOAD TAB ── */}
@@ -184,22 +212,12 @@ export function NewScheduleDialog() {
                 既存データにマージします。同じIDの製番・作業者・Fabは無視されます。<br />
                 どちらか一方だけでも読み込み可能です。
               </div>
-
-              <FileRow
-                label="Schedule.yaml（製番・割付を追加）"
-                file={schedFile}
-                onPick={() => schedRef.current?.click()}
-                onClear={() => setSchedFile(null)}
-              />
+              <FileRow label="Schedule.yaml（製番・割付を追加）" file={schedFile}
+                onPick={() => schedRef.current?.click()} onClear={() => setSchedFile(null)} />
               <input ref={schedRef} type="file" accept=".yaml,.yml" style={{ display: 'none' }}
                 onChange={e => setSchedFile(e.target.files?.[0] ?? null)} />
-
-              <FileRow
-                label="EnvConfig.yaml（作業者・Fab等を追加）"
-                file={envFile}
-                onPick={() => envRef.current?.click()}
-                onClear={() => setEnvFile(null)}
-              />
+              <FileRow label="EnvConfig.yaml（作業者・Fab等を追加）" file={envFile}
+                onPick={() => envRef.current?.click()} onClear={() => setEnvFile(null)} />
               <input ref={envRef} type="file" accept=".yaml,.yml" style={{ display: 'none' }}
                 onChange={e => setEnvFile(e.target.files?.[0] ?? null)} />
             </>
@@ -209,98 +227,96 @@ export function NewScheduleDialog() {
           {tab === 'form' && (
             <>
               {entries.map((entry, idx) => {
-                const wf = envConfig?.workflowList.find(w => w.id === entry.workflowId);
+                const wf = validWorkflows.find(w => w.id === entry.workflowId);
                 return (
                   <div key={entry.key} style={S.card}>
-                    {/* Card header */}
                     <div style={S.cardHeader}>
-                      <span style={S.cardTitle}>
-                        製番 {idx + 1}{entry.name ? `：${entry.name}` : ''}
-                      </span>
+                      <span style={S.cardTitle}>製番 {idx + 1}{entry.name ? `：${entry.name}` : ''}</span>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button
-                          style={S.iconBtn}
+                        <button style={S.iconBtn}
                           onClick={() => patchEntry(entry.key, { collapsed: !entry.collapsed })}
-                          title={entry.collapsed ? '展開' : '折りたたむ'}
-                        >
+                          title={entry.collapsed ? '展開' : '折りたたむ'}>
                           {entry.collapsed ? '▼' : '▲'}
                         </button>
-                        <button
-                          style={{ ...S.iconBtn, color: '#b71c1c' }}
-                          onClick={() => removeEntry(entry.key)}
-                          title="削除"
-                        >
-                          −
-                        </button>
+                        <button style={{ ...S.iconBtn, color: '#b71c1c' }}
+                          onClick={() => removeEntry(entry.key)} title="削除">−</button>
                       </div>
                     </div>
 
                     {!entry.collapsed && (
                       <div style={S.cardBody}>
-                        {/* 製番名 */}
                         <Field label="製番名 *">
-                          <input style={S.input} value={entry.name}
-                            placeholder="例: SU 1002B"
+                          <input style={S.input} value={entry.name} placeholder="例: SU 1002B"
                             onChange={e => patchEntry(entry.key, { name: e.target.value })} />
                         </Field>
 
-                        {/* ワークフロー */}
                         <Field label="ワークフロー *">
-                          <select style={S.input} value={entry.workflowId}
-                            onChange={e => handleWorkflowChange(entry.key, e.target.value)}>
-                            <option value="">--- 選択 ---</option>
-                            {envConfig?.workflowList.map(w => (
-                              <option key={w.id} value={w.id}>{w.name ?? w.id}</option>
-                            ))}
-                          </select>
+                          <SearchableSelect
+                            value={entry.workflowId}
+                            options={workflowOptions}
+                            onChange={v => handleWorkflowChange(entry.key, v)}
+                            placeholder="--- 選択 ---"
+                          />
                         </Field>
 
-                        {/* Fab */}
                         <Field label="Fab">
-                          <select style={S.input} value={entry.fabId}
-                            onChange={e => patchEntry(entry.key, { fabId: e.target.value })}>
-                            <option value="">--- 選択 ---</option>
-                            {envConfig?.fabList.map(f => (
-                              <option key={f.id} value={f.id}>{f.name ?? f.id}</option>
-                            ))}
-                          </select>
+                          <SearchableSelect
+                            value={entry.fabId}
+                            options={fabOptions}
+                            onChange={v => patchEntry(entry.key, { fabId: v })}
+                            placeholder="--- 選択なし ---"
+                          />
                         </Field>
 
-                        {/* 期間 */}
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                          <div style={{ flex: 1 }}>
-                            <Field label="開始日 *">
-                              <input style={S.input} type="date" value={entry.startDate}
-                                onChange={e => patchEntry(entry.key, { startDate: e.target.value })} />
-                            </Field>
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <Field label="終了日 *">
-                              <input style={S.input} type="date" value={entry.endDate}
-                                onChange={e => patchEntry(entry.key, { endDate: e.target.value })} />
-                            </Field>
-                          </div>
-                        </div>
+                        <Field label="作業開始可能日 *">
+                          <input style={S.input} type="date" value={entry.startDate}
+                            onChange={e => patchEntry(entry.key, { startDate: e.target.value })} />
+                        </Field>
 
-                        {/* 工程別工数 */}
-                        {wf && entry.opHours.length > 0 && (
+                        {/* 工程別設定 */}
+                        {wf && entry.opEntries.length > 0 && (
                           <div>
-                            <div style={S.hoursTitle}>工程別 作業工数</div>
+                            <div style={S.sectionTitle}>工程別設定</div>
                             {wf.phaseList.map((phase, pi) => (
-                              <div key={phase.id} style={{ marginBottom: 8 }}>
+                              <div key={phase.id} style={S.phaseBlock}>
                                 <div style={S.phaseLabel}>{phase.name ?? phase.id}</div>
-                                {phase.operationList.map((op, oi) => (
-                                  <div key={op.id} style={S.opRow}>
-                                    <span style={S.opName}>{op.name ?? op.id}</span>
-                                    <input
-                                      style={S.hoursInput}
-                                      type="number" min={1}
-                                      value={entry.opHours[pi]?.[oi] ?? 8}
-                                      onChange={e => setOpHour(entry.key, pi, oi, Number(e.target.value))}
-                                    />
-                                    <span style={{ fontSize: 11, color: '#888' }}>h</span>
-                                  </div>
-                                ))}
+
+                                {/* Per-phase end date */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                  <span style={{ fontSize: 11, color: '#555', width: 68, flexShrink: 0 }}>終了希望日</span>
+                                  <input
+                                    style={{ ...S.input, flex: 1 }}
+                                    type="date"
+                                    value={entry.phaseEndDates[pi] ?? ''}
+                                    onChange={e => setPhaseEndDate(entry.key, pi, e.target.value)}
+                                  />
+                                </div>
+
+                                {/* Per-operation rows */}
+                                <div style={S.opTableHeader}>
+                                  <span style={{ flex: 1 }}>工程</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>最小人数</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>最大人数</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>工数(h)</span>
+                                </div>
+                                {phase.operationList.map((op, oi) => {
+                                  const oe = entry.opEntries[pi]?.[oi];
+                                  if (!oe) return null;
+                                  return (
+                                    <div key={op.id} style={S.opRow}>
+                                      <span style={S.opName}>{op.name ?? op.id}</span>
+                                      <input type="number" min={1} value={oe.minWorker}
+                                        style={S.numInput}
+                                        onChange={e => setOpField(entry.key, pi, oi, 'minWorker', Number(e.target.value))} />
+                                      <input type="number" min={oe.minWorker} value={oe.maxWorker}
+                                        style={S.numInput}
+                                        onChange={e => setOpField(entry.key, pi, oi, 'maxWorker', Number(e.target.value))} />
+                                      <input type="number" min={1} value={oe.workloadHours}
+                                        style={S.numInput}
+                                        onChange={e => setOpField(entry.key, pi, oi, 'workloadHours', Number(e.target.value))} />
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ))}
                           </div>
@@ -316,20 +332,13 @@ export function NewScheduleDialog() {
           )}
         </div>
 
-        {/* Footer */}
         <div style={S.footer}>
           {tab === 'upload' ? (
-            <button
-              style={canUpload ? S.primaryBtn : S.disabledBtn}
-              onClick={handleImport} disabled={!canUpload}
-            >
+            <button style={canUpload ? S.primaryBtn : S.disabledBtn} onClick={handleImport} disabled={!canUpload}>
               {uploading ? '読み込み中...' : 'インポート'}
             </button>
           ) : (
-            <button
-              style={canFormSubmit ? S.primaryBtn : S.disabledBtn}
-              onClick={handleFormOk} disabled={!canFormSubmit}
-            >
+            <button style={canFormSubmit ? S.primaryBtn : S.disabledBtn} onClick={handleFormOk} disabled={!canFormSubmit}>
               OK
             </button>
           )}
@@ -343,23 +352,19 @@ export function NewScheduleDialog() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function FileRow({ label, file, onPick, onClear }: {
-  label: string; file: File | null;
-  onPick: () => void; onClear: () => void;
+  label: string; file: File | null; onPick: () => void; onClear: () => void;
 }) {
-  const S = styles;
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={S.fieldLabel}>{label}</div>
+      <div style={styles.fieldLabel}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button style={S.chooseBtn} onClick={onPick}>ファイル選択</button>
+        <button style={styles.chooseBtn} onClick={onPick}>ファイル選択</button>
         <span style={{ fontSize: 12, color: file ? '#333' : '#aaa' }}>
           {file ? file.name : '選択なし'}
         </span>
         {file && (
-          <button
-            onClick={onClear}
-            style={{ padding: '1px 6px', border: '1px solid #ccc', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}
-          >
+          <button onClick={onClear}
+            style={{ padding: '1px 6px', border: '1px solid #ccc', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}>
             ×
           </button>
         )}
@@ -390,7 +395,7 @@ function readText(file: File): Promise<string> {
   });
 }
 
-// ── Style constants ───────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = {
   overlay: {
@@ -398,8 +403,8 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 900,
   } as React.CSSProperties,
   modal: {
-    backgroundColor: '#fff', borderRadius: 6, width: 540,
-    maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+    backgroundColor: '#fff', borderRadius: 6, width: 560,
+    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
     boxShadow: '0 8px 28px rgba(0,0,0,0.35)', fontFamily: 'MS Gothic, monospace',
     overflow: 'hidden',
   } as React.CSSProperties,
@@ -420,9 +425,7 @@ const styles = {
     padding: '8px 18px', border: 'none', cursor: 'pointer', fontSize: 12,
     fontFamily: 'MS Gothic, monospace', backgroundColor: 'transparent', color: '#666',
   } as React.CSSProperties,
-  body: {
-    padding: 16, flex: 1, overflowY: 'auto',
-  } as React.CSSProperties,
+  body: { padding: 16, flex: 1, overflowY: 'auto' } as React.CSSProperties,
   footer: {
     display: 'flex', justifyContent: 'flex-end', gap: 8,
     padding: '12px 16px', borderTop: '1px solid #e0e0e0',
@@ -433,9 +436,7 @@ const styles = {
     border: '1px solid #c8d8e8', borderRadius: 3, padding: '7px 10px',
     marginBottom: 16, lineHeight: 1.6,
   } as React.CSSProperties,
-  fieldLabel: {
-    fontSize: 11, color: '#444', fontWeight: 'bold', marginBottom: 6,
-  } as React.CSSProperties,
+  fieldLabel: { fontSize: 11, color: '#444', fontWeight: 'bold', marginBottom: 6 } as React.CSSProperties,
   chooseBtn: {
     padding: '4px 12px', border: '1px solid #aaa', borderRadius: 3,
     cursor: 'pointer', fontSize: 12, backgroundColor: '#f5f5f5',
@@ -449,9 +450,7 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '6px 10px', backgroundColor: '#e8eef6', borderBottom: '1px solid #d0d5dd',
   } as React.CSSProperties,
-  cardTitle: {
-    fontSize: 12, fontWeight: 'bold', color: '#1c2b3a',
-  } as React.CSSProperties,
+  cardTitle: { fontSize: 12, fontWeight: 'bold', color: '#1c2b3a' } as React.CSSProperties,
   cardBody: { padding: '10px 12px' } as React.CSSProperties,
   iconBtn: {
     padding: '2px 8px', border: '1px solid #ccc', borderRadius: 3,
@@ -462,22 +461,28 @@ const styles = {
     width: '100%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 3,
     fontSize: 12, boxSizing: 'border-box', fontFamily: 'MS Gothic, monospace',
   } as React.CSSProperties,
-  hoursTitle: {
+  sectionTitle: {
     fontSize: 11, fontWeight: 'bold', color: '#444',
-    borderBottom: '1px solid #e0e0e0', paddingBottom: 3, marginBottom: 6,
+    borderBottom: '1px solid #e0e0e0', paddingBottom: 3, marginBottom: 8, marginTop: 4,
+  } as React.CSSProperties,
+  phaseBlock: {
+    marginBottom: 12, padding: '8px 10px', background: '#f2f6fc',
+    borderRadius: 3, border: '1px solid #d8e4f0',
   } as React.CSSProperties,
   phaseLabel: {
-    fontSize: 11, color: '#1565c0', fontWeight: 'bold',
-    padding: '2px 0', marginBottom: 4,
+    fontSize: 11, color: '#1565c0', fontWeight: 'bold', marginBottom: 6,
+  } as React.CSSProperties,
+  opTableHeader: {
+    display: 'flex', gap: 4, fontSize: 10, color: '#888', fontWeight: 'bold',
+    marginBottom: 3, paddingLeft: 4,
   } as React.CSSProperties,
   opRow: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    marginBottom: 4, paddingLeft: 10,
+    display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3,
   } as React.CSSProperties,
-  opName: { fontSize: 11, color: '#444', width: 100, flexShrink: 0 } as React.CSSProperties,
-  hoursInput: {
-    width: 64, padding: '2px 6px', border: '1px solid #ccc', borderRadius: 3,
-    fontSize: 12, textAlign: 'right', fontFamily: 'MS Gothic, monospace',
+  opName: { flex: 1, fontSize: 11, color: '#444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as React.CSSProperties,
+  numInput: {
+    width: 56, padding: '2px 4px', border: '1px solid #ccc', borderRadius: 3,
+    fontSize: 12, textAlign: 'right', fontFamily: 'MS Gothic, monospace', flexShrink: 0,
   } as React.CSSProperties,
   addEntryBtn: {
     width: '100%', padding: 8, border: '2px dashed #ccc', borderRadius: 4,

@@ -329,7 +329,10 @@ export function buildWorkerTimelineModel(
     let prev: WorkerDayCell | null = null;
     for (let i = 0; i <= dayCells.length; i += 1) {
       const current = i < dayCells.length ? dayCells[i] : null;
-      const sameAsPrev = prev && current && prev.kind === current.kind && prev.moduleName === current.moduleName;
+      const prevAssignIdx = i > 0 ? dayAssignmentIndices[i - 1]?.index : undefined;
+      const currAssignIdx = i < dayCells.length ? dayAssignmentIndices[i]?.index : undefined;
+      const sameAsPrev = prev && current && prev.kind === current.kind && prev.moduleName === current.moduleName
+        && currAssignIdx === prevAssignIdx;
 
       if (prev && !sameAsPrev) {
         if (prev.kind === 'work') {

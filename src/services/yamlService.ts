@@ -274,6 +274,7 @@ function parseOperation(raw: unknown): Operation {
     id: String(r.id ?? ''),
     name: r.name as string | undefined,
     workHours: (r.work_hours as number[]) ?? [],
+    workloadHours: r.workload_hours != null ? Number(r.workload_hours) : undefined,
     minWorkerNum: Number(r.min_worker_num ?? 0),
     maxWorkerNum: Number(r.max_worker_num ?? 0),
   };
