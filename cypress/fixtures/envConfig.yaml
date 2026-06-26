@@ -1,0 +1,63 @@
+environment:
+  workflow_list:
+    - id: wf_standard
+      name: Standard Workflow
+      phase_list:
+        - id: p1
+          name: Module Setup
+          operation_list:
+            - id: p1o1
+              name: Heavy
+              work_hours: [8, 10, 12]
+              workload_hours: 160
+              min_worker_num: 2
+              max_worker_num: 3
+            - id: p1o2
+              name: Elec
+              work_hours: [8]
+              workload_hours: 80
+              min_worker_num: 1
+              max_worker_num: 2
+        - id: p2
+          name: Function Setup
+          operation_list:
+            - id: p2o1
+              name: Test
+              work_hours: [8]
+              workload_hours: 40
+              min_worker_num: 1
+              max_worker_num: 2
+    - id: wf_misc
+      name: Other Work
+      phase_list: []
+  fab_list:
+    - id: fab_osaka
+      name: Osaka Fab
+      region: region_kansai
+      unavailable_dates: []
+  region_list:
+    - id: region_kansai
+      name: Kansai
+      unavailable_dates: []
+  customer_company_list: []
+  worker_company_list:
+    - id: co001
+      name: TechCorp
+      unavailable_dates: []
+  worker_list:
+    - id: w001
+      name: Alice Tanaka
+      worker_company: co001
+      unavailable_dates: []
+    - id: w002
+      name: Bob Yamada
+      worker_company: co001
+      unavailable_dates:
+        - single:
+            days:
+              - "2025-09-10"
+    - id: w003
+      name: Carol Sato
+      worker_company: co001
+      unavailable_dates: []
+  transited_day_map: []

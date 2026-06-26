@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/utils",
+    "src/services",
+    "src/types",
+    "src/context",
+    "src/__tests__",
+    "src/__mocks__",
+    "src/setupTests.ts",
+    "src/components/GanttChart/workerViewModel.ts",
+    "src/components/GanttChart/moduleViewModel.ts"
+  ]
+}

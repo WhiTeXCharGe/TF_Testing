@@ -1,0 +1,92 @@
+schedule:
+  plan_range:
+    start_date: "2025-09-01"
+    end_date: "2025-09-30"
+  workflow_task_list:
+    - id: wt001
+      name: SU-1001
+      workflow: wf_standard
+      fab: fab_osaka
+      phase_task_list:
+        - id: wt001_p1
+          name: Module Setup
+          phase: p1
+          start_date: "2025-09-01"
+          end_date: "2025-09-15"
+          operation_task_list:
+            - id: wt001_p1_o1
+              name: Heavy
+              operation: p1o1
+              workload_hours: 160
+              recommends_worker_min: 2
+              recommends_worker_max: 3
+            - id: wt001_p1_o2
+              name: Elec
+              operation: p1o2
+              workload_hours: 80
+        - id: wt001_p2
+          name: Function Setup
+          phase: p2
+          start_date: "2025-09-16"
+          end_date: "2025-09-30"
+          operation_task_list:
+            - id: wt001_p2_o1
+              name: Test
+              operation: p2o1
+              workload_hours: 40
+    - id: wt002
+      name: SU-1002
+      workflow: wf_standard
+      fab: fab_osaka
+      phase_task_list:
+        - id: wt002_p1
+          name: Module Setup
+          phase: p1
+          start_date: "2025-09-05"
+          end_date: "2025-09-20"
+          operation_task_list:
+            - id: wt002_p1_o1
+              name: Heavy
+              operation: p1o1
+              workload_hours: 160
+    - id: misc001
+      name: Other Dummy Work
+      workflow: wf_misc
+      phase_task_list: []
+  assignment_list:
+    - worker: w001
+      operation_task: wt001_p1_o1
+      start_date: "2025-09-01"
+      end_date: "2025-09-08"
+      plan_flexibility: Flexible
+      work_date_list:
+        - date: "2025-09-01"
+          hour: 8
+        - date: "2025-09-02"
+          hour: 8
+        - date: "2025-09-03"
+          hour: 8
+    - worker: w002
+      operation_task: wt001_p1_o2
+      start_date: "2025-09-01"
+      end_date: "2025-09-05"
+      plan_flexibility: Flexible
+      work_date_list:
+        - date: "2025-09-01"
+          hour: 8
+    - worker: w003
+      operation_task: wt001_p2_o1
+      start_date: "2025-09-16"
+      end_date: "2025-09-20"
+      plan_flexibility: Reluctant
+      work_date_list:
+        - date: "2025-09-16"
+          hour: 8
+    - worker: w001
+      operation_task: wt002_p1_o1
+      start_date: "2025-09-10"
+      end_date: "2025-09-15"
+      plan_flexibility: Flexible
+      work_date_list:
+        - date: "2025-09-10"
+          hour: 8
