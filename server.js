@@ -66,6 +66,9 @@ const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS || '2', 10);
 let activeCount = 0;
 const pendingQueue = []; // Array of { runId, inputDir }
 
+/** Map of runId → child_process so we can kill containers on cancel/delete. */
+const runningProcs = new Map();
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Generate a run ID like 20260610_143022500 */
@@ -121,8 +124,11 @@ function launchContainer(runId, inputDir) {
   const outputDir = path.join(OUTPUT_DIR, runId);
   fs.mkdirSync(outputDir, { recursive: true });
 
+  const containerName = `tf-${runId}`;
+
   const args = [
     'run', '--rm',
+    '--name', containerName,
     '-e', `RUN_ID=${runId}`,
     '-v', `${dp(inputDir)}:/work/input:ro`,
     '-v', `${dp(outputDir)}:/work/output`,
@@ -133,12 +139,14 @@ function launchContainer(runId, inputDir) {
   console.log(`[docker:${runId}] starting — docker run ${args.join(' ')}`);
 
   const proc = spawn('docker', args, { stdio: 'pipe' });
+  runningProcs.set(runId, proc);
 
   proc.stdout.on('data', d => process.stdout.write(`[docker:${runId}] ${d}`));
   proc.stderr.on('data', d => process.stderr.write(`[docker:${runId}] ${d}`));
 
   proc.on('error', err => {
     console.error(`[docker:${runId}] spawn failed:`, err.message);
+    runningProcs.delete(runId);
     writeStatus(runId, {
       status: 'Failed',
       stage: null,
@@ -150,16 +158,17 @@ function launchContainer(runId, inputDir) {
 
   proc.on('close', code => {
     console.log(`[docker:${runId}] container exited (code ${code})`);
+    runningProcs.delete(runId);
     if (code !== 0) {
       const current = readStatus(runId);
-      if (!current || current.status === 'Submitted') {
+      if (!current || current.status === 'Submitted' || current.status === 'Running') {
         writeStatus(runId, {
           status: 'Failed',
           stage: null,
           progress: 0,
           error: {
             type: 'UnknownError',
-            message: `Container exited with code ${code} before writing status — check: docker logs tf-solver`,
+            message: `Container exited with code ${code} before writing status — check: docker logs ${containerName}`,
           },
         });
       }
@@ -217,7 +226,10 @@ app.post(
         return res.status(400).json({ error: 'Missing required field: sched (Schedule.yaml)' });
       }
 
-      const runId    = generateRunId();
+      // Prefer the runId the webapp already created (keeps IDs in sync).
+      // Fall back to generating one if the field is absent or invalid.
+      const proposed = (req.body && typeof req.body.runId === 'string') ? req.body.runId.trim() : '';
+      const runId    = proposed && isValidRunId(proposed) ? proposed : generateRunId();
       const inputDir = path.join(INPUT_DIR, runId);
       fs.mkdirSync(inputDir, { recursive: true });
 
@@ -341,6 +353,115 @@ app.get('/queue', (_req, res) => {
     maxConcurrent: MAX_CONCURRENT,
     active:  activeCount,
     pending: pendingQueue.map(r => r.runId),
+  });
+});
+
+// ── DELETE /run/:runId ────────────────────────────────────────────────────────
+//
+// Cancel a running container (if active) and delete all service data for the run.
+//
+// Response 200: { ok: true, runId }
+// Response 400: { error: "..." }   — invalid runId format
+// Response 500: { error: "..." }   — unexpected error
+
+app.delete('/run/:runId', (req, res) => {
+  const { runId } = req.params;
+
+  if (!isValidRunId(runId)) {
+    return res.status(400).json({ error: 'Invalid runId format' });
+  }
+
+  try {
+    // 1. Remove from pending queue (if waiting to start).
+    const queueIdx = pendingQueue.findIndex(r => r.runId === runId);
+    if (queueIdx !== -1) {
+      pendingQueue.splice(queueIdx, 1);
+      console.log(`[cancel:${runId}] removed from pending queue`);
+    }
+
+    // 2. Kill the running Docker container (via proc kill + docker kill).
+    const proc = runningProcs.get(runId);
+    if (proc) {
+      proc.kill('SIGTERM');
+      runningProcs.delete(runId);
+      console.log(`[cancel:${runId}] sent SIGTERM to docker run process`);
+    }
+    // Also attempt via docker kill in case proc reference is stale.
+    const containerName = `tf-${runId}`;
+    spawn('docker', ['kill', containerName], { stdio: 'ignore' });
+
+    // 3. Mark status as Cancelled so the webapp reflects the state.
+    writeStatus(runId, {
+      status: 'Cancelled',
+      stage: null,
+      progress: 0,
+      error: null,
+    });
+
+    // 4. Clean up service-side data folders.
+    const toRemove = [
+      path.join(INPUT_DIR,  runId),
+      path.join(OUTPUT_DIR, runId),
+      path.join(STATUS_DIR, `${runId}.json`),
+    ];
+    for (const p of toRemove) {
+      if (fs.existsSync(p)) {
+        const stat = fs.statSync(p);
+        if (stat.isDirectory()) fs.rmSync(p, { recursive: true, force: true });
+        else fs.unlinkSync(p);
+      }
+    }
+
+    console.log(`[cancel:${runId}] cleaned up service data`);
+    return res.status(200).json({ ok: true, runId });
+  } catch (err) {
+    console.error(`[cancel:${runId}] error:`, err);
+    return res.status(500).json({ error: `Cancel failed: ${err.message}` });
+  }
+});
+
+// ── GET /docker ───────────────────────────────────────────────────────────────
+//
+// Shows real Docker container state for all tf-* containers plus the
+// service's internal queue counters. Good for debugging in Postman or curl.
+//
+// Response 200: { maxConcurrent, active, pending, containers: [...] }
+
+app.get('/docker', (_req, res) => {
+  const proc = spawn('docker', [
+    'ps', '-a',
+    '--filter', 'name=tf-',
+    '--format', '{{.Names}}\t{{.Status}}\t{{.RunningFor}}\t{{.ID}}',
+  ], { stdio: 'pipe' });
+
+  let stdout = '';
+  let stderr = '';
+  proc.stdout.on('data', d => { stdout += d; });
+  proc.stderr.on('data', d => { stderr += d; });
+
+  proc.on('error', err => {
+    return res.status(500).json({ error: `docker ps failed: ${err.message}` });
+  });
+
+  proc.on('close', code => {
+    const containers = stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const [name, status, runningFor, id] = line.split('\t');
+        return { name, status, runningFor, id };
+      });
+
+    return res.status(200).json({
+      maxConcurrent: MAX_CONCURRENT,
+      active:  activeCount,
+      pending: pendingQueue.map(r => r.runId),
+      watching: [...runningProcs.keys()],
+      containers,
+      dockerExitCode: code,
+      dockerStderr: stderr.trim() || null,
+    });
   });
 });
 
