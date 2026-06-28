@@ -316,11 +316,20 @@ interface UploadDoneDialog {
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
+/** Poll interval for active solver runs (ms). */
+const POLL_INTERVAL_MS = 5000;
+
+/** Status values that mean the run is still in progress. */
+function isActiveStatus(s: string) {
+  return s === 'Submitted' || s === 'Running';
+}
+
 export function RunLogPage() {
   const {
     runs, loading, error,
     submitNewRun, checkOutput, removeRun,
     solverEnabled, submitToSolver, checkRunStatus, triggerDownload,
+    cancelRunOnService,
   } = useRuns();
   const [popup, setPopup] = useState<PopupState | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -336,6 +345,43 @@ export function RunLogPage() {
   const [uploadDone,     setUploadDone]     = useState<UploadDoneDialog | null>(null);
   const [downloadedPaths,setDownloadedPaths]= useState<Record<string, string>>({});
   const [confirmDel,     setConfirmDel]     = useState<Run | null>(null);
+
+  // ── Solver status polling ──────────────────────────────────────────────────
+  // Tracks live status for runs submitted to the solver in this session.
+  // Map of runId → RunStatus (only populated when solverEnabled).
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, RunStatus>>({});
+  // Set of runIds actively being polled.
+  const [watching, setWatching] = useState<Set<string>>(new Set());
+
+  // Add a runId to the watch list (called right after submitToSolver succeeds).
+  function startWatching(runId: string) {
+    setWatching(prev => new Set(prev).add(runId));
+    setLiveStatuses(prev => ({ ...prev, [runId]: { status: 'Submitted', stage: null, progress: 0 } }));
+  }
+
+  // Poll every POLL_INTERVAL_MS for all watched runs.
+  useEffect(() => {
+    if (!solverEnabled || watching.size === 0) return;
+
+    const tick = async () => {
+      for (const runId of watching) {
+        try {
+          const st = await checkRunStatus(runId);
+          setLiveStatuses(prev => ({ ...prev, [runId]: st }));
+          if (!isActiveStatus(st.status)) {
+            // Remove from watch once terminal.
+            setWatching(prev => { const n = new Set(prev); n.delete(runId); return n; });
+          }
+        } catch {
+          // Network error — keep watching, try again next tick.
+        }
+      }
+    };
+
+    const id = setInterval(() => { void tick(); }, POLL_INTERVAL_MS);
+    void tick(); // run immediately on mount / watching change
+    return () => clearInterval(id);
+  }, [solverEnabled, watching, checkRunStatus]);
 
   const outputDirForRun = (runId: string) => `/local/${runId}/output/`;
   const progressPercent = (progress?: number) => {
@@ -377,6 +423,7 @@ export function RunLogPage() {
     if (solverEnabled) {
       try {
         await submitToSolver(run.id, p.envFile, p.schedFile);
+        startWatching(run.id);
       } catch (err) {
         // Non-fatal: local row was already created; show a warning but close the modal.
         setSolverError({ run, message: String((err as Error).message || err) });
@@ -451,7 +498,19 @@ export function RunLogPage() {
 
   async function handleConfirmDelete() {
     if (!confirmDel) return;
-    await removeRun(confirmDel.id);
+    const id = confirmDel.id;
+    // Stop polling for this run immediately.
+    setWatching(prev => { const n = new Set(prev); n.delete(id); return n; });
+    // If the solver backend is configured, cancel/clean up there first.
+    // Non-fatal: proceed with local removal even if the service call fails.
+    if (solverEnabled) {
+      try {
+        await cancelRunOnService(id);
+      } catch {
+        // ignore — container may have already finished or never started
+      }
+    }
+    await removeRun(id);
     setConfirmDel(null);
   }
 
@@ -479,7 +538,9 @@ export function RunLogPage() {
               </tr>
             </thead>
             <tbody>
-              {runs.map(run => (
+              {runs.map(run => {
+                const live = solverEnabled ? liveStatuses[run.id] : undefined;
+              return (
                 <tr key={run.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <div className="solve-date">{nowLabel(run.solveDate)}</div>
@@ -501,11 +562,9 @@ export function RunLogPage() {
                   </td>
                   <td>
                     {(() => {
-                      // If the output yaml exists, the run is finished → "Delete".
-                      // If not, the run is either in-progress or never started → "Cancel".
-                      // Both buttons do the same thing locally (remove row + folder).
-                      // On the Azure side, Cancel will also terminate the running Batch task.
-                      const finished = run.outputHasYaml;
+                      // If live status is terminal or output exists → "Delete"; otherwise → "Cancel".
+                      const finished = run.outputHasYaml
+                        || (live != null && !isActiveStatus(live.status));
                       const label = finished ? UI.runLog.deleteBtn : UI.runLog.cancelBtn;
                       return (
                         <button
@@ -519,7 +578,8 @@ export function RunLogPage() {
                     })()}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {loading && runs.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--text-sec)' }}>

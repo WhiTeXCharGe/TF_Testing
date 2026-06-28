@@ -93,6 +93,21 @@ export async function downloadOutput(
   }
 }
 
+/**
+ * DELETE /run/:runId
+ * Cancel a running container and delete all service-side data for the run.
+ * Non-fatal if the run was never submitted to the solver.
+ */
+export async function cancelRun(runId: string): Promise<void> {
+  try {
+    await axios.delete(
+      `${APP_CONFIG.apiBaseUrl}/run/${encodeURIComponent(runId)}`,
+    );
+  } catch (err) {
+    throw new Error(extractMessage(err, 'Cancel failed'));
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractMessage(err: unknown, fallback: string): string {

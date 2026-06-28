@@ -6,7 +6,7 @@ import {
   type UploadPayload,
 } from '@/services/runStore';
 import {
-  submitRun, checkStatus, downloadOutput,
+  submitRun, checkStatus, downloadOutput, cancelRun,
   type RunStatus,
 } from '@/services/runService';
 
@@ -32,6 +32,8 @@ export interface UseRuns {
   checkRunStatus: (runId: string) => Promise<RunStatus>;
   /** GET /download/:runId — download output YAML as a Blob. */
   triggerDownload: (runId: string) => Promise<{ blob: Blob; filename: string }>;
+  /** DELETE /run/:runId — kill the Docker container + purge service data. */
+  cancelRunOnService: (runId: string) => Promise<void>;
 }
 
 export function useRuns(): UseRuns {
@@ -90,6 +92,11 @@ export function useRuns(): UseRuns {
     [],
   );
 
+  const cancelRunOnService = useCallback(
+    (runId: string) => cancelRun(runId),
+    [],
+  );
+
   return {
     runs, loading, error, refresh,
     submitNewRun,
@@ -99,5 +106,6 @@ export function useRuns(): UseRuns {
     submitToSolver,
     checkRunStatus,
     triggerDownload,
+    cancelRunOnService,
   };
 }
