@@ -46,7 +46,7 @@ export function ModuleViewFilter() {
     !!f.startDate ||
     !!f.endDate;
 
-  const clearAll = () => dispatch({ type: 'SET_MODULE_VIEW_FILTER', payload: { ...DEFAULT_MODULE_VIEW_FILTER } });
+  const clearAll = () => dispatch({ type: 'CLEAR_ALL_WORKER_FILTERS' });
 
   return (
     <div style={S.root}>

@@ -85,6 +85,10 @@ interface Props {
   onClearMetaFilter: (key: WorkerFilterKey) => void;
   onClearSelectedDateTask: () => void;
   onChangeRemarks: (workerId: string, value: string) => void;
+  /** When non-null, only bars whose assignmentIndex is in this set are highlighted; others are dimmed. */
+  highlightedAssignmentIndices: Set<number> | null;
+  /** When non-empty, bars whose label includes this string are additionally highlighted. */
+  highlightBarName: string;
 }
 
 export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
@@ -109,7 +113,11 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   onClearSelectedDateTask,
   onChangeRemarks,
   onUnavailableDragCommit,
+  highlightedAssignmentIndices,
+  highlightBarName,
 }: Props) {
+  // highlight mode is active when any global filter (non-date) is set
+  const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -545,6 +553,14 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 const hasViolation = segment.assignmentIndex !== undefined && violationAssignmentIndices.has(segment.assignmentIndex);
                 const inDrag = dragPreview?.assignmentIndex === segment.assignmentIndex;
 
+                // Highlight logic: a bar is highlighted when it matches the active global filter.
+                const matchesAssignment = segment.assignmentIndex !== undefined
+                  && (highlightedAssignmentIndices === null || highlightedAssignmentIndices.has(segment.assignmentIndex));
+                const matchesBarName = !highlightBarName
+                  || segment.label.toLowerCase().includes(highlightBarName.toLowerCase());
+                const isHighlighted = highlightModeActive && matchesAssignment && matchesBarName && segment.kind !== 'unavailable';
+                const isDimmed = false;
+
                 return (
                   <button
                     key={`${row.workerId}_${segment.startIndex}_${segment.endIndex}_${segment.kind}_${segment.assignmentIndex ?? 'na'}`}
@@ -580,6 +596,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                         ? '2px solid #145da0'
                         : hasViolation
                         ? '2px solid #c62828'
+                        : isHighlighted
+                        ? '2px solid #1565c0'
                         : '1px solid rgba(0,0,0,0.1)',
                       backgroundColor: segment.color,
                       color: segment.textColor,
@@ -590,8 +608,12 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       textOverflow: 'ellipsis',
                       fontSize: 10,
                       cursor: 'grab',
-                      opacity: inDrag || (unavailDragPreview?.workerId === row.workerId && segment.kind === 'unavailable' && segment.startIndex >= (unavailDragPreview?.startIndex ?? -1) && segment.endIndex <= (unavailDragPreview?.endIndex ?? -1)) ? 0.3 : 1,
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                      opacity: inDrag || (unavailDragPreview?.workerId === row.workerId && segment.kind === 'unavailable' && segment.startIndex >= (unavailDragPreview?.startIndex ?? -1) && segment.endIndex <= (unavailDragPreview?.endIndex ?? -1))
+                        ? 0.3
+                        : isDimmed ? 0.3 : 1,
+                      boxShadow: isHighlighted
+                        ? '0 0 0 2px rgba(21,101,192,0.45), 0 1px 3px rgba(0,0,0,0.2)'
+                        : '0 1px 2px rgba(0,0,0,0.15)',
                     }}
                     title={segment.label}
                   >
@@ -720,6 +742,8 @@ function PopupMultiSelect({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open, compact]);
 
+  const filterActive = isActive || selected.length > 0;
+
   return (
     <>
       <button
@@ -733,15 +757,20 @@ function PopupMultiSelect({
         style={{
           border: 'none',
           background: 'transparent',
+          borderRadius: 3,
           cursor: 'pointer',
           fontSize: compact ? 9 : 11,
           lineHeight: 1,
-          padding: compact ? '0 1px' : '0 2px',
-          color: isActive || selected.length > 0 ? '#145da0' : '#6f8094',
+          padding: compact ? '0 2px' : '1px 4px',
+          color: '#1e334b',
+          fontWeight: 400,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 2,
         }}
         title={UI.filterTitle}
       >
-        ▼
+        <span style={{ display: 'inline-block', transform: filterActive ? 'rotate(180deg)' : 'none' }}>▾</span>
       </button>
       {open && (
         <div

@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, Dispatch, ReactNode } from 'react';
-import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER } from '../types/appState';
+import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../types/appState';
 import { reducer } from './reducer';
 
 const initialState: AppState = {
@@ -14,6 +14,8 @@ const initialState: AppState = {
   expandedDeviceIds: new Set(),
   workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
   moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
+  workerColumnFilter: { ...DEFAULT_WORKER_COLUMN_FILTER },
+  workerDateCellFilter: { date: '', tasks: [] },
   currentEnvPath: null,
   currentSchedulePath: null,
   errorMessage: null,

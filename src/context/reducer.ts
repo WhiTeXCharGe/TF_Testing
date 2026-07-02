@@ -1,4 +1,4 @@
-import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER } from '../types/appState';
+import { AppState, ActionType, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../types/appState';
 import { ScheduleData, PlanFlexibility } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { MAX_UNDO_STACK } from '../config/appConfig';
@@ -60,6 +60,8 @@ export function reducer(state: AppState, action: ActionType): AppState {
         selectedAssignmentIndex: null,
         workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
         moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
+        workerColumnFilter: { ...DEFAULT_WORKER_COLUMN_FILTER },
+        workerDateCellFilter: { date: '', tasks: [] },
       };
 
     case 'SET_SCHEDULE':
@@ -245,6 +247,21 @@ export function reducer(state: AppState, action: ActionType): AppState {
 
     case 'SET_MODULE_VIEW_FILTER':
       return { ...state, moduleViewFilter: { ...state.moduleViewFilter, ...action.payload } };
+
+    case 'SET_WORKER_COLUMN_FILTER':
+      return { ...state, workerColumnFilter: { ...state.workerColumnFilter, ...action.payload } };
+
+    case 'SET_WORKER_DATE_CELL_FILTER':
+      return { ...state, workerDateCellFilter: action.payload };
+
+    case 'CLEAR_ALL_WORKER_FILTERS':
+      return {
+        ...state,
+        workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
+        moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
+        workerColumnFilter: { ...DEFAULT_WORKER_COLUMN_FILTER },
+        workerDateCellFilter: { date: '', tasks: [] },
+      };
 
     case 'ADD_ASSIGNMENT': {
       if (!state.schedule) return state;

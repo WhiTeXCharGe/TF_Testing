@@ -1,31 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { WorkerTimelineGrid, BarDragCommit } from './WorkerTimelineGrid';
 import { buildWorkerTimelineModel } from './workerViewModel';
 import { addDays, formatDate } from '../../utils/dateUtils';
 
 type WorkerFilterKey = 'company' | 'name' | 'manager' | 'remarks';
-type WorkerFilters = Record<WorkerFilterKey, Set<string>>;
 
 interface Props {
   dates: string[];
 }
-
-function cloneFilters(src: WorkerFilters): WorkerFilters {
-  return {
-    company: new Set(src.company),
-    name: new Set(src.name),
-    manager: new Set(src.manager),
-    remarks: new Set(src.remarks),
-  };
-}
-
-const EMPTY_FILTERS: WorkerFilters = {
-  company: new Set<string>(),
-  name: new Set<string>(),
-  manager: new Set<string>(),
-  remarks: new Set<string>(),
-};
 
 // Build lookup: workerId → { wfTaskIds, phaseIds, fabIds, regionIds }
 function buildWorkerAssignmentIndex(
@@ -68,11 +51,21 @@ function buildWorkerAssignmentIndex(
 
 export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
-  const { schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter } = state;
+  const {
+    schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter,
+    workerColumnFilter, workerDateCellFilter,
+  } = state;
 
-  const [filters, setFilters] = useState<WorkerFilters>(EMPTY_FILTERS);
-  const [selectedDateForCellFilter, setSelectedDateForCellFilter] = useState('');
-  const [selectedDateTasks, setSelectedDateTasks] = useState<Set<string>>(new Set());
+  // Convert array-based context state to Sets for filter logic.
+  const filters = useMemo(() => ({
+    company: new Set(workerColumnFilter.company),
+    name:    new Set(workerColumnFilter.name),
+    manager: new Set(workerColumnFilter.manager),
+    remarks: new Set(workerColumnFilter.remarks),
+  }), [workerColumnFilter]);
+
+  const selectedDateForCellFilter = workerDateCellFilter.date;
+  const selectedDateTasks = useMemo(() => new Set(workerDateCellFilter.tasks), [workerDateCellFilter.tasks]);
 
   const dateIndex = useMemo(
     () => new Map(dates.map((d, i) => [d, i])),
@@ -156,21 +149,59 @@ export function WorkerViewGantt({ dates }: Props) {
     });
   }, [columnFilteredRows, workerViewFilter, schedule, envConfig]);
 
-  const toggleMetaFilter = (key: WorkerFilterKey, value: string) => {
-    setFilters(prev => {
-      const next = cloneFilters(prev);
-      if (next[key].has(value)) next[key].delete(value);
-      else next[key].add(value);
-      return next;
+  // ── Highlight: assignments that specifically match the active global filter ──
+  // null = no highlight mode (no global filter active).
+  const highlightedAssignmentIndices = useMemo<Set<number> | null>(() => {
+    const { barName, moduleIds, phaseIds, fabIds, regionIds } = workerViewFilter;
+    const hasFilter = barName || moduleIds.length > 0 || phaseIds.length > 0 || fabIds.length > 0 || regionIds.length > 0;
+    if (!hasFilter || !schedule) return null;
+
+    const fabToRegion = new Map(envConfig?.fabList.map(f => [f.id, f.region ?? '']) ?? []);
+    const opToWf    = new Map<string, string>();
+    const opToPhase = new Map<string, string>();
+    const wfFab     = new Map<string, string>();
+    const wfRegion  = new Map<string, string>();
+
+    for (const wt of schedule.workflowTaskList) {
+      wfFab.set(wt.id, wt.fab ?? '');
+      wfRegion.set(wt.id, wt.region ?? (wt.fab ? (fabToRegion.get(wt.fab) ?? '') : ''));
+      for (const pt of wt.phaseTaskList) {
+        for (const ot of pt.operationTaskList) {
+          opToWf.set(ot.id, wt.id);
+          opToPhase.set(ot.id, pt.phase);
+        }
+      }
+    }
+
+    const result = new Set<number>();
+    schedule.assignmentList.forEach((a, idx) => {
+      const wfId    = opToWf.get(a.operationTask) ?? '';
+      const phaseId = opToPhase.get(a.operationTask) ?? '';
+      const fabId   = wfFab.get(wfId) ?? '';
+      const regionId = wfRegion.get(wfId) ?? '';
+      if (moduleIds.length > 0  && !moduleIds.includes(wfId))    return;
+      if (phaseIds.length > 0   && !phaseIds.includes(phaseId))  return;
+      if (fabIds.length > 0     && !fabIds.includes(fabId))      return;
+      if (regionIds.length > 0  && !regionIds.includes(regionId)) return;
+      result.add(idx);
     });
+    return result;
+  }, [workerViewFilter, schedule, envConfig]);
+
+  const highlightBarName = workerViewFilter.barName;
+
+  // ── Column filter callbacks (now dispatch to context) ─────────────────────
+
+  const toggleMetaFilter = (key: WorkerFilterKey, value: string) => {
+    const current = workerColumnFilter[key];
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value];
+    dispatch({ type: 'SET_WORKER_COLUMN_FILTER', payload: { [key]: next } });
   };
 
   const clearMetaFilter = (key: WorkerFilterKey) => {
-    setFilters(prev => {
-      const next = cloneFilters(prev);
-      next[key].clear();
-      return next;
-    });
+    dispatch({ type: 'SET_WORKER_COLUMN_FILTER', payload: { [key]: [] } });
   };
 
   const handleBarCommit = (commit: BarDragCommit) => {
@@ -249,33 +280,34 @@ export function WorkerViewGantt({ dates }: Props) {
       }
       onBarCommit={handleBarCommit}
       metaFilterValues={{
-        company: [...filters.company],
-        name: [...filters.name],
-        manager: [...filters.manager],
-        remarks: [...filters.remarks],
+        company: workerColumnFilter.company,
+        name:    workerColumnFilter.name,
+        manager: workerColumnFilter.manager,
+        remarks: workerColumnFilter.remarks,
       }}
       metaFilterOptions={metaFilterOptions}
       onToggleMetaFilter={toggleMetaFilter}
       selectedDateForCellFilter={selectedDateForCellFilter}
-      onSelectedDateForCellFilterChange={value => {
-        setSelectedDateForCellFilter(prev => {
-          if (prev !== value) setSelectedDateTasks(new Set());
-          return value;
+      onSelectedDateForCellFilterChange={date => {
+        dispatch({
+          type: 'SET_WORKER_DATE_CELL_FILTER',
+          payload: { date, tasks: date !== selectedDateForCellFilter ? [] : workerDateCellFilter.tasks },
         });
       }}
       selectedDateTaskValues={[...selectedDateTasks]}
       selectedDateTaskOptions={selectedDateForCellFilter ? (model.dateWorkOptions[selectedDateForCellFilter] ?? []) : []}
       dateTaskOptionsByDate={model.dateWorkOptions}
       onToggleSelectedDateTask={value => {
-        setSelectedDateTasks(prev => {
-          const next = new Set(prev);
-          if (next.has(value)) next.delete(value);
-          else next.add(value);
-          return next;
-        });
+        const current = workerDateCellFilter.tasks;
+        const next = current.includes(value)
+          ? current.filter(t => t !== value)
+          : [...current, value];
+        dispatch({ type: 'SET_WORKER_DATE_CELL_FILTER', payload: { date: selectedDateForCellFilter, tasks: next } });
       }}
       onClearMetaFilter={clearMetaFilter}
-      onClearSelectedDateTask={() => setSelectedDateTasks(new Set())}
+      onClearSelectedDateTask={() =>
+        dispatch({ type: 'SET_WORKER_DATE_CELL_FILTER', payload: { date: selectedDateForCellFilter, tasks: [] } })
+      }
       onChangeRemarks={(workerId, value) =>
         dispatch({ type: 'UPDATE_WORKER_DEFINITION', payload: { workerId, definition: value } })
       }
@@ -286,6 +318,8 @@ export function WorkerViewGantt({ dates }: Props) {
           dispatch({ type: 'RESIZE_UNAVAILABLE_RANGE', payload: { workerId, oldStartDate, oldEndDate, newStartDate, newEndDate } });
         }
       }}
+      highlightedAssignmentIndices={highlightedAssignmentIndices}
+      highlightBarName={highlightBarName}
     />
   );
 }

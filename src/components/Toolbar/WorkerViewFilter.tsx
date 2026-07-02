@@ -43,7 +43,9 @@ export function WorkerViewFilter() {
     return envConfig.regionList.map(r => ({ value: r.id, label: r.name ?? r.id }));
   }, [envConfig]);
 
-  // ── Dirty check ──────────────────────────────────────────────────────────
+  // ── Dirty check (includes column filters) ────────────────────────────────
+
+  const { workerColumnFilter: cf, workerDateCellFilter: dcf } = state;
 
   const hasAny =
     !!f.barName ||
@@ -52,9 +54,14 @@ export function WorkerViewFilter() {
     f.fabIds.length > 0 ||
     f.regionIds.length > 0 ||
     !!f.startDate ||
-    !!f.endDate;
+    !!f.endDate ||
+    cf.company.length > 0 ||
+    cf.name.length > 0 ||
+    cf.manager.length > 0 ||
+    cf.remarks.length > 0 ||
+    dcf.tasks.length > 0;
 
-  const clearAll = () => dispatch({ type: 'SET_WORKER_VIEW_FILTER', payload: { ...DEFAULT_WORKER_VIEW_FILTER } });
+  const clearAll = () => dispatch({ type: 'CLEAR_ALL_WORKER_FILTERS' });
 
   return (
     <div style={S.root}>

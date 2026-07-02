@@ -45,6 +45,24 @@ export const DEFAULT_MODULE_VIEW_FILTER: ModuleViewFilter = {
   startDate: null, endDate: null,
 };
 
+/** Column-level filter (company/name/manager/remarks header dropdowns). */
+export interface WorkerColumnFilter {
+  company: string[];
+  name: string[];
+  manager: string[];
+  remarks: string[];
+}
+
+export const DEFAULT_WORKER_COLUMN_FILTER: WorkerColumnFilter = {
+  company: [], name: [], manager: [], remarks: [],
+};
+
+/** Date-cell filter (clicking a date column to filter by task name). */
+export interface WorkerDateCellFilter {
+  date: string;
+  tasks: string[];
+}
+
 export interface AppState {
   envConfig: EnvConfig | null;
   schedule: ScheduleData | null;
@@ -57,6 +75,8 @@ export interface AppState {
   expandedDeviceIds: Set<string>;
   workerViewFilter: WorkerViewFilter;
   moduleViewFilter: ModuleViewFilter;
+  workerColumnFilter: WorkerColumnFilter;
+  workerDateCellFilter: WorkerDateCellFilter;
   currentEnvPath: string | null;
   currentSchedulePath: string | null;
   errorMessage: string | null;
@@ -100,4 +120,7 @@ export type ActionType =
   | { type: 'UPDATE_WORKFLOW_TASK_COLOR'; payload: { workflowTaskId: string; colorCode: string } }
   | { type: 'UPDATE_WORKER_DEFINITION'; payload: { workerId: string; definition: string } }
   | { type: 'ADD_UNAVAILABLE_DATES'; payload: Array<{ workerId: string; dates: string[] }> }
-  | { type: 'RESIZE_UNAVAILABLE_RANGE'; payload: { workerId: string; oldStartDate: string; oldEndDate: string; newStartDate: string; newEndDate: string } };
+  | { type: 'RESIZE_UNAVAILABLE_RANGE'; payload: { workerId: string; oldStartDate: string; oldEndDate: string; newStartDate: string; newEndDate: string } }
+  | { type: 'SET_WORKER_COLUMN_FILTER'; payload: Partial<WorkerColumnFilter> }
+  | { type: 'SET_WORKER_DATE_CELL_FILTER'; payload: WorkerDateCellFilter }
+  | { type: 'CLEAR_ALL_WORKER_FILTERS' };
