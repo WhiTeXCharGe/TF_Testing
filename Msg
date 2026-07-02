@@ -1,33 +1,633 @@
-# YWT — GitHub Copilot 活用記録
+
+
+# Scheduler Web API 連携ガイド
+
+  
+## 1. 概要
+
+### 1.1 API の目的
+
+この API は、Web アプリが通信する**唯一の入口**です。Azure Blob Storage とソルバーバックエンドの前段に位置する HTTP ファサード（**HTTP トリガー関数を持つ Azure Function App**）です。
+Web アプリは、オーケストレーションのためにソルバーやストレージと直接通信することはありません。Web アプリが行うのは次の操作のみです。
+
+1. 解析リクエストを**送信**する（2 つの YAML ファイルをアップロード）。
+2. ステータスを**取得**する（ユーザー操作時のみ）。
+3. 結果を**ダウンロード**する。
+4. 必要に応じて実行を**キャンセル**または**削除**する。
+### 1.2 ワークフロー
+```mermaid
+
+graph LR
+
+    W[Web App]
+
+    API[Azure Functions API]
+
+    BLOB[(Blob Storage)]
+
+    BACK[Solver Backend]
+
+    W -->|"POST /runSolver"| API
+
+    API -->|"入力 + status.json を保存"| BLOB
+
+    API -->|"解析ジョブを開始"| BACK
+
+    API -->|"202 Accepted: runId"| W
+
+    W -->|"GET /status/runId"| API
+
+    API -->|"status.json を読み取り"| BLOB
+
+    BACK -.->|"status.json を更新"| BLOB
+
+    W -->|"GET /download/runId"| API
+
+    API -->|"SAS URL を返却"| W
+
+    W -->|"結果ファイルをダウンロード"| BLOB
+
+```
+
+| ステップ | アクター    | アクション                                                                     |
+| ---- | ------- | ------------------------------------------------------------------------- |
+| 1    | Web App | `EnvConfig.yaml` と `Schedule.yaml` を `POST /runSolver` でアップロードする。         |
+| 2    | API     | 入力ファイルを Blob Storage に保存し、`status/{runId}.json` をステータス `Submitted` で作成する。 |
+| 3    | API     | ソルバーバックエンドを起動する（実装の詳細はクライアントからは不透明）。                                      |
+| 4    | API     | 生成した `runId` とともに `202 Accepted` を返す。                                     |
+| 5    | Web App | ユーザー操作時に `GET /status/{runId}` を呼び出す。                                     |
+| 6–8  | Web App | ステータスが `Completed` になったら、ダウンロード URL を取得し結果ファイルをダウンロードする。                  |
 
 ---
+## 2. 実行ステータスのライフサイクル
 
-## Y — やったこと
+`status.json` の `status` フィールドは、実行進捗の**唯一の信頼できる情報源**です。Web アプリはすべての UI 判断をこの値に基づいて行うべきです。
 
-- プロジェクト内でテストが必要な HTTP リクエストを Copilot にまとめさせた
-- そのまとめを読ませて、Postman で使える collection.json を自動生成させた
-- 同じまとめを使って、HTTP のやり取りの流れを説明するシーケンス図も作らせた
+```mermaid
+
+stateDiagram-v2
+
+    [*] --> Submitted: POST /runSolver
+
+    Submitted --> Running: ソルバー開始
+
+    Running --> Completed: 解析完了・出力書き込み
+
+    Running --> Failed: ソルバーエラー
+
+    Submitted --> [*]: キャンセル / 削除（フォルダ削除）
+
+    Running --> [*]: キャンセル / 削除（フォルダ削除）
+
+    Completed --> [*]: 削除（フォルダ削除）
+
+    Failed --> [*]: 削除（フォルダ削除）
+
+```
+
+| ステータス         | 意味                                                         | 終端か | Web アプリの挙動                                           |
+| ------------- | ---------------------------------------------------------- | --- | ---------------------------------------------------- |
+| **Submitted** | 入力がアップロードされ受理された状態。ソルバー実行はまだ開始されていない。                      | いいえ | **「Submitted」**または**「Queued」**ステータスを表示する。  |
+| **Running**   | ソルバーがスケジュールを処理中。任意で `stage` と `progress` フィールドが利用可能な場合がある。 | いいえ | 実行進捗（進捗バーや現在のステージなど）を表示する。                 |
+| **Completed** | ソルバーが正常に完了し、出力ファイルがダウンロード可能な状態。                            | はい  | **ダウンロード**アクションを有効化する。                     |
+| **Failed**    | ソルバー実行がエラーで終了した。`error` フィールドに詳細が含まれる。                     | はい  | ユーザーにエラーメッセージを表示する。                        |
+
+> **注意:** キャンセル・削除は `status.json` にステータスを書き込まず、`{runId}` フォルダごと削除します。そのため `Cancelled` ステータスは存在しません。キャンセル後は `GET /status/{runId}` が `404` を返します。
 
 ---
+## 3. `status.json` の構造
+### 3.1 目的
 
-## W — わかったこと
+`status.json` は、Blob Storage の `status/{runId}.json` に格納される小さな JSON ドキュメントです。実行の進行に応じて**ソルバーバックエンドによって書き込まれ**、Web アプリが `GET /status/{runId}` を呼び出すたびに **API によって読み取られます**。
 
-- コードを自分で読まなくても、Copilot に「まとめて」と頼むだけで必要な情報を引き出せる
-- まとめを一度作れば、テスト用ファイル・図など別の形式への変換も続けて頼める（連鎖が効く）
-- 役立つ操作:
-  - `#codebase` — プロジェクト全体を読ませるときにチャットで使うキーワード
-  - `Ctrl + I` — エディタ上でその場に直接 Copilot に書かせる
-  - `/explain` — 選択したコードをすぐ説明させる
+Web アプリがこの Blob を直接読み取ることはなく、常に API を経由します。ただし、API がこれらのフィールドを（場合によってはそのまま）ステータス応答で返すため、スキーマを理解しておくことが重要です。
+### 3.2 フィールドリファレンス
+| フィールド            | 型                               | 常に存在      | 説明                                                                                                                                                         |
+| ---------------- | ------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **runId**        | `string`                        | はい（実行作成後） | ソルバー実行の一意な識別子。この値は API パスやストレージの場所で使用される `runId` と一致する。                                                                                                    |
+| **status**       | `string` enum                   | **はい**    | 現在の実行ステータス。取り得る値は `Submitted`、`Running`、`Completed`、`Failed`。実行状態を決定する主要フィールド。                                                                            |
+| **stage**        | `number/null`                   | いいえ       | 現在のソルバーステージ（例：`1` や `2`）。処理開始前は通常 `null`。情報表示用途のみ。                                                                                                         |
+| **progress**     | `number`（0–1）                   | いいえ       | `0` から `1` の小数で表される進捗値。100 を掛けてパーセント表示する。例：`0.75` = 75% 完了。                                                                                                |
+| **startedAt**    | `string`（ISO 8601 UTC）\| `null` | いいえ       | ソルバー実行が開始された時刻。`Submitted` 状態の間は `null` のまま。                                                                                                               |
+| **updatedAt**    | `string`（ISO 8601 UTC）\| `null` | いいえ       | `status.json` が最後に更新された時刻。                                                                                                                                 |
+| **finishedAt**   | `string`（ISO 8601 UTC）\| `null` | いいえ       | 実行が終端状態（`Completed`、`Failed`）に入った時刻。実行中は `null` のまま。                                                                                                      |
+| **error**        | `string/object/null`            | いいえ       | 実行が `Failed` ステータスのときのエラー詳細。プレーンテキストのメッセージ、または `{ type, message }` のようなオブジェクトを含む場合がある。それ以外は `null`。                                                        |
+| **output**       | `string/null`                   | いいえ       | Blob Storage 内の生成済み結果ファイルへのパス（例：`output/{runId}/result_Schedule.yaml`）。実行が正常に完了したときに設定される。内部利用を意図しており、クライアントはこのパスへ直接アクセスせず `GET /download/{runId}` を使用すべき。 |
+| **solverName**   | `string/null`                   | いいえ       | 使用されたソルバーの名称（例：`"Timefold"`、`"OR-Tools"`）。ソルバーに依存しない運用のために記録する。                                                                                            |
+| **solverVersion** | `string/null`                  | いいえ       | ソルバーのバージョン（例：`"1.27.0"`）。再現性の確認やデバッグに使用する。                                                                                                                 |
+| **maxStage**     | `number/null`                   | いいえ       | 実行全体のステージ総数。`stage` と組み合わせて進捗を表示する際に使用（例：`stage 1 / maxStage 3`）。                                                                                          |
+
+### 3.3 JSON の例
+
+**Submitted**（最小構成。API によって即座に書き込まれる）:
+```json
+{
+  "status": "Submitted",
+  "stage": null,
+  "progress": 0,
+  "error": null
+}
+```
+**Running**（ソルバーバックエンドによって更新される）:
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Running",
+  "stage": 1,
+  "progress": 0.42,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:18:30.000Z",
+  "finishedAt": null,
+  "error": null,
+  "output": null,
+  "solverName": "Timefold",
+  "solverVersion": "1.27.0",
+  "maxStage": 2
+}
+```
+**Completed:**
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Completed",
+  "stage": 2,
+  "progress": 1,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:26:44.000Z",
+  "finishedAt": "2026-06-29T01:26:44.000Z",
+  "error": null,
+  "output": "output/20260629_100657148/result_Schedule.yaml",
+  "solverName": "Timefold",
+  "solverVersion": "1.27.0",
+  "maxStage": 2
+}
+```
+**Failed:**
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Failed",
+  "stage": 2,
+  "progress": 0.61,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:21:10.000Z",
+  "finishedAt": "2026-06-29T01:21:10.000Z",
+  "error": { "type": "SolverError", "message": "Infeasible constraints in Schedule.yaml" },
+  "output": null
+}
+```
+---
+## 4. `POST /runSolver`
+### 4.1 目的
+
+新しい解析を送信します。2 つの入力 YAML ファイルをアップロードし、`runId` を登録し、初期の `status.json`（`Submitted`）を書き込み、バックグラウンドの解析を開始します。すぐに応答を返し、解析の完了を**待ちません**。
+
+### 4.2 リクエスト形式
+
+| プロパティ        | 値                                     |
+| ------------ | ------------------------------------- |
+| メソッド         | `POST`                                |
+| パス           | `/runSolver`                          |
+| Content-Type | `multipart/form-data`                 |
+| 認証           | Function Key または Bearer Token（環境構成による |
+
+**フォームフィールド**
+
+| フィールド   | 型    | 必須  | 説明                                  |
+| ------- | ---- | --- | ----------------------------------- |
+| `runId` | テキスト | はい  | クライアントが生成するソルバー実行の一意な識別子。           |
+| `env`   | ファイル | はい  | 環境およびソルバーの構成設定を含む `EnvConfig.yaml`。 |
+| `sched` | ファイル | はい  | 最適化対象のスケジュールデータを含む `Schedule.yaml`。 |
+
+### 4.3 アップロードされるファイル
+
+| ファイル             | Blob Storage パス                | 用途                         |
+| ---------------- | ------------------------------ | -------------------------- |
+| `EnvConfig.yaml` | `input/{runId}/EnvConfig.yaml` | ソルバー構成と環境設定を保存する。          |
+| `Schedule.yaml`  | `input/{runId}/Schedule.yaml`  | 最適化のために送信されたスケジュールデータを保存する |
+
+API は解析を起動する前に両方の Blob を永続化するため、成功応答は入力が保存されたことを保証します。
+### 4.4 リクエスト例
+
+```http
+POST /runSolver HTTP/1.1
+Host: ca-tf-api.azurecontainerapps.io
+Content-Type: multipart/form-data; boundary=----WebAppBoundary
+
+------WebAppBoundary
+Content-Disposition: form-data; name="runId"
+20260629_100657148
+
+------WebAppBoundary
+Content-Disposition: form-data; name="env"; filename="EnvConfig.yaml"
+Content-Type: application/x-yaml
+<EnvConfig.yaml bytes>
+
+------WebAppBoundary
+Content-Disposition: form-data; name="sched"; filename="Schedule.yaml"
+Content-Type: application/x-yaml
+<Schedule.yaml bytes>
+
+------WebAppBoundary--
+
+```
+
+### 4.5 レスポンス例
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+{
+  "runId": "20260629_100657148",
+  "status": "Submitted"
+}
+```
+`202 Accepted` はリクエストがキューに入ったことを確認します。
+### 4.6 エラーレスポンス
+
+| HTTP ステータス                               | 原因                                             | レスポンス例                                          |
+| ---------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| **400 Bad Request**                      | `runId`、`env`、`sched` などの必須フィールドが欠落している。       | `{"error":"runId, env and sched are required"}` |
+| **409 Conflict**                         | 指定された `runId` が既に存在し、再利用できない。                  | `{"error":"runId already exists"}`              |
+| **413 Payload Too Large**                | アップロードされたファイルが最大許容サイズを超えている。                   | `{"error":"input file too large"}`              |
+| **401 Unauthorized** / **403 Forbidden** | Function Key／アクセストークンの欠落・不正、または権限不足により認証に失敗した。 | `{"error":"unauthorized"}`                      |
+| **500 Internal Server Error**            | 入力ファイルの保存またはソルバー実行の開始中に予期しないサーバー側エラーが発生した。     | `{"error":"failed to start run"}`               |
 
 ---
+## 5. `GET /status/{runId}`
+### 5.1 目的
 
-## T — 次にやること
+`status/{runId}.json` を読み取って実行の現在の状態を返します。Web アプリはユーザーが明示的に操作した時（ステータス確認ボタンを押すなど）にこのエンドポイントを呼び出します。
 
-- ガントチャートエディタのソースコードを入手する
-- Copilot に各関数・機能をサマリーさせて、「何ができているか」「何が未完成か」を一覧にする
-  - 例: ドラッグで予定を動かす機能は UI だけあって保存処理が未実装、など
-- 未完成の機能を特定したら、Copilot と一緒に実装を進める
-  - 足りていないロジックやエラー処理なども洗い出す
-- 完成した機能を現在の計画ツール（webapp）と接続するために必要な部分を整理する
-  - どのデータをどこに渡すか、どの API を呼ぶかなど
-  - Copilot に「このコードはどこと繋げばいい？」と聞くことで接続ポイントを探す
+| プロパティ               | 値                  |
+| ------------------- | ------------------ |
+| メソッド                | `GET`              |
+| パス                  | `/status/{runId}`  |
+| Content-Type（レスポンス） | `application/json` |
+
+### 5.2 リクエスト例
+
+```http
+GET /status/20260629_100657148 HTTP/1.1
+Host: ca-tf-api.azurecontainerapps.io
+```
+
+### 5.3 レスポンスフィールド
+
+レスポンスは [3.2 節](#32-フィールドリファレンス) の `status.json` スキーマ（`runId`、`status`、`stage`、`progress`、`startedAt`、`updatedAt`、`finishedAt`、`error`、`output`）を反映します。同じ null チェックのルールを適用してください。
+### 5.4 レスポンス例
+
+**Submitted:**
+```json
+{ "status": "Submitted", "stage": null, "progress": 0, "error": null }
+```
+**Running:**
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Running",
+  "stage": 1,
+  "progress": 0.42,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:18:30.000Z",
+  "finishedAt": null,
+  "error": null,
+  "output": null
+}
+```
+**Completed:**
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Completed",
+  "stage": 1,
+  "progress": 1,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:26:44.000Z",
+  "finishedAt": "2026-06-29T01:26:44.000Z",
+  "error": null,
+  "output": "output/20260629_100657148/result_Schedule.yaml"
+}
+```
+**Failed:**
+```json
+{
+  "runId": "20260629_100657148",
+  "status": "Failed",
+  "stage": 2,
+  "progress": 0.61,
+  "startedAt": "2026-06-29T01:06:57.000Z",
+  "updatedAt": "2026-06-29T01:21:10.000Z",
+  "finishedAt": "2026-06-29T01:21:10.000Z",
+  "error": { "type": "SolverError", "message": "Infeasible constraints in Schedule.yaml" },
+  "output": null
+}
+```
+**Not found / deleted:**
+```http
+HTTP/1.1 404 Not Found
+{ "error": "run not found" }
+```
+---
+## 6. `GET /download/{runId}`
+### 6.1 目的
+
+`Completed` 状態の実行に対して、ソルバー出力ファイル（`result_Schedule.yaml`）へのアクセスを提供します。API はファイルを自身で**ストリーミングしません**。代わりに、Web アプリが Azure Blob Storage から直接 Blob を取得するために使用する、短命の **SAS URL** を返します。
+
+|プロパティ|値|
+|---|---|
+|メソッド|`GET`|
+|パス|`/download/{runId}`|
+
+### 6.2 SAS URL 生成の考え方
+
+**SAS（Shared Access Signature）URL** は、単一の Blob に対する有効期限付きの署名済みリンクです。これにより、ストレージ資格情報を公開することなく、ブラウザが Blob Storage から直接結果をダウンロードできます。
+- API は実行が `Completed` であり、`output` が存在することを検証する。
+- `output/{runId}/result_Schedule.yaml` に対して**読み取り専用**の SAS を、**短い有効期限**（例：**15 分**）で生成する。
+- Web アプリは URL を**有効期限内に**使用する必要がある。期限が切れた場合は、`/download/{runId}` を再度呼び出して新しい URL を取得すればよい。
+
+### 6.3 リクエスト例
+
+```http
+GET /download/20260629_100657148 HTTP/1.1
+Host: ca-tf-api.azurecontainerapps.io
+```
+
+### 6.4 レスポンス例
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+  "url": "https://stsolverprod.blob.core.windows.net/solver/output/20260629_100657148/result_Schedule.yaml?sv=2023-11-03&se=2026-06-29T01%3A41%3A44Z&sr=b&sp=r&sig=REDACTED",
+  "filename": "result_Schedule.yaml",
+  "expiresAt": "2026-06-29T01:41:44.000Z"
+}
+```
+### 6.5 ダウンロードフロー
+
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    W->>API: GET /download/{runId}
+
+    API->>API: status = Completed を検証
+
+    API->>BLOB: 出力 Blob に対し 15 分間有効な読み取り SAS を生成
+
+    API-->>W: 200 { url, filename, expiresAt }
+
+    W->>BLOB: GET {url}
+
+    BLOB-->>W: 200 result_Schedule.yaml（バイト列）
+
+    W->>W: saveAs(filename) + 結果ビューを開く
+
+```
+### 6.6 よくあるエラー
+
+|ステータス|原因|
+|---|---|
+|`404 Not Found`|`runId` が不明、または既に削除されている。|
+|`409 Conflict`|実行がまだ `Completed` でない（ダウンロードする出力がない）。|
+|`410 Gone`|出力 Blob が存在しない／期限切れ。|
+|`401 / 403`|API 呼び出しの認証失敗（SAS 自体は事前署名済み）。|
+
+Web アプリは `status === "Completed"` を確認した後にのみこのエンドポイントを呼び出すべきです。これにより通常運用での `409` を回避できます。
+
+---
+## 7. `POST /cancel/{runId}`
+### 7.1 目的
+
+`Submitted` または `Running` 状態の実行のキャンセルを要求します。キャンセルは**ベストエフォート**です。API はバックエンドに停止を通知し、その後 **`{runId}` フォルダ全体（入力・出力・ステータス Blob）を削除します**。`Cancelled` ステータスは書き込まれません。キャンセル後、実行は存在しなくなるため、`GET /status/{runId}` は `404` を返します。
+
+|プロパティ|値|
+|---|---|
+|メソッド|`POST`|
+|パス|`/cancel/{runId}`|
+
+### 7.2 リクエスト例
+
+```http
+POST /cancel/20260629_100657148 HTTP/1.1
+Host: ca-tf-api.azurecontainerapps.io
+```
+
+### 7.3 期待される動作
+
+- 実行が **`Running`** の場合、バックエンドタスクに停止が通知され、`{runId}` フォルダが削除される。
+- 実行が **`Submitted`**（未開始）の場合、実行前にキャンセルされ、フォルダが削除される。
+- 実行が**既に終端**（`Completed` / `Failed`）の場合、実行のフォルダが削除される（キャンセルは削除と同じ振る舞い）。
+- キャンセル後、その実行のすべての Blob は**削除される**。`GET /status/{runId}` は `404` を返す。
+
+### 7.4 レスポンス例
+
+**キャンセルして削除完了:**
+```json
+{ "runId": "20260629_100657148", "deleted": true }
+```
+**Not found（既に削除済み、または存在しない）:**
+```http
+HTTP/1.1 404 Not Found
+{ "error": "run not found" }
+```
+---
+## 8. `POST /delete/{runId}`
+
+### 8.1 目的
+
+実行とそのすべてのデータを Blob Storage から永久に削除します。実行が終端状態になった後（または完了／失敗した実行を破棄するため）に使用します。
+
+|プロパティ|値|
+|---|---|
+|メソッド|`POST`|
+|パス|`/delete/{runId}`|
+
+### 8.2 リクエスト例
+
+```http
+POST /delete/20260629_100657148 HTTP/1.1
+Host: ca-tf-api.azurecontainerapps.io
+```
+
+### 8.3 期待される動作
+
+- 実行がまだ**アクティブ**（`Running`/`Submitted`）の場合、API はまずキャンセルしてから削除する。または構成に応じて `409` で拒否する。推奨：キャンセルしてから削除。
+- 削除後、`GET /status/{runId}` は `404` を返す。
+- 冪等：不明な／既に削除済みの `runId` を削除すると成功（または `404`）を返す。クライアントは `404` を「既に削除済み」として扱うべき。
+### 8.4 レスポンス例
+
+**Deleted:**
+```json
+{ "runId": "20260629_100657148", "deleted": true }
+```
+**Not found（既に削除済みとして扱う）:**
+```http
+HTTP/1.1 404 Not Found
+{ "error": "run not found" }
+```
+**実行中のため拒否（キャンセル優先が無効の場合）:**
+```http
+HTTP/1.1 409 Conflict
+{ "error": "run is still active; cancel before delete" }
+```
+---
+## 9. シーケンス図
+### 9.1 アップロードフロー
+
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    actor U as User
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    U->>W: EnvConfig + Schedule を選択し Submit をクリック
+
+    W->>W: runId を生成しローカルの実行行を保存
+
+    W->>API: POST /runSolver (runId, env, sched)
+
+    API->>BLOB: input/{runId}/*.yaml を保存
+
+    API->>BLOB: status/{runId}.json = Submitted を書き込み
+
+    API-->>W: 202 Accepted { runId, status: Submitted }
+
+    W-->>U: 「submitted」確認を表示
+
+```
+### 9.2 ステータス取得フロー
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    actor U as User
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    U->>W: ステータス確認をクリック
+
+    W->>API: GET /status/{runId}
+
+    API->>BLOB: status/{runId}.json を読み取り
+
+    BLOB-->>API: status JSON
+
+    API-->>W: 200 { status, stage, progress, ... }
+
+    W-->>U: ステータスを表示
+
+```
+### 9.3 ダウンロードフロー
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    actor U as User
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    U->>W: ダウンロードをクリック（status = Completed）
+
+    W->>API: GET /download/{runId}
+
+    API->>API: Completed + output の存在を検証
+
+    API->>BLOB: 15 分間有効な読み取り SAS を生成
+
+    API-->>W: 200 { url, filename, expiresAt }
+
+    W->>BLOB: GET {url}
+
+    BLOB-->>W: 200 result_Schedule.yaml（バイト列）
+
+    W-->>U: ファイルを保存し結果ビューを開く
+
+```
+
+### 9.4 キャンセルフロー
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    actor U as User
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    U->>W: キャンセルをクリック（status = Submitted/Running）
+
+    W->>API: POST /cancel/{runId}
+
+    API->>API: バックエンドに停止を通知（ベストエフォート）
+
+    API->>BLOB: input/{runId}/*, output/{runId}/*, status/{runId}.json を削除
+
+    API-->>W: 200 { runId, deleted: true }
+
+    W->>W: ローカルリストから実行を削除
+
+    W-->>U: キャンセルを確認
+
+```
+### 9.5 削除フロー
+
+```mermaid
+
+sequenceDiagram
+
+    autonumber
+
+    actor U as User
+
+    participant W as Web App
+
+    participant API as Azure Functions API
+
+    participant BLOB as Blob Storage
+
+    U->>W: 削除をクリック（終端の実行）して確認
+
+    W->>API: POST /delete/{runId}
+
+    API->>BLOB: input/{runId}/*, output/{runId}/*, status/{runId}.json を削除
+
+    API-->>W: 200 { runId, deleted: true }
+
+    W->>W: ローカルリストから実行を削除
+
+    W-->>U: 削除を確認
+
+```
