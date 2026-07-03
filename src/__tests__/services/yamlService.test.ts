@@ -70,7 +70,7 @@ environment:
       unavailable_dates: []
   worker_list:
     - id: w001
-      name: Tanaka Seiya
+      name: Tanaka Taro
       worker_company: co001
       unavailable_dates: []
   transited_day_map: []

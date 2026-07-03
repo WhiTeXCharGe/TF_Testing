@@ -6,11 +6,13 @@ import { WorkerViewFilter } from './WorkerViewFilter';
 import { ModuleViewFilter } from './ModuleViewFilter';
 import { toolbarStyles as S } from '../../styles/toolbar';
 import { palette } from '../../styles/common';
+import { useBackendConstraintCheck } from '../../hooks/useBackendConstraintCheck';
 
 export function Toolbar() {
   const { state, dispatch } = useAppContext();
   const { schedule, currentView } = state;
   const has = !!schedule;
+  const { runCheck, isChecking } = useBackendConstraintCheck();
 
   const mkBtn = (bg: string): React.CSSProperties => ({
     padding: '4px 10px',
@@ -41,6 +43,27 @@ export function Toolbar() {
           + 新規製番追加
         </button>
         <PlanFlexBulkSettings />
+        <div style={S.divider} />
+        <button
+          disabled={!has || isChecking}
+          onClick={runCheck}
+          style={{
+            padding: '4px 12px',
+            backgroundColor: has && !isChecking ? '#1565c0' : '#bdbdbd',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 3,
+            cursor: has && !isChecking ? 'pointer' : 'default',
+            fontSize: 12,
+            fontFamily: 'MS Gothic, monospace',
+            opacity: has ? 1 : 0.4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+        >
+          {isChecking ? '⏳ チェック中...' : '☑ 制約チェック'}
+        </button>
         <div style={{ marginLeft: 'auto' }}>
           <button
             disabled={!has}

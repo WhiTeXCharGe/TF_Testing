@@ -693,16 +693,17 @@
         operation: p4o2
         workload_hours: 64
         color_code: 
-  - id: misc_1
-    name: PTC
-    workflow: wf_misc
-    region: r1
-    color_code: F5A623
-  - id: misc_2
-    name: VISA
-    workflow: wf_misc
-    region: r1
-    color_code: 7B68EE
+  misc_task_list:
+    - id: misc_1
+      name: PTC
+      workflow: wf_misc
+      region: r1
+      color_code: F5A623
+    - id: misc_2
+      name: VISA
+      workflow: wf_misc
+      region: r1
+      color_code: 7B68EE
   assignment_list:
   - worker: w13
     operation_task: e1p1o1

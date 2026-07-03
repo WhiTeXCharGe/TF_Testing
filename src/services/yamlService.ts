@@ -16,6 +16,8 @@ export function parseScheduleYaml(raw: string): ScheduleData {
 function normalizeSchedule(data: Record<string, unknown>): ScheduleData {
   const planRange = data.plan_range as Record<string, string> ?? {};
   const workflowTaskList = ((data.workflow_task_list ?? []) as unknown[]).map(parseWorkflowTask);
+  // misc_task_list items are converted to WorkflowTask with empty phaseTaskList
+  const miscAsWorkflow = ((data.misc_task_list ?? []) as unknown[]).map(parseMiscTask);
   const assignmentList = ((data.assignment_list ?? []) as unknown[]).map(parseAssignment);
 
   return {
@@ -23,8 +25,22 @@ function normalizeSchedule(data: Record<string, unknown>): ScheduleData {
       startDate: normalizeDate(planRange.start_date ?? ''),
       endDate: normalizeDate(planRange.end_date ?? ''),
     },
-    workflowTaskList,
+    workflowTaskList: [...workflowTaskList, ...miscAsWorkflow],
     assignmentList,
+  };
+}
+
+function parseMiscTask(raw: unknown): WorkflowTask {
+  const r = raw as Record<string, unknown>;
+  return {
+    id: String(r.id ?? ''),
+    name: r.name as string | undefined,
+    description: r.description as string | undefined,
+    workflow: String(r.workflow ?? ''),
+    fab: undefined,
+    region: r.region as string | undefined,
+    colorCode: r.color_code ? String(r.color_code) : undefined,
+    phaseTaskList: [], // empty = marker for misc
   };
 }
 
@@ -103,46 +119,45 @@ function parseAssignment(raw: unknown): Assignment {
 // ── Schedule YAML stringify ──────────────────────────────────────────────────
 
 export function stringifyScheduleYaml(data: ScheduleData): string {
+  const normalTasks = data.workflowTaskList.filter(wt => wt.phaseTaskList.length > 0);
+  const miscTasks   = data.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0);
+
   const out = {
     schedule: {
       plan_range: {
         start_date: data.planRange.startDate,
         end_date: data.planRange.endDate,
       },
-      workflow_task_list: data.workflowTaskList.map(wt => {
-        if (wt.phaseTaskList.length === 0) {
-          return {
-            id: wt.id,
-            name: wt.name,
-            workflow: wt.workflow,
-            ...(wt.region !== undefined ? { region: wt.region } : {}),
-            ...(wt.colorCode !== undefined ? { color_code: wt.colorCode } : {}),
-          };
-        }
-        return {
-          id: wt.id,
-          name: wt.name,
-          description: wt.description,
-          workflow: wt.workflow,
-          fab: wt.fab,
-          phase_task_list: wt.phaseTaskList.map(pt => ({
-            id: pt.id,
-            name: pt.name,
-            description: pt.description,
-            phase: pt.phase,
-            start_date: pt.startDate,
-            end_date: pt.endDate,
-            operation_task_list: pt.operationTaskList.map(ot => ({
-              id: ot.id,
-              name: ot.name,
-              description: ot.description,
-              operation: ot.operation,
-              workload_hours: ot.workloadHours,
-              color_code: ot.colorCode ?? '',
-            })),
+      workflow_task_list: normalTasks.map(wt => ({
+        id: wt.id,
+        name: wt.name,
+        description: wt.description,
+        workflow: wt.workflow,
+        fab: wt.fab,
+        phase_task_list: wt.phaseTaskList.map(pt => ({
+          id: pt.id,
+          name: pt.name,
+          description: pt.description,
+          phase: pt.phase,
+          start_date: pt.startDate,
+          end_date: pt.endDate,
+          operation_task_list: pt.operationTaskList.map(ot => ({
+            id: ot.id,
+            name: ot.name,
+            description: ot.description,
+            operation: ot.operation,
+            workload_hours: ot.workloadHours,
+            color_code: ot.colorCode ?? '',
           })),
-        };
-      }),
+        })),
+      })),
+      misc_task_list: miscTasks.map(wt => ({
+        id: wt.id,
+        name: wt.name,
+        workflow: wt.workflow,
+        ...(wt.region !== undefined ? { region: wt.region } : {}),
+        ...(wt.colorCode !== undefined ? { color_code: wt.colorCode } : {}),
+      })),
       assignment_list: data.assignmentList.map(a => ({
         worker: a.worker,
         operation_task: a.operationTask,

@@ -63,8 +63,6 @@
         min_worker_num: 2
         max_worker_num: 3
         workload_hours: 64
-  - id: wf_misc
-    name: Other Work
   fab_list:
   - id: f1
     name: AAA Fab1

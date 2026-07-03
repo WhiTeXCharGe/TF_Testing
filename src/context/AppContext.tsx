@@ -22,6 +22,10 @@ const initialState: AppState = {
   isTaskAddDialogOpen: false,
   isFileOpenDialogOpen: false,
   isNewScheduleDialogOpen: false,
+  isConstraintDialogOpen: false,
+  isConstraintChecking: false,
+  backendViolations: [],
+  constraintCheckedAt: null,
 };
 
 interface ContextType {

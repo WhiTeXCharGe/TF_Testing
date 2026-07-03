@@ -348,11 +348,12 @@
         operation: p4o2
         workload_hours: 64
         color_code: 
-  - id: misc_3
-    name: Training
-    workflow: wf_misc
-    region: r1
-    color_code: 50C878
+  misc_task_list:
+    - id: misc_3
+      name: Training
+      workflow: wf_misc
+      region: r1
+      color_code: 50C878
   assignment_list:
   - worker: w4
     operation_task: misc_3

@@ -498,6 +498,24 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, envConfig: { ...state.envConfig, workerList } };
     }
 
+    case 'OPEN_CONSTRAINT_DIALOG':
+      return { ...state, isConstraintDialogOpen: true };
+
+    case 'CLOSE_CONSTRAINT_DIALOG':
+      return { ...state, isConstraintDialogOpen: false };
+
+    case 'SET_CONSTRAINT_CHECKING':
+      return { ...state, isConstraintChecking: action.payload };
+
+    case 'SET_BACKEND_VIOLATIONS':
+      return {
+        ...state,
+        backendViolations: action.payload.violations,
+        constraintCheckedAt: action.payload.checkedAt,
+        isConstraintChecking: false,
+        isConstraintDialogOpen: true,
+      };
+
     default:
       return state;
   }

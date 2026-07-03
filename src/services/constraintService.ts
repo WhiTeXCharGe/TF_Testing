@@ -11,6 +11,7 @@ export function checkConstraints(envConfig: EnvConfig, schedule: ScheduleData): 
     ...checkTaskWorkerCount(envConfig, schedule),
     ...checkWorkerUnavailableDays(envConfig, schedule),
     ...checkPhaseDateOverrun(schedule),
+    ...checkWorkloadTotal(envConfig, schedule),
   ];
 }
 
@@ -100,11 +101,13 @@ function checkDailyWorkHourRange(envConfig: EnvConfig, schedule: ScheduleData): 
 
 function checkSkillMapCompatibility(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
   const violations: Violation[] = [];
+  const miscTaskIds = buildMiscTaskIds(schedule);
   const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
   const operationLookup = buildOperationLookups(envConfig);
   const operationTaskLookup = buildOperationTaskLookup(schedule);
 
   schedule.assignmentList.forEach((assignment, assignmentIndex) => {
+    if (miscTaskIds.has(assignment.operationTask)) return;
     const worker = workerById.get(assignment.worker);
     const opTask = operationTaskLookup.get(assignment.operationTask);
     if (!worker || !opTask) return;
@@ -129,7 +132,13 @@ function checkSkillMapCompatibility(envConfig: EnvConfig, schedule: ScheduleData
   return violations;
 }
 
-// Two assignments for the same worker overlap in time
+function buildMiscTaskIds(schedule: ScheduleData): Set<string> {
+  return new Set(
+    schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0).map(wt => wt.id),
+  );
+}
+
+// Two assignments for the same worker overlap in time (including misc + normal same-day)
 function checkBarOverlaps(schedule: ScheduleData): Violation[] {
   const violations: Violation[] = [];
   const byWorker: Record<string, Array<{ assignment: ScheduleData['assignmentList'][0]; index: number }>> = {};
@@ -255,7 +264,7 @@ function checkWorkerUnavailableDays(envConfig: EnvConfig, schedule: ScheduleData
   return violations;
 }
 
-// An assignment's end date exceeds its phase task's end date
+// An assignment's end date exceeds its phase task's end date (skips misc tasks)
 function checkPhaseDateOverrun(schedule: ScheduleData): Violation[] {
   const violations: Violation[] = [];
   const opTaskToPhase = new Map<string, { startDate: string; endDate: string }>();
@@ -270,6 +279,7 @@ function checkPhaseDateOverrun(schedule: ScheduleData): Violation[] {
 
   schedule.assignmentList.forEach((assignment, index) => {
     const phase = opTaskToPhase.get(assignment.operationTask);
+    // misc task assignments have no phase entry — skip
     if (!phase) return;
 
     let violatedDate: string | undefined;
@@ -292,6 +302,82 @@ function checkPhaseDateOverrun(schedule: ScheduleData): Violation[] {
       });
     }
   });
+  return violations;
+}
+
+// Overwork: total assigned hours for an operation task exceeds workloadHours + X
+// X = numWorkersOnTask × phaseDays × maxSingleDayHours
+// This allows normal scheduling slack without false positives.
+// Misc tasks (empty phaseTaskList) are skipped — they have no workload requirement.
+function checkWorkloadTotal(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+
+  // IDs of misc tasks (no workload requirement)
+  const miscTaskIds = new Set(
+    schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0).map(wt => wt.id),
+  );
+
+  // operationTask → { workloadHours, phaseStartDate, phaseEndDate, opTaskName }
+  interface OpTaskMeta { workloadHours: number; phaseStart: string; phaseEnd: string; label: string }
+  const opTaskMeta = new Map<string, OpTaskMeta>();
+  for (const wt of schedule.workflowTaskList) {
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        if (ot.workloadHours != null && ot.workloadHours > 0) {
+          opTaskMeta.set(ot.id, {
+            workloadHours: ot.workloadHours,
+            phaseStart: pt.startDate,
+            phaseEnd: pt.endDate,
+            label: ot.name ?? ot.id,
+          });
+        }
+      }
+    }
+  }
+  if (opTaskMeta.size === 0) return violations;
+
+  // Global maximum hours worked on any single day (used as worst-case daily ceiling)
+  let maxSingleDayHours = 0;
+  for (const assignment of schedule.assignmentList) {
+    if (miscTaskIds.has(assignment.operationTask)) continue;
+    for (const wd of assignment.workDateList) {
+      if (wd.hour > maxSingleDayHours) maxSingleDayHours = wd.hour;
+    }
+  }
+  if (maxSingleDayHours === 0) return violations;
+
+  // Sum actual hours and count workers per operationTask
+  const actualMap = new Map<string, { total: number; workers: Set<string>; indices: number[] }>();
+  schedule.assignmentList.forEach((assignment, idx) => {
+    const opTaskId = assignment.operationTask;
+    if (!opTaskMeta.has(opTaskId)) return;
+    const sum = assignment.workDateList.reduce((acc, wd) => acc + (wd.hour > 0 ? wd.hour : 0), 0);
+    if (sum === 0) return;
+    const entry = actualMap.get(opTaskId) ?? { total: 0, workers: new Set<string>(), indices: [] };
+    entry.total += sum;
+    entry.workers.add(assignment.worker);
+    entry.indices.push(idx);
+    actualMap.set(opTaskId, entry);
+  });
+
+  for (const [opTaskId, { total, workers, indices }] of actualMap.entries()) {
+    const meta = opTaskMeta.get(opTaskId)!;
+    const phaseDays = Math.max(1, Math.round(
+      (new Date(`${meta.phaseEnd}T00:00:00`).getTime() - new Date(`${meta.phaseStart}T00:00:00`).getTime()) / 86400000,
+    ) + 1);
+    // X = maximum schedulable hours for this task's workers over the phase period
+    const X = workers.size * phaseDays * maxSingleDayHours;
+    const threshold = meta.workloadHours + X;
+    if (total > threshold) {
+      violations.push({
+        type: 'WORKLOAD_TOTAL',
+        assignmentIndices: indices,
+        severity: 'warning',
+        message: `過剰作業量: ${meta.label} 実績=${total}h 必要=${meta.workloadHours}h 上限=${threshold}h`,
+      });
+    }
+  }
+
   return violations;
 }
 

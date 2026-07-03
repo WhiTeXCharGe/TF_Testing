@@ -10,7 +10,12 @@ export interface Violation {
     | 'PHASE_OVERRUN'
     | 'WORK_HOUR_RANGE'
     | 'SKILL_MISMATCH'
-    | 'TASK_WORKER_COUNT';
+    | 'TASK_WORKER_COUNT'
+    // backend-only
+    | 'PHASE_SEQUENCE'
+    | 'WORKLOAD_TOTAL'
+    | 'RESPONSIBLE_WORKER'
+    | 'TRAVEL_DAYS';
   assignmentIndices: number[];
   message: string;
   date?: string;
@@ -83,6 +88,11 @@ export interface AppState {
   isTaskAddDialogOpen: boolean;
   isFileOpenDialogOpen: boolean;
   isNewScheduleDialogOpen: boolean;
+  // Backend constraint check
+  isConstraintDialogOpen: boolean;
+  isConstraintChecking: boolean;
+  backendViolations: Violation[];
+  constraintCheckedAt: string | null;
 }
 
 export type ActionType =
@@ -123,4 +133,9 @@ export type ActionType =
   | { type: 'RESIZE_UNAVAILABLE_RANGE'; payload: { workerId: string; oldStartDate: string; oldEndDate: string; newStartDate: string; newEndDate: string } }
   | { type: 'SET_WORKER_COLUMN_FILTER'; payload: Partial<WorkerColumnFilter> }
   | { type: 'SET_WORKER_DATE_CELL_FILTER'; payload: WorkerDateCellFilter }
-  | { type: 'CLEAR_ALL_WORKER_FILTERS' };
+  | { type: 'CLEAR_ALL_WORKER_FILTERS' }
+  // Backend constraint check
+  | { type: 'OPEN_CONSTRAINT_DIALOG' }
+  | { type: 'CLOSE_CONSTRAINT_DIALOG' }
+  | { type: 'SET_CONSTRAINT_CHECKING'; payload: boolean }
+  | { type: 'SET_BACKEND_VIOLATIONS'; payload: { violations: Violation[]; checkedAt: string } };
