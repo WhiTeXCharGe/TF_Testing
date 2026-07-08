@@ -1,36 +1,27 @@
-1. GitHub Copilotの利用状況
-ライセンスは6月に取得予定のため、現時点では未使用。
-2. Y（やったこと）
+This is a much bigger ask than a checklist — you want the actual step-by-step walkthrough (like Phase 01-07) rewritten for the company subscription, ending with a real working API deployed to ACA and the webapp wired to it. Let me also check the actual contract the webapp expects, since I want the guide's API code to match exactly rather than guess.
 
-GitHub Copilotの基本的な使い方を学習
-主な機能（コード補完、Chat、リファクタリングなど）について調査
-プロジェクトにガイドラインを設定する方法を調査
-効果的な使い方・プロンプトの書き方について調査
 
-3. W（わかったこと）
-3.1 主な機能について
+Ran a command, created 12 files, read a file, used 24 tools
+Now let me update the checklist file to point at this new guided series, and update its RBAC/verification sections to reference the new phase docs for consistency.
 
-コード補完（Inline Suggestion）: コーディング中にリアルタイムでコードを提案してくれる。Tabキーで採用、複数候補の切り替えも可能。
-Copilot Chat: IDE内でAIと対話でき、コードの説明依頼、バグ修正、コード生成、エラーメッセージの解説などが可能。
-/コマンド: Chat内で /explain（コード説明）、/fix（修正提案）、/tests（テスト生成）、/doc（ドキュメント生成）などのスラッシュコマンドが使える。
-インラインチャット: エディタ上で直接Copilotに指示でき、選択範囲に対してその場で修正・リファクタリングが可能。
-マルチファイル編集（Edits機能）: 複数ファイルにまたがる変更を一度に提案してくれる。
 
-3.2 リファクタリング機能について
-Copilotは既存コードのリファクタリングに対応しており、コードを選択して指示するだけで可読性向上・メソッド分割・命名改善などを提案してくれる。
-3.3 プロジェクトガイドラインの設定
-プロジェクトルートに .github/copilot-instructions.md を配置することで、コーディング規約・使用ライブラリ・命名規則などのルールをCopilotに伝えられる。これによりチーム全体で出力品質を一定に保てる。
-3.4 効果的な使い方
+Read a file, edited a file, ran a command, used a tool
+I've built the full guided series plus real working code. Here's what's new:
 
-関連ファイルを開いた状態で作業すると、コンテキストが活かされて提案精度が上がる
-コメントで意図を明確にすると、より正確なコードが生成される
-#file や #selection などの参照を使うことで、Chatに特定のコンテキストを渡せる
-生成されたコードはそのまま使わず、必ずレビュー・テストが必要
+Code (in web/api-controller/) — a real Node/Express app, not just doc snippets:
 
-4. T（次にやること）
+src/server.js — implements exactly the contract your webapp already calls (runService.ts): POST /runSolver, GET /status/:runId, GET /download/:runId (streams the file directly, matching what the webapp expects), DELETE /run/:runId. Uses DefaultAzureCredential, so it authenticates via your az login locally and automatically switches to the Container App's Managed Identity once deployed — same code, no environment-specific branches.
+package.json, Dockerfile, .dockerignore — ready to build and push.
+Syntax-checked, ready to npm install.
+Guided walkthrough (in webapp/azure/), one phase per file like your original 01-07, but built for "company already created it, I don't know the names" reality:
 
-ライセンス取得後、Copilotを実際に導入して使用感を確認する
-各機能（補完、Chat、Edits、スラッシュコマンド）を実際に試す
-copilot-instructions.md を作成し、プロジェクトに適用する
-リファクタリング機能を実際のコードで試す
-使用してみての気づきや課題を次回のレポートにまとめる
+Azure-Company-01-Access-And-Resources.md — sign in, find every resource, record real names into one private env script
+Azure-Company-02-RBAC.md — check/assign all 10 role assignments via portal
+Azure-Company-03-Storage-Verify.md — prove Blob read/write/SAS works
+Azure-Company-04-Register-Timefold-Image.md — build the Timefold Docker image from web/Timefold/, push to the real ACR
+Azure-Company-05-Batch-Setup-And-Run.md — verify/create the pool+job, submit one manual task end-to-end
+Azure-Company-06-API-Controller-Deploy.md — test the new code locally against real Azure, then build/push/deploy it to the real ACA app
+Azure-Company-07-Webapp-Connect.md — flip webapp/.env.local to the real API URL, full click-through test
+Each doc has exact commands, "what you should have at the end" checklists, and a troubleshooting table — same style as your originals, no resource names guessed anywhere (all sourced from one env script filled in during Phase 1). The checklist file now points to this series and stays as your fast-reference companion.
+
+One thing worth knowing before tomorrow: while investigating, I found the current local service/server.js mock returns /download/:runId as a raw file stream (not JSON+SAS-link like your old Phase 6/7 docs assumed) — the new API controller code matches the real webapp contract, so no webapp changes are needed.
