@@ -17,6 +17,7 @@ export interface Assignment {
   endDate: string;
   workDateList: WorkDate[];
   planFlexibility: PlanFlexibility;
+  description?: string;
 }
 
 // workload_hours is the canonical field (Timefold output)

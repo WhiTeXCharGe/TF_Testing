@@ -203,9 +203,10 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'UPDATE_WORKER_DEFINITION': {
       if (!state.envConfig) return state;
       const { workerId, definition } = action.payload;
-      const workerList = state.envConfig.workerList.map(w =>
-        w.id === workerId ? { ...w, definition } : w,
-      );
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        return { ...w, description: { ...w.description, '備考': definition } };
+      });
       return { ...state, envConfig: { ...state.envConfig, workerList } };
     }
 

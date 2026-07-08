@@ -4,7 +4,7 @@ import { WorkerTimelineGrid, BarDragCommit } from './WorkerTimelineGrid';
 import { buildWorkerTimelineModel } from './workerViewModel';
 import { addDays, formatDate } from '../../utils/dateUtils';
 
-type WorkerFilterKey = 'company' | 'name' | 'manager' | 'remarks';
+type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 
 interface Props {
   dates: string[];
@@ -58,6 +58,7 @@ export function WorkerViewGantt({ dates }: Props) {
 
   // Convert array-based context state to Sets for filter logic.
   const filters = useMemo(() => ({
+    id:      new Set(workerColumnFilter.id),
     company: new Set(workerColumnFilter.company),
     name:    new Set(workerColumnFilter.name),
     manager: new Set(workerColumnFilter.manager),
@@ -94,6 +95,7 @@ export function WorkerViewGantt({ dates }: Props) {
       return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
     };
     return {
+      id: getUnique('id'),
       company: getUnique('company'),
       name: getUnique('name'),
       manager: getUnique('manager'),
@@ -106,6 +108,7 @@ export function WorkerViewGantt({ dates }: Props) {
     if (model.rows.length === 0) return [];
     const dateCol = selectedDateForCellFilter ? dateIndex.get(selectedDateForCellFilter) : undefined;
     return model.rows.filter(row => {
+      if (filters.id.size > 0 && !filters.id.has(row.meta.id)) return false;
       if (filters.company.size > 0 && !filters.company.has(row.meta.company)) return false;
       if (filters.name.size > 0 && !filters.name.has(row.meta.name)) return false;
       if (filters.manager.size > 0 && !filters.manager.has(row.meta.manager)) return false;
@@ -280,6 +283,7 @@ export function WorkerViewGantt({ dates }: Props) {
       }
       onBarCommit={handleBarCommit}
       metaFilterValues={{
+        id:      workerColumnFilter.id ?? [],
         company: workerColumnFilter.company,
         name:    workerColumnFilter.name,
         manager: workerColumnFilter.manager,

@@ -52,6 +52,7 @@ export const DEFAULT_MODULE_VIEW_FILTER: ModuleViewFilter = {
 
 /** Column-level filter (company/name/manager/remarks header dropdowns). */
 export interface WorkerColumnFilter {
+  id: string[];
   company: string[];
   name: string[];
   manager: string[];
@@ -59,7 +60,7 @@ export interface WorkerColumnFilter {
 }
 
 export const DEFAULT_WORKER_COLUMN_FILTER: WorkerColumnFilter = {
-  company: [], name: [], manager: [], remarks: [],
+  id: [], company: [], name: [], manager: [], remarks: [],
 };
 
 /** Date-cell filter (clicking a date column to filter by task name). */

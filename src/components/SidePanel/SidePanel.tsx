@@ -125,6 +125,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
     const assignment = schedule?.assignmentList[assignmentIndex];
 
     const [colorDraft, setColorDraft] = useState('');
+    const [descDraft, setDescDraft] = useState(assignment?.description ?? '');
 
     const taskInfo = useMemo(() => {
       if (!schedule || !assignment) return null;
@@ -147,6 +148,10 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         setColorDraft(taskInfo.ot.colorCode ?? 'FFFFFF');
       }
     }, [taskInfo?.ot?.id]);
+
+    useEffect(() => {
+      setDescDraft(assignment?.description ?? '');
+    }, [assignmentIndex]);
 
     if (!assignment || !schedule) return null;
 
@@ -235,6 +240,24 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
             ))}
           </div>
         )}
+
+        <div style={rowStyle}>
+          <span style={labelStyle}>備考</span>
+          <textarea
+            value={descDraft}
+            onChange={e => setDescDraft(e.target.value)}
+            onBlur={() => dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { description: descDraft } } })}
+            rows={3}
+            style={{
+              ...inputStyle,
+              width: '100%',
+              resize: 'vertical',
+              fontFamily: 'Meiryo, sans-serif',
+              fontSize: 12,
+            }}
+            placeholder="備考を入力..."
+          />
+        </div>
 
         <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>
       </div>
@@ -377,6 +400,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
       setColorDraft(miscTask?.colorCode ?? 'AAAAAA');
     }, [miscTask?.id]);
 
+
     if (!assignment || !schedule) return null;
 
     const worker = envConfig?.workerList.find(w => w.id === assignment.worker);
@@ -451,6 +475,24 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
+        </div>
+
+        <div style={rowStyle}>
+          <span style={labelStyle}>備考</span>
+          <textarea
+            key={assignmentIndex}
+            defaultValue={assignment.description ?? ''}
+            onBlur={e => dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { description: e.target.value } } })}
+            rows={3}
+            style={{
+              ...inputStyle,
+              width: '100%',
+              resize: 'vertical',
+              fontFamily: 'Meiryo, sans-serif',
+              fontSize: 12,
+            }}
+            placeholder="備考を入力..."
+          />
         </div>
 
         <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>

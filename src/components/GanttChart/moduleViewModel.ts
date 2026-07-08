@@ -30,6 +30,7 @@ export interface ModuleTask {
   startDate: string | null; // earliest assigned worker start
   endDate: string | null;   // latest assigned worker end
   color: string;
+  description?: string;
 }
 
 export interface ModulePhase {
@@ -43,6 +44,7 @@ export interface ModulePhase {
   workerCount: number;      // distinct assigned workers in phase
   tasks: ModuleTask[];
   color: string;
+  description?: string;
 }
 
 export interface ModuleNode {
@@ -178,6 +180,7 @@ export function buildModuleViewModel(
           startDate: taskStart,
           endDate: taskEnd,
           color,
+          description: ot.description,
         };
       });
 
@@ -192,6 +195,7 @@ export function buildModuleViewModel(
         workerCount: phaseWorkers.size,
         tasks,
         color,
+        description: pt.description,
       };
     });
 

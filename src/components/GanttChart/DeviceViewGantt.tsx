@@ -333,11 +333,12 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
   module: ModuleNode;
   phase: ModulePhase;
   envConfig: import('../../types/envConfig').EnvConfig;
-  onChange: (updates: { startDate?: string; endDate?: string }) => void;
+  onChange: (updates: { startDate?: string; endDate?: string; description?: string }) => void;
 }) {
   const fab = module.fab ? envConfig.fabList.find(f => f.id === module.fab) : undefined;
   const regionId = module.region ?? fab?.region;
   const region = regionId ? envConfig.regionList.find(r => r.id === regionId) : undefined;
+  const phaseKey = `${module.moduleId}_${phase.phaseId}`;
 
   return (
     <div style={{ padding: 12 }}>
@@ -358,6 +359,18 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
         {phase.barStartDate && phase.barEndDate ? `${phase.barStartDate} 〜 ${phase.barEndDate}` : '—'}
       </Field>
       <Field label="割り当て作業者">{phase.workerCount}名</Field>
+
+      <div style={{ marginBottom: 10 }}>
+        <span style={labelStyle}>備考</span>
+        <textarea
+          key={phaseKey}
+          defaultValue={phase.description ?? ''}
+          onBlur={e => onChange({ description: e.target.value })}
+          rows={3}
+          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
+          placeholder="備考を入力..."
+        />
+      </div>
     </div>
   );
 }
@@ -370,7 +383,7 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
   module: ModuleNode;
   envConfig: import('../../types/envConfig').EnvConfig;
   onChangeWorker: (assignmentIndex: number, workerId: string) => void;
-  onChangeOpTask: (operationTaskId: string, updates: { recommendsWorkerMin?: number; recommendsWorkerMax?: number; workloadHours?: number }) => void;
+  onChangeOpTask: (operationTaskId: string, updates: { recommendsWorkerMin?: number; recommendsWorkerMax?: number; workloadHours?: number; description?: string }) => void;
 }) {
   const [minDraft, setMinDraft] = useState(task.minWorker);
   const [maxDraft, setMaxDraft] = useState(task.maxWorker);
@@ -456,6 +469,18 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
             {slot.companyName && <div style={{ color: '#5a6b7d', fontSize: 10, marginTop: 3 }}>{slot.companyName}</div>}
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <span style={labelStyle}>備考</span>
+        <textarea
+          key={task.taskId}
+          defaultValue={task.description ?? ''}
+          onBlur={e => onChangeOpTask(task.taskId, { description: e.target.value })}
+          rows={3}
+          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
+          placeholder="備考を入力..."
+        />
       </div>
     </div>
   );

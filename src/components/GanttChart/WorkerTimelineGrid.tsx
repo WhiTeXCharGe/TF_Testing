@@ -6,13 +6,22 @@ const HEADER_HEIGHT = 26;
 const ROW_HEIGHT = 34;
 const DATE_CELL_WIDTH = 22;
 
-type WorkerFilterKey = 'company' | 'name' | 'manager' | 'remarks';
+type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 
 const META_COLUMNS: Array<{ key: WorkerFilterKey; label: string; width: number; align?: 'left' | 'center' }> = [
   { key: 'company', label: UI.workerGridCompany, width: 110, align: 'left' },
-  { key: 'name', label: UI.workerGridName, width: 95, align: 'left' },
+  { key: 'id', label: 'ID', width: 52, align: 'left' },
+  { key: 'name', label: UI.workerGridName, width: 80, align: 'left' },
   { key: 'manager', label: UI.workerGridManager, width: 78, align: 'center' },
   { key: 'remarks', label: UI.workerGridRemarks, width: 82, align: 'left' },
+];
+
+type ExtraColKey = 'workType' | 'assignedDuties' | 'visa' | 'overseasDriving';
+const EXTRA_COLUMNS: Array<{ key: ExtraColKey; label: string; width: number }> = [
+  { key: 'workType', label: '業務形態', width: 64 },
+  { key: 'assignedDuties', label: '担当職務', width: 140 },
+  { key: 'visa', label: 'VISA', width: 48 },
+  { key: 'overseasDriving', label: '海外運転', width: 60 },
 ];
 
 const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
@@ -118,6 +127,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
 }: Props) {
   // highlight mode is active when any global filter (non-date) is set
   const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
+  const [isExtraExpanded, setIsExtraExpanded] = useState(false);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -128,8 +138,9 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   const [unavailDragPreview, setUnavailDragPreview] = useState<UnavailDragPreview | null>(null);
 
   const totalMetaWidth = useMemo(
-    () => META_COLUMNS.reduce((acc, c) => acc + c.width, 0),
-    [],
+    () => META_COLUMNS.reduce((acc, c) => acc + c.width, 0)
+      + (isExtraExpanded ? EXTRA_COLUMNS.reduce((acc, c) => acc + c.width, 0) : 0),
+    [isExtraExpanded],
   );
   const timelineWidth = dates.length * DATE_CELL_WIDTH;
 
@@ -336,6 +347,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
             {META_COLUMNS.map(column => (
               <div
                 key={column.key}
+                onClick={column.key === 'remarks' ? () => setIsExtraExpanded(v => !v) : undefined}
                 style={{
                   width: column.width,
                   minWidth: column.width,
@@ -349,15 +361,46 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   color: '#1e334b',
                   borderRight: '1px solid #dde5ef',
                   whiteSpace: 'nowrap',
+                  cursor: column.key === 'remarks' ? 'pointer' : undefined,
+                  userSelect: column.key === 'remarks' ? 'none' : undefined,
                 }}
               >
-                <span>{column.label}</span>
-                <PopupMultiSelect
-                  options={metaFilterOptions[column.key]}
-                  selected={metaFilterValues[column.key]}
-                  onToggle={value => onToggleMetaFilter(column.key, value)}
-                  onClearAll={() => onClearMetaFilter(column.key)}
-                />
+                <span>
+                  {column.label}
+                  {column.key === 'remarks' && (
+                    <span style={{ marginLeft: 4, fontSize: 10, color: '#607d8b' }}>
+                      {isExtraExpanded ? '▼' : '▶'}
+                    </span>
+                  )}
+                </span>
+                <span onClick={e => e.stopPropagation()}>
+                  <PopupMultiSelect
+                    options={metaFilterOptions[column.key]}
+                    selected={metaFilterValues[column.key]}
+                    onToggle={value => onToggleMetaFilter(column.key, value)}
+                    onClearAll={() => onClearMetaFilter(column.key)}
+                  />
+                </span>
+              </div>
+            ))}
+            {isExtraExpanded && EXTRA_COLUMNS.map(col => (
+              <div
+                key={col.key}
+                style={{
+                  width: col.width,
+                  minWidth: col.width,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 6px',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  color: '#1e334b',
+                  borderRight: '1px solid #dde5ef',
+                  whiteSpace: 'nowrap',
+                  background: '#eef4fb',
+                }}
+              >
+                {col.label}
               </div>
             ))}
           </div>
@@ -417,6 +460,30 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       {row.meta[col.key]}
                     </span>
                   )}
+                </div>
+              ))}
+              {isExtraExpanded && EXTRA_COLUMNS.map(col => (
+                <div
+                  key={`${row.workerId}_extra_${col.key}`}
+                  style={{
+                    width: col.width,
+                    minWidth: col.width,
+                    padding: '0 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    borderRight: '1px solid #edf2f8',
+                    color: '#25384f',
+                    fontSize: 11,
+                    fontFamily: 'Meiryo, sans-serif',
+                    background: '#f6fafe',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={row.meta[col.key]}>
+                    {row.meta[col.key]}
+                  </span>
                 </div>
               ))}
             </div>
@@ -742,7 +809,7 @@ function PopupMultiSelect({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open, compact]);
 
-  const filterActive = isActive || selected.length > 0;
+  const filterActive = isActive || (selected?.length ?? 0) > 0;
 
   return (
     <>

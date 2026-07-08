@@ -225,7 +225,11 @@
         days:
         - 2026/01/25
     affinity: [wct4, a3]
-    definition: OJT
+    description:
+      業務形態: "派遣"
+      VISA: "Yes"
+      海外運転: "Yes"
+      備考: OJT
   - id: w2
     name: AB
     worker_company: wc4
@@ -262,7 +266,11 @@
       suitability: {c1: 2, c2: 2}
     unavailable_dates: []
     affinity: [wct2, a4]
-    definition: QC
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: QC
   - id: w4
     name: AD
     worker_company: wc3
@@ -350,7 +358,11 @@
         - 2026/01/19
         - 2026/02/28
     affinity: [wct2, a6, a14]
-    definition: OJT
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: OJT
   - id: w8
     name: AH
     worker_company: wc1
@@ -396,7 +408,11 @@
         - 2026/01/07
         - 2026/02/09
     affinity: [wct1, a10]
-    definition: QC
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: QC
   - id: w10
     name: AJ
     worker_company: wc4
@@ -492,7 +508,11 @@
         days:
         - 2025/11/24
     affinity: [wct3]
-    definition: OJT
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: OJT
   - id: w15
     name: AO
     worker_company: wc1
@@ -606,7 +626,11 @@
         days:
         - 2025/10/18
     affinity: [wct3, a2]
-    definition: QC
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: QC
   - id: w21
     name: AU
     worker_company: wc1
@@ -805,7 +829,11 @@
         days:
         - 2025/11/04
     affinity: [wct4, a3]
-    definition: OJT
+    description:
+      業務形態: ""
+      VISA: ""
+      海外運転: ""
+      備考: OJT
   - id: w31
     name: BE
     worker_company: wc3

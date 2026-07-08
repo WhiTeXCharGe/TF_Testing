@@ -11,15 +11,29 @@ export interface UnavailableDateEntry {
   single?: SingleUnavailableDate;
 }
 
+export type WorkerDescription = {
+  '業務形態'?: string;
+  'VISA'?: string;
+  '海外運転'?: string;
+  '備考'?: string;
+};
+
+export interface FabSuitabilityEntry {
+  kind: string;
+  suitability: Record<string, number>;
+}
+
 export interface Worker {
   id: string;
   name?: string;
-  description?: string;
+  description?: WorkerDescription;
   workerCompany?: string;
   isManager?: boolean;
   skillMap?: Record<string, number>;
+  workerTypeByOperation?: Record<string, string>;
+  fabSuitabilityMap?: FabSuitabilityEntry[];
+  affinity?: string[];
   unavailableDates: UnavailableDateEntry[];
-  definition?: string;
 }
 
 export interface WorkerCompany {

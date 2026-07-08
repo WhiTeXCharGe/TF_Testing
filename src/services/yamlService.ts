@@ -113,6 +113,7 @@ function parseAssignment(raw: unknown): Assignment {
     endDate: normalizeDate(r.end_date as string ?? ''),
     workDateList,
     planFlexibility: (r.plan_flexibility as PlanFlexibility) ?? 'Flexible',
+    description: r.description as string | undefined,
   };
 }
 
@@ -161,6 +162,7 @@ export function stringifyScheduleYaml(data: ScheduleData): string {
       assignment_list: data.assignmentList.map(a => ({
         worker: a.worker,
         operation_task: a.operationTask,
+        ...(a.description !== undefined ? { description: a.description } : {}),
         start_date: a.startDate,
         end_date: a.endDate,
         work_date_list: a.workDateList.map(w => ({ date: w.date, hour: w.hour })),
@@ -210,15 +212,24 @@ function parseUnavailableDates(raw: unknown[]): UnavailableDateEntry[] {
 
 function parseWorker(raw: unknown): Worker {
   const r = raw as Record<string, unknown>;
+  // Support both structured description object and legacy definition string
+  let description: Worker['description'];
+  if (r.description && typeof r.description === 'object') {
+    description = r.description as Worker['description'];
+  } else if (typeof r.definition === 'string' && r.definition) {
+    description = { '備考': r.definition };
+  }
   return {
     id: String(r.id ?? ''),
     name: r.name as string | undefined,
-    description: r.description as string | undefined,
+    description,
     workerCompany: r.worker_company as string | undefined,
     isManager: Boolean(r.is_manager ?? false),
     skillMap: (r.skill_map as Record<string, number>) ?? {},
+    workerTypeByOperation: r.worker_type_by_operation as Record<string, string> | undefined,
+    fabSuitabilityMap: r.fab_suitability_map as Worker['fabSuitabilityMap'],
+    affinity: r.affinity as string[] | undefined,
     unavailableDates: parseUnavailableDates((r.unavailable_dates as unknown[]) ?? []),
-    definition: r.definition as string | undefined,
   };
 }
 
@@ -347,16 +358,19 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
       worker_list: config.workerList.map(w => ({
         id: w.id,
         name: w.name,
+        ...(w.description !== undefined ? { description: w.description } : {}),
         worker_company: w.workerCompany,
         is_manager: w.isManager,
         skill_map: w.skillMap,
+        ...(w.workerTypeByOperation !== undefined ? { worker_type_by_operation: w.workerTypeByOperation } : {}),
+        ...(w.fabSuitabilityMap !== undefined ? { fab_suitability_map: w.fabSuitabilityMap } : {}),
+        ...(w.affinity !== undefined ? { affinity: w.affinity } : {}),
         unavailable_dates: w.unavailableDates.map(entry => {
           const out: Record<string, unknown> = {};
           if (entry.weekly) out.weekly = { weekdays: entry.weekly.weekdays };
           if (entry.single) out.single = { days: entry.single.days };
           return out;
         }),
-        ...(w.definition !== undefined ? { definition: w.definition } : {}),
       })),
       transite_day_map: config.transiteDayMap.map(t => ({
         from: t.from,

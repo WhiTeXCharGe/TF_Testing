@@ -3,10 +3,15 @@ import { Assignment, ScheduleData } from '../../types/schedule';
 import { generateDateRange } from '../../utils/dateUtils';
 
 export interface WorkerMetaInfo {
+  id: string;
   company: string;
   name: string;
   manager: string;
   remarks: string;
+  workType: string;
+  assignedDuties: string;
+  visa: string;
+  overseasDriving: string;
 }
 
 export interface WorkerDayCell {
@@ -299,8 +304,27 @@ export function buildWorkerTimelineModel(
     const worker = workerById.get(workerId);
     const workerName = worker?.name ?? workerId;
     const company = worker ? getWorkerCompanyName(worker, envConfig) : '';
-    const remarks = worker?.definition ?? '';
+    const remarks = worker?.description?.['備考'] ?? '';
     const manager = worker?.isManager ? 'Yes' : '';
+    const workType = worker?.description?.['業務形態'] ?? '';
+    const visa = worker?.description?.['VISA'] ?? '';
+    const overseasDriving = worker?.description?.['海外運転'] ?? '';
+    const assignedDuties = worker?.skillMap
+      ? (() => {
+          // Find skill names from envConfig operation list
+          const opNames: string[] = [];
+          for (const wf of envConfig.workflowList) {
+            for (const ph of wf.phaseList) {
+              for (const op of ph.operationList) {
+                if (worker.skillMap![op.id] !== undefined) {
+                  opNames.push(op.name ?? op.id);
+                }
+              }
+            }
+          }
+          return [...new Set(opNames)].join(', ');
+        })()
+      : '';
 
     const dayMap = workerDayAssignments.get(workerId) ?? new Map();
     const offSet = workerOffDates.get(workerId) ?? new Set<string>();
@@ -365,7 +389,7 @@ export function buildWorkerTimelineModel(
 
     return {
       workerId,
-      meta: { company, name: workerName, manager, remarks },
+      meta: { id: workerId, company, name: workerName, manager, remarks, workType, visa, overseasDriving, assignedDuties },
       dayCells,
       segments,
     };
