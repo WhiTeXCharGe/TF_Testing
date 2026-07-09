@@ -11,6 +11,38 @@ name filled in.
 
 ---
 
+## `Contributor` is NOT enough — read this before you check anything
+
+If the admin gave you a general **`Contributor`** role instead of the
+specific roles below, you will still fail on Storage and ACR. This is not a
+misconfiguration — it's how Azure is designed:
+
+- **Actions** (management plane — create/configure/delete the *resource
+  itself*) are covered by `Contributor`. This includes creating/resizing
+  Batch pools, submitting Batch tasks, and deploying Container Apps
+  revisions — all of that works fine on `Contributor` alone.
+- **DataActions** (data plane — touching the *data inside* the resource,
+  e.g. reading/writing an actual blob, or `docker push`/`pull`) are
+  **deliberately excluded** from `Contributor`. Storage and ACR both split
+  their permissions this way on purpose, as a separate, revocable layer.
+  `Contributor` — even `Owner` — does not imply data access.
+
+So with only `Contributor` you can create the storage account but not
+upload a blob to it, and you can create the ACR but not push an image to
+it. You still need the specific roles in 2.1–2.3 below
+(`Storage Blob Data Contributor`, `AcrPush`, `AcrPull`) — ask the admin to
+add those explicitly; `Contributor` cannot be "used differently" to cover
+them.
+
+One more consequence: `Contributor` also excludes
+`Microsoft.Authorization/roleAssignments/write`, so if that's all you have,
+you **cannot assign these roles to yourself either** — only `Owner` or
+`User Access Administrator` can. If your portal "Add role assignment"
+button is greyed out or errors with "you do not have permissions," that's
+why — ask the admin to add the specific roles for you.
+
+---
+
 ## Why portal, not CLI
 
 During the personal-account dry run, `az role assignment create` broke in a

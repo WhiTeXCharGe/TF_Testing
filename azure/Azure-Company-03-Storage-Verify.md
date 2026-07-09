@@ -135,6 +135,7 @@ Container Registry.
 | Symptom                                                          | Cause                                              | Fix |
 | ------------------------------------------------------------------ | ----------------------------------------------------- | ----- |
 | `AuthorizationPermissionMismatch`                                 | Role not propagated yet, or not actually assigned    | Re-check Phase 2.1 role #2 in the portal; wait 60s and retry |
+| `AuthorizationPermissionMismatch` and you *do* have `Contributor` on this resource | `Contributor` doesn't grant blob data access — see the callout at the top of [Azure-Company-02-RBAC.md](./Azure-Company-02-RBAC.md#contributor-is-not-enough--read-this-before-you-check-anything) | Ask the admin for `Storage Blob Data Contributor` specifically — `Contributor` can never cover this, no matter the scope |
 | `--auth-mode login` errors despite being signed in                | Wrong tenant active                                   | `az account show` → check tenant → `az login --tenant <tenantId>` if wrong |
 | SAS URL returns `AuthenticationFailed` in the browser              | Expired, or PC clock is off                            | Regenerate with a longer `--expiry`; check your system clock |
 | `date -d '+1 hour'` fails                                          | Not GNU date (rare on Git Bash)                        | Use `date -u -v+1H '+%Y-%m-%dT%H:%MZ'` (macOS-style) as a fallback |
