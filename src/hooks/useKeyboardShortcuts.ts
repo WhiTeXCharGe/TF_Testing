@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { downloadScheduleYaml } from '../services/fileService';
+import { overwriteSaveFiles } from '../services/fileService';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch } = useAppContext();
@@ -19,8 +19,9 @@ export function useKeyboardShortcuts() {
             break;
           case 's':
             e.preventDefault();
-            if (!e.shiftKey && state.schedule) {
-              downloadScheduleYaml(state.schedule, state.currentSchedulePath ?? 'Schedule.yaml');
+            if (!e.shiftKey && state.schedule && state.envConfig && state.currentEnvPath && state.currentSchedulePath) {
+              overwriteSaveFiles(state.envConfig, state.schedule, state.currentEnvPath, state.currentSchedulePath)
+                .catch(err => console.error('Save failed:', err));
             }
             break;
           case 'o':
@@ -37,5 +38,5 @@ export function useKeyboardShortcuts() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state.schedule, state.selectedAssignmentIndex, state.currentSchedulePath, dispatch]);
+  }, [state.schedule, state.envConfig, state.selectedAssignmentIndex, state.currentSchedulePath, state.currentEnvPath, dispatch]);
 }

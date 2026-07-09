@@ -5,6 +5,7 @@ import { buildWorkerTimelineModel } from './workerViewModel';
 import { addDays, formatDate } from '../../utils/dateUtils';
 
 type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
+type ExtraFilterKey = 'workType' | 'assignedDuties' | 'visa' | 'overseasDriving';
 
 interface Props {
   dates: string[];
@@ -65,6 +66,13 @@ export function WorkerViewGantt({ dates }: Props) {
     remarks: new Set(workerColumnFilter.remarks),
   }), [workerColumnFilter]);
 
+  const extraFilters = useMemo(() => ({
+    workType:       new Set(workerColumnFilter.workType ?? []),
+    assignedDuties: new Set(workerColumnFilter.assignedDuties ?? []),
+    visa:           new Set(workerColumnFilter.visa ?? []),
+    overseasDriving: new Set(workerColumnFilter.overseasDriving ?? []),
+  }), [workerColumnFilter]);
+
   const selectedDateForCellFilter = workerDateCellFilter.date;
   const selectedDateTasks = useMemo(() => new Set(workerDateCellFilter.tasks), [workerDateCellFilter.tasks]);
 
@@ -86,7 +94,7 @@ export function WorkerViewGantt({ dates }: Props) {
   );
 
   const metaFilterOptions = useMemo(() => {
-    const getUnique = (key: WorkerFilterKey) => {
+    const getUnique = (key: WorkerFilterKey | ExtraFilterKey) => {
       const set = new Set<string>();
       model.rows.forEach(row => {
         const value = row.meta[key];
@@ -103,7 +111,24 @@ export function WorkerViewGantt({ dates }: Props) {
     };
   }, [model.rows]);
 
-  // Column-level filter (company/name/manager/remarks + cell date filter)
+  const extraFilterOptions = useMemo(() => {
+    const getUnique = (key: ExtraFilterKey) => {
+      const set = new Set<string>();
+      model.rows.forEach(row => {
+        const value = row.meta[key];
+        if (value) set.add(value);
+      });
+      return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
+    };
+    return {
+      workType:       getUnique('workType'),
+      assignedDuties: getUnique('assignedDuties'),
+      visa:           getUnique('visa'),
+      overseasDriving: getUnique('overseasDriving'),
+    };
+  }, [model.rows]);
+
+  // Column-level filter (company/name/manager/remarks + extra columns + cell date filter)
   const columnFilteredRows = useMemo(() => {
     if (model.rows.length === 0) return [];
     const dateCol = selectedDateForCellFilter ? dateIndex.get(selectedDateForCellFilter) : undefined;
@@ -113,13 +138,17 @@ export function WorkerViewGantt({ dates }: Props) {
       if (filters.name.size > 0 && !filters.name.has(row.meta.name)) return false;
       if (filters.manager.size > 0 && !filters.manager.has(row.meta.manager)) return false;
       if (filters.remarks.size > 0 && !filters.remarks.has(row.meta.remarks)) return false;
+      if (extraFilters.workType.size > 0 && !extraFilters.workType.has(row.meta.workType)) return false;
+      if (extraFilters.assignedDuties.size > 0 && !extraFilters.assignedDuties.has(row.meta.assignedDuties)) return false;
+      if (extraFilters.visa.size > 0 && !extraFilters.visa.has(row.meta.visa)) return false;
+      if (extraFilters.overseasDriving.size > 0 && !extraFilters.overseasDriving.has(row.meta.overseasDriving)) return false;
       if (selectedDateForCellFilter && selectedDateTasks.size > 0 && dateCol !== undefined) {
         const cell = row.dayCells[dateCol];
         if (!cell || cell.kind !== 'work' || !cell.moduleName || !selectedDateTasks.has(cell.moduleName)) return false;
       }
       return true;
     });
-  }, [model.rows, dateIndex, filters, selectedDateForCellFilter, selectedDateTasks]);
+  }, [model.rows, dateIndex, filters, extraFilters, selectedDateForCellFilter, selectedDateTasks]);
 
   // Global top-bar filter (barName, moduleIds, phaseIds, fabIds, regionIds)
   const filteredRows = useMemo(() => {
@@ -207,6 +236,16 @@ export function WorkerViewGantt({ dates }: Props) {
     dispatch({ type: 'SET_WORKER_COLUMN_FILTER', payload: { [key]: [] } });
   };
 
+  const toggleExtraFilter = (key: ExtraFilterKey, value: string) => {
+    const current = workerColumnFilter[key] ?? [];
+    const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+    dispatch({ type: 'SET_WORKER_COLUMN_FILTER', payload: { [key]: next } });
+  };
+
+  const clearExtraFilter = (key: ExtraFilterKey) => {
+    dispatch({ type: 'SET_WORKER_COLUMN_FILTER', payload: { [key]: [] } });
+  };
+
   const handleBarCommit = (commit: BarDragCommit) => {
     if (!schedule || dates.length === 0) return;
     const assignment = schedule.assignmentList[commit.assignmentIndex];
@@ -291,6 +330,15 @@ export function WorkerViewGantt({ dates }: Props) {
       }}
       metaFilterOptions={metaFilterOptions}
       onToggleMetaFilter={toggleMetaFilter}
+      extraFilterValues={{
+        workType:       workerColumnFilter.workType ?? [],
+        assignedDuties: workerColumnFilter.assignedDuties ?? [],
+        visa:           workerColumnFilter.visa ?? [],
+        overseasDriving: workerColumnFilter.overseasDriving ?? [],
+      }}
+      extraFilterOptions={extraFilterOptions}
+      onToggleExtraFilter={toggleExtraFilter}
+      onClearExtraFilter={clearExtraFilter}
       selectedDateForCellFilter={selectedDateForCellFilter}
       onSelectedDateForCellFilterChange={date => {
         dispatch({

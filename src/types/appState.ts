@@ -50,17 +50,22 @@ export const DEFAULT_MODULE_VIEW_FILTER: ModuleViewFilter = {
   startDate: null, endDate: null,
 };
 
-/** Column-level filter (company/name/manager/remarks header dropdowns). */
+/** Column-level filter (company/name/manager/remarks + extra expanded columns). */
 export interface WorkerColumnFilter {
   id: string[];
   company: string[];
   name: string[];
   manager: string[];
   remarks: string[];
+  workType: string[];
+  assignedDuties: string[];
+  visa: string[];
+  overseasDriving: string[];
 }
 
 export const DEFAULT_WORKER_COLUMN_FILTER: WorkerColumnFilter = {
   id: [], company: [], name: [], manager: [], remarks: [],
+  workType: [], assignedDuties: [], visa: [], overseasDriving: [],
 };
 
 /** Date-cell filter (clicking a date column to filter by task name). */

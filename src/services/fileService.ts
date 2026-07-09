@@ -51,6 +51,37 @@ export function downloadEnvConfigYaml(data: EnvConfig, filename = 'EnvConfig.yam
   URL.revokeObjectURL(url);
 }
 
+// Overwrite-save both YAML files to their original imported paths via Express backend
+export async function overwriteSaveFiles(
+  envConfig: EnvConfig,
+  schedule: ScheduleData,
+  envPath: string,
+  schedulePath: string,
+): Promise<void> {
+  const envYaml = stringifyEnvConfigYaml(envConfig);
+  const scheduleYaml = stringifyScheduleYaml(schedule);
+  const res = await fetch('/api/save-files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ envPath, schedulePath, envYaml, scheduleYaml }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error ?? 'Save failed');
+  }
+}
+
+// Download both YAML files as browser downloads with given filenames
+export function downloadBothYamlFiles(
+  envConfig: EnvConfig,
+  schedule: ScheduleData,
+  envFilename: string,
+  scheduleFilename: string,
+): void {
+  downloadEnvConfigYaml(envConfig, envFilename);
+  setTimeout(() => downloadScheduleYaml(schedule, scheduleFilename), 200);
+}
+
 // Open a single file picker and return the selected File
 function pickFile(title: string): Promise<File> {
   return new Promise((resolve, reject) => {

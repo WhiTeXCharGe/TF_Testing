@@ -8,21 +8,27 @@ const DATE_CELL_WIDTH = 22;
 
 type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 
-const META_COLUMNS: Array<{ key: WorkerFilterKey; label: string; width: number; align?: 'left' | 'center' }> = [
+// Always-visible columns
+const ALWAYS_COLUMNS: Array<{ key: WorkerFilterKey; label: string; width: number; align?: 'left' | 'center' }> = [
   { key: 'company', label: UI.workerGridCompany, width: 110, align: 'left' },
   { key: 'id', label: 'ID', width: 52, align: 'left' },
   { key: 'name', label: UI.workerGridName, width: 80, align: 'left' },
+];
+
+// Collapsible meta columns (責任者, 備考欄)
+const COLLAPSIBLE_META: Array<{ key: WorkerFilterKey; label: string; width: number; align?: 'left' | 'center' }> = [
   { key: 'manager', label: UI.workerGridManager, width: 78, align: 'center' },
   { key: 'remarks', label: UI.workerGridRemarks, width: 82, align: 'left' },
 ];
 
 type ExtraColKey = 'workType' | 'assignedDuties' | 'visa' | 'overseasDriving';
 const EXTRA_COLUMNS: Array<{ key: ExtraColKey; label: string; width: number }> = [
-  { key: 'workType', label: '業務形態', width: 64 },
+  { key: 'workType', label: '業務形態', width: 96 },
   { key: 'assignedDuties', label: '担当職務', width: 140 },
-  { key: 'visa', label: 'VISA', width: 48 },
-  { key: 'overseasDriving', label: '海外運転', width: 60 },
+  { key: 'visa', label: 'VISA', width: 70 },
+  { key: 'overseasDriving', label: '海外運転', width: 92 },
 ];
+const TOGGLE_COL_WIDTH = 22;
 
 const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -94,6 +100,10 @@ interface Props {
   onClearMetaFilter: (key: WorkerFilterKey) => void;
   onClearSelectedDateTask: () => void;
   onChangeRemarks: (workerId: string, value: string) => void;
+  extraFilterValues: Record<ExtraColKey, string[]>;
+  extraFilterOptions: Record<ExtraColKey, string[]>;
+  onToggleExtraFilter: (key: ExtraColKey, value: string) => void;
+  onClearExtraFilter: (key: ExtraColKey) => void;
   /** When non-null, only bars whose assignmentIndex is in this set are highlighted; others are dimmed. */
   highlightedAssignmentIndices: Set<number> | null;
   /** When non-empty, bars whose label includes this string are additionally highlighted. */
@@ -124,6 +134,10 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   onUnavailableDragCommit,
   highlightedAssignmentIndices,
   highlightBarName,
+  extraFilterValues,
+  extraFilterOptions,
+  onToggleExtraFilter,
+  onClearExtraFilter,
 }: Props) {
   // highlight mode is active when any global filter (non-date) is set
   const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
@@ -138,8 +152,12 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   const [unavailDragPreview, setUnavailDragPreview] = useState<UnavailDragPreview | null>(null);
 
   const totalMetaWidth = useMemo(
-    () => META_COLUMNS.reduce((acc, c) => acc + c.width, 0)
-      + (isExtraExpanded ? EXTRA_COLUMNS.reduce((acc, c) => acc + c.width, 0) : 0),
+    () => ALWAYS_COLUMNS.reduce((acc, c) => acc + c.width, 0)
+      + TOGGLE_COL_WIDTH
+      + (isExtraExpanded
+        ? COLLAPSIBLE_META.reduce((acc, c) => acc + c.width, 0)
+          + EXTRA_COLUMNS.reduce((acc, c) => acc + c.width, 0)
+        : 0),
     [isExtraExpanded],
   );
   const timelineWidth = dates.length * DATE_CELL_WIDTH;
@@ -344,10 +362,10 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
       >
         <div style={{ position: 'sticky', top: 0, zIndex: 5, background: '#f2f6fb' }}>
           <div style={{ display: 'flex', height: HEADER_HEIGHT * 3, borderBottom: '1px solid #c9d5e3' }}>
-            {META_COLUMNS.map(column => (
+            {/* Always-visible columns */}
+            {ALWAYS_COLUMNS.map(column => (
               <div
                 key={column.key}
-                onClick={column.key === 'remarks' ? () => setIsExtraExpanded(v => !v) : undefined}
                 style={{
                   width: column.width,
                   minWidth: column.width,
@@ -361,26 +379,44 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   color: '#1e334b',
                   borderRight: '1px solid #dde5ef',
                   whiteSpace: 'nowrap',
-                  cursor: column.key === 'remarks' ? 'pointer' : undefined,
-                  userSelect: column.key === 'remarks' ? 'none' : undefined,
                 }}
               >
-                <span>
-                  {column.label}
-                  {column.key === 'remarks' && (
-                    <span style={{ marginLeft: 4, fontSize: 10, color: '#607d8b' }}>
-                      {isExtraExpanded ? '▼' : '▶'}
-                    </span>
-                  )}
-                </span>
-                <span onClick={e => e.stopPropagation()}>
-                  <PopupMultiSelect
-                    options={metaFilterOptions[column.key]}
-                    selected={metaFilterValues[column.key]}
-                    onToggle={value => onToggleMetaFilter(column.key, value)}
-                    onClearAll={() => onClearMetaFilter(column.key)}
-                  />
-                </span>
+                <span>{column.label}</span>
+                <PopupMultiSelect
+                  options={metaFilterOptions[column.key]}
+                  selected={metaFilterValues[column.key]}
+                  onToggle={value => onToggleMetaFilter(column.key, value)}
+                  onClearAll={() => onClearMetaFilter(column.key)}
+                />
+              </div>
+            ))}
+            {/* Collapsible columns: 責任者, 備考欄, extra */}
+            {isExtraExpanded && COLLAPSIBLE_META.map(column => (
+              <div
+                key={column.key}
+                style={{
+                  width: column.width,
+                  minWidth: column.width,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 4,
+                  padding: '0 6px',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  color: '#1e334b',
+                  borderRight: '1px solid #dde5ef',
+                  whiteSpace: 'nowrap',
+                  background: '#eef4fb',
+                }}
+              >
+                <span>{column.label}</span>
+                <PopupMultiSelect
+                  options={metaFilterOptions[column.key]}
+                  selected={metaFilterValues[column.key]}
+                  onToggle={value => onToggleMetaFilter(column.key, value)}
+                  onClearAll={() => onClearMetaFilter(column.key)}
+                />
               </div>
             ))}
             {isExtraExpanded && EXTRA_COLUMNS.map(col => (
@@ -391,6 +427,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   minWidth: col.width,
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 4,
                   padding: '0 6px',
                   fontWeight: 700,
                   fontSize: 12,
@@ -400,9 +438,34 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   background: '#eef4fb',
                 }}
               >
-                {col.label}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{col.label}</span>
+                <PopupMultiSelect
+                  options={extraFilterOptions[col.key]}
+                  selected={extraFilterValues[col.key]}
+                  onToggle={value => onToggleExtraFilter(col.key, value)}
+                  onClearAll={() => onClearExtraFilter(col.key)}
+                />
               </div>
             ))}
+            {/* Toggle button — always rightmost */}
+            <div
+              onClick={() => setIsExtraExpanded(v => !v)}
+              title={isExtraExpanded ? '詳細列を折りたたむ' : '詳細列を展開する'}
+              style={{
+                width: TOGGLE_COL_WIDTH,
+                minWidth: TOGGLE_COL_WIDTH,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRight: '1px solid #dde5ef',
+                cursor: 'pointer',
+                userSelect: 'none',
+                fontSize: 11,
+                color: '#607d8b',
+              }}
+            >
+              {isExtraExpanded ? '◀' : '▶'}
+            </div>
           </div>
         </div>
 
@@ -417,7 +480,33 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 borderBottom: '1px solid #ecf1f7',
               }}
             >
-              {META_COLUMNS.map(col => (
+              {/* Always-visible cells */}
+              {ALWAYS_COLUMNS.map(col => (
+                <div
+                  key={`${row.workerId}_${col.key}`}
+                  style={{
+                    width: col.width,
+                    minWidth: col.width,
+                    padding: col.align === 'center' ? 0 : '0 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: col.align === 'center' ? 'center' : 'flex-start',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    borderRight: '1px solid #edf2f8',
+                    color: '#25384f',
+                    fontSize: 12,
+                    fontFamily: 'Meiryo, sans-serif',
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={row.meta[col.key]}>
+                    {row.meta[col.key]}
+                  </span>
+                </div>
+              ))}
+              {/* Collapsible: 責任者, 備考欄 */}
+              {isExtraExpanded && COLLAPSIBLE_META.map(col => (
                 <div
                   key={`${row.workerId}_${col.key}`}
                   style={{
@@ -462,6 +551,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   )}
                 </div>
               ))}
+              {/* Collapsible: extra columns */}
               {isExtraExpanded && EXTRA_COLUMNS.map(col => (
                 <div
                   key={`${row.workerId}_extra_${col.key}`}
@@ -477,7 +567,6 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                     color: '#25384f',
                     fontSize: 11,
                     fontFamily: 'Meiryo, sans-serif',
-                    background: '#f6fafe',
                   }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -486,6 +575,14 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   </span>
                 </div>
               ))}
+              {/* Toggle column body cell — always rightmost */}
+              <div
+                style={{
+                  width: TOGGLE_COL_WIDTH,
+                  minWidth: TOGGLE_COL_WIDTH,
+                  borderRight: '1px solid #edf2f8',
+                }}
+              />
             </div>
           ))}
         </div>

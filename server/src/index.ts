@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { writeFile } from 'node:fs/promises';
 import { constraintsRouter } from './routes/constraints.js';
 
 const app = express();
@@ -12,6 +13,24 @@ app.use('/api', constraintsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, server: 'gantt-editor-api', time: new Date().toISOString() });
+});
+
+app.post('/api/save-files', async (req, res) => {
+  const { envPath, schedulePath, envYaml, scheduleYaml } = req.body as {
+    envPath?: string;
+    schedulePath?: string;
+    envYaml?: string;
+    scheduleYaml?: string;
+  };
+  try {
+    const writes: Promise<void>[] = [];
+    if (envPath && envYaml) writes.push(writeFile(envPath, envYaml, 'utf-8'));
+    if (schedulePath && scheduleYaml) writes.push(writeFile(schedulePath, scheduleYaml, 'utf-8'));
+    await Promise.all(writes);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
 });
 
 app.listen(PORT, () => {
