@@ -210,6 +210,16 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, envConfig: { ...state.envConfig, workerList } };
     }
 
+    case 'UPDATE_WORKER_DESC_FIELD': {
+      if (!state.envConfig) return state;
+      const { workerId, field, value } = action.payload;
+      const workerList = state.envConfig.workerList.map(w => {
+        if (w.id !== workerId) return w;
+        return { ...w, description: { ...w.description, [field]: value } };
+      });
+      return { ...state, envConfig: { ...state.envConfig, workerList } };
+    }
+
     case 'UPDATE_WORKFLOW_TASK_COLOR': {
       if (!state.schedule) return state;
       const { workflowTaskId, colorCode } = action.payload;

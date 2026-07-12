@@ -363,6 +363,9 @@ export function WorkerViewGantt({ dates }: Props) {
       onChangeRemarks={(workerId, value) =>
         dispatch({ type: 'UPDATE_WORKER_DEFINITION', payload: { workerId, definition: value } })
       }
+      onChangeDescField={(workerId, field, value) =>
+        dispatch({ type: 'UPDATE_WORKER_DESC_FIELD', payload: { workerId, field, value } })
+      }
       onUnavailableDragCommit={(workerId, oldStartDate, oldEndDate, newStartDate, newEndDate) => {
         if (oldStartDate === oldEndDate && newStartDate === newEndDate) {
           dispatch({ type: 'MOVE_UNAVAILABLE_DATE', payload: { workerId, oldDate: oldStartDate, newDate: newStartDate } });

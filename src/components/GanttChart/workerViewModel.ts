@@ -162,7 +162,7 @@ function buildOpTaskToModuleMap(schedule: ScheduleData): Map<string, string> {
   return map;
 }
 
-function buildOpTaskColorMap(schedule: ScheduleData): Map<string, string> {
+export function buildOpTaskColorMap(schedule: ScheduleData): Map<string, string> {
   const result = new Map<string, string>();
   const byBaseCode = new Map<string, string>();
   let colorIdx = 0;

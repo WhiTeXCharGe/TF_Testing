@@ -22,6 +22,12 @@ const COLLAPSIBLE_META: Array<{ key: WorkerFilterKey; label: string; width: numb
 ];
 
 type ExtraColKey = 'workType' | 'assignedDuties' | 'visa' | 'overseasDriving';
+type ExtraDescField = '業務形態' | 'VISA' | '海外運転';
+const EXTRA_COL_DESC_FIELD: Partial<Record<ExtraColKey, ExtraDescField>> = {
+  workType: '業務形態',
+  visa: 'VISA',
+  overseasDriving: '海外運転',
+};
 const EXTRA_COLUMNS: Array<{ key: ExtraColKey; label: string; width: number }> = [
   { key: 'workType', label: '業務形態', width: 96 },
   { key: 'assignedDuties', label: '担当職務', width: 140 },
@@ -100,6 +106,7 @@ interface Props {
   onClearMetaFilter: (key: WorkerFilterKey) => void;
   onClearSelectedDateTask: () => void;
   onChangeRemarks: (workerId: string, value: string) => void;
+  onChangeDescField: (workerId: string, field: ExtraDescField, value: string) => void;
   extraFilterValues: Record<ExtraColKey, string[]>;
   extraFilterOptions: Record<ExtraColKey, string[]>;
   onToggleExtraFilter: (key: ExtraColKey, value: string) => void;
@@ -131,6 +138,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   onClearMetaFilter,
   onClearSelectedDateTask,
   onChangeRemarks,
+  onChangeDescField,
   onUnavailableDragCommit,
   highlightedAssignmentIndices,
   highlightBarName,
@@ -552,29 +560,53 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 </div>
               ))}
               {/* Collapsible: extra columns */}
-              {isExtraExpanded && EXTRA_COLUMNS.map(col => (
-                <div
-                  key={`${row.workerId}_extra_${col.key}`}
-                  style={{
-                    width: col.width,
-                    minWidth: col.width,
-                    padding: '0 6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                    borderRight: '1px solid #edf2f8',
-                    color: '#25384f',
-                    fontSize: 11,
-                    fontFamily: 'Meiryo, sans-serif',
-                  }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={row.meta[col.key]}>
-                    {row.meta[col.key]}
-                  </span>
-                </div>
-              ))}
+              {isExtraExpanded && EXTRA_COLUMNS.map(col => {
+                const descField = EXTRA_COL_DESC_FIELD[col.key];
+                return (
+                  <div
+                    key={`${row.workerId}_extra_${col.key}`}
+                    style={{
+                      width: col.width,
+                      minWidth: col.width,
+                      padding: descField ? '0 4px' : '0 6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      borderRight: '1px solid #edf2f8',
+                      color: '#25384f',
+                      fontSize: 11,
+                      fontFamily: 'Meiryo, sans-serif',
+                    }}
+                  >
+                    {descField ? (
+                      <input
+                        type="text"
+                        defaultValue={row.meta[col.key]}
+                        onBlur={e => onChangeDescField(row.workerId, descField, e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          width: '100%',
+                          border: 'none',
+                          background: 'transparent',
+                          fontSize: 11,
+                          fontFamily: 'Meiryo, sans-serif',
+                          color: '#25384f',
+                          outline: 'none',
+                          cursor: 'text',
+                        }}
+                        title="クリックして編集"
+                      />
+                    ) : (
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={row.meta[col.key]}>
+                        {row.meta[col.key]}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
               {/* Toggle column body cell — always rightmost */}
               <div
                 style={{

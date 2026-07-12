@@ -1,6 +1,34 @@
 import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml, stringifyEnvConfigYaml } from './yamlService';
+import { buildOpTaskColorMap } from '../components/GanttChart/workerViewModel';
+
+// Bake resolved (auto-generated or explicit) colors into schedule objects before saving
+function resolveScheduleColors(schedule: ScheduleData): ScheduleData {
+  const colorMap = buildOpTaskColorMap(schedule);
+  return {
+    ...schedule,
+    workflowTaskList: schedule.workflowTaskList.map(wt => {
+      if (wt.phaseTaskList.length === 0) {
+        // misc task — color keyed by workflowTask.id
+        const hex = colorMap.get(wt.id);
+        const code = hex ? hex.replace(/^#/, '') : wt.colorCode;
+        return { ...wt, colorCode: code };
+      }
+      return {
+        ...wt,
+        phaseTaskList: wt.phaseTaskList.map(pt => ({
+          ...pt,
+          operationTaskList: pt.operationTaskList.map(ot => {
+            const hex = colorMap.get(ot.id);
+            const code = hex ? hex.replace(/^#/, '') : ot.colorCode;
+            return { ...ot, colorCode: code };
+          }),
+        })),
+      };
+    }),
+  };
+}
 
 export interface LoadedFiles {
   envConfig: EnvConfig;
@@ -29,7 +57,7 @@ export async function openTwoYamlFiles(): Promise<LoadedFiles> {
 
 // Trigger browser download of the current schedule as YAML
 export function downloadScheduleYaml(data: ScheduleData, filename = 'Schedule.yaml'): void {
-  const text = stringifyScheduleYaml(data);
+  const text = stringifyScheduleYaml(resolveScheduleColors(data));
   const blob = new Blob([text], { type: 'text/yaml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -59,7 +87,7 @@ export async function overwriteSaveFiles(
   schedulePath: string,
 ): Promise<void> {
   const envYaml = stringifyEnvConfigYaml(envConfig);
-  const scheduleYaml = stringifyScheduleYaml(schedule);
+  const scheduleYaml = stringifyScheduleYaml(resolveScheduleColors(schedule));
   const res = await fetch('/api/save-files', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

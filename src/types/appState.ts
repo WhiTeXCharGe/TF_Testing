@@ -139,6 +139,7 @@ export type ActionType =
   | { type: 'RESIZE_UNAVAILABLE_RANGE'; payload: { workerId: string; oldStartDate: string; oldEndDate: string; newStartDate: string; newEndDate: string } }
   | { type: 'SET_WORKER_COLUMN_FILTER'; payload: Partial<WorkerColumnFilter> }
   | { type: 'SET_WORKER_DATE_CELL_FILTER'; payload: WorkerDateCellFilter }
+  | { type: 'UPDATE_WORKER_DESC_FIELD'; payload: { workerId: string; field: '業務形態' | 'VISA' | '海外運転'; value: string } }
   | { type: 'CLEAR_ALL_WORKER_FILTERS' }
   // Backend constraint check
   | { type: 'OPEN_CONSTRAINT_DIALOG' }
