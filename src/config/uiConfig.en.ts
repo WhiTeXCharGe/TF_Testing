@@ -79,6 +79,7 @@ export const UI = {
     solverFailedUnknown: 'No error detail was recorded.',
     solverErrorTitle: 'Service error',
     solverStatusClose: 'Close',
+    incomingTransferErrorTitle: 'Failed to receive data from GanttChartEditor',
     // Delete confirm dialog (output yaml exists — run is finished)
     deleteConfirmTitle: 'Delete this run?',
     deleteConfirmBody: 'This will remove the row and delete public/local/<id>/ on disk. This cannot be undone.',

@@ -6,6 +6,10 @@ export const APP_CONFIG = {
   // Set VITE_API_BASE_URL in .env to point at your Cloud Run job endpoint.
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
 
+  // Base URL of GanttChartEditor's own Express server, used to consume a
+  // cross-app handoff (?incomingTransfer=<token>) sent via 計画管理ツールへ送信.
+  ganttEditorApiBaseUrl: 'http://localhost:3010',
+
   // Path under /public where static data files live.
   dataBasePath: '/data',
 

@@ -78,6 +78,7 @@ export const UI = {
     solverFailedUnknown: 'エラー詳細が記録されていません。',
     solverErrorTitle: 'サービスエラー',
     solverStatusClose: '閉じる',
+    incomingTransferErrorTitle: 'GanttChartEditorからのデータ受信に失敗しました',
     // Delete confirm dialog (output yaml が存在 — 実行完了済み)
     deleteConfirmTitle: 'この実行を削除しますか?',
     deleteConfirmBody: 'この行を削除し、public/local/<id>/ をディスクから削除します。この操作は取り消せません。',

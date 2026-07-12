@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { saveAs } from 'file-saver';
 import { UI } from '@/config/uiConfig';
+import { APP_CONFIG } from '@/config/appConfig';
 import { Icon } from '@/components/common/Icon';
 import { Dialog } from '@/components/common/Dialog';
 import { useRuns } from '@/hooks/useRuns';
@@ -106,7 +107,7 @@ function ResultCell({ busy, onShowResult, outputPath }: {
 }
 
 // ── New Run modal ─────────────────────────────────────────────────────────────
-function NewRunModal({ onClose, onSubmit }: {
+function NewRunModal({ onClose, onSubmit, initialEnvFile, initialSchedFile }: {
   onClose: () => void;
   onSubmit: (payload: {
     envFile: File;
@@ -114,9 +115,11 @@ function NewRunModal({ onClose, onSubmit }: {
     originalEnvPath: string;
     originalSchedPath: string;
   }) => Promise<void>;
+  initialEnvFile?: File;
+  initialSchedFile?: File;
 }) {
-  const [envFile,   setEnvFile]   = useState<File | null>(null);
-  const [schedFile, setSchedFile] = useState<File | null>(null);
+  const [envFile,   setEnvFile]   = useState<File | null>(initialEnvFile ?? null);
+  const [schedFile, setSchedFile] = useState<File | null>(initialSchedFile ?? null);
   const [originalEnvPath,   setOriginalEnvPath]   = useState('');
   const [originalSchedPath, setOriginalSchedPath] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -335,6 +338,37 @@ export function RunLogPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
 
+  // ── Incoming cross-app transfer from GanttChartEditor (計画管理ツールへ送信) ──
+  const [incomingTransfer, setIncomingTransfer] = useState<{ envFile: File; schedFile: File } | null>(null);
+  const [incomingTransferError, setIncomingTransferError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('incomingTransfer');
+    if (!token) return;
+
+    // Strip the query param immediately so a refresh/back doesn't re-trigger it.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('incomingTransfer');
+    window.history.replaceState({}, '', url.toString());
+
+    (async () => {
+      try {
+        const res = await fetch(`${APP_CONFIG.ganttEditorApiBaseUrl}/api/handoff/consume/${token}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? `HTTP ${res.status}`);
+        }
+        const envFile = new File([data.envYaml], 'EnvConfig.yaml', { type: 'text/yaml' });
+        const schedFile = new File([data.scheduleYaml], 'Schedule.yaml', { type: 'text/yaml' });
+        setIncomingTransfer({ envFile, schedFile });
+        setModalOpen(true);
+      } catch (e) {
+        setIncomingTransferError(String((e as Error).message ?? e));
+      }
+    })();
+  }, []);
+
   // Dialog state — only one of these is open at a time.
   const [ganttDialog,    setGanttDialog]    = useState<{ run: Run; source: 'copy' | 'result' } | null>(null);
   const [notReady,       setNotReady]       = useState<Run | null>(null);
@@ -431,6 +465,7 @@ export function RunLogPage() {
     }
 
     setModalOpen(false);
+    setIncomingTransfer(null);
     setUploadDone({ run });
   }
 
@@ -608,7 +643,23 @@ export function RunLogPage() {
 
       <PathPopup state={popup} onClose={() => setPopup(null)} />
 
-      {modalOpen && <NewRunModal onClose={() => setModalOpen(false)} onSubmit={handleSubmit} />}
+      {modalOpen && (
+        <NewRunModal
+          onClose={() => { setModalOpen(false); setIncomingTransfer(null); }}
+          onSubmit={handleSubmit}
+          initialEnvFile={incomingTransfer?.envFile}
+          initialSchedFile={incomingTransfer?.schedFile}
+        />
+      )}
+
+      {incomingTransferError && (
+        <Dialog
+          title={UI.runLog.incomingTransferErrorTitle}
+          body={<div>{incomingTransferError}</div>}
+          buttons={[{ label: UI.runLog.solverStatusClose, onClick: () => setIncomingTransferError(null), variant: 'primary' }]}
+          onClose={() => setIncomingTransferError(null)}
+        />
+      )}
 
       {uploadDone && (
         <Dialog

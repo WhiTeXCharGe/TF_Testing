@@ -262,6 +262,10 @@ function localApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [react(), localApiPlugin()],
+  server: {
+    port: 5174,
+    strictPort: true,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
