@@ -57,6 +57,7 @@ const BASE_STATE: AppState = {
   isTaskAddDialogOpen: false,
   isFileOpenDialogOpen: false,
   isNewScheduleDialogOpen: false,
+  isSendToSchedulerDialogOpen: false,
 };
 
 // ── SWITCH_VIEW ───────────────────────────────────────────────────────────────

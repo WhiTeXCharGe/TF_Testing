@@ -378,6 +378,12 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'CLOSE_NEW_SCHEDULE_DIALOG':
       return { ...state, isNewScheduleDialogOpen: false };
 
+    case 'OPEN_SEND_TO_SCHEDULER_DIALOG':
+      return { ...state, isSendToSchedulerDialogOpen: true };
+
+    case 'CLOSE_SEND_TO_SCHEDULER_DIALOG':
+      return { ...state, isSendToSchedulerDialogOpen: false };
+
     case 'ADD_WORKFLOW_TASKS': {
       if (!state.schedule) return state;
       const existingIds = new Set(state.schedule.workflowTaskList.map(wt => wt.id));

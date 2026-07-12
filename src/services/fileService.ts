@@ -4,7 +4,7 @@ import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml, stringify
 import { buildOpTaskColorMap } from '../components/GanttChart/workerViewModel';
 
 // Bake resolved (auto-generated or explicit) colors into schedule objects before saving
-function resolveScheduleColors(schedule: ScheduleData): ScheduleData {
+export function resolveScheduleColors(schedule: ScheduleData): ScheduleData {
   const colorMap = buildOpTaskColorMap(schedule);
   return {
     ...schedule,

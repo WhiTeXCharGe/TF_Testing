@@ -67,7 +67,7 @@ export function Toolbar() {
         <div style={{ marginLeft: 'auto' }}>
           <button
             disabled={!has}
-            onClick={() => dispatch({ type: 'SET_ERROR', payload: '計画管理ツールへの送信機能は未実装です（バックエンド接続後に有効になります）' })}
+            onClick={() => dispatch({ type: 'OPEN_SEND_TO_SCHEDULER_DIALOG' })}
             style={S.submitBtn(has)}
           >
             ▶ 計画管理ツールへ送信

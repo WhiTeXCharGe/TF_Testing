@@ -94,6 +94,7 @@ export interface AppState {
   isTaskAddDialogOpen: boolean;
   isFileOpenDialogOpen: boolean;
   isNewScheduleDialogOpen: boolean;
+  isSendToSchedulerDialogOpen: boolean;
   // Backend constraint check
   isConstraintDialogOpen: boolean;
   isConstraintChecking: boolean;
@@ -125,6 +126,8 @@ export type ActionType =
   | { type: 'CLOSE_FILE_DIALOG' }
   | { type: 'OPEN_NEW_SCHEDULE_DIALOG' }
   | { type: 'CLOSE_NEW_SCHEDULE_DIALOG' }
+  | { type: 'OPEN_SEND_TO_SCHEDULER_DIALOG' }
+  | { type: 'CLOSE_SEND_TO_SCHEDULER_DIALOG' }
   | { type: 'ADD_WORKFLOW_TASKS'; payload: ScheduleData['workflowTaskList'] }
   | { type: 'MERGE_DATA'; payload: { schedule?: ScheduleData; envConfig?: EnvConfig } }
   | { type: 'SAVE_PATHS'; payload: { envPath?: string; schedulePath?: string } }
