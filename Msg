@@ -1,1 +1,12 @@
-az batch pool supported-images list --query "[?imageReference.publisher=='microsoft-azure-batch' && contains(imageReference.offer, 'container')].{publisher:imageReference.publisher, offer:imageReference.offer, sku:imageReference.sku, nodeAgentSku:nodeAgentSkuId}" -o table
+1. Check if there's any data at all, no filter
+az batch pool supported-images list --query "length(@)"
+If this prints 0 or errors, the problem is upstream of my --query filter — likely the Batch data-plane session isn't authenticated in this terminal:
+
+az batch account login --name "$BATCH" --resource-group "$RG"
+az batch pool supported-images list --query "length(@)"
+Retry the count after logging in — if it's still 0, something's off with account access; if it jumps to a real number (there should be dozens), the filter step below will now work too.
+
+2. If there IS data, check the exact field names
+My filter may have gotten the casing wrong (Azure Batch's JSON often uses nodeAgentSKUId with capital SKU, not nodeAgentSkuId). See one raw entry to confirm:
+
+az batch pool supported-images list --query "[0]"
