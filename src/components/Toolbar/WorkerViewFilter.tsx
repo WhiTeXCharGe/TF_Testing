@@ -55,10 +55,15 @@ export function WorkerViewFilter() {
     f.regionIds.length > 0 ||
     !!f.startDate ||
     !!f.endDate ||
+    cf.id.length > 0 ||
     cf.company.length > 0 ||
     cf.name.length > 0 ||
     cf.manager.length > 0 ||
     cf.remarks.length > 0 ||
+    cf.workType.length > 0 ||
+    cf.assignedDuties.length > 0 ||
+    cf.visa.length > 0 ||
+    cf.overseasDriving.length > 0 ||
     dcf.tasks.length > 0;
 
   const clearAll = () => dispatch({ type: 'CLEAR_ALL_WORKER_FILTERS' });

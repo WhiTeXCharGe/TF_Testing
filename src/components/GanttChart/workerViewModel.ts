@@ -1,5 +1,5 @@
 import { EnvConfig, Worker } from '../../types/envConfig';
-import { Assignment, ScheduleData } from '../../types/schedule';
+import { Assignment, PlanFlexibility, ScheduleData } from '../../types/schedule';
 import { generateDateRange } from '../../utils/dateUtils';
 
 export interface WorkerMetaInfo {
@@ -17,8 +17,10 @@ export interface WorkerMetaInfo {
 export interface WorkerDayCell {
   kind: 'work' | 'unavailable' | 'empty';
   moduleName?: string;
+  taskName?: string;
   color?: string;
   textColor?: string;
+  planFlexibility?: PlanFlexibility;
 }
 
 export interface WorkerSegment {
@@ -30,6 +32,7 @@ export interface WorkerSegment {
   textColor: string;
   assignmentIndex?: number;
   isMisc?: boolean;
+  planFlexibility?: PlanFlexibility;
 }
 
 export interface WorkerTimelineRow {
@@ -162,6 +165,19 @@ function buildOpTaskToModuleMap(schedule: ScheduleData): Map<string, string> {
   return map;
 }
 
+// operationTask id → task name. Misc tasks have no OperationTask, so they're absent here.
+function buildOpTaskNameMap(schedule: ScheduleData): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const workflowTask of schedule.workflowTaskList) {
+    for (const phaseTask of workflowTask.phaseTaskList) {
+      for (const operationTask of phaseTask.operationTaskList) {
+        map.set(operationTask.id, operationTask.name ?? operationTask.operation ?? operationTask.id);
+      }
+    }
+  }
+  return map;
+}
+
 export function buildOpTaskColorMap(schedule: ScheduleData): Map<string, string> {
   const result = new Map<string, string>();
   const byBaseCode = new Map<string, string>();
@@ -231,6 +247,7 @@ export function buildWorkerTimelineModel(
 ): WorkerTimelineModel {
   const monthGroups = buildMonthGroups(dates);
   const opTaskToModule = buildOpTaskToModuleMap(schedule);
+  const opTaskNameMap = buildOpTaskNameMap(schedule);
   const opTaskColorMap = buildOpTaskColorMap(schedule);
   const moduleById = new Map(schedule.workflowTaskList.map(w => [w.id, w]));
   const miscTaskIds = new Set(
@@ -240,7 +257,7 @@ export function buildWorkerTimelineModel(
   const dateIndex = new Map(dates.map((d, i) => [d, i]));
 
   const workerById = new Map(envConfig.workerList.map(worker => [worker.id, worker]));
-  const workerDayAssignments = new Map<string, Map<string, { moduleName: string; color: string; textColor: string; assignmentIndex: number; isMisc: boolean }>>();
+  const workerDayAssignments = new Map<string, Map<string, { moduleName: string; taskName: string; color: string; textColor: string; assignmentIndex: number; isMisc: boolean; planFlexibility: PlanFlexibility }>>();
   const assignedWorkerIds = new Set<string>();
 
   for (const [assignmentIndex, assignment] of schedule.assignmentList.entries()) {
@@ -252,6 +269,7 @@ export function buildWorkerTimelineModel(
     let color = opTaskColorMap.get(assignment.operationTask) ?? UNKNOWN_COLOR;
     let textColor = BLACK;
     const moduleName = moduleInfo?.name ?? moduleId.replace('UNKNOWN::', '');
+    const taskName = isMisc ? '' : (opTaskNameMap.get(assignment.operationTask) ?? '');
 
     if (moduleInfo?.workflow === PB_WORKFLOW_ID) {
       color = PB_COLOR;
@@ -267,7 +285,7 @@ export function buildWorkerTimelineModel(
       const dayMap = workerDayAssignments.get(workerId);
       if (!dayMap) continue;
       if (!dayMap.has(day)) {
-        dayMap.set(day, { moduleName, color, textColor, assignmentIndex, isMisc });
+        dayMap.set(day, { moduleName, taskName, color, textColor, assignmentIndex, isMisc, planFlexibility: assignment.planFlexibility });
       }
       assignedWorkerIds.add(workerId);
     }
@@ -343,7 +361,7 @@ export function buildWorkerTimelineModel(
         dayAssignmentIndices.push(undefined);
         continue;
       }
-      dayCells.push({ kind: 'work', moduleName: work.moduleName, color: work.color, textColor: work.textColor });
+      dayCells.push({ kind: 'work', moduleName: work.moduleName, taskName: work.taskName, color: work.color, textColor: work.textColor, planFlexibility: work.planFlexibility });
       dayAssignmentIndices.push({ index: work.assignmentIndex, isMisc: work.isMisc });
       dateWorkOptionSet[day]?.add(work.moduleName);
     }
@@ -361,15 +379,17 @@ export function buildWorkerTimelineModel(
       if (prev && !sameAsPrev) {
         if (prev.kind === 'work') {
           const aInfo = dayAssignmentIndices[start];
+          const label = prev.taskName ? `${prev.moduleName ?? ''} ${prev.taskName}` : (prev.moduleName ?? '');
           segments.push({
             kind: 'work',
             startIndex: start,
             endIndex: i - 1,
-            label: prev.moduleName ?? '',
+            label,
             color: prev.color ?? UNKNOWN_COLOR,
             textColor: prev.textColor ?? BLACK,
             assignmentIndex: aInfo?.index,
             isMisc: aInfo?.isMisc,
+            planFlexibility: prev.planFlexibility,
           });
         } else if (prev.kind === 'unavailable') {
           segments.push({

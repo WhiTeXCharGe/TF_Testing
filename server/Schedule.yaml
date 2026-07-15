@@ -1,0 +1,37 @@
+schedule:
+  plan_range:
+    start_date: 2025/09/01
+    end_date: 2025/09/10
+  workflow_task_list:
+  - id: e1
+    name: SU1001
+    description: 
+    workflow: wf1
+    fab: f1
+    phase_task_list:
+    - id: e1p1
+      name: Phase1
+      description: 
+      phase: p1
+      start_date: 2025/09/01
+      end_date: 2025/09/10
+      operation_task_list:
+      - id: e1p1o1
+        name: HeavyTask
+        description: 
+        operation: p1o1
+        workload_hours: 40
+        color_code: FFE599
+  misc_task_list:
+  assignment_list:
+  - worker: w1
+    operation_task: e1p1o1
+    start_date: 2025/09/01
+    end_date: 2025/09/05
+    work_date_list:
+    - date: 2025/09/01
+      hour: 8
+    - date: 2025/09/02
+      hour: 8
+    plan_flexibility: Fixed
+    description: 

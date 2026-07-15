@@ -2,6 +2,13 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { UI } from '../../config/uiText';
 import { generateDateRange } from '../../utils/dateUtils';
+import { PlanFlexibility } from '../../types/schedule';
+
+const flexibilityOptions: { value: PlanFlexibility; label: string }[] = [
+  { value: 'Flexible', label: UI.flexibleDesc },
+  { value: 'Reluctant', label: UI.reluctantDesc },
+  { value: 'Fixed', label: UI.fixedDesc },
+];
 
 const panelStyle: React.CSSProperties = {
   width: 300,
@@ -227,6 +234,22 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
+        </div>
+
+        <div style={rowStyle}>
+          <span style={labelStyle}>{UI.flexibilityLabel}</span>
+          <select
+            value={assignment.planFlexibility}
+            onChange={e => dispatch({
+              type: 'UPDATE_ASSIGNMENT',
+              payload: { index: assignmentIndex, updates: { planFlexibility: e.target.value as PlanFlexibility } },
+            })}
+            style={inputStyle}
+          >
+            {flexibilityOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
 
         {assignmentViolations.length > 0 && (
@@ -475,6 +498,22 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
+        </div>
+
+        <div style={rowStyle}>
+          <span style={labelStyle}>{UI.flexibilityLabel}</span>
+          <select
+            value={assignment.planFlexibility}
+            onChange={e => dispatch({
+              type: 'UPDATE_ASSIGNMENT',
+              payload: { index: assignmentIndex, updates: { planFlexibility: e.target.value as PlanFlexibility } },
+            })}
+            style={inputStyle}
+          >
+            {flexibilityOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
 
         <div style={rowStyle}>

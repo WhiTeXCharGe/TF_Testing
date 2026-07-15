@@ -10,7 +10,9 @@ interface Props { dates: string[] }
 const HEADER_H = 26;
 const ROW_H = 34;
 const CELL_W = 22;
-const LEFT_W = 170;
+const MODULE_COL_W = 130;
+const ATTR_COL_W = 90;
+const LEFT_W = MODULE_COL_W + ATTR_COL_W;
 const PANEL_W = 320;
 const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -169,11 +171,16 @@ export function DeviceViewGantt({ dates }: Props) {
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', background: '#fff' }}>
 
-      {/* ── LEFT: seiban labels ─────────────────────────────────────────────── */}
+      {/* ── LEFT: seiban + workflow attribute labels ────────────────────────── */}
       <div style={{ width: LEFT_W, flexShrink: 0, borderRight: '1px solid #c9d5e3', display: 'flex', flexDirection: 'column', background: '#f7fafc', overflow: 'hidden' }}>
         {/* Sticky header placeholder */}
-        <div style={{ height: HEADER_H * 3, flexShrink: 0, borderBottom: '1px solid #c9d5e3', background: '#f2f6fb', display: 'flex', alignItems: 'center', padding: '0 10px', fontWeight: 700, fontSize: 12, color: '#1e334b' }}>
-          {UI.deviceCodeLabel}
+        <div style={{ height: HEADER_H * 3, flexShrink: 0, borderBottom: '1px solid #c9d5e3', background: '#f2f6fb', display: 'flex', alignItems: 'center' }}>
+          <div style={{ width: MODULE_COL_W, flexShrink: 0, padding: '0 10px', fontWeight: 700, fontSize: 12, color: '#1e334b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {UI.deviceCodeLabel}
+          </div>
+          <div style={{ width: ATTR_COL_W, flexShrink: 0, borderLeft: '1px solid #c9d5e3', padding: '0 10px', fontWeight: 700, fontSize: 12, color: '#1e334b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {UI.deviceAttributeLabel}
+          </div>
         </div>
         {/* Scrollable body — synced with right */}
         <div ref={leftBodyRef} style={{ flex: 1, overflowY: 'hidden' }}>
@@ -184,22 +191,39 @@ export function DeviceViewGantt({ dates }: Props) {
                 onClick={() => { closePanel(); if (row.type === 'koutei') toggle(row.module.moduleId); }}
                 style={{
                   display: 'flex', alignItems: 'center', height: ROW_H,
-                  paddingLeft: 8, paddingRight: 8, borderBottom: '1px solid #ecf1f7',
+                  borderBottom: '1px solid #ecf1f7',
                   background: row.type === 'koutei' ? '#e8eef5' : '#ffffff',
                   cursor: 'pointer', fontWeight: row.type === 'koutei' ? 700 : 400,
-                  fontSize: 12, color: '#25384f', whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontSize: 12, color: '#25384f',
                 }}
-                title={row.type === 'koutei' ? row.module.moduleName : ''}
               >
-                {row.type === 'koutei' && (
-                  <>
-                    <span style={{ marginRight: 5, fontSize: 12, color: '#5a7fa0', flexShrink: 0, fontWeight: 700 }}>
-                      {row.expanded ? '−' : '+'}
-                    </span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.module.moduleName}</span>
-                  </>
-                )}
+                <div
+                  style={{
+                    width: MODULE_COL_W, flexShrink: 0, paddingLeft: 8, paddingRight: 8,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    display: 'flex', alignItems: 'center',
+                  }}
+                  title={row.type === 'koutei' ? row.module.moduleName : ''}
+                >
+                  {row.type === 'koutei' && (
+                    <>
+                      <span style={{ marginRight: 5, fontSize: 12, color: '#5a7fa0', flexShrink: 0, fontWeight: 700 }}>
+                        {row.expanded ? '−' : '+'}
+                      </span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.module.moduleName}</span>
+                    </>
+                  )}
+                </div>
+                <div
+                  style={{
+                    width: ATTR_COL_W, flexShrink: 0, borderLeft: '1px solid #ecf1f7',
+                    paddingLeft: 8, paddingRight: 8,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}
+                  title={row.type === 'koutei' ? row.module.workflowName : ''}
+                >
+                  {row.type === 'koutei' ? row.module.workflowName : ''}
+                </div>
               </div>
             ))}
           </div>

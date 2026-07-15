@@ -787,7 +787,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       width,
                       top: 4,
                       height: ROW_HEIGHT - 8,
-                      borderRadius: 8,
+                      borderRadius: segment.planFlexibility === 'Fixed' ? 0 : 8,
                       border: isSelected
                         ? '2px solid #145da0'
                         : hasViolation

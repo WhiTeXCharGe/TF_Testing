@@ -1,0 +1,30 @@
+environment:
+  workflow_list:
+  - id: wf1
+    name: TestWorkflow
+    phase_list:
+    - id: p1
+      name: Phase1
+      operation_list:
+      - id: p1o1
+        name: HeavyOp
+        work_hours: [8]
+        workload_hours: 40
+        min_worker_num: 1
+        max_worker_num: 2
+  fab_list:
+  region_list:
+  customer_company_list:
+  worker_company_list:
+  - id: wc1
+    name: TestCo
+    annual_overtime_limit: 0
+    monthly_overtime_limit: 0
+  transite_day_map:
+  worker_list:
+  - id: w1
+    name: TestWorker
+    worker_company: wc1
+    is_manager: false
+    skill_map: {p1o1: 3}
+    unavailable_dates: []

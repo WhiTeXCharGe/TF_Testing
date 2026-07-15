@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,10 +30,15 @@ function purgeExpired(): void {
 const SCHEDULER_WEB_URL = 'http://localhost:5174';
 const SCHEDULER_SERVICE_URL = 'http://localhost:3001';
 
-// server/src/routes (dev, tsx) or server/dist/routes (build) → src|dist → server → GanttChartEditor → GanttChart → web → SchedulerWeb
+// server/src/routes (dev, tsx) or server/dist/routes (build) → src|dist → server → GanttChartEditor → SchedulerWeb (container)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCHEDULER_WEB_DIR = path.resolve(__dirname, '../../../../../SchedulerWeb');
-console.log(`[handoff] SchedulerWeb dir resolved to: ${SCHEDULER_WEB_DIR}`);
+const SCHEDULER_CONTAINER_DIR = path.resolve(__dirname, '../../../..');
+// The Vite frontend (port 5174) lives in the nested SchedulerWeb project…
+const SCHEDULER_WEB_DIR = path.join(SCHEDULER_CONTAINER_DIR, 'SchedulerWeb');
+// …and the queue/API service (port 3001) lives in a sibling `server` folder.
+const SCHEDULER_SERVICE_DIR = path.join(SCHEDULER_CONTAINER_DIR, 'server');
+console.log(`[handoff] SchedulerWeb web dir:     ${SCHEDULER_WEB_DIR}`);
+console.log(`[handoff] SchedulerWeb service dir: ${SCHEDULER_SERVICE_DIR}`);
 
 async function isReachable(url: string, timeoutMs = 1500): Promise<boolean> {
   try {
@@ -46,20 +52,48 @@ async function isReachable(url: string, timeoutMs = 1500): Promise<boolean> {
   }
 }
 
-function launchSchedulerWebDevAll(): void {
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const child = spawn(npmCmd, ['run', 'dev:all'], {
-    cwd: SCHEDULER_WEB_DIR,
+// Launch a `npm run <script>` process detached in the given directory.
+// Returns true if the spawn was attempted, false if the directory is missing.
+function launchNpmScript(cwd: string, script: string, label: string): boolean {
+  if (!existsSync(path.join(cwd, 'package.json'))) {
+    console.error(`[handoff] cannot launch ${label}: no package.json in ${cwd}`);
+    return false;
+  }
+  const isWin = process.platform === 'win32';
+  const npmCmd = isWin ? 'npm.cmd' : 'npm';
+  const child = spawn(npmCmd, ['run', script], {
+    cwd,
     detached: true,
     stdio: ['ignore', 'ignore', 'pipe'],
+    // On Windows, Node >=18.20.2/20.12.2 throws `spawn EINVAL` when launching
+    // .cmd/.bat files without a shell (CVE-2024-27980 mitigation). Using the
+    // shell lets cmd.exe resolve and run npm.cmd correctly.
+    shell: isWin,
   });
   child.stderr?.on('data', (d: Buffer) => {
-    console.error(`[scheduler-web] ${d.toString()}`);
+    console.error(`[${label}] ${d.toString()}`);
   });
   child.on('error', (err) => {
-    console.error('[handoff] failed to spawn SchedulerWeb dev:all:', err);
+    console.error(`[handoff] failed to spawn ${label} (${script}):`, err);
   });
   child.unref();
+  return true;
+}
+
+// Launch the Scheduler Webapp: the Vite frontend and the queue/API service.
+// They are started as two independent processes with verified paths rather
+// than delegating to SchedulerWeb's `dev:all`, whose `dev:service` script
+// assumes a `../service` folder that does not exist in this checkout.
+//
+// The service is started with `npm start` (plain `node server.js`), NOT
+// `npm run dev` (nodemon). Nodemon watches the working directory and restarts
+// on any `.json` change — but the service writes `data/status/<runId>.json`
+// on every status update, which would restart it mid-run, kill the running
+// `docker run`, and strand the run at "Submitted". A non-watching process
+// stays alive for the full (multi-hour) solve.
+function launchSchedulerWeb(): void {
+  launchNpmScript(SCHEDULER_WEB_DIR, 'dev', 'scheduler-web');
+  launchNpmScript(SCHEDULER_SERVICE_DIR, 'start', 'scheduler-service');
 }
 
 async function waitUntilUp(url: string, timeoutMs: number, intervalMs = 1000): Promise<boolean> {
@@ -91,7 +125,7 @@ handoffRouter.post('/handoff/create', async (req, res) => {
     ]);
 
     if (!webUp || !serviceUp) {
-      launchSchedulerWebDevAll();
+      launchSchedulerWeb();
       const [webOk, serviceOk] = await Promise.all([
         waitUntilUp(SCHEDULER_WEB_URL, 28000),
         waitUntilUp(`${SCHEDULER_SERVICE_URL}/queue`, 28000),

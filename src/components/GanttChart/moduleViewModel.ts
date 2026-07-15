@@ -50,6 +50,7 @@ export interface ModulePhase {
 export interface ModuleNode {
   moduleId: string;
   moduleName: string;       // 製番
+  workflowName: string;     // 属性 — EnvConfig workflow name looked up via WorkflowTask.workflow
   fab: string | null;
   region: string | null;
   phases: ModulePhase[];
@@ -118,6 +119,7 @@ export function buildModuleViewModel(
   const operationMap = buildOperationMap(envConfig);
   const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
   const companyById = new Map(envConfig.workerCompanyList.map(c => [c.id, c.name ?? c.id]));
+  const workflowNameById = new Map(envConfig.workflowList.map(w => [w.id, w.name ?? w.id]));
 
   // assignments grouped by operationTask id
   const assignmentsByOpTask = new Map<string, Array<{ index: number; worker: string; startDate: string; endDate: string }>>();
@@ -199,7 +201,8 @@ export function buildModuleViewModel(
       };
     });
 
-    return { moduleId, moduleName, fab: wt.fab ?? null, region: wt.region ?? null, phases };
+    const workflowName = workflowNameById.get(wt.workflow) ?? wt.workflow ?? '';
+    return { moduleId, moduleName, workflowName, fab: wt.fab ?? null, region: wt.region ?? null, phases };
   });
 
   return { modules, monthGroups };

@@ -42,6 +42,7 @@ export const UI = {
   // Search
   workerNamePlaceholder: '作業者名',
   deviceCodeLabel: '製番',
+  deviceAttributeLabel: '属性',
 
   // Side panel
   sidePanelTitle: '詳細情報',
@@ -91,11 +92,11 @@ export const UI = {
 
   // Plan flexibility options
   flexible: 'Flexible',
-  flexibleDesc: 'Flexible（自由に変更可）',
+  flexibleDesc: 'Flexible',
   reluctant: 'Reluctant',
-  reluctantDesc: 'Reluctant（できるだけ変更しない）',
+  reluctantDesc: 'Reluctant',
   fixed: 'Fixed',
-  fixedDesc: 'Fixed（変更不可）',
+  fixedDesc: 'Fixed',
 
   // Bulk flexibility dialog
   bulkDialogTitle: '柔軟性一括編集',
