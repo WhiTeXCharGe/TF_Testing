@@ -7,10 +7,12 @@ import { ConstraintResultDialog } from './components/Dialogs/ConstraintResultDia
 import { SendToSchedulerDialog } from './components/Dialogs/SendToSchedulerDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useConstraintCheck } from './hooks/useConstraintCheck';
+import { useIncomingGanttTransfer } from './hooks/useIncomingGanttTransfer';
 
 function AppContent() {
   useKeyboardShortcuts();
   useConstraintCheck();
+  useIncomingGanttTransfer();
   return (
     <>
       <GanttPage />

@@ -16,5 +16,9 @@ export const MAX_UNDO_STACK = 100;
 // Service API base URL (Node.js service, used for webapp integration in Phase 5)
 export const SERVICE_BASE_URL = 'http://localhost:3010';
 
+// Scheduler Webapp origin — used to consume a cross-app handoff
+// (?incomingTransfer=<token>) sent via 結果を表示 / コピーファイル表示.
+export const SCHEDULER_WEB_URL = 'http://localhost:5174';
+
 // Whether to shade weekend columns differently in the Gantt grid
 export const SHOW_WEEKEND_SHADING = false;

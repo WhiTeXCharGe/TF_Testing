@@ -1,6 +1,7 @@
 import { useAppContext } from '../../context/AppContext';
 import { Violation } from '../../types/appState';
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { useBackendConstraintCheck } from '../../hooks/useBackendConstraintCheck';
 
 const VIOLATION_LABEL: Record<string, string> = {
   OVERLAP: '同一日重複',
@@ -74,6 +75,7 @@ function ViolationRow({ v, onClick, isSelected }: { v: Violation; onClick: () =>
 export function ConstraintResultDialog() {
   const { state, dispatch } = useAppContext();
   const { isConstraintDialogOpen, isConstraintChecking, backendViolations, constraintCheckedAt, violations, schedule } = state;
+  const { runCheck } = useBackendConstraintCheck();
 
   // Misc task IDs — no manager/workload constraints apply to them
   const miscTaskIds = new Set(
@@ -151,13 +153,16 @@ export function ConstraintResultDialog() {
         display: 'flex',
         flexDirection: 'column',
         fontFamily: 'Meiryo, sans-serif',
-        background: 'rgba(255,255,255,0.97)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-        borderRadius: 6,
+        background: 'rgba(245,248,252,0.82)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18), 0 1px 0 rgba(255,255,255,0.6) inset',
+        borderRadius: 10,
         overflow: 'hidden',
         resize: 'both',
         minWidth: 300,
         minHeight: 200,
+        border: 'none',
       }}
       onMouseUp={() => { dragging.current = false; }}
     >
@@ -173,7 +178,7 @@ export function ConstraintResultDialog() {
           background: 'transparent',
           cursor: 'move',
           userSelect: 'none',
-          borderBottom: '1px solid rgba(0,0,0,0.08)',
+          borderBottom: '1px solid rgba(255,255,255,0.35)',
         }}
       >
         <span style={{ fontSize: 14, fontWeight: 700, color: '#1e334b', flex: 1 }}>
@@ -206,8 +211,8 @@ export function ConstraintResultDialog() {
           {/* Summary bar */}
           <div style={{
             padding: '8px 14px',
-            background: allViolations.length === 0 ? 'rgba(232,245,233,0.7)' : 'transparent',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            background: allViolations.length === 0 ? 'rgba(232,245,233,0.5)' : 'transparent',
+            borderBottom: '1px solid rgba(255,255,255,0.35)',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
@@ -299,18 +304,39 @@ export function ConstraintResultDialog() {
             )}
           </div>
 
-          {/* Footer hint */}
-          {allViolations.length > 0 && (
-            <div style={{
-              padding: '6px 14px',
-              borderTop: '1px solid rgba(0,0,0,0.06)',
-              fontSize: 10,
-              color: '#b0bec5',
-              flexShrink: 0,
-            }}>
-              違反をクリックするとガントチャート上の割付が選択されます
-            </div>
-          )}
+          {/* Footer */}
+          <div style={{
+            padding: '8px 14px',
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+          }}>
+            {allViolations.length > 0 && (
+              <span style={{ fontSize: 10, color: '#b0bec5', flex: 1 }}>
+                違反をクリックすると割付が選択されます
+              </span>
+            )}
+            <button
+              onClick={runCheck}
+              disabled={isConstraintChecking}
+              style={{
+                marginLeft: 'auto',
+                padding: '4px 14px',
+                fontSize: 12,
+                fontFamily: 'MS Gothic, monospace',
+                background: isConstraintChecking ? '#bdbdbd' : '#1565c0',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 4,
+                cursor: isConstraintChecking ? 'default' : 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {isConstraintChecking ? '⏳ チェック中...' : '☑ 再チェック'}
+            </button>
+          </div>
         </>
       )}
     </div>

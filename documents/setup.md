@@ -17,7 +17,7 @@ npm install --legacy-peer-deps
 ※ 数分かかる。エラーが出ても最後に `added ○ packages` と出ればOK。
 
 ```
-npm run dev
+npm run dev:all
 ```
 
 ブラウザで開く → `http://localhost:5173`
