@@ -533,6 +533,9 @@ export function reducer(state: AppState, action: ActionType): AppState {
         isConstraintDialogOpen: true,
       };
 
+    case 'TOGGLE_FLIGHT_STINTS':
+      return { ...state, showFlightStints: !state.showFlightStints };
+
     default:
       return state;
   }

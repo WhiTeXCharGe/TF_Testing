@@ -54,7 +54,7 @@ export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
   const {
     schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter,
-    workerColumnFilter, workerDateCellFilter,
+    workerColumnFilter, workerDateCellFilter, showFlightStints,
   } = state;
 
   // Convert array-based context state to Sets for filter logic.
@@ -377,6 +377,7 @@ export function WorkerViewGantt({ dates }: Props) {
       highlightBarName={highlightBarName}
       regionColorMap={model.regionColorMap}
       regionNameMap={model.regionNameMap}
+      showFlightStints={showFlightStints}
     />
   );
 }

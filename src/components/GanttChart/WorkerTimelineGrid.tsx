@@ -117,6 +117,7 @@ interface Props {
   highlightBarName: string;
   regionColorMap: Map<string, string>;
   regionNameMap: Map<string, string>;
+  showFlightStints: boolean;
 }
 
 export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
@@ -150,6 +151,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   onClearExtraFilter,
   regionColorMap,
   regionNameMap,
+  showFlightStints,
 }: Props) {
   // highlight mode is active when any global filter (non-date) is set
   const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
@@ -875,7 +877,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 />
               )}
 
-              {row.flightStints.map((stint, si) => (
+              {showFlightStints && row.flightStints.map((stint, si) => (
                 <FlightStintBar
                   key={`${row.workerId}_stint_${si}`}
                   stint={stint}

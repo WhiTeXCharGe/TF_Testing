@@ -27,6 +27,7 @@ const initialState: AppState = {
   isConstraintChecking: false,
   backendViolations: [],
   constraintCheckedAt: null,
+  showFlightStints: false,
 };
 
 interface ContextType {

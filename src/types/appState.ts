@@ -100,6 +100,7 @@ export interface AppState {
   isConstraintChecking: boolean;
   backendViolations: Violation[];
   constraintCheckedAt: string | null;
+  showFlightStints: boolean;
 }
 
 export type ActionType =
@@ -148,4 +149,5 @@ export type ActionType =
   | { type: 'OPEN_CONSTRAINT_DIALOG' }
   | { type: 'CLOSE_CONSTRAINT_DIALOG' }
   | { type: 'SET_CONSTRAINT_CHECKING'; payload: boolean }
-  | { type: 'SET_BACKEND_VIOLATIONS'; payload: { violations: Violation[]; checkedAt: string } };
+  | { type: 'SET_BACKEND_VIOLATIONS'; payload: { violations: Violation[]; checkedAt: string } }
+  | { type: 'TOGGLE_FLIGHT_STINTS' };

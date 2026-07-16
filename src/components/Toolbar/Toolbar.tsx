@@ -10,7 +10,7 @@ import { useBackendConstraintCheck } from '../../hooks/useBackendConstraintCheck
 
 export function Toolbar() {
   const { state, dispatch } = useAppContext();
-  const { schedule, currentView } = state;
+  const { schedule, currentView, showFlightStints } = state;
   const has = !!schedule;
   const { runCheck, isChecking } = useBackendConstraintCheck();
 
@@ -63,6 +63,23 @@ export function Toolbar() {
           }}
         >
           {isChecking ? '⏳ チェック中...' : '☑ 制約チェック'}
+        </button>
+        <button
+          disabled={!has}
+          onClick={() => dispatch({ type: 'TOGGLE_FLIGHT_STINTS' })}
+          style={{
+            padding: '4px 10px',
+            backgroundColor: showFlightStints ? '#00796b' : '#78909c',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 3,
+            cursor: has ? 'pointer' : 'default',
+            fontSize: 12,
+            fontFamily: 'MS Gothic, monospace',
+            opacity: has ? 1 : 0.4,
+          }}
+        >
+          ✈ 出入国バー
         </button>
         <div style={{ marginLeft: 'auto' }}>
           <button
