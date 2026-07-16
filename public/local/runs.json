@@ -1,6 +1,21 @@
 {
   "runs": [
     {
+      "id": "20260717_055913356",
+      "solveDate": "2026-07-16T20:59:13.424Z",
+      "label": "Test_data mock (Completed)",
+      "folderPath": "./local/20260717_055913356/",
+      "inputEnvName": "EnvConfig.yaml",
+      "inputSchedName": "Schedule.yaml",
+      "inputDir": "/local/20260717_055913356/input",
+      "output": "none",
+      "outputHasYaml": false,
+      "originalEnvPath": "GanttChartEditor/Test_data/EnvConfig.yaml",
+      "originalSchedPath": "GanttChartEditor/Test_data/Schedule.yaml",
+      "savedEnvPath": "/local/20260717_055913356/input/EnvConfig.yaml",
+      "savedSchedPath": "/local/20260717_055913356/input/Schedule.yaml"
+    },
+    {
       "id": "20260611_161222095",
       "solveDate": "2026-06-11T07:12:22.115Z",
       "label": "New run",

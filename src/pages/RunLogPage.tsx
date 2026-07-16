@@ -6,6 +6,7 @@ import { Icon } from '@/components/common/Icon';
 import { Dialog } from '@/components/common/Dialog';
 import { useRuns } from '@/hooks/useRuns';
 import { nowLabel } from '@/utils/dateUtils';
+import { fetchText, sendToGanttEditor } from '@/services/ganttHandoffService';
 import type { Run } from '@/types';
 import type { RunStatus } from '@/services/runService';
 
@@ -62,8 +63,9 @@ function FileChip({ label, onClick, onHover }: {
 }
 
 // ── Input Files cell ──────────────────────────────────────────────────────────
-function InputCell({ run, onShowPaths, onShowCopy }: {
+function InputCell({ run, busy, onShowPaths, onShowCopy }: {
   run: Run;
+  busy: boolean;
   onShowPaths: (e: React.MouseEvent, which: 'env' | 'sched') => void;
   onShowCopy: () => void;
 }) {
@@ -81,8 +83,8 @@ function InputCell({ run, onShowPaths, onShowCopy }: {
           onHover={e => onShowPaths(e, 'sched')}
         />
       </div>
-      <button className="btn btn-outline btn-xs" onClick={onShowCopy}>
-        <Icon name="folder" size={12} />{UI.runLog.showCopyBtn}
+      <button className="btn btn-outline btn-xs" onClick={onShowCopy} disabled={busy}>
+        <Icon name="folder" size={12} />{busy ? UI.runLog.fetching : UI.runLog.showCopyBtn}
       </button>
     </div>
   );
@@ -370,7 +372,8 @@ export function RunLogPage() {
   }, []);
 
   // Dialog state — only one of these is open at a time.
-  const [ganttDialog,    setGanttDialog]    = useState<{ run: Run; source: 'copy' | 'result' } | null>(null);
+  const [ganttTransferUrl, setGanttTransferUrl] = useState<string | null>(null);
+  const [downloadedScheduleYaml, setDownloadedScheduleYaml] = useState<Record<string, string>>({});
   const [notReady,       setNotReady]       = useState<Run | null>(null);
   const [solverStatus,   setSolverStatus]   = useState<SolverStatusDialog | null>(null);
   const [solverCompleted,setSolverCompleted]= useState<SolverCompletedDialog | null>(null);
@@ -469,15 +472,41 @@ export function RunLogPage() {
     setUploadDone({ run });
   }
 
+  // Send envYaml + scheduleYaml to GanttChartEditor (auto-launching it if needed)
+  // and open the returned URL in a new tab.
+  async function openInGanttEditor(envYaml: string, scheduleYaml: string) {
+    const { url } = await sendToGanttEditor(envYaml, scheduleYaml);
+    const opened = window.open(url, '_blank', 'noopener');
+    if (!opened) setGanttTransferUrl(url);
+  }
+
+  async function handleShowCopy(run: Run) {
+    setBusy(prev => new Set(prev).add(run.id));
+    try {
+      if (!run.savedEnvPath || !run.savedSchedPath) {
+        throw new Error('入力ファイルが見つかりません');
+      }
+      const [envYaml, scheduleYaml] = await Promise.all([
+        fetchText(run.savedEnvPath),
+        fetchText(run.savedSchedPath),
+      ]);
+      await openInGanttEditor(envYaml, scheduleYaml);
+    } catch (err) {
+      setSolverError({ run, message: String((err as Error).message || err) });
+    } finally {
+      setBusy(prev => { const n = new Set(prev); n.delete(run.id); return n; });
+    }
+  }
+
   async function handleShowResult(run: Run) {
     setBusy(prev => new Set(prev).add(run.id));
     try {
-      // Once downloaded from API, treat it as local output and stop calling solver APIs.
-      if (downloadedPaths[run.id]) {
-        setGanttDialog({
-          run: { ...run, inputDir: downloadedPaths[run.id], savedOutputPath: downloadedPaths[run.id] },
-          source: 'copy',
-        });
+      // Once downloaded from API, reuse the cached result instead of re-downloading.
+      const cachedScheduleYaml = downloadedPaths[run.id] ? downloadedScheduleYaml[run.id] : undefined;
+      if (cachedScheduleYaml) {
+        if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+        const envYaml = await fetchText(run.savedEnvPath);
+        await openInGanttEditor(envYaml, cachedScheduleYaml);
         return;
       }
 
@@ -498,8 +527,13 @@ export function RunLogPage() {
         // ── Local-only mode ─────────────────────────────────────────────────
         // Check whether the output YAML landed in public/local/<id>/output/
         const out = await checkOutput(run.id);
-        if (out.hasYaml) {
-          setGanttDialog({ run, source: 'result' });
+        if (out.hasYaml && out.yamlPath) {
+          if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+          const [envYaml, scheduleYaml] = await Promise.all([
+            fetchText(run.savedEnvPath),
+            fetchText(out.yamlPath),
+          ]);
+          await openInGanttEditor(envYaml, scheduleYaml);
         } else {
           setNotReady(run);
         }
@@ -517,13 +551,15 @@ export function RunLogPage() {
       const { blob, filename } = await triggerDownload(run.id);
       saveAs(blob, filename);
 
+      const scheduleYaml = await blob.text();
       const localOutputDir = outputDirForRun(run.id);
       setDownloadedPaths(prev => ({ ...prev, [run.id]: localOutputDir }));
+      setDownloadedScheduleYaml(prev => ({ ...prev, [run.id]: scheduleYaml }));
       setSolverCompleted(null);
-      setGanttDialog({
-        run: { ...run, inputDir: localOutputDir, savedOutputPath: localOutputDir },
-        source: 'copy',
-      });
+
+      if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+      const envYaml = await fetchText(run.savedEnvPath);
+      await openInGanttEditor(envYaml, scheduleYaml);
     } catch (err) {
       setSolverError({ run, message: String((err as Error).message || err) });
     } finally {
@@ -584,8 +620,9 @@ export function RunLogPage() {
                   <td>
                     <InputCell
                       run={run}
+                      busy={busy.has(run.id)}
                       onShowPaths={(e, which) => showPaths(e, run, which)}
-                      onShowCopy={() => setGanttDialog({ run, source: 'copy' })}
+                      onShowCopy={() => handleShowCopy(run)}
                     />
                   </td>
                   <td>
@@ -678,22 +715,19 @@ export function RunLogPage() {
         />
       )}
 
-      {ganttDialog && (
+      {ganttTransferUrl && (
         <Dialog
           title={UI.runLog.ganttDialogTitle}
           body={
             <>
-              {UI.runLog.ganttDialogBody}
-              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {ganttDialog.run.id}<br />
-                {ganttDialog.source === 'result'
-                  ? <>Output: {ganttDialog.run.savedOutputPath ?? '(unknown)'}</>
-                  : <>Input dir: {ganttDialog.run.inputDir}</>}
+              <div>ポップアップがブロックされました。下のリンクから開いてください。</div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all' }}>
+                <a href={ganttTransferUrl} target="_blank" rel="noopener noreferrer">{ganttTransferUrl}</a>
               </div>
             </>
           }
-          buttons={[{ label: UI.runLog.ganttDialogClose, onClick: () => setGanttDialog(null), variant: 'primary' }]}
-          onClose={() => setGanttDialog(null)}
+          buttons={[{ label: UI.runLog.ganttDialogClose, onClick: () => setGanttTransferUrl(null), variant: 'primary' }]}
+          onClose={() => setGanttTransferUrl(null)}
         />
       )}
 

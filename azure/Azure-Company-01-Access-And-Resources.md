@@ -135,6 +135,20 @@ This script is the single source of truth for the rest of every phase.
 Create it now with what you know so far, and you'll add more lines to it
 as you go through each resource below.
 
+**Get `$LOC` from the resource group itself, not the portal.** The portal's
+Overview page shows a human-readable **display name** like `Japan East`,
+but every CLI command that takes `--location` wants the **slug** form
+(`japaneast` — no space, lowercase). Passing the display name doesn't
+always error clearly — some `--location`-based commands just silently
+return nothing instead of failing loudly, which is a confusing way to lose
+10 minutes. Skip the portal for this one value:
+
+```bash
+az group show --name "<resource-group-name>" --query location -o tsv
+```
+
+That always prints the correct slug — use exactly that.
+
 ```bash
 cat > ~/azure-timefold-company-env.sh <<'EOF'
 # Source this at the start of every terminal session for this project:
@@ -143,7 +157,7 @@ cat > ~/azure-timefold-company-env.sh <<'EOF'
 
 export SUBSCRIPTION_ID="<subscription-id>"
 export RG="<resource-group-name>"
-export LOC="<region>"                 # e.g. japaneast, eastus — check the resource group's Overview page
+export LOC="<region-slug-from-az-group-show>"   # e.g. japaneast — NOT "Japan East"
 
 echo "Loaded company env: RG=$RG  LOC=$LOC"
 EOF
@@ -159,7 +173,28 @@ All three should print real values, not the literal word `<placeholder>`.
 
 ## Step 7 — Record the Storage account
 
-1. In the resource group list, click the resource of type **Storage account**.
+**If you see more than one resource of type Storage account, stop and read
+this first.** Don't just pick one — Azure Batch's task definitions in this
+project use `autoStorageContainerName` to find input files, which resolves
+to whichever storage account is linked to the **Batch account's own
+auto-storage setting** — not necessarily the one that looks most obviously
+"for this project." Using the wrong one means Batch tasks will fail to find
+their input files even though everything else looks correctly configured.
+
+Find out which one is actually linked, using the Batch account you'll
+record in Step 10 below (do this step, or come back to it once you've
+found the Batch account if you're going top-to-bottom):
+
+```bash
+az batch account show --name "<batch-account-name>" --resource-group "$RG" --query "autoStorage.storageAccountId" -o tsv
+```
+
+The resource ID printed ends in the *real* storage account's name — **that
+one**, and only that one, is what you record below. If there's only one
+storage account in the resource group, you can skip this check (there's no
+ambiguity), but it doesn't hurt to run it anyway to confirm.
+
+1. In the resource group list, click the storage account confirmed above.
 2. Note its **Name** (top of the Overview page).
 3. Left sidebar → **Containers** → note the container name(s) listed
    (there should be one holding `input/`, `output/`, `status/` blobs — open
@@ -336,3 +371,6 @@ assign) the permissions each identity needs.
 | `az group show` says group not found                          | Wrong subscription active                     | Re-run `az account set --subscription "<subscription-id>"`             |
 | Batch account has no Pools or Jobs at all                     | Batch side genuinely not provisioned yet      | Note this as a gap — you'll need it before Phase 5; ask the admin       |
 | You can't find a Managed Identity resource anywhere           | It may be system-assigned (lives inside the ACA app, not a standalone resource) rather than user-assigned (which the Batch pool needs) | Check ACA app → Identity blade for system-assigned; the Batch pool specifically needs a user-assigned one — flag this to the admin if truly absent |
+| More than one Storage account in the resource group, and you're not sure which is "the" one | The company may have created one for this project and one for something unrelated (or a Batch-default diagnostics account) | Run the `az batch account show --query autoStorage.storageAccountId` check in Step 7 — that's the authoritative answer, not a guess. Use only that one for `$ST` everywhere (Phases 2, 3, 6, 7 too) |
+| A `--location`-based command returns nothing, no error | `$LOC` was set to the portal's display name (`Japan East`) instead of the slug (`japaneast`) | `az group show --name "$RG" --query location -o tsv` prints the correct slug — use exactly that, not what the portal Overview page displays |
+| `az batch location quotas show --location "$LOC"` returns nothing even with the correct slug | That command checks an old subscription+region quota model most Batch accounts don't use anymore | Use `az batch account show --name "$BATCH" --resource-group "$RG" --query "{dedicatedCoreQuota:dedicatedCoreQuota, lowPriorityCoreQuota:lowPriorityCoreQuota}"` instead — see [Azure-Company-05-Batch-Setup-And-Run.md Step 2](./Azure-Company-05-Batch-Setup-And-Run.md#step-2--check-the-vcpu-quota) |

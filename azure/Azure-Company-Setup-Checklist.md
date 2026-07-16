@@ -146,20 +146,29 @@ column → **Register** if needed.
 
 ### 3b. Batch vCPU quota
 
+Query the **Batch account itself**, not a subscription/location lookup —
+`az batch location quotas show --location <region>` checks an old
+subscription+region quota model most Batch accounts don't enforce anymore,
+and returns empty instead of erroring, which looks like a bug but isn't.
+
 ```bash
-az batch location quotas show --location <region> -o table
+az batch account show --name <batch-account-name> --resource-group <resource-group> \
+  --query "{dedicatedCoreQuota:dedicatedCoreQuota, lowPriorityCoreQuota:lowPriorityCoreQuota, poolQuota:poolQuota, perFamilyEnforced:dedicatedCoreQuotaPerVmFamilyEnforced}" -o table
+
+az batch account show --name <batch-account-name> --resource-group <resource-group> \
+  --query "dedicatedCoreQuotaPerVmFamily" -o table
 ```
 
-Look for `DedicatedCoreQuotaPerVMFamily` or `LowPriorityCoreQuota` > 0 for
-the VM family the pool uses. If both are 0, the pool can never scale above
-zero nodes even if everything else is correct.
+Look for `dedicatedCoreQuota` / `lowPriorityCoreQuota` > 0 for whatever
+tier the pool uses. If `perFamilyEnforced` is `true`, also check the
+specific VM family (e.g. Fsv2) in the per-family list — the aggregate
+alone isn't enough in that case. If both are 0, the pool can never scale
+above zero nodes even if everything else is correct.
 
-Portal alternative: search **Quotas** → **Compute** → filter by subscription
-+ `<region>` → find the Batch rows.
-
-If quota is 0, this needs an increase request (Portal → Quotas → pencil
-icon → request) — ask the admin if you don't have permission to request it
-yourself on the company subscription.
+Portal alternative: your **Batch account** → left sidebar **Quotas** (a
+blade on the account itself, not the generic subscription-wide Quotas
+page) → request an increase — ask the admin if you don't have permission
+to request it yourself on the company subscription.
 
 ---
 

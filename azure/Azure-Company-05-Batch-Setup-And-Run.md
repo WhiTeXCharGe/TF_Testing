@@ -15,6 +15,28 @@ confirmed on `$MI_NAME`.
 
 ---
 
+## Step 0 — If the resource group has more than one Storage account, confirm the link
+
+Skip this if there's only one Storage account in the resource group. If
+there are two or more, this is the single most important check in this
+phase — the pool's `resourceFiles` step (Step 8) uses
+`autoStorageContainerName`, which resolves to whichever storage account is
+linked to the Batch account's own auto-storage setting, **not** whichever
+one you assumed was "for this project."
+
+```bash
+az batch account show --name "$BATCH" --resource-group "$RG" --query "autoStorage.storageAccountId" -o tsv
+```
+
+Compare the storage account name at the end of that resource ID against
+`$ST` in your env script. If they don't match, `$ST` is wrong — go back to
+[Azure-Company-01-Access-And-Resources.md Step 7](./Azure-Company-01-Access-And-Resources.md#step-7--record-the-storage-account),
+fix `$ST` and `$CONTAINER` to point at the correct account, and redo the
+RBAC checks in [Azure-Company-02-RBAC.md](./Azure-Company-02-RBAC.md) and
+the verification in [Azure-Company-03-Storage-Verify.md](./Azure-Company-03-Storage-Verify.md)
+against the corrected account before continuing here. A task submitted
+against the wrong `$ST` will create input blobs Batch can never find.
+
 ## Step 1 — Source env, sign in to Batch
 
 ```bash
@@ -29,15 +51,34 @@ az batch account login --name "$BATCH" --resource-group "$RG"
 New subscriptions (including some company ones) sometimes start with 0
 Batch quota, which silently caps the pool at 0 running nodes forever.
 
+**Use the Batch account itself, not `az batch location quotas show`.**
+That older command queries a subscription+region quota model most Batch
+accounts don't use anymore — for a default account (`Pool Allocation Mode:
+BatchService`), quota is enforced **per Batch account**, and the
+subscription/location command just returns empty/null instead of erroring,
+which is confusing rather than helpful.
+
 ```bash
-az batch location quotas show --location "$LOC" -o table
+# Aggregate quota on the account
+az batch account show --name "$BATCH" --resource-group "$RG" \
+  --query "{dedicatedCoreQuota:dedicatedCoreQuota, lowPriorityCoreQuota:lowPriorityCoreQuota, poolQuota:poolQuota, perFamilyEnforced:dedicatedCoreQuotaPerVmFamilyEnforced}" \
+  -o table
+
+# Per-VM-family breakdown — this is the one that actually gates a specific VM size
+az batch account show --name "$BATCH" --resource-group "$RG" \
+  --query "dedicatedCoreQuotaPerVmFamily" -o table
 ```
 
-You want `DedicatedCoreQuotaPerVMFamily` or `LowPriorityCoreQuota` above 0
-for whatever VM family the pool uses. If both are 0:
-- Portal → **Quotas** → **Compute** → filter by subscription + `$LOC` →
-  find the Batch row → request increase (or ask the admin, since this may
-  require elevated permission on a company subscription).
+You need `dedicatedCoreQuota` (or `lowPriorityCoreQuota`, matching whichever
+tier your pool uses) high enough to cover `node count × vCPUs per node` for
+the VM size you're about to use. If `perFamilyEnforced` is `true`, the
+specific VM family (e.g. Fsv2 for F-series) in the per-family list also
+needs to individually cover that number — the aggregate alone isn't enough
+in that case. If either is short:
+- Portal → your **Batch account** → left sidebar **Quotas** (a blade on the
+  account itself — not the generic subscription-wide Quotas page) → request
+  an increase (or ask the admin, since this may require elevated permission
+  on a company subscription).
 
 ## Step 3 — Inspect the existing pool
 
@@ -72,6 +113,33 @@ continue to Step 4.
 
 ### 4a. If the pool doesn't exist yet
 
+**Don't assume the image reference below still exists.** Azure Batch's list
+of supported (verified, container-capable) images changes over time and
+varies by subscription — the classic `microsoft-azure-batch` /
+`ubuntu-server-container` offer that used to be the standard pick may not
+be available anymore. Confirm the real current options first:
+
+```bash
+az batch pool supported-images list --query "length(@)"   # sanity check you're authenticated (should be dozens, not 0/error)
+
+# List every image that actually supports containers, any distro/publisher
+az batch pool supported-images list \
+  --query "[?capabilities && contains(capabilities, 'DockerCompatible')].{publisher:imageReference.publisher, offer:imageReference.offer, sku:imageReference.sku, nodeAgentSku:nodeAgentSkuId, osType:osType}" \
+  -o table
+```
+
+(The `capabilities &&` guard matters — some entries have `capabilities: null`,
+and `contains()` errors on `null` instead of just skipping it.)
+
+Pick a `linux` row matching your pool's VM architecture (skip `arm64` rows
+if you're on a standard x86_64 size like `Standard_F16s_v2`). As of writing,
+many subscriptions no longer offer `microsoft-azure-batch` at all and
+instead show `microsoft-dsvm` / `ubuntu-hpc` as the container-capable Ubuntu
+option — heavier (it's the Data Science VM image, with extra tooling
+preinstalled) but functionally fine, since your container runs isolated
+regardless of what's on the host. Use whatever your own query actually
+returns, not the values below verbatim.
+
 ```bash
 mkdir -p ~/azure-timefold-company
 cat > ~/azure-timefold-company/pool-config.json <<EOF
@@ -80,12 +148,12 @@ cat > ~/azure-timefold-company/pool-config.json <<EOF
   "vmSize": "STANDARD_F2S_V2",
   "virtualMachineConfiguration": {
     "imageReference": {
-      "publisher": "microsoft-azure-batch",
-      "offer": "ubuntu-server-container",
-      "sku": "20-04-lts",
+      "publisher": "microsoft-dsvm",
+      "offer": "ubuntu-hpc",
+      "sku": "2204",
       "version": "latest"
     },
-    "nodeAgentSKUId": "batch.node.ubuntu 20.04",
+    "nodeAgentSKUId": "batch.node.ubuntu 22.04",
     "containerConfiguration": {
       "type": "dockerCompatible",
       "containerRegistries": [
@@ -100,13 +168,23 @@ cat > ~/azure-timefold-company/pool-config.json <<EOF
   "taskSlotsPerNode": 1,
   "identity": {
     "type": "UserAssigned",
-    "userAssignedIdentities": { "${MI_ID}": {} }
+    "userAssignedIdentities": [
+      { "resourceId": "${MI_ID}" }
+    ]
   }
 }
 EOF
 
 az batch pool create --json-file ~/azure-timefold-company/pool-config.json
 ```
+
+> **Note on `userAssignedIdentities` shape:** this is an **array** of
+> `{resourceId: ...}` objects, not the `{"<resourceId>": {}}` dict form
+> used elsewhere in Azure (e.g. on an ACA app or VM). If you copy an
+> identity block from ARM/Bicep examples elsewhere, you'll hit
+> `(InvalidRequestBody) ... A 'StartArray' node was expected` from
+> `az batch pool create` — the dict form is valid ARM JSON but not what
+> this data-plane API expects here.
 
 Ask the admin first if a naming convention exists for `$POOL_ID` — don't
 invent one silently if this pool is meant to be company-standard.
@@ -323,7 +401,12 @@ hand.
 | Symptom                                                              | Cause                                                            | Fix |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------- | ----- |
 | `az batch pool create` → vCPU quota exceeded                        | No quota on this subscription/region                              | Step 2 — request an increase |
+| `az batch pool create` → `(InvalidRequestBody) ... A 'StartArray' node was expected` | `identity.userAssignedIdentities` was written as an ARM-style dict instead of the array-of-objects form this API expects | Use `"userAssignedIdentities": [{ "resourceId": "..." }]`, not `{"<resourceId>": {}}` — see the note under Step 4a |
+| Same error, but the JSON validates fine locally (`python -m json.tool`)     | Confirms it's a schema mismatch, not malformed JSON — check every array/object field against the exact shapes in Step 4a rather than assuming a typo | Re-diff your file against Step 4a's JSON field-by-field |
+| Portal's pool wizard won't let you set Container configuration to Custom (it's greyed out) | The selected VM image (Publisher/Offer/Sku) isn't container-capable — plain distro images like `canonical`/`Ubuntu Server` don't support it, only specific verified images do | Run the `az batch pool supported-images list` query at the top of Step 4a to find a real `DockerCompatible` image, and select that exact Publisher/Offer/Sku in the portal |
+| `az batch pool supported-images list` with a `contains(capabilities, ...)` filter errors with `invalid type for value: None` | Some images have `capabilities: null` instead of an array, and `contains()` can't run against `null` | Guard it: `[?capabilities && contains(capabilities, 'DockerCompatible')]` — the `capabilities &&` short-circuits past the null entries |
 | Node stuck in `starting` for 15+ minutes                             | Image pull failing                                                | `az batch node list` for an `errors` field; usually the pool's MI doesn't actually have `AcrPull` — recheck Phase 2.3 |
+| Node reaches `unusable` (not just slow — this is a real error state, waiting longer never fixes it) | `az batch node show --pool-id "$POOL_ID" --node-id <id> --query "errors"` for the real cause — a common one: `NodePreparationError` / `"ACR token exchange failed ... client with IP '...' is not allowed access"` | This is an ACR **network firewall** issue, not RBAC — `AcrPull` being correctly assigned doesn't matter if the node's IP is blocked before auth is even evaluated. Check `az acr show --name "$ACR" --query "{publicNetworkAccess:publicNetworkAccess, defaultAction:networkRuleSet.defaultAction, ipRules:networkRuleSet.ipRules}"` — if restricted, ask the admin to allow the pool's outbound IP (or all networks temporarily for a dev/test pool), since changing ACR firewall rules needs management-plane permission beyond `AcrPush`/`AcrPull` |
 | Task `completed`, `exitCode: 125` or `126`                            | Container failed to start — mount or image problem                 | Download stderr.txt / stdout.txt (Step 9) |
 | Task `completed`, `exitCode: 2`                                      | Entrypoint said input not found                                    | `resourceFiles` didn't download — confirm the MI has `Storage Blob Data Contributor` and the input blobs actually exist at `input/${RUN_ID}/` |
 | Task `completed`, `exitCode: 0`, but no output blob                  | `outputFiles` filePattern doesn't match what was actually written  | Check stdout.txt for where the solver wrote its output; confirm it matches `/work/output/result_Schedule.yaml` exactly |

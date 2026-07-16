@@ -2,7 +2,77 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
+
+// ── Cross-app handoff to GanttChartEditor (結果を表示 / コピーファイル表示) ──
+//
+// SchedulerWeb is a sibling folder of GanttChartEditor under web/. When the
+// user asks to view a run's files in the Gantt editor, this dev server:
+//   1. stores the two YAML strings under a short-lived, single-use token
+//   2. health-checks GanttChartEditor's frontend (5173) and its own server (3010)
+//   3. if either is down, spawns `npm run dev:all` in GanttChartEditor's folder
+//   4. returns a URL GanttChartEditor's frontend can open itself with:
+//        http://localhost:5173/?incomingTransfer=<token>
+// GanttChartEditor then fetches GET /api/handoff/consume/:token from this
+// server (cross-origin — hence the CORS header below) and loads the files.
+const GANTT_EDITOR_URL = 'http://localhost:5173';
+const GANTT_EDITOR_SERVER_URL = 'http://localhost:3010';
+const GANTT_EDITOR_DIR = path.resolve(__dirname, '../GanttChartEditor');
+
+interface GanttTransferPayload {
+  envYaml: string;
+  scheduleYaml: string;
+  expiresAt: number;
+}
+const ganttTransferTTLMs = 5 * 60 * 1000;
+const ganttTransferPending = new Map<string, GanttTransferPayload>();
+
+function purgeExpiredGanttTransfers(): void {
+  const now = Date.now();
+  for (const [token, entry] of ganttTransferPending) {
+    if (entry.expiresAt < now) ganttTransferPending.delete(token);
+  }
+}
+
+async function isReachable(url: string, timeoutMs = 1500): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+function launchGanttChartEditor(): void {
+  if (!fs.existsSync(path.join(GANTT_EDITOR_DIR, 'package.json'))) {
+    console.error(`[gantt-handoff] cannot launch: no package.json in ${GANTT_EDITOR_DIR}`);
+    return;
+  }
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const child = spawn(npmCmd, ['run', 'dev:all'], {
+    cwd: GANTT_EDITOR_DIR,
+    detached: true,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    shell: process.platform === 'win32',
+  });
+  child.stderr?.on('data', (d: Buffer) => console.error(`[gantt-chart-editor] ${d.toString()}`));
+  child.on('error', (err) => console.error('[gantt-handoff] failed to spawn GanttChartEditor:', err));
+  child.unref();
+}
+
+async function waitUntilUp(url: string, timeoutMs: number, intervalMs = 1000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isReachable(url)) return true;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
 
 /**
  * Dev-only API plugin.
@@ -252,6 +322,61 @@ function localApiPlugin(): Plugin {
           } catch (e) {
             return send(res, 500, { error: String(e) });
           }
+        }
+
+        // ── POST /api/handoff/create ─ send a run's YAMLs to GanttChartEditor ──
+        if (req.method === 'POST' && req.url === '/api/handoff/create') {
+          try {
+            const body = await readBody(req);
+            const { envYaml, scheduleYaml } = JSON.parse(body.toString('utf8') || '{}') as {
+              envYaml?: string; scheduleYaml?: string;
+            };
+            if (!envYaml || !scheduleYaml) {
+              return send(res, 400, { ok: false, error: 'envYaml / scheduleYaml が必要です' });
+            }
+
+            purgeExpiredGanttTransfers();
+            const token = randomUUID();
+            ganttTransferPending.set(token, { envYaml, scheduleYaml, expiresAt: Date.now() + ganttTransferTTLMs });
+
+            const [webUp, serverUp] = await Promise.all([
+              isReachable(GANTT_EDITOR_URL),
+              isReachable(`${GANTT_EDITOR_SERVER_URL}/api/health`),
+            ]);
+
+            if (!webUp || !serverUp) {
+              launchGanttChartEditor();
+              const [webOk, serverOk] = await Promise.all([
+                waitUntilUp(GANTT_EDITOR_URL, 28000),
+                waitUntilUp(`${GANTT_EDITOR_SERVER_URL}/api/health`, 28000),
+              ]);
+              if (!webOk || !serverOk) {
+                ganttTransferPending.delete(token);
+                return send(res, 504, {
+                  ok: false,
+                  error: `GanttChartEditorの起動待ちがタイムアウトしました（frontend:${webOk ? 'OK' : 'NG'}, server:${serverOk ? 'OK' : 'NG'}）。手動で起動して再試行してください。`,
+                });
+              }
+            }
+
+            return send(res, 200, { ok: true, url: `${GANTT_EDITOR_URL}/?incomingTransfer=${token}` });
+          } catch (e) {
+            return send(res, 500, { ok: false, error: String(e) });
+          }
+        }
+
+        // ── GET /api/handoff/consume/:token ─ one-time read, called cross-origin
+        //    by GanttChartEditor's frontend (localhost:5173) ─────────────────────
+        if (req.method === 'GET' && req.url.startsWith('/api/handoff/consume/')) {
+          res.setHeader('Access-Control-Allow-Origin', GANTT_EDITOR_URL);
+          purgeExpiredGanttTransfers();
+          const token = req.url.slice('/api/handoff/consume/'.length);
+          const entry = ganttTransferPending.get(token);
+          if (!entry) {
+            return send(res, 404, { ok: false, error: 'トークンが無効か期限切れです' });
+          }
+          ganttTransferPending.delete(token);
+          return send(res, 200, { ok: true, envYaml: entry.envYaml, scheduleYaml: entry.scheduleYaml });
         }
 
         next();
