@@ -35,11 +35,20 @@ export interface WorkerSegment {
   planFlexibility?: PlanFlexibility;
 }
 
+export interface FlightStint {
+  regionId: string;
+  firstWorkDate: string;
+  lastWorkDate: string;
+  flightInDate: string;   // firstWorkDate - 1 day
+  flightOutDate: string;  // lastWorkDate + 1 day
+}
+
 export interface WorkerTimelineRow {
   workerId: string;
   meta: WorkerMetaInfo;
   dayCells: WorkerDayCell[];
   segments: WorkerSegment[];
+  flightStints: FlightStint[];
 }
 
 export interface HeaderMonthGroup {
@@ -52,6 +61,8 @@ export interface WorkerTimelineModel {
   rows: WorkerTimelineRow[];
   monthGroups: HeaderMonthGroup[];
   dateWorkOptions: Record<string, string[]>;
+  regionColorMap: Map<string, string>;
+  regionNameMap: Map<string, string>;
 }
 
 type UnavailableDateEntryLike = {
@@ -65,6 +76,12 @@ const PB_COLOR = '#898989';
 const PB_TEXT_COLOR = '#ffffff';
 const UNAVAILABLE_COLOR = '#ff0000';
 const UNAVAILABLE_TEXT_COLOR = '#000000';
+
+const REGION_PALETTE = [
+  '#4FC3F7', '#81C784', '#FFB74D', '#F06292', '#BA68C8',
+  '#4DB6AC', '#FF8A65', '#90A4AE', '#A1887F', '#DCE775',
+  '#7986CB', '#4CAF50', '#FF7043', '#26C6DA', '#AB47BC',
+];
 
 const MODULE_PALETTE = [
   '#FFE599', '#FFD966', '#F9CB9C', '#F6B26B', '#FCE5CD',
@@ -81,6 +98,60 @@ const BLACK = '#000000';
 function normalizeModuleCode(name: string): string {
   if (!name) return '';
   return name.trim().split('_', 1)[0] ?? '';
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86400000);
+}
+
+function computeFlightStintsMultiRegion(
+  assignments: Array<{ startDate: string; endDate: string; regionId: string }>,
+  regionStayOff: Map<string, number>,
+): FlightStint[] {
+  if (assignments.length === 0) return [];
+  const sorted = [...assignments].sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  const stints: FlightStint[] = [];
+  let { regionId: curRegion, startDate: curFirst, endDate: curLast } = sorted[0];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const { startDate, endDate, regionId } = sorted[i];
+    if (regionId === curRegion) {
+      const gap = daysBetween(curLast, startDate) - 1;
+      const interval = regionStayOff.get(curRegion) ?? 0;
+      if (gap <= interval) {
+        if (endDate > curLast) curLast = endDate;
+        continue;
+      }
+    }
+    stints.push({
+      regionId: curRegion,
+      firstWorkDate: curFirst,
+      lastWorkDate: curLast,
+      flightInDate: addDays(curFirst, -1),
+      flightOutDate: addDays(curLast, 1),
+    });
+    curRegion = regionId;
+    curFirst = startDate;
+    curLast = endDate;
+  }
+  stints.push({
+    regionId: curRegion,
+    firstWorkDate: curFirst,
+    lastWorkDate: curLast,
+    flightInDate: addDays(curFirst, -1),
+    flightOutDate: addDays(curLast, 1),
+  });
+  return stints;
 }
 
 function weekdayToInt(dayText: string): number | null {
@@ -250,6 +321,30 @@ export function buildWorkerTimelineModel(
   const opTaskNameMap = buildOpTaskNameMap(schedule);
   const opTaskColorMap = buildOpTaskColorMap(schedule);
   const moduleById = new Map(schedule.workflowTaskList.map(w => [w.id, w]));
+
+  // Build region lookup maps
+  const fabRegionMap = new Map(envConfig.fabList.map(f => [f.id, f.region ?? null]));
+  const regionColorMap = new Map(
+    envConfig.regionList.map((r, i) => [r.id, REGION_PALETTE[i % REGION_PALETTE.length]]),
+  );
+  const regionNameMap = new Map(envConfig.regionList.map(r => [r.id, r.name ?? r.id]));
+  const regionStayOff = new Map(envConfig.regionList.map(r => [r.id, r.stayOffInterval ?? 0]));
+
+  // opTask id → regionId (null if no region)
+  const opTaskRegionMap = new Map<string, string | null>();
+  for (const wt of schedule.workflowTaskList) {
+    if (wt.phaseTaskList.length === 0) {
+      // misc task: region from workflowTask.region directly
+      opTaskRegionMap.set(wt.id, wt.region ?? null);
+    } else {
+      const regionId = wt.fab ? (fabRegionMap.get(wt.fab) ?? null) : null;
+      for (const pt of wt.phaseTaskList) {
+        for (const ot of pt.operationTaskList) {
+          opTaskRegionMap.set(ot.id, regionId);
+        }
+      }
+    }
+  }
   const miscTaskIds = new Set(
     schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0).map(wt => wt.id),
   );
@@ -260,11 +355,24 @@ export function buildWorkerTimelineModel(
   const workerDayAssignments = new Map<string, Map<string, { moduleName: string; taskName: string; color: string; textColor: string; assignmentIndex: number; isMisc: boolean; planFlexibility: PlanFlexibility }>>();
   const assignedWorkerIds = new Set<string>();
 
+  // Per-worker region assignments for flight stint computation
+  const workerRegionAssignments = new Map<string, Array<{ startDate: string; endDate: string; regionId: string }>>();
+
   for (const [assignmentIndex, assignment] of schedule.assignmentList.entries()) {
     const workerId = assignment.worker;
     const moduleId = opTaskToModule.get(assignment.operationTask) ?? `UNKNOWN::${assignment.operationTask}`;
     const moduleInfo = moduleById.get(moduleId);
     const isMisc = miscTaskIds.has(moduleId);
+
+    const regionId = opTaskRegionMap.get(assignment.operationTask) ?? null;
+    if (regionId) {
+      if (!workerRegionAssignments.has(workerId)) workerRegionAssignments.set(workerId, []);
+      workerRegionAssignments.get(workerId)!.push({
+        startDate: assignment.startDate,
+        endDate: assignment.endDate,
+        regionId,
+      });
+    }
 
     let color = opTaskColorMap.get(assignment.operationTask) ?? UNKNOWN_COLOR;
     let textColor = BLACK;
@@ -407,11 +515,16 @@ export function buildWorkerTimelineModel(
       prev = current;
     }
 
+    // Compute flight stints for this worker
+    const regionAssignments = workerRegionAssignments.get(workerId) ?? [];
+    const flightStints = computeFlightStintsMultiRegion(regionAssignments, regionStayOff);
+
     return {
       workerId,
       meta: { id: workerId, company, name: workerName, manager, remarks, workType, visa, overseasDriving, assignedDuties },
       dayCells,
       segments,
+      flightStints,
     };
   });
 
@@ -420,5 +533,5 @@ export function buildWorkerTimelineModel(
     dateWorkOptions[d] = [...(dateWorkOptionSet[d] ?? new Set<string>())].sort((a, b) => a.localeCompare(b, 'ja'));
   }
 
-  return { rows, monthGroups, dateWorkOptions };
+  return { rows, monthGroups, dateWorkOptions, regionColorMap, regionNameMap };
 }

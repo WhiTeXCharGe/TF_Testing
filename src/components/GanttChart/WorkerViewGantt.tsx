@@ -83,7 +83,7 @@ export function WorkerViewGantt({ dates }: Props) {
 
   const model = useMemo(() => {
     if (!schedule || !envConfig || dates.length === 0) {
-      return { rows: [], monthGroups: [], dateWorkOptions: {} };
+      return { rows: [], monthGroups: [], dateWorkOptions: {}, regionColorMap: new Map(), regionNameMap: new Map() };
     }
     return buildWorkerTimelineModel(envConfig, schedule, dates, formatDate(new Date()));
   }, [schedule, envConfig, dates]);
@@ -375,6 +375,8 @@ export function WorkerViewGantt({ dates }: Props) {
       }}
       highlightedAssignmentIndices={highlightedAssignmentIndices}
       highlightBarName={highlightBarName}
+      regionColorMap={model.regionColorMap}
+      regionNameMap={model.regionNameMap}
     />
   );
 }

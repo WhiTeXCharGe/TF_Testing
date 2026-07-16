@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { WorkerTimelineRow, HeaderMonthGroup, WorkerSegment } from './workerViewModel';
+import { WorkerTimelineRow, HeaderMonthGroup, WorkerSegment, FlightStint } from './workerViewModel';
 import { UI } from '../../config/uiText';
 
 const HEADER_HEIGHT = 26;
@@ -115,6 +115,8 @@ interface Props {
   highlightedAssignmentIndices: Set<number> | null;
   /** When non-empty, bars whose label includes this string are additionally highlighted. */
   highlightBarName: string;
+  regionColorMap: Map<string, string>;
+  regionNameMap: Map<string, string>;
 }
 
 export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
@@ -146,6 +148,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   extraFilterOptions,
   onToggleExtraFilter,
   onClearExtraFilter,
+  regionColorMap,
+  regionNameMap,
 }: Props) {
   // highlight mode is active when any global filter (non-date) is set
   const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
@@ -870,6 +874,16 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   }}
                 />
               )}
+
+              {row.flightStints.map((stint, si) => (
+                <FlightStintBar
+                  key={`${row.workerId}_stint_${si}`}
+                  stint={stint}
+                  dates={dates}
+                  color={regionColorMap.get(stint.regionId) ?? '#90A4AE'}
+                  regionName={regionNameMap.get(stint.regionId) ?? stint.regionId}
+                />
+              ))}
             </div>
           ))}
         </div>
@@ -877,6 +891,113 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
     </div>
   );
 });
+
+function FlightStintBar({
+  stint,
+  dates,
+  color,
+  regionName,
+}: {
+  stint: FlightStint;
+  dates: string[];
+  color: string;
+  regionName: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const lastDateInView = dates[dates.length - 1] ?? '';
+  const firstDateInView = dates[0] ?? '';
+
+  const fiDate = stint.flightInDate < firstDateInView ? firstDateInView : stint.flightInDate;
+  const foDate = stint.flightOutDate > lastDateInView ? lastDateInView : stint.flightOutDate;
+
+  const fiIdx = dates.indexOf(fiDate);
+  const foIdx = dates.indexOf(foDate);
+
+  // If both dates are outside the visible range, don't render
+  if (fiIdx === -1 && foIdx === -1) return null;
+
+  const startIdx = fiIdx !== -1 ? fiIdx : 0;
+  const endIdx = foIdx !== -1 ? foIdx : dates.length - 1;
+
+  const left = startIdx * DATE_CELL_WIDTH;
+  const width = (endIdx - startIdx + 1) * DATE_CELL_WIDTH;
+
+  const showFI = stint.flightInDate >= firstDateInView && fiIdx !== -1;
+  const showFO = stint.flightOutDate <= lastDateInView && foIdx !== -1;
+  const sameDate = stint.flightInDate === stint.flightOutDate;
+
+  const tooltipText = `${regionName}  ${stint.flightInDate} → ${stint.flightOutDate}`;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left,
+        width,
+        bottom: 1,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: color,
+        opacity: 0.85,
+        pointerEvents: 'auto',
+        cursor: 'default',
+        zIndex: 1,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {showFI && (
+        <span style={{
+          position: 'absolute',
+          left: 1,
+          top: -13,
+          fontSize: 8,
+          fontWeight: 700,
+          color,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          lineHeight: 1,
+        }}>
+          {sameDate ? 'FI/FO' : 'FI'}
+        </span>
+      )}
+      {showFO && !sameDate && (
+        <span style={{
+          position: 'absolute',
+          right: 1,
+          top: -13,
+          fontSize: 8,
+          fontWeight: 700,
+          color,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          lineHeight: 1,
+        }}>
+          FO
+        </span>
+      )}
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: 10,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(30,40,55,0.92)',
+          color: '#fff',
+          fontSize: 10,
+          padding: '3px 7px',
+          borderRadius: 4,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 100,
+          boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+        }}>
+          {tooltipText}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PopupMultiSelect({
   options,
