@@ -1,5 +1,34 @@
 # Company Phase 1 — Sign in and find every resource
 
+> ## ⚠️ Read this before anything else: you must be on the company network
+>
+> Storage, ACR, and (likely) Batch in this project are network-restricted —
+> reachable **only from the company's own network**, not from home, not
+> from arbitrary internet, and not reliably even with the company VPN
+> (Cato) connected remotely. Storage and ACR sit behind Private Endpoints;
+> DNS resolves their hostnames to private IPs (`10.x.x.x`) that are only
+> routable from inside the company's actual network path.
+>
+> **This entire guided series (Phases 1–7) only works while physically at
+> the company office**, or on whatever network path the company confirms
+> actually routes to those private IPs. Attempting this from home will
+> produce confusing, inconsistent-looking failures — `az acr login`,
+> `docker push`, and `az storage` commands all fail with a generic
+> "could not connect / not reachable" error that looks like a bug, a typo,
+> or a permissions problem, when it's actually just "wrong network." A full
+> day was lost to this exact confusion before it was traced back to network
+> path, not any Azure configuration issue — check this first, always,
+> before troubleting anything else that fails to connect.
+>
+> Quick self-check once you're on-site: `nslookup <storage-account>.blob.core.windows.net`
+> or `nslookup <acr-name>.azurecr.io` — if either resolves to a `10.x.x.x` /
+> `172.16-31.x.x` / `192.168.x.x` address, you're seeing the private
+> endpoint. If commands still fail to connect after that, you're not yet on
+> a network path that routes there — that's a networking/IT question, not
+> something to debug further in Azure CLI.
+
+---
+
 **Goal of this phase:** get logged into the company's Azure account, find the
 resource group the company set up for this project, and identify every
 resource inside it. By the end you'll have a personal script with the real

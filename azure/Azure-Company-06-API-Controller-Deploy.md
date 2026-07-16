@@ -111,12 +111,23 @@ docker build -t "$ACR_LOGIN/api-controller:$TAG" .
 
 ## Step 4 — Push it
 
+**Before this step, confirm you're on the company network** (see the
+warning at the top of [Azure-Company-01](./Azure-Company-01-Access-And-Resources.md))
+— ACR is Private-Endpoint-restricted in this project, and pushing from
+anywhere else fails with a generic "could not connect" error that looks
+like a Docker or credentials problem but isn't. This exact confusion cost
+a full day once already; check the network first, always.
+
 ```bash
 az acr login --name "$ACR"
 docker push "$ACR_LOGIN/api-controller:$TAG"
 
 az acr repository show-tags --name "$ACR" --repository api-controller -o table
 ```
+
+**Status as of this writing: not yet completed** — blocked by the network
+restriction above, not by anything wrong with the image or the ACR itself.
+Resume from here once genuinely on the company network.
 
 ## Step 5 — Confirm the ACA app's identity can pull it
 

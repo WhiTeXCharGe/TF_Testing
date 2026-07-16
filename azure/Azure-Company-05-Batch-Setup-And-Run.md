@@ -140,12 +140,21 @@ preinstalled) but functionally fine, since your container runs isolated
 regardless of what's on the host. Use whatever your own query actually
 returns, not the values below verbatim.
 
+**VM size and node count are a per-workload decision, not a fixed rule.**
+For this project we settled on `Standard_F16s_v2` (16 vCPU / 32 GiB) ×
+**2 dedicated nodes** — Dedicated rather than Low-priority because a
+16-vCPU node getting evicted mid-solve (Low-priority can be reclaimed with
+~30s notice) wastes a genuinely expensive VM's time; worth the extra cost
+for a size this large. Adjust both values below if your own quota/cost
+constraints differ — see [Azure-Products-Required.md](./Azure-Products-Required.md)
+for the general VM-size tradeoff table.
+
 ```bash
 mkdir -p ~/azure-timefold-company
 cat > ~/azure-timefold-company/pool-config.json <<EOF
 {
   "id": "${POOL_ID}",
-  "vmSize": "STANDARD_F2S_V2",
+  "vmSize": "STANDARD_F16S_V2",
   "virtualMachineConfiguration": {
     "imageReference": {
       "publisher": "microsoft-dsvm",
@@ -162,8 +171,8 @@ cat > ~/azure-timefold-company/pool-config.json <<EOF
       "containerImageNames": [ "${SOLVER_IMAGE}" ]
     }
   },
-  "targetDedicatedNodes": 0,
-  "targetLowPriorityNodes": 1,
+  "targetDedicatedNodes": 2,
+  "targetLowPriorityNodes": 0,
   "enableAutoScale": false,
   "taskSlotsPerNode": 1,
   "identity": {
@@ -177,6 +186,15 @@ EOF
 
 az batch pool create --json-file ~/azure-timefold-company/pool-config.json
 ```
+
+**Status as of this writing: not yet confirmed reaching `idle`.** Every
+fix above (image reference, `userAssignedIdentities` array shape, ACR
+network access) resolved the specific error hit at that step, but the
+final end-to-end confirmation (both nodes actually reaching `idle`, then
+Step 5 onward) is still pending — blocked by the network-access issue
+described in the box below, not by anything wrong with this JSON. Re-run
+Step 5 (node wait loop) once back on the company network before assuming
+this configuration is fully proven.
 
 > **Note on `userAssignedIdentities` shape:** this is an **array** of
 > `{resourceId: ...}` objects, not the `{"<resourceId>": {}}` dict form
@@ -407,6 +425,7 @@ hand.
 | `az batch pool supported-images list` with a `contains(capabilities, ...)` filter errors with `invalid type for value: None` | Some images have `capabilities: null` instead of an array, and `contains()` can't run against `null` | Guard it: `[?capabilities && contains(capabilities, 'DockerCompatible')]` — the `capabilities &&` short-circuits past the null entries |
 | Node stuck in `starting` for 15+ minutes                             | Image pull failing                                                | `az batch node list` for an `errors` field; usually the pool's MI doesn't actually have `AcrPull` — recheck Phase 2.3 |
 | Node reaches `unusable` (not just slow — this is a real error state, waiting longer never fixes it) | `az batch node show --pool-id "$POOL_ID" --node-id <id> --query "errors"` for the real cause — a common one: `NodePreparationError` / `"ACR token exchange failed ... client with IP '...' is not allowed access"` | This is an ACR **network firewall** issue, not RBAC — `AcrPull` being correctly assigned doesn't matter if the node's IP is blocked before auth is even evaluated. Check `az acr show --name "$ACR" --query "{publicNetworkAccess:publicNetworkAccess, defaultAction:networkRuleSet.defaultAction, ipRules:networkRuleSet.ipRules}"` — if restricted, ask the admin to allow the pool's outbound IP (or all networks temporarily for a dev/test pool), since changing ACR firewall rules needs management-plane permission beyond `AcrPush`/`AcrPull` |
+| `az batch pool resize` / `az batch node delete` / `az batch job create` → `(AuthorizationFailure) This request is not authorized to perform this operation`, even though your RBAC roles look correct | Two different possible causes — don't assume it's the same one twice | **First** re-check you're on the company network (see the warning at the top of [Azure-Company-01](./Azure-Company-01-Access-And-Resources.md)) — a network-routing failure can sometimes surface as an authorization-style error rather than a clean connection-timeout, depending on where in the request path it fails. **If genuinely on the right network and still failing**, this may be a custom/scoped role or Deny Assignment that permits pool/task create + read but excludes specific "action"-verb operations like resize/node-delete/job-create — `az role assignment list --assignee <you> --scope <batch-account-id>` to see the exact role name; if it's not literally the built-in `Azure Batch Account Contributor`, that's the admin's decision to revisit, not something to work around |
 | Task `completed`, `exitCode: 125` or `126`                            | Container failed to start — mount or image problem                 | Download stderr.txt / stdout.txt (Step 9) |
 | Task `completed`, `exitCode: 2`                                      | Entrypoint said input not found                                    | `resourceFiles` didn't download — confirm the MI has `Storage Blob Data Contributor` and the input blobs actually exist at `input/${RUN_ID}/` |
 | Task `completed`, `exitCode: 0`, but no output blob                  | `outputFiles` filePattern doesn't match what was actually written  | Check stdout.txt for where the solver wrote its output; confirm it matches `/work/output/result_Schedule.yaml` exactly |

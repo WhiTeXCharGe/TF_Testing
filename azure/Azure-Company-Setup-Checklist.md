@@ -1,5 +1,13 @@
 # Azure Company Setup — On-Site Checklist
 
+> ⚠️ **Storage, ACR, and Batch are network-restricted to the company
+> network only** — not reachable from home or over the plain internet, and
+> not reliably even via VPN. See the warning at the top of
+> [Azure-Company-01-Access-And-Resources.md](./Azure-Company-01-Access-And-Resources.md#️-read-this-before-anything-else-you-must-be-on-the-company-network)
+> before doing anything in this checklist remotely — an entire day was lost
+> to this exact issue looking like an Azure permissions/config problem when
+> it was actually just "wrong network."
+
 > **Looking for the full guided walkthrough instead of a checklist?**
 > Use **[Azure-Company-01-Access-And-Resources.md](./Azure-Company-01-Access-And-Resources.md)**
 > through **[Azure-Company-07-Webapp-Connect.md](./Azure-Company-07-Webapp-Connect.md)**
