@@ -260,12 +260,12 @@ RUN_ID=company-smoke-test-001
 az storage blob upload \
   --account-name "$ST" --container-name "$CONTAINER" --auth-mode login \
   --name "input/${RUN_ID}/EnvConfig.yaml" \
-  --file "/c/Users/Seiya/Desktop/work/Timefold/web/Timefold/src/main/resource/EnvConfig.yaml" --overwrite
+  --file "/c/Users/3281000X/Desktop/file/SchedulerWeb/GanttChartEditor/Test_data/EnvConfig.yaml" --overwrite
 
 az storage blob upload \
   --account-name "$ST" --container-name "$CONTAINER" --auth-mode login \
   --name "input/${RUN_ID}/Schedule.yaml" \
-  --file "/c/Users/Seiya/Desktop/work/Timefold/web/Timefold/src/main/resource/Schedule.yaml" --overwrite
+  --file "/c/Users/3281000X/Desktop/file/SchedulerWeb/GanttChartEditor/Test_data/Schedule.yaml" --overwrite
 ```
 
 ## Step 8 — Submit the task
@@ -279,50 +279,102 @@ Note the two `outputFiles` entries use an **exact filename**, not a wildcard
 pattern — that makes `destination.path` the literal final blob name, with
 no ambiguity about nested folders.
 
+```
+az batch task delete --job-id "$JOB_ID" --task-id "$RUN_ID" --yes
+```
+
 ```bash
 cat > ~/azure-timefold-company/task-${RUN_ID}.json <<EOF
+
 {
-  "id": "${RUN_ID}",
-  "commandLine": "/bin/bash -c 'mkdir -p /work/output /work/status && /app/entrypoint.sh'",
-  "containerSettings": {
-    "imageName": "${SOLVER_IMAGE}",
-    "containerRunOptions": "--rm --workdir /app -v \$AZ_BATCH_TASK_WORKING_DIR/input:/work/input:ro -v \$AZ_BATCH_TASK_WORKING_DIR/output:/work/output -v \$AZ_BATCH_TASK_WORKING_DIR/status:/work/status -e RUN_ID=${RUN_ID}",
-    "registry": { "registryServer": "${ACR_LOGIN}", "identityReference": { "resourceId": "${MI_ID}" } }
-  },
-  "resourceFiles": [
-    {
-      "autoStorageContainerName": "${CONTAINER}",
-      "blobPrefix": "input/${RUN_ID}/",
-      "filePath": "input",
-      "identityReference": { "resourceId": "${MI_ID}" }
-    }
-  ],
-  "outputFiles": [
-    {
-      "filePattern": "output/result_Schedule.yaml",
-      "destination": {
-        "container": {
-          "containerUrl": "https://${ST}.blob.core.windows.net/${CONTAINER}",
-          "path": "output/${RUN_ID}/result_Schedule.yaml",
-          "identityReference": { "resourceId": "${MI_ID}" }
-        }
-      },
-      "uploadOptions": { "uploadCondition": "taskSuccess" }
-    },
-    {
-      "filePattern": "status/${RUN_ID}.json",
-      "destination": {
-        "container": {
-          "containerUrl": "https://${ST}.blob.core.windows.net/${CONTAINER}",
-          "path": "status/${RUN_ID}.json",
-          "identityReference": { "resourceId": "${MI_ID}" }
-        }
-      },
-      "uploadOptions": { "uploadCondition": "taskCompletion" }
-    }
-  ]
+
+  "id": "${RUN_ID}",
+
+  "commandLine": "-c 'mkdir -p /work/output /work/status && /app/entrypoint.sh; rc=\$?; chmod -R a+rX /work/output /work/status; echo ---PERMS---; ls -la /work/output; exit \$rc'",
+
+  "userIdentity": { "autoUser": { "elevationLevel": "admin", "scope": "task" } },
+
+  "containerSettings": {
+
+    "imageName": "${SOLVER_IMAGE}",
+
+    "containerRunOptions": "--rm --entrypoint /bin/bash --user root --workdir /app -v \$AZ_BATCH_TASK_WORKING_DIR/input/input/${RUN_ID}:/work/input:ro -v \$AZ_BATCH_TASK_WORKING_DIR/output:/work/output -v \$AZ_BATCH_TASK_WORKING_DIR/status:/work/status -e RUN_ID=${RUN_ID}",
+
+    "registry": { "registryServer": "${ACR_LOGIN}", "identityReference": { "resourceId": "${MI_ID}" } }
+
+  },
+
+  "resourceFiles": [
+
+    {
+
+      "autoStorageContainerName": "${CONTAINER}",
+
+      "blobPrefix": "input/${RUN_ID}/",
+
+      "filePath": "input",
+
+      "identityReference": { "resourceId": "${MI_ID}" }
+
+    }
+
+  ],
+
+  "outputFiles": [
+
+    {
+
+      "filePattern": "output/result_Schedule.yaml",
+
+      "destination": {
+
+        "container": {
+
+          "containerUrl": "https://${ST}.blob.core.windows.net/${CONTAINER}",
+
+          "path": "output/${RUN_ID}/result_Schedule.yaml",
+
+          "identityReference": { "resourceId": "${MI_ID}" }
+
+        }
+
+      },
+
+      "uploadOptions": { "uploadCondition": "taskSuccess" }
+
+    },
+
+    {
+
+      "filePattern": "status/${RUN_ID}.json",
+
+      "destination": {
+
+        "container": {
+
+          "containerUrl": "https://${ST}.blob.core.windows.net/${CONTAINER}",
+
+          "path": "status/${RUN_ID}.json",
+
+          "identityReference": { "resourceId": "${MI_ID}" }
+
+        }
+
+      },
+
+      "uploadOptions": { "uploadCondition": "taskCompletion" }
+
+    }
+
+  ]
+
 }
+
 EOF
+
+  
+
+grep -E "elevationLevel|user root" ~/azure-timefold-company/task-${RUN_ID}.json
 
 az batch task create --job-id "$JOB_ID" --json-file ~/azure-timefold-company/task-${RUN_ID}.json
 ```
@@ -351,6 +403,20 @@ tail -40 /tmp/task-stdout.txt
 az batch task file download --job-id "$JOB_ID" --task-id "$RUN_ID" \
   --file-path stderr.txt --destination /tmp/task-stderr.txt
 tail -40 /tmp/task-stderr.txt
+```
+
+```bash
+rm -f fu-err.txt fu-out.txt
+az batch task file download --job-id "$JOB_ID" --task-id "$RUN_ID" \
+  --file-path fileuploaderr.txt --destination ./fu-err.txt
+az batch task file download --job-id "$JOB_ID" --task-id "$RUN_ID" \
+  --file-path fileuploadout.txt --destination ./fu-out.txt
+echo "===== UPLOAD ERR ====="; cat ./fu-err.txt
+echo "===== UPLOAD OUT ====="; cat ./fu-out.txt
+```
+
+```bash
+$ az batch task file list --job-id "$JOB_ID" --task-id "$RUN_ID" --recursive -o table | grep output
 ```
 
 ## Step 10 — Verify the output landed in Blob at the right path
