@@ -104,12 +104,23 @@ async function createBatchTask(runId) {
 
   const task = {
     id: runId,
-    commandLine: "/bin/bash -c 'mkdir -p /work/output /work/status && /app/entrypoint.sh'",
+    // Run entrypoint, then chmod the outputs so Batch's outputFiles upload can
+    // read them, then exit with the solver's real return code. `-c` (not
+    // `/bin/bash -c`) because containerRunOptions overrides the entrypoint to
+    // /bin/bash below.
+    commandLine:
+      "-c 'mkdir -p /work/output /work/status && /app/entrypoint.sh; " +
+      "rc=$?; chmod -R a+rX /work/output /work/status; " +
+      "echo ---PERMS---; ls -la /work/output; exit $rc'",
+    userIdentity: { autoUser: { elevationLevel: 'admin', scope: 'task' } },
     containerSettings: {
       imageName: SOLVER_IMAGE,
       containerRunOptions:
-        '--rm --workdir /app ' +
-        '-v $AZ_BATCH_TASK_WORKING_DIR/input:/work/input:ro ' +
+        '--rm --entrypoint /bin/bash --user root --workdir /app ' +
+        // resourceFiles (filePath "input" + blobPrefix "input/<runId>/") lands
+        // the files at $AZ_BATCH_TASK_WORKING_DIR/input/input/<runId>/, because
+        // Batch preserves the full blob path under filePath. Mount THAT dir.
+        `-v $AZ_BATCH_TASK_WORKING_DIR/input/input/${runId}:/work/input:ro ` +
         '-v $AZ_BATCH_TASK_WORKING_DIR/output:/work/output ' +
         '-v $AZ_BATCH_TASK_WORKING_DIR/status:/work/status ' +
         `-e RUN_ID=${runId}`,
