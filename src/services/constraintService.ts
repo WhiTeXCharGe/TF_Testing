@@ -182,21 +182,17 @@ function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Vio
   const operationLookup = buildOperationLookups(envConfig);
   const operationTaskLookup = buildOperationTaskLookup(schedule);
 
-  const keyToWorkers = new Map<string, Set<string>>();
-
+  // Count unique workers per operation task across ALL dates (not per-day)
+  const opTaskWorkers = new Map<string, Set<string>>();
   schedule.assignmentList.forEach(assignment => {
-    for (const wd of assignment.workDateList) {
-      if (wd.hour <= 0) continue;
-      const d = normalizeDate(wd.date);
-      const key = `${assignment.operationTask}@@${d}`;
-      const set = keyToWorkers.get(key) ?? new Set<string>();
-      set.add(assignment.worker);
-      keyToWorkers.set(key, set);
-    }
+    const hasWork = assignment.workDateList.some(wd => wd.hour > 0);
+    if (!hasWork) return;
+    const set = opTaskWorkers.get(assignment.operationTask) ?? new Set<string>();
+    set.add(assignment.worker);
+    opTaskWorkers.set(assignment.operationTask, set);
   });
 
-  for (const [key, workerSet] of keyToWorkers.entries()) {
-    const [operationTaskId, date] = key.split('@@');
+  for (const [operationTaskId, workerSet] of opTaskWorkers.entries()) {
     const opTask = operationTaskLookup.get(operationTaskId);
     if (!opTask) continue;
     const op = operationLookup.get(opTask.operationId);
@@ -204,31 +200,26 @@ function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Vio
     const min = opTask.recommendsWorkerMin ?? op?.minWorkerNum;
     const max = opTask.recommendsWorkerMax ?? op?.maxWorkerNum;
 
+    const relatedIndices = schedule.assignmentList
+      .map((a, i) => ({ a, i }))
+      .filter(({ a }) => a.operationTask === operationTaskId && a.workDateList.some(wd => wd.hour > 0))
+      .map(x => x.i);
+
     if (min != null && workerSet.size < min) {
-      const relatedIndices = schedule.assignmentList
-        .map((a, i) => ({ a, i }))
-        .filter(({ a }) => a.operationTask === operationTaskId && a.workDateList.some(wd => normalizeDate(wd.date) === date && wd.hour > 0))
-        .map(x => x.i);
       violations.push({
         type: 'TASK_WORKER_COUNT',
         assignmentIndices: relatedIndices,
-        date,
         severity: 'error',
-        message: `最小作業者数違反: ${operationTaskId} ${date} count=${workerSet.size} min=${min}`,
+        message: `最小作業者数違反: ${operationTaskId} count=${workerSet.size} min=${min}`,
       });
     }
 
     if (max != null && workerSet.size > max) {
-      const relatedIndices = schedule.assignmentList
-        .map((a, i) => ({ a, i }))
-        .filter(({ a }) => a.operationTask === operationTaskId && a.workDateList.some(wd => normalizeDate(wd.date) === date && wd.hour > 0))
-        .map(x => x.i);
       violations.push({
         type: 'TASK_WORKER_COUNT',
         assignmentIndices: relatedIndices,
-        date,
         severity: 'error',
-        message: `最大作業者数違反: ${operationTaskId} ${date} count=${workerSet.size} max=${max}`,
+        message: `最大作業者数違反: ${operationTaskId} count=${workerSet.size} max=${max}`,
       });
     }
   }

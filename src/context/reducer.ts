@@ -101,7 +101,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
     }
 
     case 'SELECT_ASSIGNMENT':
-      return { ...state, selectedAssignmentIndex: action.payload, selectedUnavailableInfo: null };
+      return { ...state, selectedAssignmentIndex: action.payload, selectedUnavailableInfo: null, scrollToSelectedAssignment: false };
 
     case 'SELECT_UNAVAILABLE':
       return {
@@ -535,6 +535,12 @@ export function reducer(state: AppState, action: ActionType): AppState {
 
     case 'TOGGLE_FLIGHT_STINTS':
       return { ...state, showFlightStints: !state.showFlightStints };
+
+    case 'SELECT_ASSIGNMENT_AND_SCROLL':
+      return { ...state, selectedAssignmentIndex: action.payload, scrollToSelectedAssignment: true };
+
+    case 'CLEAR_SCROLL_TO_ASSIGNMENT':
+      return { ...state, scrollToSelectedAssignment: false };
 
     default:
       return state;

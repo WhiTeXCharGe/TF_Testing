@@ -101,6 +101,7 @@ export interface AppState {
   backendViolations: Violation[];
   constraintCheckedAt: string | null;
   showFlightStints: boolean;
+  scrollToSelectedAssignment: boolean;
 }
 
 export type ActionType =
@@ -150,4 +151,6 @@ export type ActionType =
   | { type: 'CLOSE_CONSTRAINT_DIALOG' }
   | { type: 'SET_CONSTRAINT_CHECKING'; payload: boolean }
   | { type: 'SET_BACKEND_VIOLATIONS'; payload: { violations: Violation[]; checkedAt: string } }
-  | { type: 'TOGGLE_FLIGHT_STINTS' };
+  | { type: 'TOGGLE_FLIGHT_STINTS' }
+  | { type: 'SELECT_ASSIGNMENT_AND_SCROLL'; payload: number }
+  | { type: 'CLEAR_SCROLL_TO_ASSIGNMENT' };

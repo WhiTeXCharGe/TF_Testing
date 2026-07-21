@@ -28,6 +28,7 @@ const initialState: AppState = {
   backendViolations: [],
   constraintCheckedAt: null,
   showFlightStints: false,
+  scrollToSelectedAssignment: false,
 };
 
 interface ContextType {

@@ -118,6 +118,8 @@ interface Props {
   regionColorMap: Map<string, string>;
   regionNameMap: Map<string, string>;
   showFlightStints: boolean;
+  scrollToSelectedAssignment: boolean;
+  onClearScrollToAssignment: () => void;
 }
 
 export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
@@ -152,6 +154,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   regionColorMap,
   regionNameMap,
   showFlightStints,
+  scrollToSelectedAssignment,
+  onClearScrollToAssignment,
 }: Props) {
   // highlight mode is active when any global filter (non-date) is set
   const highlightModeActive = highlightedAssignmentIndices !== null || !!highlightBarName;
@@ -164,6 +168,21 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   const unavailDragRef = useRef<UnavailDragState | null>(null);
   const unavailDragPreviewRef = useRef<UnavailDragPreview | null>(null);
   const [unavailDragPreview, setUnavailDragPreview] = useState<UnavailDragPreview | null>(null);
+
+  // Scroll timeline to show the selected assignment only when triggered from constraint dialog
+  useEffect(() => {
+    if (!scrollToSelectedAssignment || selectedAssignmentIndex === null || !rightScrollRef.current) return;
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const seg = rows[rowIndex].segments.find(s => s.assignmentIndex === selectedAssignmentIndex);
+      if (!seg) continue;
+      const scrollLeft = seg.startIndex * DATE_CELL_WIDTH - 120;
+      const scrollTop  = rowIndex * ROW_HEIGHT - 80;
+      rightScrollRef.current.scrollTo({ left: Math.max(0, scrollLeft), top: Math.max(0, scrollTop), behavior: 'smooth' });
+      if (leftBodyRef.current) leftBodyRef.current.scrollTop = Math.max(0, scrollTop);
+      break;
+    }
+    onClearScrollToAssignment();
+  }, [scrollToSelectedAssignment, selectedAssignmentIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalMetaWidth = useMemo(
     () => ALWAYS_COLUMNS.reduce((acc, c) => acc + c.width, 0)

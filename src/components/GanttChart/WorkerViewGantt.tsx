@@ -54,7 +54,7 @@ export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
   const {
     schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter,
-    workerColumnFilter, workerDateCellFilter, showFlightStints,
+    workerColumnFilter, workerDateCellFilter, showFlightStints, scrollToSelectedAssignment,
   } = state;
 
   // Convert array-based context state to Sets for filter logic.
@@ -378,6 +378,8 @@ export function WorkerViewGantt({ dates }: Props) {
       regionColorMap={model.regionColorMap}
       regionNameMap={model.regionNameMap}
       showFlightStints={showFlightStints}
+      scrollToSelectedAssignment={scrollToSelectedAssignment}
+      onClearScrollToAssignment={() => dispatch({ type: 'CLEAR_SCROLL_TO_ASSIGNMENT' })}
     />
   );
 }
