@@ -14,6 +14,7 @@ export const UI = {
   open: '開く',
   save: '上書き保存',
   saveAs: '名前を付けて保存',
+  exportExcel: 'Excelエクスポート',
 
   // File open dialog
   fileOpenDialogTitle: 'ファイルを開く',

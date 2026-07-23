@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { overwriteSaveFiles } from '../../services/fileService';
+import { exportScheduleToExcel } from '../../services/excelExportService';
+import { generateDateRange } from '../../utils/dateUtils';
 import { SaveAsDialog } from '../Dialogs/SaveAsDialog';
 import { UI } from '../../config/uiText';
 
@@ -61,6 +63,21 @@ export function MenuBar() {
     setShowSaveAs(true);
   };
 
+  const exportExcel = async () => {
+    setOpenMenu(null);
+    if (!state.schedule || !state.envConfig) return;
+    try {
+      const dates = generateDateRange(state.schedule.planRange.startDate, state.schedule.planRange.endDate);
+      const base = state.currentSchedulePath?.split(/[/\\]/).pop()?.replace(/\.ya?ml$/i, '') ?? 'Schedule';
+      await exportScheduleToExcel(state.envConfig, state.schedule, dates, `${base}.xlsx`);
+      setSaveStatus('Excelエクスポートしました');
+      setTimeout(() => setSaveStatus(null), 2000);
+    } catch (err) {
+      setSaveStatus(`エクスポート失敗: ${err instanceof Error ? err.message : String(err)}`);
+      setTimeout(() => setSaveStatus(null), 5000);
+    }
+  };
+
   const menus: MenuDef[] = [
     {
       id: 'file',
@@ -70,6 +87,8 @@ export function MenuBar() {
         { separator: true },
         { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave },
         { label: UI.saveAs, shortcut: 'Ctrl+Shift+S', action: saveFileAs, disabled: !canSave },
+        { separator: true },
+        { label: UI.exportExcel, action: () => void exportExcel(), disabled: !canSave },
       ],
     },
     { id: 'edit', label: UI.editMenu, items: [] },
