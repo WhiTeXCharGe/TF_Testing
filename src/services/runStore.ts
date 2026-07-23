@@ -19,6 +19,8 @@ const API = {
   upload: '/api/upload',
   run:    (id: string) => `/api/run/${encodeURIComponent(id)}`,
   output: (id: string) => `/api/run/${encodeURIComponent(id)}/output`,
+  saveOutput: (id: string, filename: string) =>
+    `/api/run/${encodeURIComponent(id)}/output?filename=${encodeURIComponent(filename)}`,
 };
 
 /** Load all runs from the JSON database. Newest first. */
@@ -87,6 +89,27 @@ export async function checkOutput(id: string): Promise<OutputResponse> {
   } catch {
     return { hasYaml: false, yamlPath: null };
   }
+}
+
+/**
+ * Persist a solver-output blob (downloaded from the Azure API) to
+ * local/<id>/output/<filename> via the local API server. This is what
+ * actually lands the file at the path shown in the UI — previously that path
+ * was only ever a display string; the real bytes only reached the browser's
+ * Downloads folder via saveAs().
+ */
+export async function saveOutput(id: string, blob: Blob, filename: string): Promise<string> {
+  const res = await fetch(API.saveOutput(id, filename), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: blob,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`出力の保存に失敗しました (${res.status}): ${body || res.statusText}`);
+  }
+  const data = await res.json() as { ok: boolean; yamlPath: string };
+  return data.yamlPath;
 }
 
 /** Clear runs.json (folders on disk are NOT removed — clean them up manually if needed). */

@@ -3,17 +3,35 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "electron-dist/main.cjs",
   "scripts": {
     "dev": "vite",
     "dev:service": "npm run dev --prefix ../server",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:service\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "seed": "ts-node --esm scripts/seedDatabase.ts"
+    "seed": "ts-node --esm scripts/seedDatabase.ts",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:compile-localapi": "npm install --prefix localApi && tsc -p localApi/tsconfig.json",
+    "electron:dev": "concurrently \"npm run dev\" \"npm run electron:compile -- --watch --preserveWatchOutput\" \"wait-on tcp:5174 && electron .\"",
+    "electron:build": "tsc && vite build && npm run electron:compile-localapi && npm run electron:compile && electron-builder"
+  },
+  "build": {
+    "appId": "com.timefold.scheduler-web",
+    "productName": "Timefold Scheduler",
+    "directories": { "output": "release" },
+    "files": ["electron-dist/**", "dist/**"],
+    "extraResources": [
+      { "from": "dist", "to": "app-dist" },
+      { "from": "localApi", "to": "localApi", "filter": ["dist/**", "node_modules/**", "package.json"] }
+    ],
+    "win": { "target": "nsis" },
+    "nsis": { "perMachine": false, "oneClick": false, "allowToChangeInstallationDirectory": true }
   },
   "dependencies": {
     "axios": "^1.7.7",
     "exceljs": "^4.4.0",
+    "express": "^4.21.2",
     "file-saver": "^2.0.5",
     "js-yaml": "^4.1.0",
     "react": "^18.3.1",
@@ -22,6 +40,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/file-saver": "^2.0.5",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.5.5",
@@ -29,7 +48,10 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^9.1.2",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.5.4",
-    "vite": "^5.4.6"
+    "vite": "^5.4.6",
+    "wait-on": "^8.0.1"
   }
 }

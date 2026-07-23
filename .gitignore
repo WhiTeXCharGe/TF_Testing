@@ -5,6 +5,10 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+electron-dist/
+release/
+localApi/dist/
+localApi/node_modules/
 
 # Logs
 logs/

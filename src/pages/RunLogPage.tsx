@@ -7,6 +7,7 @@ import { Dialog } from '@/components/common/Dialog';
 import { useRuns } from '@/hooks/useRuns';
 import { nowLabel } from '@/utils/dateUtils';
 import { fetchText, sendToGanttEditor } from '@/services/ganttHandoffService';
+import { saveOutput } from '@/services/runStore';
 import type { Run } from '@/types';
 import type { RunStatus } from '@/services/runService';
 
@@ -247,6 +248,21 @@ function DropZoneField({
     if (f) onFile(f);
   }
 
+  // Desktop app: native Open dialog gives a real path automatically (fills
+  // both the file and the "original path" field) instead of requiring it typed.
+  async function onZoneClick() {
+    if (disabled) return;
+    if (window.electronAPI) {
+      const picked = await window.electronAPI.pickOpenFile();
+      if (!picked) return;
+      const name = picked.path.split(/[/\\]/).pop() ?? 'file.yaml';
+      onFile(new File([picked.content], name, { type: 'text/yaml' }));
+      onOriginalPath(picked.path);
+      return;
+    }
+    inputRef.current?.click();
+  }
+
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
@@ -261,7 +277,7 @@ function DropZoneField({
         onDragEnter={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        onClick={() => !disabled && inputRef.current?.click()}
+        onClick={() => void onZoneClick()}
         role="button"
         tabIndex={0}
       >
@@ -476,6 +492,9 @@ export function RunLogPage() {
   // and open the returned URL in a new tab.
   async function openInGanttEditor(envYaml: string, scheduleYaml: string) {
     const { url } = await sendToGanttEditor(envYaml, scheduleYaml);
+    // url is null in desktop mode — the handoff was already delivered
+    // straight to GanttChartEditor's window, nothing left to open here.
+    if (!url) return;
     const opened = window.open(url, '_blank', 'noopener');
     if (!opened) setGanttTransferUrl(url);
   }
@@ -499,6 +518,14 @@ export function RunLogPage() {
   }
 
   async function handleShowResult(run: Run) {
+    // Close any dialog left open from a previous row's check — otherwise the
+    // old state (e.g. solverStatus from a Running row) stays truthy and can
+    // render on top of / instead of the new one.
+    setSolverStatus(null);
+    setSolverCompleted(null);
+    setSolverFailed(null);
+    setSolverError(null);
+
     setBusy(prev => new Set(prev).add(run.id));
     try {
       // Once downloaded from API, reuse the cached result instead of re-downloading.
@@ -549,11 +576,20 @@ export function RunLogPage() {
     setBusy(prev => new Set(prev).add(run.id));
     try {
       const { blob, filename } = await triggerDownload(run.id);
-      saveAs(blob, filename);
+
+      // Desktop app: persist the real bytes to local/<runId>/output/ via the
+      // local API server. Plain web mode has no writable local backend to
+      // persist to (static deploy), so fall back to a browser download —
+      // that's the pre-existing behavior, still to the Downloads folder.
+      let savedPath = outputDirForRun(run.id);
+      if (window.electronAPI) {
+        savedPath = await saveOutput(run.id, blob, filename);
+      } else {
+        saveAs(blob, filename);
+      }
 
       const scheduleYaml = await blob.text();
-      const localOutputDir = outputDirForRun(run.id);
-      setDownloadedPaths(prev => ({ ...prev, [run.id]: localOutputDir }));
+      setDownloadedPaths(prev => ({ ...prev, [run.id]: savedPath }));
       setDownloadedScheduleYaml(prev => ({ ...prev, [run.id]: scheduleYaml }));
       setSolverCompleted(null);
 
