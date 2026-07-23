@@ -1,12 +1,17 @@
 import { useState, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { parseEnvConfigYaml, parseScheduleYaml } from '../../services/yamlService';
+import { openSingleYamlElectron } from '../../services/fileService';
 import { UI } from '../../config/uiText';
+
+// Holds either a browser File (web mode) or a path+content pair already read
+// via a native dialog (desktop mode) — both resolve to the same {name, text}.
+interface PickedFile { name: string; text: () => Promise<string> }
 
 export function FileOpenDialog() {
   const { state, dispatch } = useAppContext();
-  const [envFile, setEnvFile] = useState<File | null>(null);
-  const [schedFile, setSchedFile] = useState<File | null>(null);
+  const [envFile, setEnvFile] = useState<PickedFile | null>(null);
+  const [schedFile, setSchedFile] = useState<PickedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const envRef = useRef<HTMLInputElement>(null);
   const schedRef = useRef<HTMLInputElement>(null);
@@ -19,13 +24,22 @@ export function FileOpenDialog() {
     dispatch({ type: 'CLOSE_FILE_DIALOG' });
   };
 
+  const pickNative = async (setter: (f: PickedFile | null) => void) => {
+    const picked = await openSingleYamlElectron();
+    if (picked) setter({ name: picked.path, text: () => Promise.resolve(picked.content) });
+  };
+
+  const pickBrowser = (file: File | undefined, setter: (f: PickedFile | null) => void) => {
+    setter(file ? { name: file.name, text: () => readText(file) } : null);
+  };
+
   const handleOk = async () => {
     if (!envFile || !schedFile) return;
     setLoading(true);
     try {
       const [envText, schedText] = await Promise.all([
-        readText(envFile),
-        readText(schedFile),
+        envFile.text(),
+        schedFile.text(),
       ]);
       const envConfig = parseEnvConfigYaml(envText);
       const schedule = parseScheduleYaml(schedText);
@@ -99,7 +113,10 @@ export function FileOpenDialog() {
           <div style={fieldRow}>
             <label style={labelStyle}>{UI.envConfigFileLabel}</label>
             <div style={fileRow}>
-              <button style={chooseBtn} onClick={() => envRef.current?.click()}>
+              <button
+                style={chooseBtn}
+                onClick={() => (window.electronAPI ? pickNative(setEnvFile) : envRef.current?.click())}
+              >
                 {UI.chooseFile}
               </button>
               <span style={fileName}>{envFile ? envFile.name : UI.noFileChosen}</span>
@@ -108,7 +125,7 @@ export function FileOpenDialog() {
                 type="file"
                 accept=".yaml,.yml"
                 style={{ display: 'none' }}
-                onChange={e => setEnvFile(e.target.files?.[0] ?? null)}
+                onChange={e => pickBrowser(e.target.files?.[0], setEnvFile)}
               />
             </div>
           </div>
@@ -116,7 +133,10 @@ export function FileOpenDialog() {
           <div style={fieldRow}>
             <label style={labelStyle}>{UI.scheduleFileLabel}</label>
             <div style={fileRow}>
-              <button style={chooseBtn} onClick={() => schedRef.current?.click()}>
+              <button
+                style={chooseBtn}
+                onClick={() => (window.electronAPI ? pickNative(setSchedFile) : schedRef.current?.click())}
+              >
                 {UI.chooseFile}
               </button>
               <span style={fileName}>{schedFile ? schedFile.name : UI.noFileChosen}</span>
@@ -125,7 +145,7 @@ export function FileOpenDialog() {
                 type="file"
                 accept=".yaml,.yml"
                 style={{ display: 'none' }}
-                onChange={e => setSchedFile(e.target.files?.[0] ?? null)}
+                onChange={e => pickBrowser(e.target.files?.[0], setSchedFile)}
               />
             </div>
           </div>

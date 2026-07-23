@@ -1,11 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 
 const app = express();
-const PORT = 3010;
+const PORT = Number(process.env.PORT ?? 3010);
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }));
 app.use(express.json({ limit: '10mb' }));
@@ -34,6 +35,18 @@ app.post('/api/save-files', async (req, res) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
+// Packaged Electron builds serve the built frontend from this same origin so
+// relative fetch('/api/...') calls in the renderer keep working without CORS.
+// SERVE_STATIC_DIR is set by electron/main.cts only in packaged mode — unset
+// in dev, where Vite serves the frontend on its own port instead.
+const staticDir = process.env.SERVE_STATIC_DIR;
+if (staticDir) {
+  app.use(express.static(staticDir));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`[server] running on http://localhost:${PORT}`);

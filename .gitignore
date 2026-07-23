@@ -5,3 +5,5 @@ dist-sse/
 *.local
 .env
 .env.*
+electron-dist/
+release/

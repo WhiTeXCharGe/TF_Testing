@@ -107,6 +107,17 @@ async function waitUntilUp(url: string, timeoutMs: number, intervalMs = 1000): P
 
 // ── Routes ────────────────────────────────────────────────────────────────
 
+// Set by electron/main.cts on the embedded server it spawns. In the desktop
+// app, the renderer already calls window.electronAPI.launchScheduler() to
+// ensure SchedulerWeb's window is up BEFORE this route is ever hit — so the
+// dev-only health-check-and-launch dance below is redundant, and worse,
+// actively broken: it also requires the local Docker queue service
+// (SCHEDULER_SERVICE_URL, port 3001) to answer, which has nothing to do with
+// delivering a handoff and isn't running in a packaged build at all. Left
+// enabled, every desktop handoff waited the full 28s and then failed with a
+// 504, whether or not SchedulerWeb was already open.
+const DESKTOP_MODE = process.env.DESKTOP_MODE === '1';
+
 handoffRouter.post('/handoff/create', async (req, res) => {
   const { envYaml, scheduleYaml } = req.body as { envYaml?: string; scheduleYaml?: string };
   if (!envYaml || !scheduleYaml) {
@@ -117,6 +128,11 @@ handoffRouter.post('/handoff/create', async (req, res) => {
   purgeExpired();
   const token = randomUUID();
   pending.set(token, { envYaml, scheduleYaml, expiresAt: Date.now() + TTL_MS });
+
+  if (DESKTOP_MODE) {
+    res.json({ ok: true, url: `${SCHEDULER_WEB_URL}/?incomingTransfer=${token}` });
+    return;
+  }
 
   try {
     const [webUp, serviceUp] = await Promise.all([

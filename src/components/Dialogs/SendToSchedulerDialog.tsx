@@ -33,8 +33,14 @@ export function SendToSchedulerDialog() {
         state.currentSchedulePath ?? 'Schedule.yaml',
       );
       const { url } = await sendToScheduler(state.envConfig, state.schedule);
-      const opened = window.open(url, '_blank', 'noopener');
-      setResultUrl(opened ? null : url);
+      // url is null in desktop mode — the handoff was already delivered
+      // straight to SchedulerWeb's window, nothing left to open here.
+      if (url) {
+        const opened = window.open(url, '_blank', 'noopener');
+        setResultUrl(opened ? null : url);
+      } else {
+        setResultUrl(null);
+      }
       setStage('done');
     } catch (e) {
       setErrorMsg(String((e as Error).message ?? e));

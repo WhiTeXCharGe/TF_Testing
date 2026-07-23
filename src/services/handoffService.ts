@@ -11,10 +11,23 @@ interface HandoffCreateResponse {
 
 // Send the current EnvConfig + Schedule YAML (same format as Save) to the
 // Scheduler Webapp, launching it in the background if it isn't already running.
-// Resolves with the URL to open once the Scheduler Webapp is confirmed ready.
-export async function sendToScheduler(envConfig: EnvConfig, schedule: ScheduleData): Promise<{ url: string }> {
+//
+// Desktop mode returns { url: null } — the transfer URL was already delivered
+// straight to SchedulerWeb's one window via IPC (see electron/main.cts's
+// single-instance-lock handling), so the caller must NOT window.open() it too
+// (that used to open a second, blank SchedulerWeb window racing the real one
+// for the one-time token — the actual cause of "opens twice / empty data").
+// Web mode returns { url } for the caller to window.open() as before.
+export async function sendToScheduler(envConfig: EnvConfig, schedule: ScheduleData): Promise<{ url: string | null }> {
   const envYaml = stringifyEnvConfigYaml(envConfig);
   const scheduleYaml = stringifyScheduleYaml(resolveScheduleColors(schedule));
+
+  if (window.electronAPI) {
+    // Make sure SchedulerWeb is up before minting a token — /api/handoff/create's
+    // own dev-only "spawn npm run dev:all" fallback won't work in a packaged app.
+    const ensureUp = await window.electronAPI.launchScheduler();
+    if (!ensureUp.ok) throw new Error(ensureUp.error ?? 'SchedulerWebの起動に失敗しました');
+  }
 
   const res = await fetch('/api/handoff/create', {
     method: 'POST',
@@ -25,6 +38,13 @@ export async function sendToScheduler(envConfig: EnvConfig, schedule: ScheduleDa
   const data: HandoffCreateResponse = await res.json().catch(() => ({ ok: false }));
   if (!res.ok || !data.ok || !data.url) {
     throw new Error(data.error ?? '送信に失敗しました');
+  }
+
+  if (window.electronAPI) {
+    // Deliver the token straight to SchedulerWeb's window instead of window.open().
+    const deliver = await window.electronAPI.launchScheduler(data.url);
+    if (!deliver.ok) throw new Error(deliver.error ?? 'SchedulerWebへの送信に失敗しました');
+    return { url: null };
   }
   return { url: data.url };
 }

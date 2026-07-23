@@ -2,6 +2,7 @@
   "name": "gantt-chart-editor",
   "version": "0.1.0",
   "type": "module",
+  "main": "electron-dist/main.cjs",
   "scripts": {
     "dev": "vite",
     "dev:server": "npm run dev --prefix server",
@@ -11,7 +12,24 @@
     "test": "jest --passWithNoTests",
     "test:jest": "jest --config jest.config.cjs --workerIdleMemoryLimit=512MB",
     "test:cypress": "cypress open",
-    "test:cypress:run": "cypress run"
+    "test:cypress:run": "cypress run",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run electron:compile -- --watch --preserveWatchOutput\" \"wait-on tcp:5173 tcp:3010 && electron .\"",
+    "electron:build": "vite build && npm run build --prefix server && npm run electron:compile && electron-builder"
+  },
+  "build": {
+    "appId": "com.timefold.gantt-chart-editor",
+    "productName": "GanttChartEditor",
+    "directories": { "output": "release" },
+    "files": ["electron-dist/**", "dist/**"],
+    "extraResources": [
+      { "from": "dist", "to": "app-dist" },
+      { "from": "server/dist", "to": "server/dist" },
+      { "from": "server/node_modules", "to": "server/node_modules" },
+      { "from": "server/package.json", "to": "server/package.json" }
+    ],
+    "win": { "target": "nsis" },
+    "nsis": { "perMachine": false, "oneClick": false, "allowToChangeInstallationDirectory": true }
   },
   "dependencies": {
     "gantt-task-react": "^0.3.9",
@@ -21,6 +39,9 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { downloadBothYamlFiles } from '../../services/fileService';
+import { downloadBothYamlFiles, saveYamlFilesAsElectron } from '../../services/fileService';
+import { useAppContext } from '../../context/AppContext';
 import { EnvConfig } from '../../types/envConfig';
 import { ScheduleData } from '../../types/schedule';
 
@@ -12,10 +13,20 @@ interface Props {
 }
 
 export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultScheduleName, onClose }: Props) {
+  const { dispatch } = useAppContext();
   const [envName, setEnvName] = useState(defaultEnvName);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (window.electronAPI) {
+      const saved = await saveYamlFilesAsElectron(envConfig, schedule, envName, scheduleName);
+      if (saved) {
+        dispatch({ type: 'SAVE_PATHS', payload: saved });
+        onClose();
+      }
+      // saved === null means the user cancelled a native dialog — keep this modal open.
+      return;
+    }
     downloadBothYamlFiles(envConfig, schedule, envName, scheduleName);
     onClose();
   };
@@ -67,7 +78,9 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
         </label>
 
         <div style={{ fontSize: 11, color: '#888', marginBottom: 16 }}>
-          両ファイルはブラウザのダウンロードフォルダに保存されます。
+          {window.electronAPI
+            ? '保存先はこの後のダイアログで選択します。'
+            : '両ファイルはブラウザのダウンロードフォルダに保存されます。'}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
