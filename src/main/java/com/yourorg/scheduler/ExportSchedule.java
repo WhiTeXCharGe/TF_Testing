@@ -155,6 +155,20 @@ public class ExportSchedule {
                         ? (List<Map<String,Object>>) assignmentObj
                         : new ArrayList<>();
 
+        // ---- Description lookup, keyed by (worker, operation_task) ----
+        // Newly-generated flexible rows below are built fresh from solved seats and
+        // otherwise carry no description. If the same worker keeps the same
+        // operation_task across a re-solve (even on different dates), keep its
+        // description from whatever the previous run's output already had.
+        Map<String,String> descByWorkerTask = new HashMap<>();
+        for (Map<String,Object> a : original) {
+            if (a == null) continue;
+            Object desc = a.get("description");
+            if (desc == null) continue;
+            String key = String.valueOf(a.get("worker")) + "|" + String.valueOf(a.get("operation_task"));
+            descByWorkerTask.put(key, String.valueOf(desc));
+        }
+
         // Preserve original fixed + original flexible
         List<Map<String,Object>> preservedFixed = new ArrayList<>();
         List<Map<String,Object>> preservedFlexible = new ArrayList<>();
@@ -328,6 +342,8 @@ public class ExportSchedule {
                 row.put("end_date",   planStart.plusDays(lastIdx).format(DF));
                 row.put("work_date_list", work);
                 row.put("plan_flexibility", "Flexible");
+                String desc = descByWorkerTask.get(s.employee.wid + "|" + taskId);
+                if (desc != null) row.put("description", desc);
                 newFlex.add(row);
 
             }

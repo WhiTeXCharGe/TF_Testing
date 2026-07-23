@@ -2690,6 +2690,7 @@ public class EmployeeSchedule {
             String flex;                 // "fixed" / "flexible"
             int sId, eId;                // from start_date/end_date if present
             Map<Integer,Integer> byDay;   // summed hours by dayId
+            boolean isRealOp;             // false for misc/dummy tasks (no OpTaskMeta match)
         }
 
         // outputs
@@ -2774,6 +2775,7 @@ public class EmployeeSchedule {
             rr.wid = wid; rr.flex = flex;
             rr.sId = sId; rr.eId = eId;
             rr.byDay = byDay;
+            rr.isRealOp = (meta != null);
 
             rawRows.add(rr);
 
@@ -2787,8 +2789,16 @@ public class EmployeeSchedule {
         for (RawAssignRow rr : rawRows) {
             if (rr.byDay == null || rr.byDay.isEmpty()) continue;
 
-            boolean isFixed    = "fixed".equalsIgnoreCase(rr.flex);
-            boolean isFlexible = "flexible".equalsIgnoreCase(rr.flex);
+            // Rows whose operation_task doesn't resolve to a real workflow op (misc/dummy
+            // tasks like PTC/VISA) are always treated as blocking the worker's availability,
+            // regardless of the row's own plan_flexibility — they can never be a real
+            // schedulable block, so there's nothing "flexible" about them, and only reading
+            // them as Fixed keeps them feeding FIXED_HOURS_BY_EMP_DAY / FIXED_TASKCOUNT_BY_EMP_DAY
+            // for every day they cover (previously this depended on the data always tagging
+            // them Fixed; a Flexible-tagged misc row would silently stop blocking availability
+            // for any dates after the cutoff).
+            boolean isFixed    = "fixed".equalsIgnoreCase(rr.flex) || !rr.isRealOp;
+            boolean isFlexible = "flexible".equalsIgnoreCase(rr.flex) && rr.isRealOp;
 
             boolean phaseStarted = phaseStartedBeforeCutoff.contains(rr.module + "|" + rr.phaseNum);
 
@@ -3973,8 +3983,8 @@ public class EmployeeSchedule {
                 new Class<?>[]{ BlockDecision.class, CrewSeat.class },
                 SinglePassConstraints.class,
                 null /* bestScoreLimit */,
-                180  /* spentMinutes */,
-                600 /* unimprovedSeconds */);
+                60  /* spentMinutes */,
+                60 /* unimprovedSeconds */);
 
         Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
         {
