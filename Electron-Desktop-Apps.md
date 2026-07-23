@@ -115,7 +115,44 @@ to the delivered URL and gets focused. Without this, `window.open()` used
 to create a second, unrelated window race-ing the real one for the
 one-time token — the original "opens twice / empty data" bug.
 
-## 7. Known environment quirk on this machine
+## 7. Building on another PC (instead of copying `release/`)
+
+`release/win-unpacked/` (and the `web/dist/` copy of it) are just build
+output — nothing about them is machine-specific, but they *are* large
+(~300MB+ each, mostly the bundled Chromium runtime), which is why copying
+them elsewhere isn't always practical. Building fresh on the target machine
+instead only needs the source + Node.js — nothing from this machine has to
+travel with it.
+
+**Prerequisites on the other PC:** Node.js 18+ and npm (that's it — no Java,
+no Electron pre-installed; `npm install` pulls in `electron`/`electron-builder`
+themselves as devDependencies). The *built app* itself needs nothing at
+runtime (§3), but *building* it does need Node/npm, same as any Vite project.
+
+**Steps, once per app** (run separately in `GanttChartEditor/` and
+`SchedulerWeb/` — they're independent npm projects):
+```bash
+git clone -b GanttChartEditor https://github.com/WhiTeXCharGe/TF_Testing.git GanttChartEditor
+cd GanttChartEditor
+npm install                # add --legacy-peer-deps if it complains about
+                            # gantt-task-react's React 18 peer dep vs React 19
+npm run electron:build
+```
+(swap branch name / folder for `SchedulerWeb`). Output lands in
+`release/win-unpacked/<AppName>.exe` — that alone is a complete, runnable
+app, same as on this machine. The single-file NSIS installer additionally
+needs Windows Developer Mode enabled there too (§8) — not required just to
+get a working `.exe`.
+
+First build on a new machine needs internet access once, since
+`electron-builder` downloads the Electron runtime + packaging tools
+(~100MB+) the first time it runs; later builds reuse that local cache.
+
+To get the two apps' auto-discovery working (§5), put both
+`release/win-unpacked/` folders side by side under one shared parent folder
+on that machine, same as `web/dist/` does here.
+
+## 8. Known environment quirk on this machine
 
 Producing the final single-file NSIS installer (not just
 `release/win-unpacked/`) currently fails here because **Windows Developer
