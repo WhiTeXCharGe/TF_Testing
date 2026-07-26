@@ -1,12 +1,34 @@
-1. Check if there's any data at all, no filter
-az batch pool supported-images list --query "length(@)"
-If this prints 0 or errors, the problem is upstream of my --query filter — likely the Batch data-plane session isn't authenticated in this terminal:
+YWT共有
+やったこと（Y）
 
-az batch account login --name "$BATCH" --resource-group "$RG"
-az batch pool supported-images list --query "length(@)"
-Retry the count after logging in — if it's still 0, something's off with account access; if it jumps to a real number (there should be dozens), the filter step below will now work too.
+① コーディングの高速化と自動化
+コード内にコメントセクションと全体設計を記述し、GitHub Copilotがそれらのファイルを読み取った上で、コメントの指示内容に沿ったコードを生成できるようにしました。
 
-2. If there IS data, check the exact field names
-My filter may have gotten the casing wrong (Azure Batch's JSON often uses nodeAgentSKUId with capital SKU, not nodeAgentSkuId). See one raw entry to confirm:
+② テストコード、リファクタリングでの品質向上
+実装するアプリの要件や挙動をドキュメント化し、Copilotに読み込ませることで、CypressやJestを使ったテストコードの生成、およびテストケースの提案を行ってもらいました。
 
-az batch pool supported-images list --query "[0]"
+③ 設計・レビュー支援
+現在担当しているタスクのWebワークフローやAPI設計についてAIにレビューしてもらい、アーキテクチャ上の改善点や修正案を提示してもらいました。
+
+④ ドキュメント作成とコード理解
+ドキュメント作成時に、Mermaid記法を使った図（フローチャートや構成図など）をAIに生成してもらい、Markdown内に組み込みました。
+
+⑤ 新技術の学習と技術調査
+ExcelJS、Tauri、Azureリソースについて、AIに仕組みや使い方を説明してもらいながら学習しました。
+
+わかったこと（W）
+
+① コーディングの高速化と自動化
+コメントや設計意図を事前にしっかり書いておくことで、Copilotの生成コードの精度が大きく上がることが分かりました。逆に、コメントが曖昧だと的外れなコードが生成されやすいため、指示の書き方（粒度・具体性）が成果物の質に直結すると実感しました。
+
+② テストコード、リファクタリングでの品質向上
+要件・挙動を明文化してからAIに渡すと、抜け漏れのないテストケースを提案してもらいやすいことが分かりました。特に自分では気づきにくいエッジケースをAIが挙げてくれる点が有効でした。一方で、生成されたテストコードが実際の仕様と微妙にずれることもあるため、最終的な確認は自分で行う必要があると感じました。
+
+③ 設計・レビュー支援
+AIにレビューを依頼すると、既存の実装に引きずられがちな自分では出てこない視点（別のアーキテクチャパターンや責務の分離案など）を提示してもらえることが分かりました。ただし提案をそのまま採用するのではなく、現行システムとの整合性を自分で判断する必要があると感じました。
+
+④ ドキュメント作成とコード理解
+Mermaid記法の図をAIに任せることで、手書きよりも短時間で構成が整理された図を作成できることが分かりました。ただし、複雑な図になるほど意図通りに生成されないこともあり、簡単な修正指示を繰り返すことで精度を上げる工夫が必要でした。
+
+⑤ 新技術の学習と技術調査
+公式ドキュメントを読むより先にAIに概要を聞くことで、全体像を早くつかんでから詳細を調べる、という学習の流れが効率的だと分かりました。特にExcelJSやTauriのような情報が分散しがちな技術では、AIによる要点整理が理解の助けになりました。
