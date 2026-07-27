@@ -27,6 +27,7 @@ import csv
 import re
 import unicodedata
 from collections import defaultdict
+from datetime import datetime
 from openpyxl import load_workbook
 
 # Same core pattern Decoder5.py uses (TOOLCODE_RE)
@@ -87,19 +88,62 @@ def find_codes(raw_value):
     return results
 
 
-def scan_workbook(path, sheet_name=None):
-    wb = load_workbook(path, data_only=True, read_only=True)
+def parse_range_date(s: str):
+    """Parse a 'YYYY/MM/DD' or 'YYYY-MM-DD' string into a datetime."""
+    s = s.strip()
+    for fmt in ("%Y/%m/%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"Could not parse date: {s!r} (use YYYY/MM/DD)")
+
+
+def find_date_header_row(ws, max_scan_rows=12):
+    """
+    Scan the first N rows of a sheet for one containing actual date values.
+    Returns (row_idx, {col_idx: datetime}) or (None, {}) if no date row found.
+    This is how worker x date grids (e.g. SU_Others) mark their date columns.
+    """
+    for r in range(1, max_scan_rows + 1):
+        row_cells = list(ws[r])
+        date_cols = {}
+        for cell in row_cells:
+            if isinstance(cell.value, datetime):
+                date_cols[cell.column] = cell.value
+        if date_cols:
+            return r, date_cols
+    return None, {}
+
+
+def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
+    wb = load_workbook(path, data_only=True, read_only=False)
     sheets = [sheet_name] if sheet_name else wb.sheetnames
 
     occurrences = []  # list of dicts: sheet, cell, code, space_fixed, near_miss, raw
+    use_range = date_start is not None and date_end is not None
 
     for sn in sheets:
         if sn not in wb.sheetnames:
             print(f"  [skip] sheet '{sn}' not found in workbook")
             continue
         ws = wb[sn]
+
+        allowed_cols = None  # None = no column restriction
+        if use_range:
+            header_row, date_cols = find_date_header_row(ws)
+            if header_row is None:
+                print(f"  [skip] sheet '{sn}': no date header row found, can't scope by date")
+                continue
+            allowed_cols = {c for c, dt in date_cols.items() if date_start <= dt <= date_end}
+            if not allowed_cols:
+                print(f"  [skip] sheet '{sn}': no date columns fall inside the given range")
+                continue
+
         for row in ws.iter_rows():
             for cell in row:
+                if allowed_cols is not None and cell.column not in allowed_cols:
+                    continue
                 if cell.value is None:
                     continue
                 for code, space_fixed, near_miss in find_codes(cell.value):
@@ -135,10 +179,25 @@ def main():
     ap.add_argument("xlsx_path", help="Path to the .xlsx or .xlsm file")
     ap.add_argument("--sheet", default=None, help="Only scan this sheet (default: all sheets)")
     ap.add_argument("--out", default="seiban_report.txt", help="TXT report output path")
+    ap.add_argument("--range", default=None,
+                     help="Only include seiban whose DATE COLUMN falls in this range, "
+                          "e.g. --range 2026/06/01-2026/07/01. Requires the sheet to have "
+                          "a date header row (worker x date grid, like SU_Others).")
     args = ap.parse_args()
 
+    date_start = date_end = None
+    if args.range:
+        parts = [p.strip() for p in args.range.replace("〜", "-").split("-") if p.strip()]
+        if len(parts) != 2:
+            raise SystemExit(f"--range must be like 2026/06/01-2026/07/01, got: {args.range!r}")
+        date_start, date_end = parse_range_date(parts[0]), parse_range_date(parts[1])
+        if date_end < date_start:
+            date_start, date_end = date_end, date_start
+
     print(f"Scanning: {args.xlsx_path}" + (f" (sheet: {args.sheet})" if args.sheet else " (all sheets)"))
-    occurrences = scan_workbook(args.xlsx_path, args.sheet)
+    if date_start:
+        print(f"Date range: {date_start:%Y/%m/%d} - {date_end:%Y/%m/%d}")
+    occurrences = scan_workbook(args.xlsx_path, args.sheet, date_start, date_end)
     counts, space_fixed_codes, near_miss_codes = summarize(occurrences)
 
     print(f"\nFound {len(counts)} unique seiban codes.\n")
