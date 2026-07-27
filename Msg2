@@ -134,30 +134,38 @@ def main():
     ap = argparse.ArgumentParser(description="Extract seiban/tool codes from an xlsx/xlsm file.")
     ap.add_argument("xlsx_path", help="Path to the .xlsx or .xlsm file")
     ap.add_argument("--sheet", default=None, help="Only scan this sheet (default: all sheets)")
-    ap.add_argument("--out", default="seiban_report.csv", help="CSV report output path")
+    ap.add_argument("--out", default="seiban_report.txt", help="TXT report output path")
     args = ap.parse_args()
 
     print(f"Scanning: {args.xlsx_path}" + (f" (sheet: {args.sheet})" if args.sheet else " (all sheets)"))
     occurrences = scan_workbook(args.xlsx_path, args.sheet)
     counts, space_fixed_codes, near_miss_codes = summarize(occurrences)
 
-    print(f"\nFound {len(counts)} unique seiban codes ({len(occurrences)} total cell hits).\n")
+    print(f"\nFound {len(counts)} unique seiban codes.\n")
     for code in sorted(counts):
         flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
-        print(f"  {code}   x{counts[code]}{flag}")
+        print(f"  {code}{flag}")
 
     if near_miss_codes:
         print(f"\n{len(near_miss_codes)} NEAR-MISS codes (matched loosely, review these manually):")
         for code in sorted(near_miss_codes):
             print(f"  {code}")
 
-    # Write full occurrence-level CSV
-    with open(args.out, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=["sheet", "cell", "code", "space_fixed", "near_miss", "raw_text"])
-        writer.writeheader()
-        for o in occurrences:
-            writer.writerow(o)
-    print(f"\nFull report written to: {args.out}")
+    # Write plain txt report: one unique code per line, no occurrence counts
+    with open(args.out, "w", encoding="utf-8-sig") as f:
+        f.write(f"Seiban codes found: {len(counts)}\n")
+        f.write("=" * 40 + "\n")
+        for code in sorted(counts):
+            flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
+            f.write(f"{code}{flag}\n")
+
+        if near_miss_codes:
+            f.write("\nNEAR-MISS codes (matched loosely, review manually):\n")
+            f.write("=" * 40 + "\n")
+            for code in sorted(near_miss_codes):
+                f.write(f"{code}\n")
+
+    print(f"\nReport written to: {args.out}")
 
 
 if __name__ == "__main__":
