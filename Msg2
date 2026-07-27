@@ -1,27 +1,164 @@
-This is a much bigger ask than a checklist — you want the actual step-by-step walkthrough (like Phase 01-07) rewritten for the company subscription, ending with a real working API deployed to ACA and the webapp wired to it. Let me also check the actual contract the webapp expects, since I want the guide's API code to match exactly rather than guess.
+"""
+seiban_extractor.py
+--------------------------------------------------------------
+Scans every cell of every sheet in an .xlsx / .xlsm file and pulls out
+seiban / tool-code strings like 530N03157A / 830300208A
+(pattern: 3 digits + 1 alnum + 5 digits + "A", same as Decoder5.TOOLCODE_RE).
+
+Handles messy cells:
+  - full-width / zero-width chars (NFKC normalize)
+  - stray spaces INSIDE the code (e.g. "530N 03157A") -> retried after
+    stripping all whitespace, and flagged as "space_fixed" so you can
+    sanity-check it wasn't a false match.
+
+Usage:
+    python seiban_extractor.py "path/to/file.xlsx"
+    python seiban_extractor.py "path/to/file.xlsx" --sheet "IFS"
+    python seiban_extractor.py "path/to/file.xlsx" --out report.csv
+
+Output:
+    - Prints unique seiban list + counts to console
+    - Writes a CSV report (default: seiban_report.csv) with every
+      occurrence: sheet, cell, code, space_fixed?, raw text
+--------------------------------------------------------------
+"""
+import argparse
+import csv
+import re
+import unicodedata
+from collections import defaultdict
+from openpyxl import load_workbook
+
+# Same core pattern Decoder5.py uses (TOOLCODE_RE)
+SEIBAN_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}A")
+
+# Looser pattern for spotting "near miss" candidates that don't fit the
+# strict rule above (e.g. wrong trailing letter, extra char) so you can
+# eyeball anything unusual instead of it silently vanishing.
+NEAR_MISS_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}[A-Z]")
+
+_WS_RE = re.compile(r"\s+")
+_ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\ufeff"}
 
 
-Ran a command, created 12 files, read a file, used 24 tools
-Now let me update the checklist file to point at this new guided series, and update its RBAC/verification sections to reference the new phase docs for consistency.
+def clean_text(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = s.replace("　", " ")  # full-width space -> normal space
+    for z in _ZERO_WIDTH:
+        s = s.replace(z, "")
+    return s
 
 
-Read a file, edited a file, ran a command, used a tool
-I've built the full guided series plus real working code. Here's what's new:
+def find_codes(raw_value):
+    """
+    Returns a list of (code, space_fixed: bool, near_miss: bool) found in one cell.
+    """
+    if raw_value is None:
+        return []
+    text = clean_text(str(raw_value))
+    if not text.strip():
+        return []
 
-Code (in web/api-controller/) — a real Node/Express app, not just doc snippets:
+    results = []
 
-src/server.js — implements exactly the contract your webapp already calls (runService.ts): POST /runSolver, GET /status/:runId, GET /download/:runId (streams the file directly, matching what the webapp expects), DELETE /run/:runId. Uses DefaultAzureCredential, so it authenticates via your az login locally and automatically switches to the Container App's Managed Identity once deployed — same code, no environment-specific branches.
-package.json, Dockerfile, .dockerignore — ready to build and push.
-Syntax-checked, ready to npm install.
-Guided walkthrough (in webapp/azure/), one phase per file like your original 01-07, but built for "company already created it, I don't know the names" reality:
+    # 1) Strict match on cleaned (but space-preserved) text
+    strict_matches = set(m.group(0) for m in SEIBAN_RE.finditer(text))
+    for code in strict_matches:
+        results.append((code.upper(), False, False))
 
-Azure-Company-01-Access-And-Resources.md — sign in, find every resource, record real names into one private env script
-Azure-Company-02-RBAC.md — check/assign all 10 role assignments via portal
-Azure-Company-03-Storage-Verify.md — prove Blob read/write/SAS works
-Azure-Company-04-Register-Timefold-Image.md — build the Timefold Docker image from web/Timefold/, push to the real ACR
-Azure-Company-05-Batch-Setup-And-Run.md — verify/create the pool+job, submit one manual task end-to-end
-Azure-Company-06-API-Controller-Deploy.md — test the new code locally against real Azure, then build/push/deploy it to the real ACA app
-Azure-Company-07-Webapp-Connect.md — flip webapp/.env.local to the real API URL, full click-through test
-Each doc has exact commands, "what you should have at the end" checklists, and a troubleshooting table — same style as your originals, no resource names guessed anywhere (all sourced from one env script filled in during Phase 1). The checklist file now points to this series and stays as your fast-reference companion.
+    # 2) If nothing found, retry with ALL whitespace stripped
+    #    (catches "530N 03157A", "530N03157 A", etc.)
+    if not strict_matches:
+        stripped = _WS_RE.sub("", text)
+        stripped_matches = set(m.group(0) for m in SEIBAN_RE.finditer(stripped))
+        for code in stripped_matches:
+            results.append((code.upper(), True, False))
 
-One thing worth knowing before tomorrow: while investigating, I found the current local service/server.js mock returns /download/:runId as a raw file stream (not JSON+SAS-link like your old Phase 6/7 docs assumed) — the new API controller code matches the real webapp contract, so no webapp changes are needed.
+    # 3) Near-miss detection (only report if nothing strict was found at all,
+    #    so we don't spam near-misses for cells that already matched cleanly)
+    if not results:
+        stripped = _WS_RE.sub("", text)
+        near = set(m.group(0) for m in NEAR_MISS_RE.finditer(stripped))
+        for code in near:
+            results.append((code.upper(), True, True))
+
+    return results
+
+
+def scan_workbook(path, sheet_name=None):
+    wb = load_workbook(path, data_only=True, read_only=True)
+    sheets = [sheet_name] if sheet_name else wb.sheetnames
+
+    occurrences = []  # list of dicts: sheet, cell, code, space_fixed, near_miss, raw
+
+    for sn in sheets:
+        if sn not in wb.sheetnames:
+            print(f"  [skip] sheet '{sn}' not found in workbook")
+            continue
+        ws = wb[sn]
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value is None:
+                    continue
+                for code, space_fixed, near_miss in find_codes(cell.value):
+                    occurrences.append({
+                        "sheet": sn,
+                        "cell": cell.coordinate,
+                        "code": code,
+                        "space_fixed": space_fixed,
+                        "near_miss": near_miss,
+                        "raw_text": str(cell.value),
+                    })
+    return occurrences
+
+
+def summarize(occurrences):
+    counts = defaultdict(int)
+    space_fixed_codes = set()
+    near_miss_codes = set()
+
+    for o in occurrences:
+        if o["near_miss"]:
+            near_miss_codes.add(o["code"])
+            continue
+        counts[o["code"]] += 1
+        if o["space_fixed"]:
+            space_fixed_codes.add(o["code"])
+
+    return counts, space_fixed_codes, near_miss_codes
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Extract seiban/tool codes from an xlsx/xlsm file.")
+    ap.add_argument("xlsx_path", help="Path to the .xlsx or .xlsm file")
+    ap.add_argument("--sheet", default=None, help="Only scan this sheet (default: all sheets)")
+    ap.add_argument("--out", default="seiban_report.csv", help="CSV report output path")
+    args = ap.parse_args()
+
+    print(f"Scanning: {args.xlsx_path}" + (f" (sheet: {args.sheet})" if args.sheet else " (all sheets)"))
+    occurrences = scan_workbook(args.xlsx_path, args.sheet)
+    counts, space_fixed_codes, near_miss_codes = summarize(occurrences)
+
+    print(f"\nFound {len(counts)} unique seiban codes ({len(occurrences)} total cell hits).\n")
+    for code in sorted(counts):
+        flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
+        print(f"  {code}   x{counts[code]}{flag}")
+
+    if near_miss_codes:
+        print(f"\n{len(near_miss_codes)} NEAR-MISS codes (matched loosely, review these manually):")
+        for code in sorted(near_miss_codes):
+            print(f"  {code}")
+
+    # Write full occurrence-level CSV
+    with open(args.out, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["sheet", "cell", "code", "space_fixed", "near_miss", "raw_text"])
+        writer.writeheader()
+        for o in occurrences:
+            writer.writerow(o)
+    print(f"\nFull report written to: {args.out}")
+
+
+if __name__ == "__main__":
+    main()
