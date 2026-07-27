@@ -107,6 +107,7 @@ export interface AppState {
 export type ActionType =
   | { type: 'LOAD_FILES'; payload: { envConfig: EnvConfig; schedule: ScheduleData; envPath: string; schedulePath: string } }
   | { type: 'SET_SCHEDULE'; payload: ScheduleData }
+  | { type: 'UPDATE_PLAN_RANGE'; payload: { startDate: string; endDate: string } }
   | { type: 'SWITCH_VIEW'; payload: ViewMode }
   | { type: 'SET_VIOLATIONS'; payload: Violation[] }
   | { type: 'UNDO' }

@@ -8,7 +8,34 @@ import { WorkerViewGantt } from '../components/GanttChart/WorkerViewGantt';
 import { FileOpenDialog } from '../components/Dialogs/FileOpenDialog';
 import { UI } from '../config/uiText';
 import { generateDateRange } from '../utils/dateUtils';
+import { ScheduleData } from '../types/schedule';
 
+// The Gantt chart must always show the full extent of actual schedule data
+// (every assignment + phase task), regardless of plan_range. plan_range is only
+// a Timefold-side calculation boundary — in this editor it's a visual highlight,
+// never something that clips or resizes the visible timeline.
+function getScheduleExtent(schedule: ScheduleData): { startDate: string; endDate: string } | null {
+  let min: string | null = null;
+  let max: string | null = null;
+  const consider = (d?: string) => {
+    if (!d) return;
+    if (min === null || d < min) min = d;
+    if (max === null || d > max) max = d;
+  };
+  consider(schedule.planRange.startDate);
+  consider(schedule.planRange.endDate);
+  for (const wt of schedule.workflowTaskList) {
+    for (const pt of wt.phaseTaskList) {
+      consider(pt.startDate);
+      consider(pt.endDate);
+    }
+  }
+  for (const a of schedule.assignmentList) {
+    consider(a.startDate);
+    consider(a.endDate);
+  }
+  return min && max ? { startDate: min, endDate: max } : null;
+}
 
 export function GanttPage() {
   const { state, dispatch } = useAppContext();
@@ -16,14 +43,16 @@ export function GanttPage() {
   const showStickySidePanel = !!schedule && currentView === 'worker' &&
     (selectedAssignmentIndex !== null || selectedUnavailableInfo !== null);
 
+  const scheduleExtent = useMemo(() => schedule ? getScheduleExtent(schedule) : null, [schedule]);
+
   const dates = useMemo(() => {
     const { currentView, workerViewFilter, moduleViewFilter } = state;
     const viewFilter = currentView === 'worker' ? workerViewFilter : moduleViewFilter;
-    const start = viewFilter.startDate ?? schedule?.planRange.startDate;
-    const end = viewFilter.endDate ?? schedule?.planRange.endDate;
+    const start = viewFilter.startDate ?? scheduleExtent?.startDate;
+    const end = viewFilter.endDate ?? scheduleExtent?.endDate;
     if (!start || !end) return [];
     return generateDateRange(start, end);
-  }, [state.currentView, state.workerViewFilter, state.moduleViewFilter, schedule]);
+  }, [state.currentView, state.workerViewFilter, state.moduleViewFilter, scheduleExtent]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>

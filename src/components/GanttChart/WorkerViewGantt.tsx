@@ -314,6 +314,8 @@ export function WorkerViewGantt({ dates }: Props) {
       dates={dates}
       rows={filteredRows}
       monthGroups={model.monthGroups}
+      planRangeStart={schedule?.planRange.startDate ?? ''}
+      planRangeEnd={schedule?.planRange.endDate ?? ''}
       selectedAssignmentIndex={selectedAssignmentIndex}
       violationAssignmentIndices={violationIndices}
       onSelectAssignment={index => dispatch({ type: 'SELECT_ASSIGNMENT', payload: index })}

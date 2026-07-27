@@ -71,3 +71,36 @@ export function isDateInList(dateStr: string, list: string[]): boolean {
   const normalized = normalizeDate(dateStr);
   return list.some(d => normalizeDate(d) === normalized);
 }
+
+export interface RangeOverlayGeom {
+  left: number;
+  width: number;
+  /** true when rangeStart itself is one of the visible dates (boundary marker should show) */
+  startInView: boolean;
+  /** true when rangeEnd itself is one of the visible dates (boundary marker should show) */
+  endInView: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+// Compute the pixel geometry of a [rangeStart, rangeEnd] span clipped to the visible `dates` window.
+// Returns null when the range doesn't overlap the visible dates at all.
+export function getRangeOverlayGeom(dates: string[], rangeStart: string, rangeEnd: string, cellWidth: number): RangeOverlayGeom | null {
+  if (!rangeStart || !rangeEnd || dates.length === 0) return null;
+  const viewStart = dates[0];
+  const viewEnd = dates[dates.length - 1];
+  const clampedStart = rangeStart < viewStart ? viewStart : rangeStart;
+  const clampedEnd = rangeEnd > viewEnd ? viewEnd : rangeEnd;
+  if (clampedEnd < clampedStart) return null;
+  const startIdx = dates.indexOf(clampedStart);
+  const endIdx = dates.indexOf(clampedEnd);
+  if (startIdx === -1 || endIdx === -1) return null;
+  return {
+    left: startIdx * cellWidth,
+    width: (endIdx - startIdx + 1) * cellWidth,
+    startInView: rangeStart >= viewStart && rangeStart <= viewEnd,
+    endInView: rangeEnd >= viewStart && rangeEnd <= viewEnd,
+    startDate: clampedStart,
+    endDate: clampedEnd,
+  };
+}

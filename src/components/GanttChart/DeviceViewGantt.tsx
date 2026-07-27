@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { UI } from '../../config/uiText';
-import { diffDays } from '../../utils/dateUtils';
+import { diffDays, getRangeOverlayGeom } from '../../utils/dateUtils';
 import { buildModuleViewModel, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
 import { SearchableSelect } from '../common/SearchableSelect';
+
+const PLAN_RANGE_BG = 'rgba(66, 165, 245, 0.14)';
+const PLAN_RANGE_ARROW_COLOR = '#1e88e5';
 
 interface Props { dates: string[] }
 
@@ -92,6 +95,9 @@ export function DeviceViewGantt({ dates }: Props) {
   const viewStart = dates[0];
   const viewEnd = dates[dates.length - 1];
   const timelineWidth = dates.length * CELL_W;
+  const planRangeGeom = schedule
+    ? getRangeOverlayGeom(dates, schedule.planRange.startDate, schedule.planRange.endDate, CELL_W)
+    : null;
   const totalRows = useMemo(() => {
     let n = 0;
     for (const m of filteredModules) {
@@ -247,11 +253,16 @@ export function DeviceViewGantt({ dates }: Props) {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', height: HEADER_H }}>
+            <div style={{ display: 'flex', height: HEADER_H, position: 'relative' }}>
               {dates.map(d => {
                 const [, , dd] = d.split('-');
+                const inRange = !!schedule && d >= schedule.planRange.startDate && d <= schedule.planRange.endDate;
+                const isBoundary = !!schedule && (d === schedule.planRange.startDate || d === schedule.planRange.endDate);
                 return (
-                  <div key={`dd_${d}`} style={{ width: CELL_W, minWidth: CELL_W, borderRight: '1px solid #e4ebf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#2a3f56' }}>
+                  <div key={`dd_${d}`} style={{ position: 'relative', width: CELL_W, minWidth: CELL_W, borderRight: '1px solid #e4ebf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#2a3f56', background: inRange ? '#cfe8fc' : undefined }}>
+                    {isBoundary && (
+                      <span style={{ position: 'absolute', top: -1, fontSize: 8, lineHeight: 1, color: PLAN_RANGE_ARROW_COLOR, pointerEvents: 'none' }}>▼</span>
+                    )}
                     {Number(dd)}
                   </div>
                 );
@@ -261,8 +272,9 @@ export function DeviceViewGantt({ dates }: Props) {
               {dates.map(d => {
                 const dow = DOW_JA[new Date(`${d}T00:00:00`).getDay()] ?? '';
                 const weekend = dow === '土' || dow === '日';
+                const inRange = !!schedule && d >= schedule.planRange.startDate && d <= schedule.planRange.endDate;
                 return (
-                  <div key={`dw_${d}`} style={{ width: CELL_W, minWidth: CELL_W, borderRight: '1px solid #e4ebf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: weekend ? '#b54747' : '#2a3f56', background: weekend ? '#fff5f5' : '#f8fbff' }}>
+                  <div key={`dw_${d}`} style={{ width: CELL_W, minWidth: CELL_W, borderRight: '1px solid #e4ebf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: weekend ? '#b54747' : '#2a3f56', background: inRange ? '#cfe8fc' : (weekend ? '#fff5f5' : '#f8fbff') }}>
                     {dow}
                   </div>
                 );
@@ -283,6 +295,11 @@ export function DeviceViewGantt({ dates }: Props) {
                   minWidth: timelineWidth,
                 }}
               >
+                {/* Plan range column highlight */}
+                {planRangeGeom && (
+                  <div style={{ position: 'absolute', left: planRangeGeom.left, top: 0, width: planRangeGeom.width, height: ROW_H, background: PLAN_RANGE_BG, pointerEvents: 'none' }} />
+                )}
+
                 {/* Weekend column tints */}
                 {dates.map((d, di) => {
                   const dow = new Date(`${d}T00:00:00`).getDay();

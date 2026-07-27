@@ -2,6 +2,7 @@ import { useAppContext } from '../../context/AppContext';
 import { ViewButtons } from './ViewButtons';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { PlanFlexBulkSettings } from './PlanFlexBulkSettings';
+import { PlanRangeEditDialog } from './PlanRangeEditDialog';
 import { WorkerViewFilter } from './WorkerViewFilter';
 import { ModuleViewFilter } from './ModuleViewFilter';
 import { toolbarStyles as S } from '../../styles/toolbar';
@@ -43,6 +44,7 @@ export function Toolbar() {
           + 新規製番追加
         </button>
         <PlanFlexBulkSettings />
+        <PlanRangeEditDialog />
         <div style={S.divider} />
         <button
           disabled={!has || isChecking}

@@ -1,10 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkerTimelineRow, HeaderMonthGroup, WorkerSegment, FlightStint } from './workerViewModel';
 import { UI } from '../../config/uiText';
+import { getRangeOverlayGeom } from '../../utils/dateUtils';
 
 const HEADER_HEIGHT = 26;
 const ROW_HEIGHT = 34;
 const DATE_CELL_WIDTH = 22;
+const PLAN_RANGE_BG = 'rgba(66, 165, 245, 0.14)';
+const PLAN_RANGE_CELL_BG = '#cfe8fc';
+const PLAN_RANGE_ARROW_COLOR = '#1e88e5';
 
 type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 
@@ -88,6 +92,8 @@ interface Props {
   dates: string[];
   rows: WorkerTimelineRow[];
   monthGroups: HeaderMonthGroup[];
+  planRangeStart: string;
+  planRangeEnd: string;
   selectedAssignmentIndex: number | null;
   violationAssignmentIndices: Set<number>;
   onSelectAssignment: (index: number | null) => void;
@@ -126,6 +132,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   dates,
   rows,
   monthGroups,
+  planRangeStart,
+  planRangeEnd,
   selectedAssignmentIndex,
   violationAssignmentIndices,
   onSelectAssignment,
@@ -194,6 +202,10 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
     [isExtraExpanded],
   );
   const timelineWidth = dates.length * DATE_CELL_WIDTH;
+  const planRangeGeom = useMemo(
+    () => getRangeOverlayGeom(dates, planRangeStart, planRangeEnd, DATE_CELL_WIDTH),
+    [dates, planRangeStart, planRangeEnd],
+  );
 
   const onScroll = () => {
     if (!leftBodyRef.current || !rightScrollRef.current) return;
@@ -688,6 +700,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
             <div style={{ display: 'flex', height: HEADER_HEIGHT }}>
               {dates.map(date => {
                 const [yyyy, mm, dd] = date.split('-');
+                const inRange = date >= planRangeStart && date <= planRangeEnd;
+                const isBoundary = date === planRangeStart || date === planRangeEnd;
                 return (
                   <div
                     key={`d_${date}`}
@@ -701,8 +715,13 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       justifyContent: 'center',
                       color: '#2a3f56',
                       fontSize: 10,
+                      position: 'relative',
+                      background: inRange ? PLAN_RANGE_CELL_BG : undefined,
                     }}
                   >
+                    {isBoundary && (
+                      <span style={{ position: 'absolute', top: -1, fontSize: 8, lineHeight: 1, color: PLAN_RANGE_ARROW_COLOR, pointerEvents: 'none' }}>▼</span>
+                    )}
                     {Number(dd)}
                   </div>
                 );
@@ -713,6 +732,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
               {dates.map(date => {
                 const dow = DOW_JA[new Date(`${date}T00:00:00`).getDay()] ?? '';
                 const isWeekend = dow === '土' || dow === '日';
+                const inRange = date >= planRangeStart && date <= planRangeEnd;
                 const isDateFilterActive = selectedDateForCellFilter === date && selectedDateTaskValues.length > 0;
                 return (
                   <div
@@ -725,7 +745,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: isWeekend ? '#b54747' : '#2a3f56',
-                      background: isWeekend ? '#fff5f5' : '#f8fbff',
+                      background: inRange ? PLAN_RANGE_CELL_BG : (isWeekend ? '#fff5f5' : '#f8fbff'),
                       fontSize: 10,
                       position: 'relative',
                     }}
@@ -767,6 +787,10 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 backgroundImage: `repeating-linear-gradient(to right, transparent, transparent ${DATE_CELL_WIDTH - 1}px, #edf2f8 ${DATE_CELL_WIDTH - 1}px, #edf2f8 ${DATE_CELL_WIDTH}px)`,
               }}
             >
+              {planRangeGeom && (
+                <div style={{ position: 'absolute', left: planRangeGeom.left, top: 0, width: planRangeGeom.width, height: ROW_HEIGHT, background: PLAN_RANGE_BG, pointerEvents: 'none' }} />
+              )}
+
               {row.segments.map(segment => {
                 const width = Math.max(4, (segment.endIndex - segment.startIndex + 1) * DATE_CELL_WIDTH - 1);
                 const left = segment.startIndex * DATE_CELL_WIDTH;

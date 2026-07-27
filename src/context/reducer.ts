@@ -72,6 +72,12 @@ export function reducer(state: AppState, action: ActionType): AppState {
         redoStack: [],
       };
 
+    case 'UPDATE_PLAN_RANGE': {
+      if (!state.schedule) return state;
+      const newSchedule: ScheduleData = { ...state.schedule, planRange: action.payload };
+      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+    }
+
     case 'SWITCH_VIEW':
       return { ...state, currentView: action.payload, selectedAssignmentIndex: null };
 

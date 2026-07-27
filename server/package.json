@@ -18,5 +18,8 @@
     "@types/node": "^22.15.30",
     "tsx": "^4.19.4",
     "typescript": "~5.5.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }

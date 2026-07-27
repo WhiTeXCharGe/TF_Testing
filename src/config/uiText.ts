@@ -108,6 +108,12 @@ export const UI = {
   bulkDateFilter: '指定日付以前に開始する作業のみ',
   bulkApply: 'OK',
 
+  // Plan range edit dialog
+  planRangeEditBtn: '計画期間編集',
+  planRangeDialogTitle: '計画期間編集',
+  planRangeStartLabel: '開始日',
+  planRangeEndLabel: '終了日',
+
   // Gantt row labels
   phaseSummaryRowLabel: '工程',
 

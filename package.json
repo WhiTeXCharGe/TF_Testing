@@ -20,16 +20,39 @@
   "build": {
     "appId": "com.timefold.gantt-chart-editor",
     "productName": "GanttChartEditor",
-    "directories": { "output": "release" },
-    "files": ["electron-dist/**", "dist/**"],
-    "extraResources": [
-      { "from": "dist", "to": "app-dist" },
-      { "from": "server/dist", "to": "server/dist" },
-      { "from": "server/node_modules", "to": "server/node_modules" },
-      { "from": "server/package.json", "to": "server/package.json" }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron-dist/**",
+      "dist/**"
     ],
-    "win": { "target": "nsis" },
-    "nsis": { "perMachine": false, "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "app-dist"
+      },
+      {
+        "from": "server/dist",
+        "to": "server/dist"
+      },
+      {
+        "from": "server/node_modules",
+        "to": "server/node_modules"
+      },
+      {
+        "from": "server/package.json",
+        "to": "server/package.json"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "perMachine": false,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -59,5 +82,10 @@
     "ts-jest": "^29.4.11",
     "typescript": "~5.5.3",
     "vite": "^5.4.0"
+  },
+  "allowScripts": {
+    "cypress@13.17.0": true,
+    "electron@32.3.3": true,
+    "esbuild@0.21.5": true
   }
 }
