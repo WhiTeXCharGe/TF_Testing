@@ -150,12 +150,85 @@ def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
                     occurrences.append({
                         "sheet": sn,
                         "cell": cell.coordinate,
+                        "row": cell.row,
+                        "col": cell.column,
                         "code": code,
                         "space_fixed": space_fixed,
                         "near_miss": near_miss,
                         "raw_text": str(cell.value),
                     })
     return occurrences
+
+
+def find_shinki_codes(occurrences):
+    """Codes that appear in a cell whose text contains '新規' (new/newly-added marker)."""
+    shinki = set()
+    for o in occurrences:
+        if o["near_miss"]:
+            continue
+        if "新規" in clean_text(o["raw_text"]):
+            shinki.add(o["code"])
+    return shinki
+
+
+_CODE_SPLIT_RE = re.compile(r"^(\d{3}[A-Z0-9])(\d{5})(A)$")
+
+
+def _split_code(code: str):
+    """Split '530N03157A' -> prefix='530N', number=3157(int, width=5), suffix='A'."""
+    m = _CODE_SPLIT_RE.match(code)
+    if not m:
+        return None
+    prefix, num_str, suffix = m.groups()
+    return prefix, int(num_str), suffix
+
+
+def detect_drag_fill_anomalies(occurrences, min_run=3, max_col_gap=3):
+    """
+    Human-error defense: someone drags a cell's fill-handle sideways across a
+    worker's row, and Excel (or the person re-typing) increments the trailing
+    number of the seiban by 1 for each cell -> 530N03157A, 530N03158A, 530N03159A...
+    across consecutive date columns in the SAME row.
+
+    We group same-row occurrences by column, and flag any run of >= min_run
+    codes that share the same prefix+suffix and whose numeric part increases
+    by exactly 1 at each step, within max_col_gap columns of each other.
+
+    Returns a list of anomaly groups, each a list of occurrence dicts (in
+    column order) that make up one suspected drag-fill run.
+    """
+    by_row = defaultdict(list)
+    for o in occurrences:
+        if o["near_miss"]:
+            continue
+        parts = _split_code(o["code"])
+        if parts is None:
+            continue
+        by_row[(o["sheet"], o["row"])].append((o["col"], o, parts))
+
+    anomaly_groups = []
+    for key, entries in by_row.items():
+        entries.sort(key=lambda t: t[0])
+        run = [entries[0]]
+        for i in range(1, len(entries)):
+            col, o, (prefix, num, suffix) = entries[i]
+            pcol, po, (pprefix, pnum, psuffix) = run[-1]
+            same_series = (
+                prefix == pprefix
+                and suffix == psuffix
+                and num == pnum + 1
+                and (col - pcol) <= max_col_gap
+            )
+            if same_series:
+                run.append(entries[i])
+            else:
+                if len(run) >= min_run:
+                    anomaly_groups.append([r[1] for r in run])
+                run = [entries[i]]
+        if len(run) >= min_run:
+            anomaly_groups.append([r[1] for r in run])
+
+    return anomaly_groups
 
 
 def summarize(occurrences):
@@ -183,6 +256,10 @@ def main():
                      help="Only include seiban whose DATE COLUMN falls in this range, "
                           "e.g. --range 2026/06/01-2026/07/01. Requires the sheet to have "
                           "a date header row (worker x date grid, like SU_Others).")
+    ap.add_argument("--min-run", type=int, default=3,
+                     help="Min. consecutive incrementing cells in a row to flag as drag-fill anomaly (default 3)")
+    ap.add_argument("--max-col-gap", type=int, default=3,
+                     help="Max column gap allowed between cells in a drag-fill run (default 3)")
     args = ap.parse_args()
 
     date_start = date_end = None
@@ -199,30 +276,47 @@ def main():
         print(f"Date range: {date_start:%Y/%m/%d} - {date_end:%Y/%m/%d}")
     occurrences = scan_workbook(args.xlsx_path, args.sheet, date_start, date_end)
     counts, space_fixed_codes, near_miss_codes = summarize(occurrences)
+    shinki_codes = find_shinki_codes(occurrences)
+    anomaly_groups = detect_drag_fill_anomalies(
+        occurrences, min_run=args.min_run, max_col_gap=args.max_col_gap
+    )
 
-    print(f"\nFound {len(counts)} unique seiban codes.\n")
+    lines = []  # mirrors what gets printed, also written to the txt file
+
+    lines.append(f"Seiban codes found: {len(counts)}")
+    lines.append("=" * 40)
     for code in sorted(counts):
         flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
-        print(f"  {code}{flag}")
+        lines.append(f"{code}{flag}")
+
+    lines.append("")
+    lines.append(f"Seiban containing '新規': {len(shinki_codes)}")
+    lines.append("=" * 40)
+    for code in sorted(shinki_codes):
+        lines.append(code)
+
+    lines.append("")
+    lines.append(f"Anomaly seiban - suspected horizontal drag-fill / incremental typo: {len(anomaly_groups)} run(s)")
+    lines.append("=" * 40)
+    if not anomaly_groups:
+        lines.append("(none found)")
+    for i, group in enumerate(anomaly_groups, start=1):
+        codes_in_run = " -> ".join(o["code"] for o in group)
+        cells_in_run = ", ".join(f'{o["code"]}@{o["sheet"]}!{o["cell"]}' for o in group)
+        lines.append(f"[{i}] {codes_in_run}")
+        lines.append(f"    {cells_in_run}")
 
     if near_miss_codes:
-        print(f"\n{len(near_miss_codes)} NEAR-MISS codes (matched loosely, review these manually):")
+        lines.append("")
+        lines.append(f"NEAR-MISS codes (matched loosely, review manually): {len(near_miss_codes)}")
+        lines.append("=" * 40)
         for code in sorted(near_miss_codes):
-            print(f"  {code}")
+            lines.append(code)
 
-    # Write plain txt report: one unique code per line, no occurrence counts
+    print("\n".join(lines))
+
     with open(args.out, "w", encoding="utf-8-sig") as f:
-        f.write(f"Seiban codes found: {len(counts)}\n")
-        f.write("=" * 40 + "\n")
-        for code in sorted(counts):
-            flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
-            f.write(f"{code}{flag}\n")
-
-        if near_miss_codes:
-            f.write("\nNEAR-MISS codes (matched loosely, review manually):\n")
-            f.write("=" * 40 + "\n")
-            for code in sorted(near_miss_codes):
-                f.write(f"{code}\n")
+        f.write("\n".join(lines) + "\n")
 
     print(f"\nReport written to: {args.out}")
 
