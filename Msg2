@@ -1,29 +1,44 @@
 """
 seiban_extractor.py
 --------------------------------------------------------------
-Scans every cell of every sheet in an .xlsx / .xlsm file and pulls out
-seiban / tool-code strings like 530N03157A / 830300208A
+Scans every cell of an .xlsx / .xlsm worker x date grid (e.g. SU_Others)
+and pulls out seiban / tool-code strings like 530N03157A / 830300208A
 (pattern: 3 digits + 1 alnum + 5 digits + "A", same as Decoder5.TOOLCODE_RE).
+
+Produces TWO output files:
+
+1) Seiban_list_report.txt
+   Unique seiban codes only (no bar text), split into 4 sections:
+     - contains "新規"
+     - contains "クレーム" or "改造"
+     - contains none of the three words
+     - contains 新規 AND (クレーム or 改造)  [combined -> also listed in
+       the 新規 section and the クレーム/改造 section]
+   Rule: if a worker's row has a run of cells where the seiban number
+   just increments by 1 day-to-day (same task continuing), only the
+   FIRST code of that run is listed. If one of those numbers is later
+   reused separately (a genuinely different task elsewhere), it still
+   gets listed on its own for that occurrence.
+
+2) Log_report.txt
+   - Incremental runs: header code's full cell text, then each later
+     distinct code in the run indented underneath (full cell text, no
+     sheet/cell reference).
+   - Not-seiban list: unique plain cell text for cells that had NO
+     seiban code at all (e.g. "（仮）", "TSMC F20 P3").
 
 Handles messy cells:
   - full-width / zero-width chars (NFKC normalize)
   - stray spaces INSIDE the code (e.g. "530N 03157A") -> retried after
-    stripping all whitespace, and flagged as "space_fixed" so you can
-    sanity-check it wasn't a false match.
+    stripping all whitespace.
 
 Usage:
-    python seiban_extractor.py "path/to/file.xlsx"
-    python seiban_extractor.py "path/to/file.xlsx" --sheet "IFS"
-    python seiban_extractor.py "path/to/file.xlsx" --out report.csv
-
-Output:
-    - Prints unique seiban list + counts to console
-    - Writes a CSV report (default: seiban_report.csv) with every
-      occurrence: sheet, cell, code, space_fixed?, raw text
+    python seiban_extractor.py "path/to/SU_Others.xlsm"
+    python seiban_extractor.py "path/to/SU_Others.xlsm" --sheet "予定表_2025"
+    python seiban_extractor.py "path/to/SU_Others.xlsm" --range 2026/06/01-2026/07/01
 --------------------------------------------------------------
 """
 import argparse
-import csv
 import re
 import unicodedata
 from collections import defaultdict
@@ -32,17 +47,15 @@ from openpyxl import load_workbook
 
 # Same core pattern Decoder5.py uses (TOOLCODE_RE)
 SEIBAN_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}A")
-
-# Looser pattern for spotting "near miss" candidates that don't fit the
-# strict rule above (e.g. wrong trailing letter, extra char) so you can
-# eyeball anything unusual instead of it silently vanishing.
-NEAR_MISS_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}[A-Z]")
-
 _WS_RE = re.compile(r"\s+")
 _ZERO_WIDTH = {"\u200b", "\u200c", "\u200d", "\ufeff"}
+_CODE_SPLIT_RE = re.compile(r"^(\d{3}[A-Z0-9])(\d{5})(A)$")
+
+SHINKI_WORD = "新規"
+CLAIM_WORDS = ("クレーム", "改造")
 
 
-def clean_text(s: str) -> str:
+def clean_text(s) -> str:
     if not isinstance(s, str):
         return ""
     s = unicodedata.normalize("NFKC", s)
@@ -53,43 +66,46 @@ def clean_text(s: str) -> str:
 
 
 def find_codes(raw_value):
-    """
-    Returns a list of (code, space_fixed: bool, near_miss: bool) found in one cell.
-    """
+    """Returns list of (code, space_fixed: bool) found in one cell."""
     if raw_value is None:
         return []
     text = clean_text(str(raw_value))
     if not text.strip():
         return []
 
-    results = []
+    strict = set(m.group(0).upper() for m in SEIBAN_RE.finditer(text))
+    if strict:
+        return [(c, False) for c in strict]
 
-    # 1) Strict match on cleaned (but space-preserved) text
-    strict_matches = set(m.group(0) for m in SEIBAN_RE.finditer(text))
-    for code in strict_matches:
-        results.append((code.upper(), False, False))
+    stripped = _WS_RE.sub("", text)
+    fixed = set(m.group(0).upper() for m in SEIBAN_RE.finditer(stripped))
+    return [(c, True) for c in fixed]
 
-    # 2) If nothing found, retry with ALL whitespace stripped
-    #    (catches "530N 03157A", "530N03157 A", etc.)
-    if not strict_matches:
-        stripped = _WS_RE.sub("", text)
-        stripped_matches = set(m.group(0) for m in SEIBAN_RE.finditer(stripped))
-        for code in stripped_matches:
-            results.append((code.upper(), True, False))
 
-    # 3) Near-miss detection (only report if nothing strict was found at all,
-    #    so we don't spam near-misses for cells that already matched cleanly)
-    if not results:
-        stripped = _WS_RE.sub("", text)
-        near = set(m.group(0) for m in NEAR_MISS_RE.finditer(stripped))
-        for code in near:
-            results.append((code.upper(), True, True))
+def classify_tag(text: str) -> str:
+    """'shinki' / 'claim' / 'combined' / 'none' based on keywords in the cell text."""
+    t = clean_text(text)
+    has_shinki = SHINKI_WORD in t
+    has_claim = any(w in t for w in CLAIM_WORDS)
+    if has_shinki and has_claim:
+        return "combined"
+    if has_shinki:
+        return "shinki"
+    if has_claim:
+        return "claim"
+    return "none"
 
-    return results
+
+def split_code(code: str):
+    """'530N03157A' -> ('530N', 3157, 'A')"""
+    m = _CODE_SPLIT_RE.match(code)
+    if not m:
+        return None
+    prefix, num_str, suffix = m.groups()
+    return prefix, int(num_str), suffix
 
 
 def parse_range_date(s: str):
-    """Parse a 'YYYY/MM/DD' or 'YYYY-MM-DD' string into a datetime."""
     s = s.strip()
     for fmt in ("%Y/%m/%d", "%Y-%m-%d"):
         try:
@@ -100,15 +116,10 @@ def parse_range_date(s: str):
 
 
 def find_date_header_row(ws, max_scan_rows=12):
-    """
-    Scan the first N rows of a sheet for one containing actual date values.
-    Returns (row_idx, {col_idx: datetime}) or (None, {}) if no date row found.
-    This is how worker x date grids (e.g. SU_Others) mark their date columns.
-    """
+    """Find the row containing real date values; returns (row_idx, {col: datetime})."""
     for r in range(1, max_scan_rows + 1):
-        row_cells = list(ws[r])
         date_cols = {}
-        for cell in row_cells:
+        for cell in ws[r]:
             if isinstance(cell.value, datetime):
                 date_cols[cell.column] = cell.value
         if date_cols:
@@ -117,11 +128,18 @@ def find_date_header_row(ws, max_scan_rows=12):
 
 
 def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
+    """
+    Returns (occurrences, no_code_texts)
+      occurrences: list of dicts with sheet, row, col, cell, code, space_fixed,
+                   tag, raw_text
+      no_code_texts: set of unique raw cell text that had no seiban at all
+    """
     wb = load_workbook(path, data_only=True, read_only=False)
     sheets = [sheet_name] if sheet_name else wb.sheetnames
-
-    occurrences = []  # list of dicts: sheet, cell, code, space_fixed, near_miss, raw
     use_range = date_start is not None and date_end is not None
+
+    occurrences = []
+    no_code_texts = set()
 
     for sn in sheets:
         if sn not in wb.sheetnames:
@@ -129,7 +147,7 @@ def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
             continue
         ws = wb[sn]
 
-        allowed_cols = None  # None = no column restriction
+        allowed_cols = None
         if use_range:
             header_row, date_cols = find_date_header_row(ws)
             if header_row is None:
@@ -146,7 +164,15 @@ def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
                     continue
                 if cell.value is None:
                     continue
-                for code, space_fixed, near_miss in find_codes(cell.value):
+
+                codes = find_codes(cell.value)
+                if not codes:
+                    if isinstance(cell.value, str) and cell.value.strip():
+                        no_code_texts.add(cell.value.strip())
+                    continue
+
+                tag = classify_tag(str(cell.value))
+                for code, space_fixed in codes:
                     occurrences.append({
                         "sheet": sn,
                         "cell": cell.coordinate,
@@ -154,112 +180,123 @@ def scan_workbook(path, sheet_name=None, date_start=None, date_end=None):
                         "col": cell.column,
                         "code": code,
                         "space_fixed": space_fixed,
-                        "near_miss": near_miss,
+                        "tag": tag,
                         "raw_text": str(cell.value),
                     })
-    return occurrences
+    return occurrences, no_code_texts
 
 
-def find_shinki_codes(occurrences):
-    """Codes that appear in a cell whose text contains '新規' (new/newly-added marker)."""
-    shinki = set()
-    for o in occurrences:
-        if o["near_miss"]:
-            continue
-        if "新規" in clean_text(o["raw_text"]):
-            shinki.add(o["code"])
-    return shinki
-
-
-_CODE_SPLIT_RE = re.compile(r"^(\d{3}[A-Z0-9])(\d{5})(A)$")
-
-
-def _split_code(code: str):
-    """Split '530N03157A' -> prefix='530N', number=3157(int, width=5), suffix='A'."""
-    m = _CODE_SPLIT_RE.match(code)
-    if not m:
-        return None
-    prefix, num_str, suffix = m.groups()
-    return prefix, int(num_str), suffix
-
-
-def detect_drag_fill_anomalies(occurrences, min_run=3, max_col_gap=3):
+def build_runs(occurrences, max_col_gap=1):
     """
-    Human-error defense: someone drags a cell's fill-handle sideways across a
-    worker's row, and Excel (or the person re-typing) increments the trailing
-    number of the seiban by 1 for each cell -> 530N03157A, 530N03158A, 530N03159A...
-    across consecutive date columns in the SAME row.
-
-    We group same-row occurrences by column, and flag any run of >= min_run
-    codes that share the same prefix+suffix and whose numeric part increases
-    by exactly 1 at each step, within max_col_gap columns of each other.
-
-    Returns a list of anomaly groups, each a list of occurrence dicts (in
-    column order) that make up one suspected drag-fill run.
+    Group occurrences by (sheet, row), sorted by column, into runs where
+    consecutive cells share the same code-prefix/suffix + same tag, and the
+    number either repeats or increments by exactly 1, within max_col_gap
+    columns of each other. Returns a list of runs (each a list of occurrence
+    dicts in column order).
     """
     by_row = defaultdict(list)
     for o in occurrences:
-        if o["near_miss"]:
-            continue
-        parts = _split_code(o["code"])
+        parts = split_code(o["code"])
         if parts is None:
             continue
         by_row[(o["sheet"], o["row"])].append((o["col"], o, parts))
 
-    anomaly_groups = []
+    runs = []
     for key, entries in by_row.items():
         entries.sort(key=lambda t: t[0])
         run = [entries[0]]
         for i in range(1, len(entries)):
             col, o, (prefix, num, suffix) = entries[i]
             pcol, po, (pprefix, pnum, psuffix) = run[-1]
-            same_series = (
+            continues = (
                 prefix == pprefix
                 and suffix == psuffix
-                and num == pnum + 1
+                and po["tag"] == o["tag"]
+                and (num - pnum) in (0, 1)
                 and (col - pcol) <= max_col_gap
             )
-            if same_series:
+            if continues:
                 run.append(entries[i])
             else:
-                if len(run) >= min_run:
-                    anomaly_groups.append([r[1] for r in run])
+                runs.append([r[1] for r in run])
                 run = [entries[i]]
-        if len(run) >= min_run:
-            anomaly_groups.append([r[1] for r in run])
-
-    return anomaly_groups
+        runs.append([r[1] for r in run])
+    return runs
 
 
-def summarize(occurrences):
-    counts = defaultdict(int)
-    space_fixed_codes = set()
-    near_miss_codes = set()
-
-    for o in occurrences:
-        if o["near_miss"]:
-            near_miss_codes.add(o["code"])
+def suppress_run_tails(runs):
+    """
+    For runs longer than 1 cell that contain a genuine increment (a later
+    cell's code differs from the run's first code), suppress those later
+    occurrences from the "list separately" sets. Returns set of id(occ).
+    """
+    suppressed = set()
+    for run in runs:
+        if len(run) < 2:
             continue
-        counts[o["code"]] += 1
-        if o["space_fixed"]:
-            space_fixed_codes.add(o["code"])
+        header_code = run[0]["code"]
+        for occ in run[1:]:
+            if occ["code"] != header_code:
+                suppressed.add(id(occ))
+    return suppressed
 
-    return counts, space_fixed_codes, near_miss_codes
+
+def build_increment_log(runs):
+    """
+    For runs that contain a genuine increment, build a log entry:
+    header raw text, then each later DISTINCT code's first raw text
+    (consecutive duplicate codes collapsed).
+    """
+    entries = []
+    for run in runs:
+        if len(run) < 2:
+            continue
+        distinct_codes = {o["code"] for o in run}
+        if len(distinct_codes) < 2:
+            continue  # pure repeat, nothing incremental to log
+
+        header_text = run[0]["raw_text"]
+        tails = []
+        last_code = run[0]["code"]
+        for occ in run[1:]:
+            if occ["code"] != last_code:
+                tails.append(occ["raw_text"])
+                last_code = occ["code"]
+        entries.append((header_text, tails))
+    return entries
+
+
+def build_category_sets(occurrences, suppressed_ids):
+    shinki, claim, none_cat, combined = set(), set(), set(), set()
+    for o in occurrences:
+        if id(o) in suppressed_ids:
+            continue
+        code, tag = o["code"], o["tag"]
+        if tag == "combined":
+            shinki.add(code)
+            claim.add(code)
+            combined.add(code)
+        elif tag == "shinki":
+            shinki.add(code)
+        elif tag == "claim":
+            claim.add(code)
+        else:
+            none_cat.add(code)
+    return shinki, claim, none_cat, combined
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Extract seiban/tool codes from an xlsx/xlsm file.")
+    ap = argparse.ArgumentParser(description="Extract seiban/tool codes from an xlsx/xlsm worker x date grid.")
     ap.add_argument("xlsx_path", help="Path to the .xlsx or .xlsm file")
     ap.add_argument("--sheet", default=None, help="Only scan this sheet (default: all sheets)")
-    ap.add_argument("--out", default="seiban_report.txt", help="TXT report output path")
     ap.add_argument("--range", default=None,
-                     help="Only include seiban whose DATE COLUMN falls in this range, "
+                     help="Only include cells whose DATE COLUMN falls in this range, "
                           "e.g. --range 2026/06/01-2026/07/01. Requires the sheet to have "
                           "a date header row (worker x date grid, like SU_Others).")
-    ap.add_argument("--min-run", type=int, default=3,
-                     help="Min. consecutive incrementing cells in a row to flag as drag-fill anomaly (default 3)")
-    ap.add_argument("--max-col-gap", type=int, default=3,
-                     help="Max column gap allowed between cells in a drag-fill run (default 3)")
+    ap.add_argument("--seiban-out", default="Seiban_list_report.txt", help="Seiban list output path")
+    ap.add_argument("--log-out", default="Log_report.txt", help="Log output path")
+    ap.add_argument("--max-col-gap", type=int, default=1,
+                     help="Max column gap allowed between cells in a continuing run (default 1)")
     args = ap.parse_args()
 
     date_start = date_end = None
@@ -274,51 +311,62 @@ def main():
     print(f"Scanning: {args.xlsx_path}" + (f" (sheet: {args.sheet})" if args.sheet else " (all sheets)"))
     if date_start:
         print(f"Date range: {date_start:%Y/%m/%d} - {date_end:%Y/%m/%d}")
-    occurrences = scan_workbook(args.xlsx_path, args.sheet, date_start, date_end)
-    counts, space_fixed_codes, near_miss_codes = summarize(occurrences)
-    shinki_codes = find_shinki_codes(occurrences)
-    anomaly_groups = detect_drag_fill_anomalies(
-        occurrences, min_run=args.min_run, max_col_gap=args.max_col_gap
-    )
 
-    lines = []  # mirrors what gets printed, also written to the txt file
+    occurrences, no_code_texts = scan_workbook(args.xlsx_path, args.sheet, date_start, date_end)
+    runs = build_runs(occurrences, max_col_gap=args.max_col_gap)
+    suppressed_ids = suppress_run_tails(runs)
+    shinki, claim, none_cat, combined = build_category_sets(occurrences, suppressed_ids)
+    increment_log = build_increment_log(runs)
 
-    lines.append(f"Seiban codes found: {len(counts)}")
-    lines.append("=" * 40)
-    for code in sorted(counts):
-        flag = "  <- had stray spaces, fixed" if code in space_fixed_codes else ""
-        lines.append(f"{code}{flag}")
+    # ---------- Seiban_list_report.txt ----------
+    seiban_lines = []
+    seiban_lines.append(f"新規: {len(shinki)}")
+    seiban_lines.append("=" * 40)
+    seiban_lines.extend(sorted(shinki))
 
-    lines.append("")
-    lines.append(f"Seiban containing '新規': {len(shinki_codes)}")
-    lines.append("=" * 40)
-    for code in sorted(shinki_codes):
-        lines.append(code)
+    seiban_lines.append("")
+    seiban_lines.append(f"クレーム/改造: {len(claim)}")
+    seiban_lines.append("=" * 40)
+    seiban_lines.extend(sorted(claim))
 
-    lines.append("")
-    lines.append(f"Anomaly seiban - suspected horizontal drag-fill / incremental typo: {len(anomaly_groups)} run(s)")
-    lines.append("=" * 40)
-    if not anomaly_groups:
-        lines.append("(none found)")
-    for i, group in enumerate(anomaly_groups, start=1):
-        codes_in_run = " -> ".join(o["code"] for o in group)
-        cells_in_run = ", ".join(f'{o["code"]}@{o["sheet"]}!{o["cell"]}' for o in group)
-        lines.append(f"[{i}] {codes_in_run}")
-        lines.append(f"    {cells_in_run}")
+    seiban_lines.append("")
+    seiban_lines.append(f"該当なし (新規/クレーム/改造を含まない): {len(none_cat)}")
+    seiban_lines.append("=" * 40)
+    seiban_lines.extend(sorted(none_cat))
 
-    if near_miss_codes:
-        lines.append("")
-        lines.append(f"NEAR-MISS codes (matched loosely, review manually): {len(near_miss_codes)}")
-        lines.append("=" * 40)
-        for code in sorted(near_miss_codes):
-            lines.append(code)
+    seiban_lines.append("")
+    seiban_lines.append(f"新規 + クレーム/改造 (combined): {len(combined)}")
+    seiban_lines.append("=" * 40)
+    seiban_lines.extend(sorted(combined))
 
-    print("\n".join(lines))
+    with open(args.seiban_out, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(seiban_lines) + "\n")
 
-    with open(args.out, "w", encoding="utf-8-sig") as f:
-        f.write("\n".join(lines) + "\n")
+    # ---------- Log_report.txt ----------
+    log_lines = []
+    log_lines.append(f"Incremental runs: {len(increment_log)}")
+    log_lines.append("=" * 40)
+    if not increment_log:
+        log_lines.append("(none found)")
+    for header, tails in increment_log:
+        log_lines.append(header)
+        for t in tails:
+            log_lines.append(f"    {t}")
+        log_lines.append("")
 
-    print(f"\nReport written to: {args.out}")
+    log_lines.append(f"Not seiban (no code found): {len(no_code_texts)}")
+    log_lines.append("=" * 40)
+    for t in sorted(no_code_texts):
+        log_lines.append(t)
+
+    with open(args.log_out, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(log_lines) + "\n")
+
+    print("\n".join(seiban_lines))
+    print()
+    print("\n".join(log_lines))
+    print(f"\nWritten: {args.seiban_out}")
+    print(f"Written: {args.log_out}")
 
 
 if __name__ == "__main__":
