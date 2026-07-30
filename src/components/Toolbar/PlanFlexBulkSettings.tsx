@@ -110,7 +110,7 @@ export function PlanFlexBulkSettings() {
                     disabled={!hasSelection}
                   />
                   {UI.bulkTargetSelected}
-                  {!hasSelection && <span style={{ fontSize: 10, color: '#aaa' }}> (未選択)</span>}
+                  {!hasSelection && <span style={{ fontSize: 10, color: '#aaa' }}> {UI.bulkNoSelectionSuffix}</span>}
                 </label>
               </div>
 

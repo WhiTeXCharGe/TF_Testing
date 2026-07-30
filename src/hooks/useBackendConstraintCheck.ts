@@ -1,4 +1,5 @@
 import { useAppContext } from '../context/AppContext';
+import { UI } from '../config/uiText';
 
 export function useBackendConstraintCheck() {
   const { state, dispatch } = useAppContext();
@@ -21,7 +22,7 @@ export function useBackendConstraintCheck() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        dispatch({ type: 'SET_ERROR', payload: `制約チェックエラー: ${err.error ?? res.statusText}` });
+        dispatch({ type: 'SET_ERROR', payload: UI.constraintCheckErrorMessage(err.error ?? res.statusText) });
         dispatch({ type: 'SET_CONSTRAINT_CHECKING', payload: false });
         return;
       }
@@ -32,7 +33,7 @@ export function useBackendConstraintCheck() {
         payload: { violations: data.violations, checkedAt: data.checkedAt },
       });
     } catch (e) {
-      dispatch({ type: 'SET_ERROR', payload: 'バックエンドに接続できません。サーバーが起動しているか確認してください。' });
+      dispatch({ type: 'SET_ERROR', payload: UI.backendUnreachableError });
       dispatch({ type: 'SET_CONSTRAINT_CHECKING', payload: false });
     }
   };

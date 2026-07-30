@@ -19,10 +19,11 @@ import {
   WorkerMetaInfo,
 } from '../components/GanttChart/workerViewModel';
 import { buildModuleViewModel, ModuleViewModel } from '../components/GanttChart/moduleViewModel';
+import { UI } from '../config/uiText';
 
 const DAY_COL_WIDTH = 3.5;
 const HEADER_ROWS = 3;
-const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
+const DOW_JA = UI.dowLabels;
 
 function toArgb(hex: string): string {
   return 'FF' + hex.replace('#', '').toUpperCase();
@@ -118,20 +119,20 @@ function writeDateHeader(
 // ── Worker sheet ──────────────────────────────────────────────────────────
 
 const WORKER_META_COLS: { key: keyof WorkerMetaInfo; label: string; width: number }[] = [
-  { key: 'company', label: '会社', width: 14 },
+  { key: 'company', label: UI.companyLabel, width: 14 },
   { key: 'id', label: 'ID', width: 8 },
-  { key: 'name', label: '氏名', width: 12 },
-  { key: 'manager', label: '責任者', width: 8 },
-  { key: 'remarks', label: '備考', width: 14 },
-  { key: 'workType', label: '業務形態', width: 12 },
-  { key: 'assignedDuties', label: '担当職務', width: 20 },
+  { key: 'name', label: UI.workerGridName, width: 12 },
+  { key: 'manager', label: UI.workerGridManager, width: 8 },
+  { key: 'remarks', label: UI.remarksLabel, width: 14 },
+  { key: 'workType', label: UI.extraColWorkType, width: 12 },
+  { key: 'assignedDuties', label: UI.extraColAssignedDuties, width: 20 },
   { key: 'visa', label: 'VISA', width: 8 },
-  { key: 'overseasDriving', label: '海外運転', width: 10 },
+  { key: 'overseasDriving', label: UI.extraColOverseasDriving, width: 10 },
 ];
 
 function buildWorkerSheet(wb: ExcelJS.Workbook, model: WorkerTimelineModel, dates: string[]): void {
   const metaCount = WORKER_META_COLS.length;
-  const ws = wb.addWorksheet('ワーカービュー', {
+  const ws = wb.addWorksheet(UI.workerView, {
     views: [{ state: 'frozen', xSplit: metaCount, ySplit: HEADER_ROWS }],
   });
 
@@ -178,9 +179,9 @@ function buildWorkerSheet(wb: ExcelJS.Workbook, model: WorkerTimelineModel, date
 // ── Device (製番) sheet ───────────────────────────────────────────────────
 
 const DEVICE_META_COLS = [
-  { label: '製番', width: 18 },
-  { label: '属性', width: 14 },
-  { label: '工程/作業', width: 20 },
+  { label: UI.deviceCodeLabel, width: 18 },
+  { label: UI.deviceAttributeLabel, width: 14 },
+  { label: UI.phaseOperationColumnLabel, width: 20 },
 ];
 
 function dateColIndex(dateStr: string | null, dates: string[]): number {
@@ -215,7 +216,7 @@ function writeDeviceBar(
 
 function buildDeviceSheet(wb: ExcelJS.Workbook, model: ModuleViewModel, dates: string[]): void {
   const metaCount = DEVICE_META_COLS.length;
-  const ws = wb.addWorksheet('製番ビュー', {
+  const ws = wb.addWorksheet(UI.deviceViewSheetName, {
     views: [{ state: 'frozen', xSplit: metaCount, ySplit: HEADER_ROWS }],
   });
 

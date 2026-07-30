@@ -76,7 +76,7 @@ export function FilterChip({ label, options, selected, onChange }: Props) {
       >
         {chipLabel}
         {active ? (
-          <span style={S.chipClear} onClick={clear} title="クリア">×</span>
+          <span style={S.chipClear} onClick={clear} title={UI.filterClear}>×</span>
         ) : (
           <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
         )}

@@ -3,6 +3,7 @@ import { downloadBothYamlFiles, saveYamlFilesAsElectron } from '../../services/f
 import { useAppContext } from '../../context/AppContext';
 import { EnvConfig } from '../../types/envConfig';
 import { ScheduleData } from '../../types/schedule';
+import { UI } from '../../config/uiText';
 
 interface Props {
   envConfig: EnvConfig;
@@ -46,11 +47,11 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
         fontFamily: 'Meiryo, sans-serif',
       }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18, color: '#1c2b3a' }}>
-          名前を付けて保存
+          {UI.saveAs}
         </div>
 
         <label style={{ display: 'block', marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: '#455a6b', marginBottom: 4 }}>EnvConfig ファイル名</div>
+          <div style={{ fontSize: 12, color: '#455a6b', marginBottom: 4 }}>{UI.envFileNameLabel}</div>
           <input
             type="text"
             value={envName}
@@ -64,7 +65,7 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
         </label>
 
         <label style={{ display: 'block', marginBottom: 24 }}>
-          <div style={{ fontSize: 12, color: '#455a6b', marginBottom: 4 }}>Schedule ファイル名</div>
+          <div style={{ fontSize: 12, color: '#455a6b', marginBottom: 4 }}>{UI.scheduleFileNameLabel}</div>
           <input
             type="text"
             value={scheduleName}
@@ -79,8 +80,8 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
 
         <div style={{ fontSize: 11, color: '#888', marginBottom: 16 }}>
           {window.electronAPI
-            ? '保存先はこの後のダイアログで選択します。'
-            : '両ファイルはブラウザのダウンロードフォルダに保存されます。'}
+            ? UI.saveAsElectronHint
+            : UI.saveAsBrowserHint}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -93,7 +94,7 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
               fontFamily: 'Meiryo, sans-serif', color: '#333',
             }}
           >
-            キャンセル
+            {UI.dialogCancel}
           </button>
           <button
             type="button"
@@ -106,7 +107,7 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
               opacity: (!envName.trim() || !scheduleName.trim()) ? 0.5 : 1,
             }}
           >
-            保存
+            {UI.saveConfirmBtn}
           </button>
         </div>
       </div>

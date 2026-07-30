@@ -1,6 +1,7 @@
 import { EnvConfig, Worker } from '../../types/envConfig';
 import { Assignment, PlanFlexibility, ScheduleData } from '../../types/schedule';
 import { generateDateRange } from '../../utils/dateUtils';
+import { UI } from '../../config/uiText';
 
 export interface WorkerMetaInfo {
   id: string;
@@ -291,7 +292,7 @@ function buildMonthGroups(dates: string[]): HeaderMonthGroup[] {
       if (nextYear !== year || nextMonth !== month) break;
       j += 1;
     }
-    groups.push({ label: `${Number(month)}月`, startIndex: i, span: j - i + 1 });
+    groups.push({ label: UI.monthLabel(Number(month)), startIndex: i, span: j - i + 1 });
     i = j + 1;
   }
   return groups;

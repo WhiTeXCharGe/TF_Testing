@@ -2,6 +2,7 @@ import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml, stringifyEnvConfigYaml } from './yamlService';
 import { buildOpTaskColorMap } from '../components/GanttChart/workerViewModel';
+import { UI } from '../config/uiText';
 
 // Bake resolved (auto-generated or explicit) colors into schedule objects before saving
 export function resolveScheduleColors(schedule: ScheduleData): ScheduleData {
@@ -44,8 +45,8 @@ export interface LoadedFiles {
 export async function openTwoYamlFiles(): Promise<LoadedFiles> {
   if (window.electronAPI) return openTwoYamlFilesElectron();
 
-  const envFile = await pickFile('EnvConfig.yaml を選択してください');
-  const schedFile = await pickFile('Schedule.yaml を選択してください');
+  const envFile = await pickFile(UI.pickEnvFilePrompt);
+  const schedFile = await pickFile(UI.pickScheduleFilePrompt);
 
   const [envText, schedText] = await Promise.all([
     readFileText(envFile),
@@ -63,9 +64,9 @@ export async function openTwoYamlFiles(): Promise<LoadedFiles> {
 async function openTwoYamlFilesElectron(): Promise<LoadedFiles> {
   const api = window.electronAPI!;
   const envPick = await api.pickOpenFile();
-  if (!envPick) throw new Error('ファイルが選択されませんでした');
+  if (!envPick) throw new Error(UI.noFileSelectedError);
   const schedPick = await api.pickOpenFile();
-  if (!schedPick) throw new Error('ファイルが選択されませんでした');
+  if (!schedPick) throw new Error(UI.noFileSelectedError);
 
   return {
     envConfig: parseEnvConfigYaml(envPick.content),
@@ -176,14 +177,14 @@ function pickFile(title: string): Promise<File> {
     input.onchange = () => {
       const file = input.files?.[0];
       if (file) resolve(file);
-      else reject(new Error('ファイルが選択されませんでした'));
+      else reject(new Error(UI.noFileSelectedError));
     };
     // Reject if the user closes without selecting (focus returns to window)
     const onFocus = () => {
       window.removeEventListener('focus', onFocus);
       // Small delay so onchange fires first if a file was picked
       setTimeout(() => {
-        if (!input.files?.length) reject(new Error('ファイルが選択されませんでした'));
+        if (!input.files?.length) reject(new Error(UI.noFileSelectedError));
       }, 500);
     };
     window.addEventListener('focus', onFocus);
@@ -195,7 +196,7 @@ function readFileText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error(`ファイル読み込み失敗: ${file.name}`));
+    reader.onerror = () => reject(new Error(UI.fileReadFailedMessage(file.name)));
     reader.readAsText(file, 'utf-8');
   });
 }

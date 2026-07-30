@@ -2,6 +2,7 @@ import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { Violation } from '../types/appState';
 import { normalizeDate } from '../utils/dateUtils';
+import { UI } from '../config/uiText';
 
 export function checkConstraints(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
   return [
@@ -80,7 +81,7 @@ function checkDailyWorkHourRange(envConfig: EnvConfig, schedule: ScheduleData): 
           assignmentIndices: [assignmentIndex],
           date: normalizeDate(wd.date),
           severity: 'error',
-          message: `作業時間違反: ${assignment.operationTask} ${normalizeDate(wd.date)} ${wd.hour}h (許容: ${allowed.join(',')})`,
+          message: UI.workHourRangeViolation(assignment.operationTask, normalizeDate(wd.date), wd.hour, allowed.join(',')),
         });
       }
 
@@ -90,7 +91,7 @@ function checkDailyWorkHourRange(envConfig: EnvConfig, schedule: ScheduleData): 
           assignmentIndices: [assignmentIndex],
           date: normalizeDate(wd.date),
           severity: 'error',
-          message: `作業時間違反: ${assignment.operationTask} ${normalizeDate(wd.date)} ${wd.hour}h (>24h)`,
+          message: UI.workHourOver24Violation(assignment.operationTask, normalizeDate(wd.date), wd.hour),
         });
       }
     }
@@ -125,7 +126,7 @@ function checkSkillMapCompatibility(envConfig: EnvConfig, schedule: ScheduleData
       assignmentIndices: [assignmentIndex],
       date: date ? normalizeDate(date) : undefined,
       severity: 'error',
-      message: `スキル不足: worker=${worker.name ?? worker.id} operation=${opTask.operationId} required=${required} actual=${workerSkill}`,
+      message: UI.skillMismatchViolation(worker.name ?? worker.id, opTask.operationId, required, workerSkill),
     });
   });
 
@@ -168,7 +169,7 @@ function checkBarOverlaps(schedule: ScheduleData): Violation[] {
             assignmentIndices: [a, b],
             date,
             severity: 'error',
-            message: `同一日作業重複禁止: ${date} に同一作業者へ複数割当`,
+            message: UI.overlapViolation(date),
           });
         }
       }
@@ -210,7 +211,7 @@ function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Vio
         type: 'TASK_WORKER_COUNT',
         assignmentIndices: relatedIndices,
         severity: 'error',
-        message: `最小作業者数違反: ${operationTaskId} count=${workerSet.size} min=${min}`,
+        message: UI.minWorkerCountViolation(operationTaskId, workerSet.size, min),
       });
     }
 
@@ -219,7 +220,7 @@ function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Vio
         type: 'TASK_WORKER_COUNT',
         assignmentIndices: relatedIndices,
         severity: 'error',
-        message: `最大作業者数違反: ${operationTaskId} count=${workerSet.size} max=${max}`,
+        message: UI.maxWorkerCountViolation(operationTaskId, workerSet.size, max),
       });
     }
   }
@@ -246,7 +247,7 @@ function checkWorkerUnavailableDays(envConfig: EnvConfig, schedule: ScheduleData
           assignmentIndices: [index],
           date,
           severity: 'error',
-          message: `Worker ${worker.name ?? worker.id}: 利用不可日に割り当て (${date})`,
+          message: UI.workerUnavailableViolation(worker.name ?? worker.id, date),
         });
         break; // one violation per assignment is enough
       }
@@ -289,7 +290,7 @@ function checkPhaseDateOverrun(schedule: ScheduleData): Violation[] {
         assignmentIndices: [index],
         date: violatedDate,
         severity: 'error',
-        message: `工程開始日・終了日違反: ${assignment.operationTask} (${phase.startDate}..${phase.endDate})`,
+        message: UI.phaseOverrunViolation(assignment.operationTask, phase.startDate, phase.endDate),
       });
     }
   });
@@ -364,7 +365,7 @@ function checkWorkloadTotal(envConfig: EnvConfig, schedule: ScheduleData): Viola
         type: 'WORKLOAD_TOTAL',
         assignmentIndices: indices,
         severity: 'warning',
-        message: `過剰作業量: ${meta.label} 実績=${total}h 必要=${meta.workloadHours}h 上限=${threshold}h`,
+        message: UI.workloadOverThresholdViolation(meta.label, total, meta.workloadHours, threshold),
       });
     }
   }

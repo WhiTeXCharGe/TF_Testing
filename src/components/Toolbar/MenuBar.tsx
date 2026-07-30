@@ -44,16 +44,16 @@ export function MenuBar() {
     setOpenMenu(null);
     if (!state.schedule || !state.envConfig) return;
     if (!state.currentEnvPath || !state.currentSchedulePath) {
-      setSaveStatus('保存先パスが不明です。名前を付けて保存を使用してください。');
+      setSaveStatus(UI.savePathUnknownMessage);
       setTimeout(() => setSaveStatus(null), 4000);
       return;
     }
     try {
       await overwriteSaveFiles(state.envConfig, state.schedule, state.currentEnvPath, state.currentSchedulePath);
-      setSaveStatus('保存しました');
+      setSaveStatus(UI.savedMessage);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
-      setSaveStatus(`保存失敗: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveStatus(UI.saveFailedMessage(err instanceof Error ? err.message : String(err)));
       setTimeout(() => setSaveStatus(null), 5000);
     }
   };
@@ -70,10 +70,10 @@ export function MenuBar() {
       const dates = generateDateRange(state.schedule.planRange.startDate, state.schedule.planRange.endDate);
       const base = state.currentSchedulePath?.split(/[/\\]/).pop()?.replace(/\.ya?ml$/i, '') ?? 'Schedule';
       await exportScheduleToExcel(state.envConfig, state.schedule, dates, `${base}.xlsx`);
-      setSaveStatus('Excelエクスポートしました');
+      setSaveStatus(UI.excelExportedMessage);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
-      setSaveStatus(`エクスポート失敗: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveStatus(UI.exportFailedMessage(err instanceof Error ? err.message : String(err)));
       setTimeout(() => setSaveStatus(null), 5000);
     }
   };

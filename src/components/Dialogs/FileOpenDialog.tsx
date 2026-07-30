@@ -56,7 +56,7 @@ export function FileOpenDialog() {
       setSchedFile(null);
       dispatch({ type: 'CLOSE_FILE_DIALOG' });
     } catch (err) {
-      dispatch({ type: 'SET_ERROR', payload: `ファイル読み込みエラー: ${(err as Error).message}` });
+      dispatch({ type: 'SET_ERROR', payload: UI.fileLoadErrorMessage((err as Error).message) });
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,7 @@ export function FileOpenDialog() {
         </div>
         <div style={footer}>
           <button style={okBtn} onClick={handleOk} disabled={!canConfirm}>
-            {loading ? '読み込み中...' : UI.dialogOk}
+            {loading ? UI.loadingLabel : UI.dialogOk}
           </button>
           <button style={cancelBtn} onClick={handleCancel}>{UI.dialogCancel}</button>
         </div>
@@ -165,7 +165,7 @@ function readText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error(`読み込み失敗: ${file.name}`));
+    reader.onerror = () => reject(new Error(UI.fileReadErrorMessage(file.name)));
     reader.readAsText(file, 'utf-8');
   });
 }

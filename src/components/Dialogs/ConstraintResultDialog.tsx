@@ -4,19 +4,9 @@ import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useBackendConstraintCheck } from '../../hooks/useBackendConstraintCheck';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
+import { UI } from '../../config/uiText';
 
-const VIOLATION_LABEL: Record<string, string> = {
-  OVERLAP:           '同一日重複',
-  WORKER_UNAVAILABLE:'作業不可日',
-  PHASE_OVERRUN:     '工程日付超過',
-  WORK_HOUR_RANGE:   '作業時間範囲',
-  SKILL_MISMATCH:    'スキル不足',
-  TASK_WORKER_COUNT: '作業者数',
-  PHASE_SEQUENCE:    '工程順序',
-  WORKLOAD_TOTAL:    '必要作業量',
-  RESPONSIBLE_WORKER:'作業責任者',
-  TRAVEL_DAYS:       '移動日',
-};
+const VIOLATION_LABEL: Record<string, string> = UI.violationLabels;
 
 interface ViolationRow {
   key: string;
@@ -115,7 +105,7 @@ function ChipDropdown({
           marginTop: 3,
         }}>
           {options.length === 0 ? (
-            <div style={{ padding: '8px 12px', fontSize: 11, color: '#90a4ae' }}>選択肢なし</div>
+            <div style={{ padding: '8px 12px', fontSize: 11, color: '#90a4ae' }}>{UI.noOptionsLabel}</div>
           ) : (
             <>
               {active && (
@@ -126,7 +116,7 @@ function ChipDropdown({
                     cursor: 'pointer', borderBottom: '1px solid #f0f0f0',
                   }}
                 >
-                  ✕ すべて解除
+                  {UI.chipClearAll}
                 </div>
               )}
               {options.map(opt => (
@@ -183,28 +173,28 @@ function FilterBar({
     }}>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
         <ChipDropdown
-          label="作業者"
+          label={UI.dialogWorkerLabel}
           options={options.names}
           selected={filters.names}
           onToggle={v => toggle('names', v)}
           onClear={() => onChange({ names: [] })}
         />
         <ChipDropdown
-          label="会社"
+          label={UI.companyLabel}
           options={options.companies}
           selected={filters.companies}
           onToggle={v => toggle('companies', v)}
           onClear={() => onChange({ companies: [] })}
         />
         <ChipDropdown
-          label="製番"
+          label={UI.deviceCodeLabel}
           options={options.seibans}
           selected={filters.seibans}
           onToggle={v => toggle('seibans', v)}
           onClear={() => onChange({ seibans: [] })}
         />
         <ChipDropdown
-          label="タスク"
+          label={UI.taskLabel}
           options={options.tasks}
           selected={filters.tasks}
           onToggle={v => toggle('tasks', v)}
@@ -212,14 +202,14 @@ function FilterBar({
         />
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, color: '#90a4ae', flexShrink: 0 }}>日付範囲:</span>
+        <span style={{ fontSize: 10, color: '#90a4ae', flexShrink: 0 }}>{UI.dateRangeLabel}</span>
         <input
           type="date"
           value={filters.dateFrom}
           onChange={e => onChange({ dateFrom: e.target.value })}
           style={dateInputStyle}
         />
-        <span style={{ fontSize: 10, color: '#90a4ae' }}>〜</span>
+        <span style={{ fontSize: 10, color: '#90a4ae' }}>{UI.periodSeparator}</span>
         <input
           type="date"
           value={filters.dateTo}
@@ -238,7 +228,7 @@ function FilterBar({
               fontFamily: 'Meiryo, sans-serif',
             }}
           >
-            ✕ すべてクリア
+            {UI.clearAllFiltersBtn}
           </button>
         )}
       </div>
@@ -359,11 +349,11 @@ type ColKey = 'badge' | 'type' | 'seiban' | 'task' | 'worker' | 'date';
 const DEFAULT_COL_WIDTHS: Record<ColKey, number> = { badge: 42, type: 76, seiban: 90, task: 90, worker: 90, date: 90 };
 const COL_DEFS: Array<{ key: ColKey; label: string; align?: 'center' | 'left' }> = [
   { key: 'badge', label: '', align: 'center' },
-  { key: 'type',   label: '制約' },
-  { key: 'seiban', label: '製番' },
-  { key: 'task',   label: 'タスク' },
-  { key: 'worker', label: '作業者' },
-  { key: 'date',   label: '日付' },
+  { key: 'type',   label: UI.colConstraintLabel },
+  { key: 'seiban', label: UI.deviceCodeLabel },
+  { key: 'task',   label: UI.taskLabel },
+  { key: 'worker', label: UI.dialogWorkerLabel },
+  { key: 'date',   label: UI.dateColumnLabel },
 ];
 
 function Badge({ severity }: { severity: string }) {
@@ -377,7 +367,7 @@ function Badge({ severity }: { severity: string }) {
       border: `1px solid ${isError ? '#ef9a9a' : '#ffe082'}`,
       whiteSpace: 'nowrap',
     }}>
-      {isError ? 'ERR' : 'WARN'}
+      {isError ? UI.badgeError : UI.badgeWarning}
     </span>
   );
 }
@@ -452,7 +442,7 @@ function TableRow({
 
   const dateText = row.dates.length === 0 ? '—'
     : row.dates.length <= 3 ? row.dates.join(', ')
-    : `${row.dates[0]} 他${row.dates.length - 1}件`;
+    : `${row.dates[0]} ${UI.andNMore(row.dates.length - 1)}`;
 
   return (
     <div
@@ -600,7 +590,7 @@ export function ConstraintResultDialog() {
           borderBottom: '1px solid rgba(255,255,255,0.35)',
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#1e334b', flex: 1 }}>制約チェック結果</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#1e334b', flex: 1 }}>{UI.constraintDialogTitle}</span>
         {constraintCheckedAt && (
           <span style={{ fontSize: 10, color: '#b0bec5' }}>
             {new Date(constraintCheckedAt).toLocaleTimeString('ja-JP')}
@@ -616,7 +606,7 @@ export function ConstraintResultDialog() {
       {isConstraintChecking ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: '#607d8b' }}>
           <div style={{ fontSize: 28 }}>⏳</div>
-          <div style={{ fontSize: 13 }}>バックエンドで制約チェック中...</div>
+          <div style={{ fontSize: 13 }}>{UI.constraintCheckingBody}</div>
         </div>
       ) : (
         <>
@@ -628,21 +618,21 @@ export function ConstraintResultDialog() {
             display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap',
           }}>
             {grouped.length === 0 ? (
-              <span style={{ fontSize: 13, color: '#2e7d32', fontWeight: 700 }}>✓ 違反なし</span>
+              <span style={{ fontSize: 13, color: '#2e7d32', fontWeight: 700 }}>{UI.noViolations}</span>
             ) : (
               <>
                 {totalErrors > 0 && (
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#c62828', background: '#fdecea', padding: '2px 10px', borderRadius: 12, border: '1px solid #ef9a9a' }}>
-                    ✕ エラー {totalErrors}件
+                    {UI.errorCount(totalErrors)}
                   </span>
                 )}
                 {totalWarnings > 0 && (
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#f57f17', background: '#fff8e1', padding: '2px 10px', borderRadius: 12, border: '1px solid #ffe082' }}>
-                    ⚠ 警告 {totalWarnings}件
+                    {UI.warningCount(totalWarnings)}
                   </span>
                 )}
                 {filteredRows.length !== grouped.length && (
-                  <span style={{ fontSize: 10, color: '#90a4ae' }}>（表示: {filteredRows.length}件）</span>
+                  <span style={{ fontSize: 10, color: '#90a4ae' }}>{UI.shownCount(filteredRows.length)}</span>
                 )}
               </>
             )}
@@ -660,14 +650,14 @@ export function ConstraintResultDialog() {
           <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
             {filteredRows.length === 0 ? (
               <div style={{ padding: 40, textAlign: 'center', color: '#90a4ae', fontSize: 13 }}>
-                {grouped.length === 0 ? 'すべての制約チェックをクリアしました' : '該当する違反がありません'}
+                {grouped.length === 0 ? UI.allClearMessage : UI.noMatchingViolations}
               </div>
             ) : (
               <div style={{ minWidth: Object.values(colWidths).reduce((a, b) => a + b, 0) }}>
                 <ResizableTableHeader colWidths={colWidths} onResizeCol={resizeCol} />
                 {errors.length > 0 && (
                   <>
-                    <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#c62828', background: 'rgba(253,235,234,0.5)', letterSpacing: 1 }}>エラー</div>
+                    <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#c62828', background: 'rgba(253,235,234,0.5)', letterSpacing: 1 }}>{UI.errorsSectionLabel}</div>
                     {errors.map(row => (
                       <TableRow key={row.key} row={row} colWidths={colWidths}
                         isSelected={row.assignmentIndices.some(i => i === state.selectedAssignmentIndex)}
@@ -677,7 +667,7 @@ export function ConstraintResultDialog() {
                 )}
                 {warnings.length > 0 && (
                   <>
-                    <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#f57f17', background: 'rgba(255,248,225,0.5)', letterSpacing: 1 }}>警告</div>
+                    <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#f57f17', background: 'rgba(255,248,225,0.5)', letterSpacing: 1 }}>{UI.warningsSectionLabel}</div>
                     {warnings.map(row => (
                       <TableRow key={row.key} row={row} colWidths={colWidths}
                         isSelected={row.assignmentIndices.some(i => i === state.selectedAssignmentIndex)}
@@ -692,7 +682,7 @@ export function ConstraintResultDialog() {
           {/* Footer */}
           <div style={{ padding: '8px 14px', borderTop: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             {filteredRows.length > 0 && (
-              <span style={{ fontSize: 10, color: '#b0bec5', flex: 1 }}>行をクリックすると割付が選択されます</span>
+              <span style={{ fontSize: 10, color: '#b0bec5', flex: 1 }}>{UI.rowClickHint}</span>
             )}
             <button
               onClick={runCheck}
@@ -705,7 +695,7 @@ export function ConstraintResultDialog() {
                 cursor: isConstraintChecking ? 'default' : 'pointer', flexShrink: 0,
               }}
             >
-              {isConstraintChecking ? '⏳ チェック中...' : '☑ 再チェック'}
+              {isConstraintChecking ? UI.checkingLabel : UI.recheckBtn}
             </button>
           </div>
         </>

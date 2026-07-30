@@ -2,6 +2,7 @@ import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { stringifyScheduleYaml, stringifyEnvConfigYaml } from './yamlService';
 import { resolveScheduleColors } from './fileService';
+import { UI } from '../config/uiText';
 
 interface HandoffCreateResponse {
   ok: boolean;
@@ -26,7 +27,7 @@ export async function sendToScheduler(envConfig: EnvConfig, schedule: ScheduleDa
     // Make sure SchedulerWeb is up before minting a token — /api/handoff/create's
     // own dev-only "spawn npm run dev:all" fallback won't work in a packaged app.
     const ensureUp = await window.electronAPI.launchScheduler();
-    if (!ensureUp.ok) throw new Error(ensureUp.error ?? 'SchedulerWebの起動に失敗しました');
+    if (!ensureUp.ok) throw new Error(ensureUp.error ?? UI.schedulerLaunchFailedError);
   }
 
   const res = await fetch('/api/handoff/create', {
@@ -37,13 +38,13 @@ export async function sendToScheduler(envConfig: EnvConfig, schedule: ScheduleDa
 
   const data: HandoffCreateResponse = await res.json().catch(() => ({ ok: false }));
   if (!res.ok || !data.ok || !data.url) {
-    throw new Error(data.error ?? '送信に失敗しました');
+    throw new Error(data.error ?? UI.sendFailedError);
   }
 
   if (window.electronAPI) {
     // Deliver the token straight to SchedulerWeb's window instead of window.open().
     const deliver = await window.electronAPI.launchScheduler(data.url);
-    if (!deliver.ok) throw new Error(deliver.error ?? 'SchedulerWebへの送信に失敗しました');
+    if (!deliver.ok) throw new Error(deliver.error ?? UI.schedulerDeliveryFailedError);
     return { url: null };
   }
   return { url: data.url };

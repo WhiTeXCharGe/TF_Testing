@@ -73,10 +73,10 @@ export function GanttPage() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>📂</div>
               <div style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>
-                「{UI.fileMenu}」→「{UI.open}」でファイルを読み込んでください
+                {UI.emptyStateInstruction(UI.fileMenu, UI.open)}
               </div>
               <div style={{ fontSize: 12, color: '#aaa' }}>
-                ショートカット: Ctrl+O
+                {UI.shortcutOpenHint}
               </div>
             </div>
           </div>

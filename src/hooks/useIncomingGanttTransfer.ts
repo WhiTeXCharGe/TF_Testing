@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { parseEnvConfigYaml, parseScheduleYaml } from '../services/yamlService';
 import { SCHEDULER_WEB_URL } from '../config/appConfig';
+import { UI } from '../config/uiText';
 
 // Consumes a ?incomingTransfer=<token> query param set by SchedulerWeb's
 // 結果を表示 / コピーファイル表示 buttons, fetching the payload from
@@ -33,7 +34,7 @@ export function useIncomingGanttTransfer() {
           payload: { envConfig, schedule, envPath: 'EnvConfig.yaml', schedulePath: 'Schedule.yaml' },
         });
       } catch (e) {
-        dispatch({ type: 'SET_ERROR', payload: `計画管理ツールからのデータ受信に失敗しました: ${String((e as Error).message ?? e)}` });
+        dispatch({ type: 'SET_ERROR', payload: UI.incomingTransferErrorMessage(String((e as Error).message ?? e)) });
       }
     })();
   }, [dispatch]);

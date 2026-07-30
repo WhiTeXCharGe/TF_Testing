@@ -180,10 +180,10 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
 
     return (
       <div ref={ref} style={panelStyle} onClick={e => e.stopPropagation()}>
-        <div style={titleStyle}>作業情報</div>
+        <div style={titleStyle}>{UI.sidePanelWorkerDetailTitle}</div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>作業者</span>
+          <span style={labelStyle}>{UI.workerLabel}</span>
           <span style={valueStyle}>{worker?.name ?? assignment.worker}</span>
           <span style={{ color: '#888' }}>{workerCompany?.name ?? worker?.workerCompany ?? ''}</span>
         </div>
@@ -191,18 +191,18 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         {taskInfo && (
           <>
             <div style={rowStyle}>
-              <span style={labelStyle}>製番</span>
+              <span style={labelStyle}>{UI.deviceCodeLabel}</span>
               <span style={valueStyle}>{taskInfo.wt.name ?? taskInfo.wt.id}</span>
             </div>
 
             <div style={rowStyle}>
-              <span style={labelStyle}>FAB / Region</span>
+              <span style={labelStyle}>{UI.fabRegionLabel}</span>
               <span style={valueStyle}>{taskInfo.fabName}</span>
               <span style={{ color: '#888' }}>{taskInfo.regionName}</span>
             </div>
 
             <div style={rowStyle}>
-              <span style={labelStyle}>工程 / 作業</span>
+              <span style={labelStyle}>{UI.phaseOperationLabel}</span>
               <span style={valueStyle}>{taskInfo.pt.name ?? taskInfo.pt.id}</span>
               <span style={{ color: '#888' }}>{taskInfo.ot.name ?? taskInfo.ot.id}</span>
             </div>
@@ -210,14 +210,14 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         )}
 
         <div style={rowStyle}>
-          <span style={labelStyle}>期間</span>
+          <span style={labelStyle}>{UI.periodLabel}</span>
           <span style={valueStyle}>{assignment.startDate} 〜 {assignment.endDate}</span>
         </div>
 
         <WorkHourTable assignment={assignment} assignmentIndex={assignmentIndex} />
 
         <div style={rowStyle}>
-          <span style={labelStyle}>バーカラー</span>
+          <span style={labelStyle}>{UI.barColorLabel}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="color"
@@ -230,7 +230,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
                 }
               }}
               style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', background: 'none' }}
-              title="クリックしてカラーを選択"
+              title={UI.colorPickerTitle}
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
@@ -265,7 +265,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         )}
 
         <div style={rowStyle}>
-          <span style={labelStyle}>備考</span>
+          <span style={labelStyle}>{UI.remarksLabel}</span>
           <textarea
             value={descDraft}
             onChange={e => setDescDraft(e.target.value)}
@@ -278,7 +278,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
               fontFamily: 'Meiryo, sans-serif',
               fontSize: 12,
             }}
-            placeholder="備考を入力..."
+            placeholder={UI.remarksPlaceholder}
           />
         </div>
 
@@ -327,7 +327,7 @@ function WorkHourTable({
 
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ color: '#666', fontSize: 11, marginBottom: 4 }}>稼働時間 / 日</div>
+      <div style={{ color: '#666', fontSize: 11, marginBottom: 4 }}>{UI.workHourTableTitle}</div>
       <div style={{
         maxHeight: 160,
         overflowY: 'auto',
@@ -346,8 +346,8 @@ function WorkHourTable({
           position: 'sticky',
           top: 0,
         }}>
-          <span>日付</span>
-          <span style={{ textAlign: 'right' }}>時間</span>
+          <span>{UI.dateColumnLabel}</span>
+          <span style={{ textAlign: 'right' }}>{UI.hoursUnit}</span>
         </div>
         {dates.map(date => {
           const hour = hourMap.get(date) ?? 0;
@@ -445,21 +445,21 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
 
     return (
       <div ref={ref} style={panelStyle} onClick={e => e.stopPropagation()}>
-        <div style={titleStyle}>その他作業情報</div>
+        <div style={titleStyle}>{UI.miscPanelTitle}</div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>作業者</span>
+          <span style={labelStyle}>{UI.workerLabel}</span>
           <span style={valueStyle}>{worker?.name ?? assignment.worker}</span>
           <span style={{ color: '#888' }}>{workerCompany?.name ?? worker?.workerCompany ?? ''}</span>
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>タスク</span>
+          <span style={labelStyle}>{UI.taskLabel}</span>
           <span style={valueStyle}>{miscTask?.name ?? assignment.operationTask}</span>
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>開始日</span>
+          <span style={labelStyle}>{UI.startLabel}</span>
           <input
             type="date"
             style={inputStyle}
@@ -470,7 +470,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>終了日</span>
+          <span style={labelStyle}>{UI.endLabel}</span>
           <input
             type="date"
             style={inputStyle}
@@ -481,7 +481,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>バーカラー</span>
+          <span style={labelStyle}>{UI.barColorLabel}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="color"
@@ -494,7 +494,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
                 }
               }}
               style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', background: 'none' }}
-              title="クリックしてカラーを選択"
+              title={UI.colorPickerTitle}
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
@@ -517,7 +517,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>備考</span>
+          <span style={labelStyle}>{UI.remarksLabel}</span>
           <textarea
             key={assignmentIndex}
             defaultValue={assignment.description ?? ''}
@@ -530,7 +530,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
               fontFamily: 'Meiryo, sans-serif',
               fontSize: 12,
             }}
-            placeholder="備考を入力..."
+            placeholder={UI.remarksPlaceholder}
           />
         </div>
 
@@ -569,23 +569,23 @@ const UnavailablePanel = forwardRef<HTMLDivElement>(
     };
 
     const handleDelete = () => {
-      if (window.confirm('この休日を削除しますか？')) {
+      if (window.confirm(UI.deleteUnavailableConfirm)) {
         dispatch({ type: 'DELETE_UNAVAILABLE_RANGE', payload: { workerId, startDate: origStart, endDate: origEnd } });
       }
     };
 
     return (
       <div ref={ref} style={panelStyle} onClick={e => e.stopPropagation()}>
-        <div style={titleStyle}>休日情報</div>
+        <div style={titleStyle}>{UI.unavailablePanelTitle}</div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>作業者</span>
+          <span style={labelStyle}>{UI.workerLabel}</span>
           <span style={valueStyle}>{worker?.name ?? workerId}</span>
           <span style={{ color: '#888' }}>{workerCompany?.name ?? worker?.workerCompany ?? ''}</span>
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>開始日</span>
+          <span style={labelStyle}>{UI.startLabel}</span>
           <input
             type="date"
             style={inputStyle}
@@ -596,7 +596,7 @@ const UnavailablePanel = forwardRef<HTMLDivElement>(
         </div>
 
         <div style={rowStyle}>
-          <span style={labelStyle}>終了日</span>
+          <span style={labelStyle}>{UI.endLabel}</span>
           <input
             type="date"
             style={inputStyle}
@@ -606,7 +606,7 @@ const UnavailablePanel = forwardRef<HTMLDivElement>(
           />
         </div>
 
-        <button onClick={handleDelete} style={deleteBtn}>削除</button>
+        <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>
       </div>
     );
   },

@@ -4,6 +4,7 @@ import { parseEnvConfigYaml, parseScheduleYaml } from '../../services/yamlServic
 import { WorkflowTask, PhaseTask, OperationTask } from '../../types/schedule';
 import { Workflow } from '../../types/envConfig';
 import { SearchableSelect, SelectOption } from '../common/SearchableSelect';
+import { UI } from '../../config/uiText';
 
 // ── Per-製番 form entry ───────────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ export function NewScheduleDialog() {
 
   const workflowOptions: SelectOption[] = validWorkflows.map(w => ({ value: w.id, label: w.name ?? w.id }));
   const fabOptions: SelectOption[] = [
-    { value: '', label: '--- 選択なし ---' },
+    { value: '', label: UI.noneOptionLabel },
     ...(envConfig?.fabList.map(f => ({ value: f.id, label: f.name ?? f.id })) ?? []),
   ];
 
@@ -132,7 +133,7 @@ export function NewScheduleDialog() {
       });
       handleClose();
     } catch (err) {
-      dispatch({ type: 'SET_ERROR', payload: `マージエラー: ${(err as Error).message}` });
+      dispatch({ type: 'SET_ERROR', payload: UI.mergeErrorMessage((err as Error).message) });
     } finally {
       setUploading(false);
     }
@@ -193,12 +194,12 @@ export function NewScheduleDialog() {
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && handleClose()}>
       <div style={S.modal}>
-        <div style={S.titleBar}>新規製番追加</div>
+        <div style={S.titleBar}>{UI.newScheduleDialogTitle}</div>
 
         <div style={S.tabBar}>
           {(['form', 'upload'] as const).map(t => (
             <button key={t} style={tab === t ? S.tabActive : S.tabInactive} onClick={() => setTab(t)}>
-              {t === 'upload' ? 'ファイルからインポート' : 'フォームで追加'}
+              {t === 'upload' ? UI.tabImportLabel : UI.tabFormLabel}
             </button>
           ))}
         </div>
@@ -209,14 +210,14 @@ export function NewScheduleDialog() {
           {tab === 'upload' && (
             <>
               <div style={S.hint}>
-                既存データにマージします。同じIDの製番・作業者・Fabは無視されます。<br />
-                どちらか一方だけでも読み込み可能です。
+                {UI.mergeHintLine1}<br />
+                {UI.mergeHintLine2}
               </div>
-              <FileRow label="Schedule.yaml（製番・割付を追加）" file={schedFile}
+              <FileRow label={UI.scheduleFileMergeLabel} file={schedFile}
                 onPick={() => schedRef.current?.click()} onClear={() => setSchedFile(null)} />
               <input ref={schedRef} type="file" accept=".yaml,.yml" style={{ display: 'none' }}
                 onChange={e => setSchedFile(e.target.files?.[0] ?? null)} />
-              <FileRow label="EnvConfig.yaml（作業者・Fab等を追加）" file={envFile}
+              <FileRow label={UI.envFileMergeLabel} file={envFile}
                 onPick={() => envRef.current?.click()} onClear={() => setEnvFile(null)} />
               <input ref={envRef} type="file" accept=".yaml,.yml" style={{ display: 'none' }}
                 onChange={e => setEnvFile(e.target.files?.[0] ?? null)} />
@@ -231,44 +232,44 @@ export function NewScheduleDialog() {
                 return (
                   <div key={entry.key} style={S.card}>
                     <div style={S.cardHeader}>
-                      <span style={S.cardTitle}>製番 {idx + 1}{entry.name ? `：${entry.name}` : ''}</span>
+                      <span style={S.cardTitle}>{UI.seibanEntryTitle(idx + 1, entry.name)}</span>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button style={S.iconBtn}
                           onClick={() => patchEntry(entry.key, { collapsed: !entry.collapsed })}
-                          title={entry.collapsed ? '展開' : '折りたたむ'}>
+                          title={entry.collapsed ? UI.expandTitle : UI.collapseTitle}>
                           {entry.collapsed ? '▼' : '▲'}
                         </button>
                         <button style={{ ...S.iconBtn, color: '#b71c1c' }}
-                          onClick={() => removeEntry(entry.key)} title="削除">−</button>
+                          onClick={() => removeEntry(entry.key)} title={UI.deleteButton}>−</button>
                       </div>
                     </div>
 
                     {!entry.collapsed && (
                       <div style={S.cardBody}>
-                        <Field label="製番名 *">
-                          <input style={S.input} value={entry.name} placeholder="例: SU 1002B"
+                        <Field label={UI.seibanNameRequiredLabel}>
+                          <input style={S.input} value={entry.name} placeholder={UI.seibanNamePlaceholder}
                             onChange={e => patchEntry(entry.key, { name: e.target.value })} />
                         </Field>
 
-                        <Field label="ワークフロー *">
+                        <Field label={UI.workflowRequiredLabel}>
                           <SearchableSelect
                             value={entry.workflowId}
                             options={workflowOptions}
                             onChange={v => handleWorkflowChange(entry.key, v)}
-                            placeholder="--- 選択 ---"
+                            placeholder={UI.selectPlaceholder}
                           />
                         </Field>
 
-                        <Field label="Fab">
+                        <Field label={UI.fabOptionalLabel}>
                           <SearchableSelect
                             value={entry.fabId}
                             options={fabOptions}
                             onChange={v => patchEntry(entry.key, { fabId: v })}
-                            placeholder="--- 選択なし ---"
+                            placeholder={UI.noneOptionLabel}
                           />
                         </Field>
 
-                        <Field label="作業開始可能日 *">
+                        <Field label={UI.workStartDateRequiredLabel}>
                           <input style={S.input} type="date" value={entry.startDate}
                             onChange={e => patchEntry(entry.key, { startDate: e.target.value })} />
                         </Field>
@@ -276,14 +277,14 @@ export function NewScheduleDialog() {
                         {/* 工程別設定 */}
                         {wf && entry.opEntries.length > 0 && (
                           <div>
-                            <div style={S.sectionTitle}>工程別設定</div>
+                            <div style={S.sectionTitle}>{UI.phaseSettingsSectionTitle}</div>
                             {wf.phaseList.map((phase, pi) => (
                               <div key={phase.id} style={S.phaseBlock}>
                                 <div style={S.phaseLabel}>{phase.name ?? phase.id}</div>
 
                                 {/* Per-phase end date */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                  <span style={{ fontSize: 11, color: '#555', width: 68, flexShrink: 0 }}>終了希望日</span>
+                                  <span style={{ fontSize: 11, color: '#555', width: 68, flexShrink: 0 }}>{UI.phaseEndDateLabel}</span>
                                   <input
                                     style={{ ...S.input, flex: 1 }}
                                     type="date"
@@ -294,10 +295,10 @@ export function NewScheduleDialog() {
 
                                 {/* Per-operation rows */}
                                 <div style={S.opTableHeader}>
-                                  <span style={{ flex: 1 }}>工程</span>
-                                  <span style={{ width: 56, textAlign: 'center' }}>最小人数</span>
-                                  <span style={{ width: 56, textAlign: 'center' }}>最大人数</span>
-                                  <span style={{ width: 56, textAlign: 'center' }}>工数(h)</span>
+                                  <span style={{ flex: 1 }}>{UI.phaseColumnLabel}</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>{UI.minWorkerLabel}</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>{UI.maxWorkerLabel}</span>
+                                  <span style={{ width: 56, textAlign: 'center' }}>{UI.workloadHoursLabelCompact}</span>
                                 </div>
                                 {phase.operationList.map((op, oi) => {
                                   const oe = entry.opEntries[pi]?.[oi];
@@ -327,7 +328,7 @@ export function NewScheduleDialog() {
                 );
               })}
 
-              <button style={S.addEntryBtn} onClick={addEntry}>+ 製番追加</button>
+              <button style={S.addEntryBtn} onClick={addEntry}>{UI.addSeibanEntryBtn}</button>
             </>
           )}
         </div>
@@ -335,14 +336,14 @@ export function NewScheduleDialog() {
         <div style={S.footer}>
           {tab === 'upload' ? (
             <button style={canUpload ? S.primaryBtn : S.disabledBtn} onClick={handleImport} disabled={!canUpload}>
-              {uploading ? '読み込み中...' : 'インポート'}
+              {uploading ? UI.loadingLabel : UI.importBtn}
             </button>
           ) : (
             <button style={canFormSubmit ? S.primaryBtn : S.disabledBtn} onClick={handleFormOk} disabled={!canFormSubmit}>
-              OK
+              {UI.dialogOk}
             </button>
           )}
-          <button style={S.cancelBtn} onClick={handleClose}>キャンセル</button>
+          <button style={S.cancelBtn} onClick={handleClose}>{UI.dialogCancel}</button>
         </div>
       </div>
     </div>
@@ -358,9 +359,9 @@ function FileRow({ label, file, onPick, onClear }: {
     <div style={{ marginBottom: 14 }}>
       <div style={styles.fieldLabel}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button style={styles.chooseBtn} onClick={onPick}>ファイル選択</button>
+        <button style={styles.chooseBtn} onClick={onPick}>{UI.chooseFile}</button>
         <span style={{ fontSize: 12, color: file ? '#333' : '#aaa' }}>
-          {file ? file.name : '選択なし'}
+          {file ? file.name : UI.fileNotChosenShort}
         </span>
         {file && (
           <button onClick={onClear}
@@ -390,7 +391,7 @@ function readText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error(`読み込み失敗: ${file.name}`));
+    reader.onerror = () => reject(new Error(UI.fileReadErrorMessage(file.name)));
     reader.readAsText(file, 'utf-8');
   });
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { UI } from '../../config/uiText';
 
 export interface SelectOption {
   value: string;
@@ -16,7 +17,7 @@ interface Props {
   style?: React.CSSProperties;
 }
 
-export function SearchableSelect({ value, options, onChange, placeholder = '---', disabled = false, style }: Props) {
+export function SearchableSelect({ value, options, onChange, placeholder = UI.selectDefaultPlaceholder, disabled = false, style }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -119,7 +120,7 @@ export function SearchableSelect({ value, options, onChange, placeholder = '---'
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="検索..."
+              placeholder={UI.filterSearchPlaceholder}
               style={{
                 width: '100%',
                 padding: '4px 6px',
@@ -160,7 +161,7 @@ export function SearchableSelect({ value, options, onChange, placeholder = '---'
               </div>
             ))}
             {filtered.length === 0 && (
-              <div style={{ padding: '8px 10px', color: '#aaa', textAlign: 'center' }}>該当なし</div>
+              <div style={{ padding: '8px 10px', color: '#aaa', textAlign: 'center' }}>{UI.noMatchLabel}</div>
             )}
           </div>
         </div>,

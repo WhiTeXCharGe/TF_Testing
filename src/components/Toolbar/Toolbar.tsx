@@ -8,6 +8,7 @@ import { ModuleViewFilter } from './ModuleViewFilter';
 import { toolbarStyles as S } from '../../styles/toolbar';
 import { palette } from '../../styles/common';
 import { useBackendConstraintCheck } from '../../hooks/useBackendConstraintCheck';
+import { UI } from '../../config/uiText';
 
 export function Toolbar() {
   const { state, dispatch } = useAppContext();
@@ -37,11 +38,11 @@ export function Toolbar() {
         <div style={S.divider} />
         <button style={mkBtn('#2e7d32')} disabled={!has}
           onClick={() => dispatch({ type: 'OPEN_TASK_ADD_DIALOG' })}>
-          + 割付追加
+          {UI.addBarBtn}
         </button>
         <button style={mkBtn(palette.accentDark)} disabled={!has}
           onClick={() => dispatch({ type: 'OPEN_NEW_SCHEDULE_DIALOG' })}>
-          + 新規製番追加
+          {UI.addSeibanBtn}
         </button>
         <PlanFlexBulkSettings />
         <PlanRangeEditDialog />
@@ -64,7 +65,7 @@ export function Toolbar() {
             gap: 5,
           }}
         >
-          {isChecking ? '⏳ チェック中...' : '☑ 制約チェック'}
+          {isChecking ? UI.checkingLabel : UI.constraintCheckBtn}
         </button>
         <button
           disabled={!has}
@@ -81,7 +82,7 @@ export function Toolbar() {
             opacity: has ? 1 : 0.4,
           }}
         >
-          ✈ 出入国バー
+          {UI.flightStintsBtn}
         </button>
         <div style={{ marginLeft: 'auto' }}>
           <button
@@ -89,7 +90,7 @@ export function Toolbar() {
             onClick={() => dispatch({ type: 'OPEN_SEND_TO_SCHEDULER_DIALOG' })}
             style={S.submitBtn(has)}
           >
-            ▶ 計画管理ツールへ送信
+            {UI.sendToSchedulerBtn}
           </button>
         </div>
       </div>

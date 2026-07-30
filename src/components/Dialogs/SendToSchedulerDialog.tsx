@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { downloadBothYamlFiles } from '../../services/fileService';
 import { sendToScheduler } from '../../services/handoffService';
+import { UI } from '../../config/uiText';
 
 type Stage = 'confirm' | 'sending' | 'done' | 'error';
 
@@ -65,15 +66,13 @@ export function SendToSchedulerDialog() {
         fontFamily: 'Meiryo, sans-serif',
       }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 18, color: '#1c2b3a' }}>
-          計画管理ツールへ送信
+          {UI.sendToSchedulerDialogTitle}
         </div>
 
         {stage === 'confirm' && (
           <>
             <div style={{ fontSize: 13, color: '#333', marginBottom: 16, lineHeight: 1.6 }}>
-              現在の EnvConfig / Schedule をブラウザのダウンロードフォルダに保存したうえで、
-              計画管理ツール（Scheduler Webapp）に送信します。計画管理ツールが起動していない場合は自動的に起動します（最大30秒程度かかることがあります）。
-              送信後は計画管理ツール側の「新規実行」ダイアログに両ファイルが自動でセットされますが、実行の最終確認はそちらで行ってください。
+              {UI.sendToSchedulerConfirmBody}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
@@ -85,7 +84,7 @@ export function SendToSchedulerDialog() {
                   fontFamily: 'Meiryo, sans-serif', color: '#333',
                 }}
               >
-                キャンセル
+                {UI.dialogCancel}
               </button>
               <button
                 type="button"
@@ -96,7 +95,7 @@ export function SendToSchedulerDialog() {
                   fontFamily: 'Meiryo, sans-serif',
                 }}
               >
-                送信
+                {UI.sendBtn}
               </button>
             </div>
           </>
@@ -104,18 +103,18 @@ export function SendToSchedulerDialog() {
 
         {stage === 'sending' && (
           <div style={{ fontSize: 13, color: '#333', padding: '8px 0' }}>
-            送信中…（計画管理ツールの起動待ちのため、最大30秒程度かかる場合があります）
+            {UI.sendingStatus}
           </div>
         )}
 
         {stage === 'done' && (
           <>
             <div style={{ fontSize: 13, color: '#2e7d32', marginBottom: 12 }}>
-              送信しました。計画管理ツールの新しいタブが開きます。
+              {UI.sendDoneMessage}
             </div>
             {resultUrl && (
               <div style={{ fontSize: 12, color: '#333', marginBottom: 16, wordBreak: 'break-all' }}>
-                自動で開かない場合はこちらをクリックしてください:{' '}
+                {UI.sendDoneManualLinkHint}{' '}
                 <a href={resultUrl} target="_blank" rel="noopener noreferrer">{resultUrl}</a>
               </div>
             )}
@@ -129,7 +128,7 @@ export function SendToSchedulerDialog() {
                   fontFamily: 'Meiryo, sans-serif',
                 }}
               >
-                閉じる
+                {UI.closeBtn}
               </button>
             </div>
           </>
@@ -154,7 +153,7 @@ export function SendToSchedulerDialog() {
                   fontFamily: 'Meiryo, sans-serif', color: '#333',
                 }}
               >
-                閉じる
+                {UI.closeBtn}
               </button>
               <button
                 type="button"
@@ -165,7 +164,7 @@ export function SendToSchedulerDialog() {
                   fontFamily: 'Meiryo, sans-serif',
                 }}
               >
-                再試行
+                {UI.retryBtn}
               </button>
             </div>
           </>

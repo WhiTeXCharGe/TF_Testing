@@ -17,7 +17,7 @@ const MODULE_COL_W = 130;
 const ATTR_COL_W = 90;
 const LEFT_W = MODULE_COL_W + ATTR_COL_W;
 const PANEL_W = 320;
-const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
+const DOW_JA = UI.dowLabels;
 
 type Selection =
   | { kind: 'koutei'; moduleId: string; phaseId: string }
@@ -385,31 +385,31 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
     <div style={{ padding: 12 }}>
       <div style={panelTitle}>{phase.phaseName}</div>
 
-      <Field label="製番">{module.moduleName}</Field>
+      <Field label={UI.deviceCodeLabel}>{module.moduleName}</Field>
 
       {fab && <Field label="Fab">{fab.name ?? fab.id}</Field>}
       {region && <Field label="Region">{region.name ?? region.id}</Field>}
 
-      <Field label="作業開始可能日">
+      <Field label={UI.planStartDateLabel}>
         <input type="date" value={phase.planStartDate} onChange={e => onChange({ startDate: e.target.value })} style={inputStyle} />
       </Field>
-      <Field label="終了希望日">
+      <Field label={UI.phaseEndDateLabel}>
         <input type="date" value={phase.planEndDate} onChange={e => onChange({ endDate: e.target.value })} style={inputStyle} />
       </Field>
-      <Field label="実績期間">
+      <Field label={UI.actualPeriodLabel}>
         {phase.barStartDate && phase.barEndDate ? `${phase.barStartDate} 〜 ${phase.barEndDate}` : '—'}
       </Field>
-      <Field label="割り当て作業者">{phase.workerCount}名</Field>
+      <Field label={UI.assignedWorkerCountLabel}>{UI.peopleUnit(phase.workerCount)}</Field>
 
       <div style={{ marginBottom: 10 }}>
-        <span style={labelStyle}>備考</span>
+        <span style={labelStyle}>{UI.remarksLabel}</span>
         <textarea
           key={phaseKey}
           defaultValue={phase.description ?? ''}
           onBlur={e => onChange({ description: e.target.value })}
           rows={3}
           style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
-          placeholder="備考を入力..."
+          placeholder={UI.remarksPlaceholder}
         />
       </div>
     </div>
@@ -455,13 +455,13 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
     <div style={{ padding: 12 }}>
       <div style={panelTitle}>{task.taskName}</div>
 
-      <Field label="製番">{module.moduleName}</Field>
-      <Field label="工程">{phase.phaseName}</Field>
-      <Field label="期間">{task.startDate && task.endDate ? `${task.startDate} 〜 ${task.endDate}` : '—'}</Field>
+      <Field label={UI.deviceCodeLabel}>{module.moduleName}</Field>
+      <Field label={UI.dialogPhaseLabel}>{phase.phaseName}</Field>
+      <Field label={UI.periodLabel}>{task.startDate && task.endDate ? `${task.startDate} 〜 ${task.endDate}` : '—'}</Field>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
-          <span style={labelStyle}>最小人数</span>
+          <span style={labelStyle}>{UI.minWorkerLabel}</span>
           <input
             type="number" min={1} value={minDraft}
             onChange={e => setMinDraft(Number(e.target.value))}
@@ -471,7 +471,7 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
           />
         </div>
         <div style={{ flex: 1 }}>
-          <span style={labelStyle}>最大人数</span>
+          <span style={labelStyle}>{UI.maxWorkerLabel}</span>
           <input
             type="number" min={minDraft} value={maxDraft}
             onChange={e => setMaxDraft(Number(e.target.value))}
@@ -481,7 +481,7 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
           />
         </div>
         <div style={{ flex: 1 }}>
-          <span style={labelStyle}>工数 (h)</span>
+          <span style={labelStyle}>{UI.workloadHoursLabel}</span>
           <input
             type="number" min={1} value={workloadDraft}
             onChange={e => setWorkloadDraft(Number(e.target.value))}
@@ -493,11 +493,11 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
       </div>
 
       <div style={{ ...labelStyle, marginBottom: 6 }}>
-        作業者割り当て ({task.slots.length} / {task.maxWorker}名)
+        {UI.workerAssignmentSectionLabel(task.slots.length, task.maxWorker)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {task.slots.length === 0 && (
-          <div style={{ color: '#9aa8b8', fontStyle: 'italic', fontSize: 11 }}>割り当てなし</div>
+          <div style={{ color: '#9aa8b8', fontStyle: 'italic', fontSize: 11 }}>{UI.noAssignmentsLabel}</div>
         )}
         {task.slots.map(slot => (
           <div key={slot.assignmentIndex} style={{ padding: 8, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4 }}>
@@ -513,14 +513,14 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <span style={labelStyle}>備考</span>
+        <span style={labelStyle}>{UI.remarksLabel}</span>
         <textarea
           key={task.taskId}
           defaultValue={task.description ?? ''}
           onBlur={e => onChangeOpTask(task.taskId, { description: e.target.value })}
           rows={3}
           style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
-          placeholder="備考を入力..."
+          placeholder={UI.remarksPlaceholder}
         />
       </div>
     </div>

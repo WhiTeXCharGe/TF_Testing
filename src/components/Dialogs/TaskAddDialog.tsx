@@ -5,6 +5,7 @@ import { HOURS_PER_DAY } from '../../config/appConfig';
 import { generateDateRange, isWeekend } from '../../utils/dateUtils';
 import { Workflow } from '../../types/envConfig';
 import { SearchableSelect, SelectOption } from '../common/SearchableSelect';
+import { UI } from '../../config/uiText';
 
 const MISC_WORKFLOW_ID = 'wf_misc';
 
@@ -32,8 +33,8 @@ interface MiscEntry {
   workerDates: WorkerDateEntry[];
 }
 
-function makeWorkerDate(planStart: string): WorkerDateEntry {
-  return { workerId: '', startDate: planStart, endDate: '', hoursPerDay: HOURS_PER_DAY, flexibility: 'Flexible' };
+function makeWorkerDate(planStart: string, defaultFlexibility: PlanFlexibility = 'Flexible'): WorkerDateEntry {
+  return { workerId: '', startDate: planStart, endDate: '', hoursPerDay: HOURS_PER_DAY, flexibility: defaultFlexibility };
 }
 
 // ── Dialog ────────────────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ export function TaskAddDialog() {
     miscTaskId: '',
     isNewTask: false,
     newTaskName: '',
-    workerDates: [makeWorkerDate(planStart)],
+    workerDates: [makeWorkerDate(planStart, 'Fixed')],
   });
 
   const [unavailWorkerIds, setUnavailWorkerIds] = useState<string[]>([]);
@@ -164,7 +165,7 @@ export function TaskAddDialog() {
 
   const resetState = () => {
     setRegular({ deviceId: '', phaseId: '', opTaskId: '', workerDates: [makeWorkerDate(planStart)] });
-    setMisc({ miscTaskId: '', isNewTask: false, newTaskName: '', workerDates: [makeWorkerDate(planStart)] });
+    setMisc({ miscTaskId: '', isNewTask: false, newTaskName: '', workerDates: [makeWorkerDate(planStart, 'Fixed')] });
     setUnavailWorkerIds([]);
     setUnavailStart(planStart);
     setUnavailEnd('');
@@ -189,24 +190,24 @@ export function TaskAddDialog() {
   return (
     <div style={S.overlay} onClick={e => e.target === e.currentTarget && handleClose()}>
       <div style={S.modal}>
-        <div style={S.titleBar}>割付追加</div>
+        <div style={S.titleBar}>{UI.taskAddDialogTitle}</div>
 
         <div style={S.body}>
           {/* Step 1: Add type */}
           <div style={S.card}>
-            <div style={S.cardHeader}><span style={S.cardTitle}>追加タイプ選択</span></div>
+            <div style={S.cardHeader}><span style={S.cardTitle}>{UI.addTypeSectionTitle}</span></div>
             <div style={{ ...S.cardBody, flexDirection: 'row', gap: 16 }}>
               <label style={S.radioLabel}>
                 <input type="radio" checked={addType === 'regular'} onChange={() => setAddType('regular')} />
-                <span style={{ marginLeft: 6 }}>通常ワークフロー</span>
+                <span style={{ marginLeft: 6 }}>{UI.addTypeRegular}</span>
               </label>
               <label style={S.radioLabel}>
                 <input type="radio" checked={addType === 'misc'} onChange={() => setAddType('misc')} />
-                <span style={{ marginLeft: 6 }}>その他作業 (Misc)</span>
+                <span style={{ marginLeft: 6 }}>{UI.addTypeMisc}</span>
               </label>
               <label style={S.radioLabel}>
                 <input type="radio" checked={addType === 'unavailable'} onChange={() => setAddType('unavailable')} />
-                <span style={{ marginLeft: 6 }}>休日・不在設定</span>
+                <span style={{ marginLeft: 6 }}>{UI.addTypeUnavailable}</span>
               </label>
             </div>
           </div>
@@ -214,17 +215,17 @@ export function TaskAddDialog() {
           {/* Regular flow */}
           {addType === 'regular' && (
             <div style={S.card}>
-              <div style={S.cardHeader}><span style={S.cardTitle}>装置・工程・作業 選択</span></div>
+              <div style={S.cardHeader}><span style={S.cardTitle}>{UI.regularSectionTitle}</span></div>
               <div style={S.cardBody}>
                 <div style={S.row3}>
-                  <Field label="装置 *">
+                  <Field label={UI.dialogDeviceLabel}>
                     <SearchableSelect
                       value={regular.deviceId}
                       options={regularDevices.map(d => ({ value: d.id, label: d.name ?? d.id }))}
                       onChange={v => setRegular(r => ({ ...r, deviceId: v, phaseId: '', opTaskId: '' }))}
                     />
                   </Field>
-                  <Field label="工程 *">
+                  <Field label={UI.dialogPhaseLabel}>
                     <SearchableSelect
                       value={regular.phaseId}
                       options={regPhases.map(p => ({ value: p.id, label: p.name ?? p.id }))}
@@ -232,7 +233,7 @@ export function TaskAddDialog() {
                       disabled={!regular.deviceId}
                     />
                   </Field>
-                  <Field label="作業 *">
+                  <Field label={UI.dialogOperationLabel}>
                     <SearchableSelect
                       value={regular.opTaskId}
                       options={regOpTasks.map(o => ({ value: o.id, label: o.name ?? o.operation }))}
@@ -252,7 +253,7 @@ export function TaskAddDialog() {
                 </div>
 
                 <div style={{ borderTop: '1px solid #e8e8e8', paddingTop: 8, marginTop: 4 }}>
-                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>作業者・日程</div>
+                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>{UI.workerScheduleSectionLabel}</div>
                   {regular.workerDates.map((wd, idx) => (
                     <WorkerDateRow
                       key={idx}
@@ -266,7 +267,7 @@ export function TaskAddDialog() {
                   ))}
                   <button style={S.addWorkerBtn}
                     onClick={() => setRegular(r => ({ ...r, workerDates: [...r.workerDates, makeWorkerDate(planStart)] }))}>
-                    + 作業者追加
+                    {UI.addWorkerBtn}
                   </button>
                 </div>
               </div>
@@ -276,21 +277,21 @@ export function TaskAddDialog() {
           {/* Misc flow */}
           {addType === 'misc' && (
             <div style={S.card}>
-              <div style={S.cardHeader}><span style={S.cardTitle}>その他作業 選択</span></div>
+              <div style={S.cardHeader}><span style={S.cardTitle}>{UI.miscSectionTitle}</span></div>
               <div style={S.cardBody}>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <label style={S.radioLabel}>
                     <input type="radio" checked={!misc.isNewTask} onChange={() => setMisc(m => ({ ...m, isNewTask: false }))} />
-                    <span style={{ marginLeft: 6 }}>既存のタスク</span>
+                    <span style={{ marginLeft: 6 }}>{UI.miscExistingTaskLabel}</span>
                   </label>
                   <label style={S.radioLabel}>
                     <input type="radio" checked={misc.isNewTask} onChange={() => setMisc(m => ({ ...m, isNewTask: true }))} />
-                    <span style={{ marginLeft: 6 }}>新規タスク作成</span>
+                    <span style={{ marginLeft: 6 }}>{UI.miscNewTaskLabel}</span>
                   </label>
                 </div>
 
                 {!misc.isNewTask ? (
-                  <Field label="タスク選択 *">
+                  <Field label={UI.miscTaskSelectLabel}>
                     <SearchableSelect
                       value={misc.miscTaskId}
                       options={miscWorkflowTasks.map(wt => ({ value: wt.id, label: wt.name ?? wt.id }))}
@@ -298,15 +299,15 @@ export function TaskAddDialog() {
                     />
                   </Field>
                 ) : (
-                  <Field label="新タスク名 *">
+                  <Field label={UI.miscNewTaskNameLabel}>
                     <input style={S.input} type="text" value={misc.newTaskName}
-                      placeholder="タスク名を入力"
+                      placeholder={UI.miscNewTaskNamePlaceholder}
                       onChange={e => setMisc(m => ({ ...m, newTaskName: e.target.value }))} />
                   </Field>
                 )}
 
                 <div style={{ borderTop: '1px solid #e8e8e8', paddingTop: 8, marginTop: 8 }}>
-                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>作業者・日程</div>
+                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>{UI.workerScheduleSectionLabel}</div>
                   {misc.workerDates.map((wd, idx) => (
                     <WorkerDateRow
                       key={idx}
@@ -319,8 +320,8 @@ export function TaskAddDialog() {
                     />
                   ))}
                   <button style={S.addWorkerBtn}
-                    onClick={() => setMisc(m => ({ ...m, workerDates: [...m.workerDates, makeWorkerDate(planStart)] }))}>
-                    + 作業者追加
+                    onClick={() => setMisc(m => ({ ...m, workerDates: [...m.workerDates, makeWorkerDate(planStart, 'Fixed')] }))}>
+                    {UI.addWorkerBtn}
                   </button>
                 </div>
               </div>
@@ -329,23 +330,23 @@ export function TaskAddDialog() {
           {/* Unavailable flow */}
           {addType === 'unavailable' && (
             <div style={S.card}>
-              <div style={S.cardHeader}><span style={S.cardTitle}>休日・不在設定</span></div>
+              <div style={S.cardHeader}><span style={S.cardTitle}>{UI.addTypeUnavailable}</span></div>
               <div style={S.cardBody}>
                 <div style={{ display: 'flex', gap: 12 }}>
-                  <Field label="開始日 *">
+                  <Field label={UI.dialogStartLabel}>
                     <input style={S.input} type="date" value={unavailStart}
                       onChange={e => setUnavailStart(e.target.value)} />
                   </Field>
-                  <Field label="終了日 *">
+                  <Field label={UI.dialogEndLabel}>
                     <input style={S.input} type="date" value={unavailEnd}
                       onChange={e => setUnavailEnd(e.target.value)} />
                   </Field>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>対象作業者（複数選択可） *</div>
+                  <div style={{ fontSize: 11, color: '#555', fontWeight: 'bold', marginBottom: 6 }}>{UI.unavailWorkersLabel}</div>
                   <input
                     type="text"
-                    placeholder="作業者を検索..."
+                    placeholder={UI.workerSearchPlaceholder}
                     value={unavailWorkerSearch}
                     onChange={e => setUnavailWorkerSearch(e.target.value)}
                     style={{ ...S.input, marginBottom: 4 }}
@@ -378,7 +379,7 @@ export function TaskAddDialog() {
                     })}
                   </div>
                   <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>
-                    {unavailWorkerIds.length > 0 ? `${unavailWorkerIds.length}人選択中` : '作業者を選択してください'}
+                    {unavailWorkerIds.length > 0 ? UI.workerSelectedCount(unavailWorkerIds.length) : UI.workerSelectPrompt}
                   </div>
                 </div>
               </div>
@@ -387,8 +388,8 @@ export function TaskAddDialog() {
         </div>
 
         <div style={S.footer}>
-          <button style={canSubmit ? S.primaryBtn : S.disabledBtn} onClick={handleOk} disabled={!canSubmit}>OK</button>
-          <button style={S.cancelBtn} onClick={handleClose}>キャンセル</button>
+          <button style={canSubmit ? S.primaryBtn : S.disabledBtn} onClick={handleOk} disabled={!canSubmit}>{UI.dialogOk}</button>
+          <button style={S.cancelBtn} onClick={handleClose}>{UI.dialogCancel}</button>
         </div>
       </div>
     </div>
@@ -415,7 +416,7 @@ function WorkerDateRow({
     <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', marginBottom: 6 }}>
       <div style={{ flex: 2, minWidth: 0 }}>
         <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>
-          作業者 {idx + 1} *
+          {UI.workerFieldLabel(idx + 1)}
         </label>
         <SearchableSelect
           value={wd.workerId}
@@ -427,29 +428,29 @@ function WorkerDateRow({
         />
       </div>
       <div style={{ flex: 1.5 }}>
-        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>開始日 *</label>
+        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>{UI.dialogStartLabel}</label>
         <input style={S.input} type="date" value={wd.startDate} onChange={e => onChange({ startDate: e.target.value })} />
       </div>
       <div style={{ flex: 1.5 }}>
-        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>終了日 *</label>
+        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>{UI.dialogEndLabel}</label>
         <input style={S.input} type="date" value={wd.endDate} onChange={e => onChange({ endDate: e.target.value })} />
       </div>
       <div style={{ flex: 1 }}>
-        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>時間/日</label>
+        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>{UI.dialogHoursLabel}</label>
         <select style={S.input} value={wd.hoursPerDay} onChange={e => onChange({ hoursPerDay: Number(e.target.value) })}>
           {hoursOptions.map(h => <option key={h} value={h}>{h}h</option>)}
         </select>
       </div>
       <div style={{ flex: 1 }}>
-        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>柔軟性</label>
+        <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>{UI.dialogFlexLabel}</label>
         <select style={S.input} value={wd.flexibility} onChange={e => onChange({ flexibility: e.target.value as PlanFlexibility })}>
-          <option value="Flexible">Flex</option>
-          <option value="Reluctant">Rel</option>
-          <option value="Fixed">Fix</option>
+          <option value="Flexible">{UI.flexibleDesc}</option>
+          <option value="Reluctant">{UI.reluctantDesc}</option>
+          <option value="Fixed">{UI.fixedDesc}</option>
         </select>
       </div>
       {canRemove && (
-        <button onClick={onRemove} style={{ ...styles.iconBtn, color: '#b71c1c', alignSelf: 'flex-end', marginBottom: 1 }} title="削除">
+        <button onClick={onRemove} style={{ ...styles.iconBtn, color: '#b71c1c', alignSelf: 'flex-end', marginBottom: 1 }} title={UI.deleteButton}>
           −
         </button>
       )}

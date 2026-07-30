@@ -1,6 +1,7 @@
 import { EnvConfig, Operation, Worker } from '../../types/envConfig';
 import { ScheduleData } from '../../types/schedule';
 import { getColorForPhaseIndex } from '../../utils/colorUtils';
+import { UI } from '../../config/uiText';
 
 export interface HeaderMonthGroup {
   label: string;
@@ -75,7 +76,7 @@ function buildMonthGroups(dates: string[]): HeaderMonthGroup[] {
       if (ny !== year || nm !== month) break;
       j += 1;
     }
-    groups.push({ label: `${Number(month)}月`, startIndex: i, span: j - i + 1 });
+    groups.push({ label: UI.monthLabel(Number(month)), startIndex: i, span: j - i + 1 });
     i = j + 1;
   }
   return groups;

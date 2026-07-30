@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { overwriteSaveFiles } from '../services/fileService';
+import { UI } from '../config/uiText';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch } = useAppContext();
@@ -31,7 +32,7 @@ export function useKeyboardShortcuts() {
         }
       }
       if (e.key === 'Delete' && state.selectedAssignmentIndex !== null) {
-        if (window.confirm('選択したタスクを削除しますか？')) {
+        if (window.confirm(UI.deleteConfirm)) {
           dispatch({ type: 'DELETE_ASSIGNMENT', payload: state.selectedAssignmentIndex });
         }
       }

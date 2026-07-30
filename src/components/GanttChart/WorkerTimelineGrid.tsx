@@ -33,14 +33,14 @@ const EXTRA_COL_DESC_FIELD: Partial<Record<ExtraColKey, ExtraDescField>> = {
   overseasDriving: '海外運転',
 };
 const EXTRA_COLUMNS: Array<{ key: ExtraColKey; label: string; width: number }> = [
-  { key: 'workType', label: '業務形態', width: 96 },
-  { key: 'assignedDuties', label: '担当職務', width: 140 },
+  { key: 'workType', label: UI.extraColWorkType, width: 96 },
+  { key: 'assignedDuties', label: UI.extraColAssignedDuties, width: 140 },
   { key: 'visa', label: 'VISA', width: 70 },
-  { key: 'overseasDriving', label: '海外運転', width: 92 },
+  { key: 'overseasDriving', label: UI.extraColOverseasDriving, width: 92 },
 ];
 const TOGGLE_COL_WIDTH = 22;
 
-const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
+const DOW_JA = UI.dowLabels;
 
 type DragMode = 'move' | 'resize-start' | 'resize-end';
 
@@ -495,7 +495,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
             {/* Toggle button — always rightmost */}
             <div
               onClick={() => setIsExtraExpanded(v => !v)}
-              title={isExtraExpanded ? '詳細列を折りたたむ' : '詳細列を展開する'}
+              title={isExtraExpanded ? UI.collapseColumnsTitle : UI.expandColumnsTitle}
               style={{
                 width: TOGGLE_COL_WIDTH,
                 minWidth: TOGGLE_COL_WIDTH,
@@ -586,7 +586,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                         outline: 'none',
                         cursor: 'text',
                       }}
-                      title="クリックして編集"
+                      title={UI.editInPlaceTitle}
                     />
                   ) : (
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -633,7 +633,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                           outline: 'none',
                           cursor: 'text',
                         }}
-                        title="クリックして編集"
+                        title={UI.editInPlaceTitle}
                       />
                     ) : (
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -836,7 +836,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       width,
                       top: 4,
                       height: ROW_HEIGHT - 8,
-                      borderRadius: segment.planFlexibility === 'Fixed' ? 0 : 8,
+                      borderRadius: (segment.planFlexibility === 'Fixed' || segment.kind === 'unavailable') ? 0 : 8,
                       border: isSelected
                         ? '2px solid #145da0'
                         : hasViolation
@@ -1156,7 +1156,7 @@ function PopupMultiSelect({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="検索..."
+              placeholder={UI.filterSearchPlaceholder}
               style={{
                 width: '100%', padding: '3px 6px', border: '1px solid #c0d0e0',
                 borderRadius: 3, fontSize: 11, fontFamily: 'Meiryo, sans-serif',
