@@ -19,6 +19,7 @@ Three files, all via CLI flags (no more hardcoded filenames):
 `作業者`); every value is read from `_r` first, and only falls back to the
 base file when `_r`'s cell is blank.
 
+python decoder6.py --su-others "20260726 SU_Others.xlsm" --seiban-info "初期データ追加情報.xlsx" --seiban-info-r "初期データ追加情報 _r.xlsx" --plan-start 2026/08/01
 ---
 
 ## What's different from decoder5
