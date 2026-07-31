@@ -2,7 +2,9 @@
 
 This documents `decoder6.py`, generated from/replacing `decoder5.py`. It covers
 what changed, exactly which cells/modules get cut and why, and how workload
-hours get computed.
+hours get computed. Updated after a third pass based on real test runs
+(current test config: `--plan-start 2026/08/01`, no `--plan-end`, `予定表_2025`
+excluded).
 
 ## Inputs
 
@@ -14,12 +16,11 @@ Three files, all via CLI flags (no more hardcoded filenames):
 | `--seiban-info` | `初期データ追加情報.xlsx` | Base planned-module data (mostly a stub in practice) |
 | `--seiban-info-r` | `初期データ追加情報 _r.xlsx` | Revised planned-module data — **authoritative**, used first |
 | `--plan-start` / `--plan-end` | *(optional)* | Force the plan range instead of deriving it from SU_Others |
+| `--su-sheets` | *(optional, default `予定表_2026`)* | Which SU_Others sheet(s) to read |
 
 `--seiban-info` and `--seiban-info-r` share the same sheet names (`製番`,
 `作業者`); every value is read from `_r` first, and only falls back to the
 base file when `_r`'s cell is blank.
-
-python decoder6.py --su-others "20260726 SU_Others.xlsm" --seiban-info "初期データ追加情報.xlsx" --seiban-info-r "初期データ追加情報 _r.xlsx" --plan-start 2026/08/01
 
 ---
 
@@ -29,55 +30,74 @@ python decoder6.py --su-others "20260726 SU_Others.xlsm" --seiban-info "初期�
    `スキル集計` (numeric skill levels) — both gone. decoder6 reads `製番` and
    `作業者` from the two 初期データ追加情報 files instead.
 
-2. **SU_Others column layout is auto-detected**, not hardcoded. The old sheet
+2. **`予定表_2025` is excluded by default.** decoder6 reads only
+   `予定表_2026` unless `--su-sheets` explicitly lists more. (Column
+   auto-detection still supports the old 2025 layout if it's ever re-added.)
+
+3. **SU_Others column layout is auto-detected**, not hardcoded. The old sheet
    (`予定表_2025`) has company/name/role in columns A/B/E; the new sheet
    (`予定表_2026`) moved things around and added an ID column, so name is now
    column C and role is column G (`担当職種`). decoder6 reads the header row
    and locates each column by its Japanese label, so both sheet generations
-   work through the same code path. Both sheets are read by default
-   (`--su-sheets 予定表_2025,予定表_2026`).
+   work through the same code path.
 
-3. **Phase 2 (Hardware Setup) now has two operations** instead of one: Mech
+4. **Phase 2 (Hardware Setup) now has two operations** instead of one: Mech
    (`p2o1`, from 作業種別=M) and Elec (`p2o2`, from 作業種別=E), each with its
    own headcount/workload — matching the new 製番 sheet, which has separate
    M and E columns where decoder5's source only had one combined phase-2
    field.
 
-4. **Worker regular/spot classification is new.** 作業者 has one R/S column
+5. **Worker regular/spot classification is new.** 作業者 has one R/S column
    per worker (not per operation). decoder6 applies that single value across
    *all* of that worker's real task-skill operations
    (`worker_type_by_operation: {p2o1: regular, p3o1: regular, ...}`) —
    whichever of p2o1/p2o2/p3o1/p4o1 the worker actually has a nonzero skill
    for.
 
-5. **Missing dates default to the plan range**, per-field. decoder5 either
-   had a fully-specified date row or dropped the module. decoder6's 製番 rows
-   are often partially blank (only 26/60 rows had a phase-2 start date in the
-   sample data); each missing field defaults independently (see "Defaulting
-   rules" below) instead of nuking the whole row if one field is blank.
+6. **SU_Others is the main source of truth for whether a module is real —
+   同 decoder5's original design.** A module missing usable p2/p3/p4 dates in
+   *both* 初期データ追加情報 files is only dummy if it *also* has no real
+   occurrences in SU_Others. If SU_Others does have real data for it, the
+   module is kept and a nominal planned window is built from SU_Others' own
+   actual span instead — 製番 is a planning *reference*, not a gate. See
+   "Dummy vs. rescued rules for 製番" below.
 
-6. **`SKIP_MODULE_IF_NO_SU_MATCH` defaults to `False`** (decoder5 defaulted
-   to `True`). A module that never appears in SU_Others still shows up in
-   Schedule.yaml using its planned/defaulted dates, instead of being omitted
-   entirely.
+7. **Plan range no longer dummies a module for starting early — it splits
+   Fixed vs. Flexible instead.** A module/phase that already started before
+   `plan_start` isn't dropped; its assignments are marked
+   `plan_flexibility: Fixed` (already happened, not up for the scheduler to
+   touch), while phases at/after `plan_start` stay `Flexible`. See
+   "Fixed vs. Flexible" below.
 
-7. **Output schema matches the current GanttChartEditor types**
-   (`src/types/schedule.ts`, `envConfig.ts`, `yamlService.ts`), not
-   decoder5's older shape:
-   - `workload_hours` instead of `workload_days`.
-   - IDs are `e{n}p{phase}o{k}` (no underscores) instead of `e{n}_p{phase}`.
-   - "Other work" and "Personal Business" are now flat `misc_task_list`
-     entries (no phase/operation wrapper) — assignments reference the misc
-     task's own `id` directly as `operation_task`.
-   - Workers carry `worker_type_by_operation` (new).
-   - No numeric skill levels (0-5) — decoder6 has no numeric-skill source
-     anymore, so `skill_map` is binary: `1` if the worker's SU_Others role
-     text indicates that operation, else `0` (see below).
+8. **`SKIP_MODULE_IF_NO_SU_MATCH` defaults to `False`** (decoder5 defaulted
+   to `True`). A module with complete planned dates but zero actual
+   SU_Others matches still shows up in Schedule.yaml using its planned dates,
+   instead of being omitted entirely.
 
-8. **Two heuristics tuned differently after actually running it** (see
-   "Bugs found by running it" at the bottom) — `CUT_MODULE_IF_PHASE_ZERO_WORKLOAD`
-   is off by default, and phase-4's *length* (for ratio/proportion purposes
-   only) is capped.
+9. **Worker `description` block, sourced from SU_Others (not 作業者).** See
+   "Worker description fields" below.
+
+10. **Output schema matches the current GanttChartEditor types**
+    (`src/types/schedule.ts`, `envConfig.ts`, `yamlService.ts`), not
+    decoder5's older shape:
+    - `workload_hours` instead of `workload_days`.
+    - IDs are `e{n}p{phase}o{k}` (no underscores) instead of `e{n}_p{phase}`.
+    - `environment.workflow_list` only has `wf_tool` — no `wf_other`/
+      `wf_personal_business` catalog entries; those only exist as plain
+      string tags on flat `misc_task_list` entries in Schedule.yaml, matching
+      the reference schema (which has no catalog entry for them either).
+    - "Other work" and "Personal Business" are flat `misc_task_list` entries
+      (no phase/operation wrapper) — assignments reference the misc task's
+      own `id` directly as `operation_task`.
+    - Workers carry `worker_type_by_operation` and `description` (new).
+    - No numeric skill levels (0-5) — decoder6 has no numeric-skill source
+      anymore, so `skill_map` is binary: `1` if the worker's SU_Others role
+      text indicates that operation, else `0` (see below).
+
+11. **Two heuristics tuned differently after actually running it** (see
+    "Bugs found by running it" at the bottom) — `CUT_MODULE_IF_PHASE_ZERO_WORKLOAD`
+    and the "head of plan range" rule are both off by default, and phase-4's
+    *length* (for ratio/proportion purposes only) is capped.
 
 ---
 
@@ -85,8 +105,10 @@ python decoder6.py --su-others "20260726 SU_Others.xlsm" --seiban-info "初期�
 
 1. Parse SU_Others → `worker_date_map` (cell text per worker/day),
    `worker_personal_map` (grey PB cells), `worker_roles` (per-worker role
-   text), red cells → `unavailable_dates`.
-2. Parse 製番 (merged base + `_r`) → `planned_meta` per module code.
+   text), `worker_description` (業務形態/VISA/海外運転/OJT per worker), red
+   cells → `unavailable_dates`.
+2. Parse 製番 (merged base + `_r`) → `planned_meta` per module code, applying
+   the dummy/default rules below.
 3. Parse 作業者 (merged base + `_r`) → R/S per worker name.
 4. **Cut/cleanup pipeline** (below) mutates `worker_date_map` in place,
    breaking tool-codes it doesn't trust into non-matching text (so they fall
@@ -94,32 +116,107 @@ python decoder6.py --su-others "20260726 SU_Others.xlsm" --seiban-info "初期�
 5. **Shift**: for each surviving module code, take its real worked days from
    SU_Others and split them into p2/p3/p4 windows (`build_shifted_meta`).
 6. **Assign**: re-walk `worker_date_map`; anything landing inside a shifted
-   phase window becomes a real `Flexible` assignment; everything else becomes
-   a `Fixed` misc/personal-business assignment.
+   phase window becomes a real tool-task assignment, marked `Fixed` if that
+   phase's shifted start is before `plan_start` or `Flexible` otherwise (see
+   "Fixed vs. Flexible" below); everything else becomes a `Fixed`
+   misc/personal-business assignment.
 7. Compute `workload_hours` / `recommends_worker_min/max` from the real
    assignment counts.
 8. Write `EnvConfig.yaml`, `Schedule.yaml`, `TransformationLog.txt`.
 
 ---
 
-## Cell/module cut rules (why something becomes "dummy other" instead of a real task)
+## Dummy vs. rescued rules for 製番 (module-level, in `parse_seiban_merged`)
 
-A tool-code cell is never deleted — it's "broken" (last character flipped so
-the regex `\d{3}[A-Z0-9]\d{5}A` no longer matches it), so it silently falls
-through to become a generic "other work" misc task instead of a scheduled
-tool-install task. Every cut is logged in `TransformationLog.txt` with the
-exact reason. In application order:
+This runs first and decides whether a module code gets a `planned_meta` entry
+at all. A code that fails here **never becomes a tool task** — any SU_Others
+cells bearing that code fall through to "other work" misc tasks, exactly like
+decoder5 treated codes missing from `新規製番リスト`. Each is logged per-code
+in `TransformationLog.txt` (`DUMMY:` = dropped, `NOTE:` = kept with a caveat).
+
+**SU_Others is the main source of truth** (decoder5's original philosophy:
+"SU_Others provides actual execution span"). 製番's p2/p3/p4 dates are only a
+*planned reference* used for proportions/ratio checks — real work always
+wins. Concretely:
+
+1. **p2/p3/p4 missing or out of order in both files:**
+   - If the module code has **no occurrences anywhere in SU_Others** either
+     → `DUMMY: missing phase start date(s)... and no SU_Others data found
+     either`. Genuinely no data anywhere, nothing to schedule.
+   - If the module code **does** have real SU_Others occurrences → **not
+     dummy.** A nominal planned window is built directly from SU_Others'
+     own actual first/last occurrence dates, split evenly across p2/p3/p4
+     (`_allocate_phase_lengths_v5`), logged as `NOTE: ...SU_Others is the
+     main source, so using its actual span ... as the planned reference
+     instead`. The real shift step (below) then re-derives the true p2/p3/p4
+     boundaries from role data anyway, so this nominal split mostly just
+     feeds the ratio-cut threshold (self-consistent by construction, since
+     "planned" ≈ "actual" here) and the tail tie-break.
+   - Real data: 34/60 codes have none of p2/p3/p4 in 製番, and most of those
+     still have real SU_Others data and get rescued this way — only a
+     handful have no SU_Others match either and are truly dummy.
+2. **希望納期 (delivery) is handled separately, always defaults, never dummies**
+   — see below.
+
+### Why delivery always defaults instead of ever triggering dummy
+
+Delivery is blank in **100%** of real rows in both files (0/60 filled),
+unlike p2/p3/p4 start (26/60 filled directly, more via the SU_Others rescue
+above). Treating a missing delivery the same as missing start dates would
+dummy every module. Instead: missing (or earlier-than-p4_start) delivery
+defaults to `max(p4_start, plan_end)`, logged as `NOTE:`, and the module
+proceeds normally otherwise.
+
+Phase lengths: `phase2_len = p3_start − p2_start`, `phase3_len = p4_start − p3_start`,
+`phase4_len = delivery − p4_start`. **For proportion/ratio purposes only**
+(splitting the actual SU_Others span, and rule C below), `phase4_len` is
+capped at `phase2_len + phase3_len` — see "Bugs found" for why. The real
+delivery date is still used as the module's actual planned end date in the
+output; only the *weight* it gets in ratio math is capped.
+
+## Fixed vs. Flexible (plan range no longer dummies early-starting modules)
+
+Earlier behavior dummied a module entirely if any part of it fell before
+`plan_start`. Changed: nothing gets dropped for this anymore. Instead, in
+`build_assignments_v6`, **per phase** (not per module, not per day): if that
+phase's real shifted start date is before `plan_start`, every assignment on
+that phase is written with `plan_flexibility: Fixed` (it already happened —
+don't let the scheduler move it); phases starting at/after `plan_start` stay
+`Flexible`.
+
+Real example (`--plan-start 2026/08/01`), module `530N02566A`: 製番 said
+p2=`08/10`, p3=`08/31`, but the real SU_Others data shows work from `07/20`
+onward. Since SU_Others wins, the shifted result is p2 = `2026/01/21 –
+2026/08/17`, p3 = `2026/08/18`, p4 = `2026/08/19 – ...`. p2 started long
+before the plan range → every p2 assignment (both Mech and Elec) is `Fixed`.
+p3 and p4 start after `plan_start` → their assignments are `Flexible`, i.e.
+still open for the scheduler. This matches exactly: "phase 2 already started,
+only p3/p4 are left to schedule."
+
+Note this is decided **per phase as a whole** by its start date, not
+per-day — a phase that straddles `plan_start` (starts before it, continues
+past it) is entirely `Fixed`, on the reasoning that work already
+substantially underway shouldn't be reshuffled by the optimizer.
+
+---
+
+## Cell/module cut rules (SU_Others side — why something becomes "dummy other" instead of a real task)
+
+These run after the 製番-level dummy rules above, only on module codes that
+survived. A tool-code cell is never deleted — it's "broken" (last character
+flipped so the regex `\d{3}[A-Z0-9]\d{5}A` no longer matches it), so it
+silently falls through to become a generic "other work" misc task instead of
+a scheduled tool-install task. In application order:
 
 ### A. `cut_su_outlier_cells` — per-module and per-worker noise filtering
 
-1. **Head-of-range cut**: if a module's *first* occurrence falls within the
-   first `DUMMY_HEAD_DAYS_FROM_PLAN_START = 10` days of the SU_Others plan
-   range, the **entire module** is cut. (Rationale: entries right at the very
-   start of the tracked calendar window are often carryover/phantom data from
-   before tracking began.) ⚠️ Now that decoder6 reads two combined sheets
-   (2025+2026), "first 10 days of the range" means 2025/01/01–01/10 for the
-   *whole* multi-year dataset — this caught one heavily-worked real module
-   (`840700002A`) in testing. Left as-is; worth reviewing (see bottom).
+1. **Head-of-range cut — disabled by default (`ENABLE_HEAD_OF_RANGE_CUT = False`).**
+   decoder5's rule: if a module's *first* occurrence falls within the first
+   `DUMMY_HEAD_DAYS_FROM_PLAN_START = 10` days of the SU_Others plan range,
+   cut the entire module (rationale: entries right at the very start of the
+   tracked window are often carryover/phantom data). This wrongly caught a
+   real, heavily-worked module (`840700002A`, 1456 cells) in testing, so it's
+   off. Set the flag back to `True` in the file to re-enable.
 2. **Too little evidence**: if a module has fewer than `4` unique worked days
    (`cut_module_if_unique_days_lt`), or fewer than `4` total cells
    (`cut_module_if_total_cells_lt`), or only `1` cell total → cut entirely.
@@ -150,10 +247,9 @@ task at all, not even with zero workload).
 
 If remaining unique worked days `< ceil(planned_total_days × MIN_LEFT_DATE_SPAN_RATIO)`
 = `ceil(planned_total_days × 0.20)`, cut the module. `planned_total_days` is
-the module's planned p2+p3+p4 length — see the phase-4 capping note below,
-since without it this rule over-fires badly on the new data.
+the module's planned p2+p3+p4 length, using the phase-4-capped length above.
 
-### D. `cut_module_if_phase_zero_workload` — **disabled by default in decoder6**
+### D. `cut_module_if_phase_zero_workload` — **disabled by default**
 
 decoder5 pre-checked, before shifting, whether a naive calendar-proportional
 split of the actual span would leave any of p2/p3/p4 with zero worked days,
@@ -179,41 +275,36 @@ pre-split.
 
 If the actual worked span is more than 365 days outside the planned p2–p4
 window (measured from either edge), the module is cut and treated as if it
-were never in 製番 at all.
+were never in 製番 at all. This is now the main guard against wildly
+implausible actual-vs-planned mismatches, since the plan range itself no
+longer dummies anything (see "Fixed vs. Flexible" above).
 
 ### H. `SKIP_MODULE_IF_NO_SU_MATCH` (default `False` in decoder6)
 
 If `True`, any module with zero real SU_Others matches is omitted from
-Schedule.yaml entirely, instead of appearing with its planned/defaulted dates
-and zero workload.
+Schedule.yaml entirely, instead of appearing with its planned dates and zero
+workload.
 
 ---
 
-## Defaulting rules (missing 製番 dates)
+## Worker description fields
 
-For each module, p2/p3/p4 start dates and 希望納期 (delivery) are resolved
-independently, in order:
+Source is **SU_Others (`予定表_2026`), not 作業者** — 作業者 only has 4 columns
+(company/ID/name/R-S), it doesn't carry these. The relevant SU_Others header
+columns are read by label, same auto-detection approach as company/name/role:
 
-- `p2_start` missing → defaults to `plan_start`.
-- `p3_start` missing → defaults to `p2_start`; if present but `< p2_start`,
-  clamped up to `p2_start`.
-- `p4_start` missing → defaults to `p3_start`; same clamp rule.
-- `delivery` missing → defaults to `max(p4_start, plan_end)`; same clamp
-  rule if present but earlier than `p4_start`.
+| EnvConfig `description` key | SU_Others column(s) |
+|---|---|
+| `業務形態` | `業務形態` column, as-is |
+| `VISA` | `VISA1` + `" "` + `VISA2`, joined and trimmed |
+| `海外運転` | `海外運転` column, as-is |
+| `備考` | `"OJT"` if the `OJT` column has any mark (e.g. `〇`), otherwise the key is omitted entirely |
 
-Every default/clamp is logged per-field in `TransformationLog.txt`
-("DEFAULTED field(s) [...]"), so you can tell a module with one blank field
-apart from one with none of its planned dates at all.
-
-Phase lengths: `phase2_len = p3_start − p2_start`, `phase3_len = p4_start − p3_start`,
-`phase4_len = delivery − p4_start`. **For proportion/ratio purposes only**
-(splitting the actual span, and the ratio cut above), `phase4_len` is capped
-at `phase2_len + phase3_len` — see "Bugs found" below for why. The real
-delivery date is still used as the module's actual planned end date in the
-output; only the *weight* it gets in ratio math is capped.
-
-If a module ends up with zero total planned length even after defaulting, it
-collapses to a single day at `plan_start`.
+A worker only gets a `description` block at all if at least one of these four
+source cells is non-empty. Workers merged in only from 作業者 (never seen in
+SU_Others) never get one. Since these columns only exist on `予定表_2026`'s
+layout, description stays empty if `予定表_2025` is ever re-added without a
+matching column mapping.
 
 ---
 
@@ -278,7 +369,7 @@ skill for.
    `530N02566A` has 79 genuine worked days but was being cut because the
    ratio check (based on an 822-day "planned total") wanted 165+. Fixed by
    capping phase-4's *length* to `phase2_len + phase3_len` for ratio purposes
-   only (see "Defaulting rules" above).
+   only.
 
 3. **Phase-zero pre-check false positives.** Rule D's naive calendar-
    proportional split doesn't hold up against the new data's actual work
@@ -288,14 +379,40 @@ skill for.
    which checks the real shifted result, not a synthetic split) still guards
    against genuinely-empty phases.
 
+4. **"All-or-nothing" dummy rule over-fired on delivery.** First attempt at
+   "missing info in both files → dummy" applied the same rule to 希望納期 as
+   to p2/p3/p4, which dummied all 60 modules (delivery is blank everywhere).
+   Fixed by special-casing delivery to always default instead of ever
+   triggering dummy.
+
+5. **Same over-eager dummy rule also ignored SU_Others.** The first version
+   of the "missing 製番 info → dummy" rule dropped a module purely on 製番
+   being incomplete, even when the module had substantial real SU_Others
+   data. Since SU_Others is supposed to be the primary source (matching
+   decoder5's philosophy), this was backwards. Fixed by only dummying when
+   the code is missing from *both* 製番 (incomplete/out-of-order) *and*
+   SU_Others (no occurrences at all) — see "Dummy vs. rescued rules" above.
+
+6. **Hand-rolled YAML string quoting didn't escape special characters.**
+   `_ys()` (the helper writing worker/task/misc-task `name`/`description`
+   values) wrote free-text strings unquoted. Real SU_Others "other work"
+   labels include values like a bare `,` or `-` (junk/placeholder cells),
+   which broke YAML's plain-scalar syntax outright (`name: ,` fails to
+   parse). Fixed: quote+escape (via `json.dumps`, which produces valid
+   YAML double-quoted scalars) whenever a value contains YAML-risky
+   characters (`: , # [ ] { } & * ! | > ' " % @` `, or a leading `-`/`?`),
+   has leading/trailing whitespace, is a YAML keyword (`true`/`null`/...),
+   or looks like a bare number. Verified by round-tripping both output
+   files through a real YAML parser, not just visual inspection.
+
 ## Still open / worth your judgment
 
-- Rule A's "first 10 days of plan range" head-cut caught one real,
-  heavily-worked module (`840700002A`) once the plan range spans two years.
-  Not changed — I don't have enough context to know whether that's real
-  carryover noise (as decoder5 assumed for a single-year sheet) or a
-  legitimate early start. Check `TransformationLog.txt` for it.
 - 工数 (workload man-hours) in 製番 is essentially always blank in the real
   data seen so far, so it's currently unused entirely (only 推奨人数 headcount
   feeds `recommends_worker_max`). If it starts getting filled in, it isn't
   wired in yet.
+- The Fixed/Flexible split (see above) is decided per-phase, not per-day —
+  a phase straddling `plan_start` is entirely `Fixed`. If finer-grained
+  per-day splitting inside a straddling phase is wanted instead, that's a
+  bigger change (would need to split a single phase's assignments, and
+  possibly the phase itself, at the plan_start boundary).

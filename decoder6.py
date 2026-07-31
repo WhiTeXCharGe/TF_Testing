@@ -46,6 +46,7 @@
 # ---------------------------------------------------------------------
 
 import argparse
+import json
 import re
 import sys
 from collections import defaultdict
@@ -78,12 +79,20 @@ CUT_MODULE_IF_PHASE_ZERO_WORKLOAD = False
 
 # Decoder5 default was True (skip modules with no SU_Others match entirely).
 # Decoder6 default is False: modules with no actual work found still show up
-# in Schedule.yaml, using their (possibly plan-range-defaulted) planned dates.
+# in Schedule.yaml, using their planned 製番 dates (as long as those dates are
+# complete and fit inside the plan range — see parse_seiban_merged).
 SKIP_MODULE_IF_NO_SU_MATCH = False
 
 MIN_WORKED_DAYS_FOR_TOOL = 4
 MIN_LEFT_DATE_SPAN_RATIO = 0.20
 
+# Disabled: decoder5's "module appears within the first N days of the
+# SU_Others plan range -> treat entire module as dummy" rule assumed a
+# single-year sheet, where day-1 entries were likely carryover/phantom data.
+# Now that the plan range can span years, "first 10 days of the range" no
+# longer reliably means that; it wrongly zapped a real, heavily-worked module
+# in testing. Set back to True to re-enable.
+ENABLE_HEAD_OF_RANGE_CUT = False
 DUMMY_HEAD_DAYS_FROM_PLAN_START = 10
 ONGOING_TAIL_KEEP_GAP_DAYS = 30
 
@@ -449,7 +458,7 @@ def cut_su_outlier_cells(
     plan_range = su_data.get("plan_range", {}) if su_data else {}
     plan_start = _as_timestamp(plan_range.get("start_date"))
     dummy_head_end = None
-    if plan_start is not None:
+    if ENABLE_HEAD_OF_RANGE_CUT and plan_start is not None:
         dummy_head_end = plan_start + pd.Timedelta(days=max(0, DUMMY_HEAD_DAYS_FROM_PLAN_START - 1))
     worker_date_map = su_data.get("worker_date_map", {})
     if not worker_date_map:
@@ -852,10 +861,22 @@ def _detect_su_columns(ws, label_row_idx):
     if role_col is None:
         role_col = 4
 
-    return company_col, name_col, role_col, manager_col
+    # Description-block source columns (only present on 予定表_2026's layout;
+    # None on the old 予定表_2025 layout, which just leaves description blank).
+    gyoumu_col = first_index("業務形態")
+    visa1_col = first_index("VISA1")
+    visa2_col = first_index("VISA2")
+    kaigai_col = first_index("海外運転")
+    ojt_col = first_index("OJT")
+
+    return {
+        "company": company_col, "name": name_col, "role": role_col, "manager": manager_col,
+        "gyoumu": gyoumu_col, "visa1": visa1_col, "visa2": visa2_col,
+        "kaigai": kaigai_col, "ojt": ojt_col,
+    }
 
 
-def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"), date_filter=None):
+def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None):
     wb = load_workbook(path, data_only=True, read_only=False)
     used_sheets = [s for s in sheet_names if s in wb.sheetnames]
     if not used_sheets:
@@ -883,6 +904,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
     worker_date_map = {}
     worker_personal_map = {}
     worker_roles = {}
+    worker_description = {}
 
     plan_start = None
     plan_end = None
@@ -891,7 +913,8 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
         ws = wb[sheet_name]
         date_row_idx, date_cols, dt_by_col = _find_date_header_ws(ws)
         label_row_idx = date_row_idx + 1
-        company_c, name_c, role_c, manager_c = _detect_su_columns(ws, label_row_idx)
+        cols = _detect_su_columns(ws, label_row_idx)
+        company_c, name_c, role_c, manager_c = cols["company"], cols["name"], cols["role"], cols["manager"]
 
         if f_start is not None and f_end is not None:
             date_cols = [c for c in date_cols if f_start <= dt_by_col[c] <= f_end]
@@ -906,7 +929,8 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
 
         blank_streak = 0
         max_col = max(date_cols)
-        min_needed_col = max(company_c, name_c, role_c, (manager_c or 0)) + 1
+        desc_cols = [c for c in (cols["gyoumu"], cols["visa1"], cols["visa2"], cols["kaigai"], cols["ojt"]) if c is not None]
+        min_needed_col = max([company_c, name_c, role_c, (manager_c or 0)] + desc_cols + [0]) + 1
 
         for r, row_cells in enumerate(
             ws.iter_rows(min_row=worker_start_row, min_col=1, max_col=max(max_col, min_needed_col)),
@@ -957,6 +981,27 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
                 if len(role_text) >= len(prev_role):
                     worker_roles[wid] = role_text
 
+            if wid not in worker_description:
+
+                def _col_text(col_idx):
+                    if col_idx is None or col_idx >= len(row_cells):
+                        return ""
+                    v = row_cells[col_idx].value
+                    return str(v).strip() if v is not None else ""
+
+                gyoumu = _col_text(cols["gyoumu"])
+                visa1 = _col_text(cols["visa1"])
+                visa2 = _col_text(cols["visa2"])
+                kaigai = _col_text(cols["kaigai"])
+                ojt_val = _col_text(cols["ojt"])
+                visa = " ".join(v for v in (visa1, visa2) if v).strip()
+
+                if gyoumu or visa or kaigai or ojt_val:
+                    desc = {"業務形態": gyoumu, "VISA": visa, "海外運転": kaigai}
+                    if ojt_val:
+                        desc["備考"] = "OJT"
+                    worker_description[wid] = desc
+
             for c in date_cols:
                 dt = dt_by_col[c]
                 cell = row_cells[c - 1]
@@ -990,6 +1035,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
             "id": wid, "name": acc["name"], "worker_company": acc["worker_company"],
             "is_manager": acc["is_manager"], "role": worker_roles.get(wid, ""),
             "skill_map": {}, "worker_type_by_operation": {}, "fab_suitability_map": [],
+            "description": worker_description.get(wid),
             "unavailable_dates": [{"date": d} for d in sorted(acc["unavailable_set"])],
         })
 
@@ -1002,7 +1048,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2025", "予定表_2026"),
         "worker_company_list": worker_company_list, "worker_company_map": worker_company_map,
         "worker_list": worker_list, "plan_range": plan_range,
         "worker_date_map": worker_date_map, "worker_personal_map": worker_personal_map,
-        "worker_roles": worker_roles,
+        "worker_roles": worker_roles, "worker_description": worker_description,
     }
 
 
@@ -1073,21 +1119,39 @@ def _read_seiban_sheet(path):
     return rows
 
 
-def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: pd.Timestamp, date_filter=None):
+def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: pd.Timestamp, su_code_span: dict | None = None):
     """
     Returns the same shape as decoder5's parse_tasks_from_csv_v5():
     {"valid_codes", "planned_meta", "cut_rows", "date_list"}, so the rest of
     the pipeline (build_shifted_meta etc.) is unchanged.
 
-    Modules with missing/invalid phase dates get their planned window
-    DEFAULTED to the full plan range (start..end), evenly split into
-    p2/p3/p4, per the "default = plan range" requirement.
+    SU_Others is the main source of truth, same philosophy as decoder5's
+    "SU_Others provides actual execution span". 製番's p2/p3/p4 start dates
+    are only used as a *planned reference* (proportions, ratio checks) — if
+    they're missing or out of order, but the module code has real occurrences
+    in SU_Others (`su_code_span`), the module is NOT dropped: a nominal
+    evenly-split "planned" window is built from SU_Others' own actual span
+    instead, and the rest of the pipeline (which shifts onto the real worked
+    days regardless) takes it from there. A module is only dropped entirely
+    (treated as dummy/not-listed) when 製番 has nothing usable AND SU_Others
+    has no occurrences of it either — genuinely no data anywhere.
+
+    There is no plan-range containment check here anymore: a module starting
+    before plan_start is not dummied, it's kept and its already-happened
+    portion is marked plan_flexibility="Fixed" downstream (build_assignments_v6),
+    with only the portion at/after plan_start left "Flexible" for the
+    scheduler.
+
+    希望納期 (delivery) is handled separately from p2/p3/p4: in practice it is
+    blank in essentially every row of both files (0/60 in the sample data),
+    unlike p2/p3/p4 start (26/60 filled) — so treating a missing delivery the
+    same as missing start dates would dummy out every module. When missing
+    (or earlier than p4_start), it defaults to plan_end.
     """
+    su_code_span = su_code_span or {}
     base_rows = _read_seiban_sheet(base_path)
     r_rows = _read_seiban_sheet(r_path)
     all_codes = sorted(set(base_rows) | set(r_rows))
-
-    f_start, f_end = date_filter if date_filter else (None, None)
 
     planned_meta = {}
     cut_rows = []
@@ -1112,34 +1176,34 @@ def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: p
 
         p2s, p3s, p4s, deliv = pick("p2_start"), pick("p3_start"), pick("p4_start"), pick("delivery")
 
-        # Default/clamp per-field rather than all-or-nothing: a module with
-        # good p2/p3/p4 starts but a blank 希望納期 (delivery) should keep its
-        # real dates, only the missing/out-of-order field gets defaulted.
-        defaulted = []
-        if p2s is None:
-            p2s = plan_start
-            defaulted.append("p2_start")
-        if p3s is None:
-            p3s = p2s
-            defaulted.append("p3_start")
-        elif p3s < p2s:
-            p3s = p2s
-            defaulted.append("p3_start(<p2_start, clamped)")
-        if p4s is None:
-            p4s = p3s
-            defaulted.append("p4_start")
-        elif p4s < p3s:
-            p4s = p3s
-            defaulted.append("p4_start(<p3_start, clamped)")
-        if deliv is None:
-            deliv = max(p4s, plan_end)
-            defaulted.append("delivery")
-        elif deliv < p4s:
-            deliv = p4s
-            defaulted.append("delivery(<p4_start, clamped)")
+        complete = all(x is not None for x in (p2s, p3s, p4s))
+        ordered = complete and (p2s <= p3s <= p4s)
 
-        if defaulted:
-            cut_rows.append((code, f"DEFAULTED field(s) {defaulted} (plan range {_to_ymd(plan_start)} - {_to_ymd(plan_end)})"))
+        if not ordered:
+            span = su_code_span.get(code)
+            reason = "missing phase start date(s) (p2/p3/p4)" if not complete else "phase start dates out of order"
+            if span is None:
+                cut_rows.append((code, f"DUMMY: {reason} in both 初期データ追加情報 files, and no SU_Others data found either"))
+                continue
+            actual_start, actual_end = span
+            total_days = int((actual_end - actual_start).days) + 1
+            alloc = _allocate_phase_lengths_v5(total_days, {2: 1, 3: 1, 4: 1}, phase_ids=(2, 3, 4), min_one=(total_days >= 3))
+            p2s = actual_start
+            p3s = p2s + pd.Timedelta(days=int(alloc[2]))
+            p4s = p3s + pd.Timedelta(days=int(alloc[3]))
+            deliv = actual_end
+            cut_rows.append((code, (
+                f"NOTE: {reason} in both 初期データ追加情報 files; SU_Others is the main source, so using "
+                f"its actual span {_to_ymd(actual_start)} - {_to_ymd(actual_end)} as the planned reference instead"
+            )))
+
+        if deliv is None or deliv < p4s:
+            reason = "missing" if deliv is None else f"earlier than p4_start ({_to_ymd(deliv)} < {_to_ymd(p4s)})"
+            deliv = max(p4s, plan_end)
+            cut_rows.append((code, f"NOTE: 希望納期 (delivery) {reason} in both files; defaulted to {_to_ymd(deliv)}"))
+
+        overall_start = p2s
+        overall_end = deliv
 
         starts = {2: p2s, 3: p3s, 4: p4s}
         ends = {
@@ -1150,13 +1214,6 @@ def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: p
         for ph in (2, 3, 4):
             if ends[ph] < starts[ph]:
                 ends[ph] = starts[ph]
-
-        overall_start = starts[2]
-        overall_end = ends[4]
-
-        if f_start is not None and f_end is not None:
-            if not _overlaps(overall_start, overall_end, f_start, f_end):
-                continue
 
         phase_len = {ph: int((ends[ph] - starts[ph]).days) + 1 for ph in (2, 3, 4)}
 
@@ -1174,13 +1231,6 @@ def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: p
             phase_len[4] = max(cap4, 1)
 
         total_len = sum(phase_len.values())
-        if total_len <= 0:
-            starts = {2: plan_start, 3: plan_start, 4: plan_start}
-            ends = {2: plan_start, 3: plan_start, 4: plan_start}
-            phase_len = {2: 1, 3: 0, 4: 0}
-            total_len = 1
-            overall_start, overall_end = plan_start, plan_start
-
         phase_pct = {ph: (phase_len[ph] / total_len) for ph in (2, 3, 4)}
 
         planned_meta[code] = {
@@ -1563,7 +1613,7 @@ def build_tool_tasks(task_meta, shifted_meta):
 # Build assignments (Schedule.yaml assignment_list + misc_task_list)
 # ============================================================
 
-def build_assignments_v6(su_data, code_to_phases, valid_code_set, date_filter=None):
+def build_assignments_v6(su_data, code_to_phases, valid_code_set, plan_start=None, date_filter=None):
     """
     Same "known tool task vs everything else" split as decoder5's
     build_assignments_v5, but:
@@ -1574,12 +1624,29 @@ def build_assignments_v6(su_data, code_to_phases, valid_code_set, date_filter=No
       - "other" SU_Others labels and grey-cell "personal business" both become
         flat misc_task_list entries (no phase/operation wrapper) per the new
         schema; assignments reference the misc task's own id directly.
+      - a phase whose real (shifted) start date is before plan_start is
+        already underway/complete relative to the plan range: every
+        assignment in that phase is marked plan_flexibility="Fixed" (already
+        happened, not up for the scheduler to move) instead of "Flexible".
+        Phases at/after plan_start stay "Flexible".
     """
     orig_map = su_data.get("su_outlier_original_text", {})
     worker_date_map = su_data["worker_date_map"]
     worker_personal_map = su_data["worker_personal_map"]
     worker_roles = su_data.get("worker_roles", {})
     f_start, f_end = date_filter if date_filter else (None, None)
+
+    # Per-operation Fixed/Flexible: an operation's phase already started
+    # before the plan range -> Fixed for every worker on it.
+    op_is_fixed = {}
+    for phase_list in code_to_phases.values():
+        for phase_meta in phase_list:
+            phase_id = phase_meta["phase_id"]
+            phase_start = phase_meta.get("start")
+            is_fixed = bool(plan_start is not None and phase_start is not None and phase_start < plan_start)
+            op_ks = (1, 2) if phase_meta["phase_index"] == 2 else (1,)
+            for k in op_ks:
+                op_is_fixed[f"{phase_id}o{k}"] = is_fixed
 
     known_assign_map = defaultdict(list)   # (wid, operation_task_id) -> [dt,...]
     misc_label_dates = defaultdict(set)
@@ -1681,7 +1748,8 @@ def build_assignments_v6(su_data, code_to_phases, valid_code_set, date_filter=No
         assignments.append({
             "worker": wid, "operation_task": op_id,
             "start_date": _to_ymd(uniq_dates[0]), "end_date": _to_ymd(uniq_dates[-1]),
-            "work_date_list": work_date_list, "plan_flexibility": "Flexible",
+            "work_date_list": work_date_list,
+            "plan_flexibility": "Fixed" if op_is_fixed.get(op_id) else "Flexible",
         })
 
     # misc: "other" SU_Others labels (flat, no phases)
@@ -1882,7 +1950,7 @@ def write_transformation_log(out_path, cut_rows, shifted_meta, worker_id_to_name
 def build_env_and_schedule_decoder6(
     su_others_path, seiban_info_path, seiban_info_r_path,
     envconfig_out="EnvConfig.yaml", schedule_out="Schedule.yaml", log_out=TRANSFORMATION_LOG,
-    plan_start=None, plan_end=None, su_sheet_names=("予定表_2025", "予定表_2026"),
+    plan_start=None, plan_end=None, su_sheet_names=("予定表_2026",),
     phase34_cap_days=None,
 ):
     # 1) SU_Others actual work data (need this first to get a natural plan range fallback)
@@ -1897,8 +1965,19 @@ def build_env_and_schedule_decoder6(
     if resolved_plan_end < resolved_plan_start:
         resolved_plan_start, resolved_plan_end = resolved_plan_end, resolved_plan_start
 
-    # 2) 製番 (planned modules), defaulting missing dates to the plan range
-    task_meta = parse_seiban_merged(seiban_info_path, seiban_info_r_path, resolved_plan_start, resolved_plan_end)
+    # 1.5) raw code -> (earliest, latest) occurrence in SU_Others, BEFORE any
+    # outlier cleanup — used so parse_seiban_merged can recognize "this
+    # module has no usable 製番 dates, but SU_Others is the main source and
+    # it does have real data for it" instead of dummying it.
+    su_code_dates = defaultdict(list)
+    for (_wid, _dt), _text in su_data["worker_date_map"].items():
+        _code = extract_tool_code(_text)
+        if _code:
+            su_code_dates[_code].append(_dt)
+    su_code_span = {code: (min(dts), max(dts)) for code, dts in su_code_dates.items()}
+
+    # 2) 製番 (planned modules); SU_Others fills in for modules missing 製番 dates
+    task_meta = parse_seiban_merged(seiban_info_path, seiban_info_r_path, resolved_plan_start, resolved_plan_end, su_code_span=su_code_span)
     planned_meta = task_meta["planned_meta"]
     cut_rows = list(task_meta["cut_rows"])
     valid_code_set = set(planned_meta.keys())
@@ -2108,8 +2187,6 @@ def build_env_and_schedule_decoder6(
                     ]},
                 ],
             },
-            {"id": "wf_other", "name": "Other work (from SU_Others)", "phase_list": []},
-            {"id": "wf_personal_business", "name": "Personal Business", "phase_list": []},
         ],
         "fab_list": fab_list, "region_list": region_list, "customer_company_list": customer_company_list,
         "worker_company_list": worker_company_list, "transite_day_map": transite_day_map,
@@ -2118,7 +2195,7 @@ def build_env_and_schedule_decoder6(
 
     # 10) assignments
     (assignments, misc_tasks, op_workerday_count, op_worker_count, op_assigned_date_count,
-     pb_worker_dates, dummy_tool_labels) = build_assignments_v6(su_data, code_to_phases, valid_code_set)
+     pb_worker_dates, dummy_tool_labels) = build_assignments_v6(su_data, code_to_phases, valid_code_set, plan_start=resolved_plan_start)
 
     # 11) skills: base (other_op/pb always ok) + inferred from SU_Others role text
     for w in environment["worker_list"]:
@@ -2258,12 +2335,34 @@ def _yd(s):
     return s  # dates are already "YYYY/MM/DD" strings from _to_ymd
 
 
+_YAML_RISKY_CHARS_RE = re.compile(r'[:#\[\]{}&*!|>\'"%@`,]|^[\-?]')
+_YAML_KEYWORD_RE = re.compile(r'^(true|false|null|yes|no|on|off|~)$', re.IGNORECASE)
+_YAML_NUMLIKE_RE = re.compile(r'^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$')
+
+
 def _ys(v):
+    """
+    YAML-safe scalar string. Free-text labels straight from SU_Others cells
+    (misc task names etc.) can be almost anything — a bare "," or "-" alone,
+    something containing ": ", a lone number-looking token — all of which
+    break unquoted plain-scalar syntax. Quote (with proper JSON/YAML-safe
+    escaping) whenever the value isn't unambiguously plain; otherwise leave
+    it bare for readability.
+    """
     if v is None:
         return ""
-    if v == "":
+    s = str(v)
+    if s == "":
         return '""'
-    return str(v)
+    if (
+        _YAML_RISKY_CHARS_RE.search(s)
+        or s != s.strip()
+        or "\n" in s
+        or _YAML_KEYWORD_RE.match(s)
+        or _YAML_NUMLIKE_RE.match(s)
+    ):
+        return json.dumps(s, ensure_ascii=False)
+    return s
 
 
 def _flow_arr(items):
@@ -2374,6 +2473,14 @@ def _write_env_config_yaml(path, env):
         else:
             p("    fab_suitability_map: []")
         _emit_unavail_dates(L, w.get("unavailable_dates", []), "    ")
+        desc = w.get("description")
+        if desc is not None:
+            p("    description:")
+            p(f"      業務形態: {_ys(desc.get('業務形態', ''))}")
+            p(f"      VISA: {_ys(desc.get('VISA', ''))}")
+            p(f"      海外運転: {_ys(desc.get('海外運転', ''))}")
+            if "備考" in desc:
+                p(f"      備考: {_ys(desc['備考'])}")
 
     Path(path).write_text("\n".join(L) + "\n", encoding="utf-8")
 
@@ -2452,7 +2559,7 @@ def main():
     ap.add_argument("--seiban-info-r", required=True, help="Path to 初期データ追加情報 _r.xlsx (revised; authoritative)")
     ap.add_argument("--plan-start", default=None, help="Plan range start date, e.g. 2025/09/01. Default: earliest date found in SU_Others.")
     ap.add_argument("--plan-end", default=None, help="Plan range end date, e.g. 2026/03/31. Default: latest date found in SU_Others.")
-    ap.add_argument("--su-sheets", default="予定表_2025,予定表_2026", help="Comma-separated SU_Others sheet names to read, in order.")
+    ap.add_argument("--su-sheets", default="予定表_2026", help="Comma-separated SU_Others sheet names to read, in order. 予定表_2025 is ignored by default per current test scope.")
     ap.add_argument("--envconfig-out", default="EnvConfig.yaml")
     ap.add_argument("--schedule-out", default="Schedule.yaml")
     ap.add_argument("--log-out", default=TRANSFORMATION_LOG)
