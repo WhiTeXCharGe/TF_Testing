@@ -234,7 +234,7 @@ def cut_su_short_span_modules_to_dummy(su_data, min_unique_worked_days=4, planne
             worker_date_map[(wid, dt)] = new
             corrections.append({
                 "wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                "reason": f"short-span cut: unique worked days {len(uniq_days)} < {min_unique_worked_days} (treated as dummy other)",
+                "reason": f"short span: {len(uniq_days)} worked days < {min_unique_worked_days}",
             })
     su_data["su_short_span_corrections"] = corrections
     return corrections
@@ -279,8 +279,7 @@ def cut_module_if_remaining_dates_too_small_vs_planned(su_data, planned_meta, mi
             worker_date_map[(wid, dt)] = new
             corrections.append({
                 "wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                "reason": (f"module cut: remaining unique worked dates {remaining_count} < "
-                           f"ceil(planned_total_days {planned_total_days} * ratio {min_left_date_span_ratio:.2f}) = {threshold}"),
+                "reason": f"remaining {remaining_count} days < {threshold} threshold ({int(min_left_date_span_ratio*100)}% of planned {planned_total_days}d)",
             })
     su_data["su_remaining_ratio_corrections"] = corrections
     return corrections
@@ -336,7 +335,7 @@ def cut_module_if_phase_zero_workload(su_data, planned_meta):
                 worker_date_map[(wid, dt)] = new
                 corrections.append({
                     "wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                    "reason": f"module cut: phase zero workload under span-split check (counts={phase_worked_counts})",
+                    "reason": f"phase-zero pre-check: {phase_worked_counts}",
                 })
     su_data["su_phase_zero_corrections"] = corrections
     return corrections
@@ -372,7 +371,7 @@ def cut_final_zero_workload_modules_to_dummy(su_data, shifted_meta):
         worker_date_map[(wid, dt)] = new
         corrections.append({
             "wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-            "reason": "final module cut: final p2/p3/p4 workload contains zero",
+            "reason": "a phase has zero worked days after shifting",
         })
     su_data["su_final_zero_phase_corrections"] = corrections
     return corrections
@@ -419,7 +418,7 @@ def cut_modules_with_no_qc_to_dummy(su_data, shifted_meta):
         worker_date_map[(wid, dt)] = new
         corrections.append({
             "wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-            "reason": "final module cut: no QC worker exists in actual task cells",
+            "reason": "no QC worker assigned",
         })
     su_data["su_no_qc_corrections"] = corrections
     return corrections
@@ -510,18 +509,18 @@ def cut_su_outlier_cells(
         if dummy_head_end is not None:
             has_head_hit = any(plan_start <= dt <= dummy_head_end for dt, _, _ in occ)
             if has_head_hit:
-                _cut_all_occurrences(code, occ, f"module cut: module appears within first {DUMMY_HEAD_DAYS_FROM_PLAN_START} days of SU_Others plan range")
+                _cut_all_occurrences(code, occ, f"within first {DUMMY_HEAD_DAYS_FROM_PLAN_START} days of plan range")
                 continue
 
         uniq_days_pre = sorted(set(dt for dt, _, _ in occ))
         if len(uniq_days_pre) < int(cut_module_if_unique_days_lt):
-            _cut_all_occurrences(code, occ, f"module cut: unique SU_Others work days < {cut_module_if_unique_days_lt} (unique_days={len(uniq_days_pre)})")
+            _cut_all_occurrences(code, occ, f"{len(uniq_days_pre)} worked days < {cut_module_if_unique_days_lt}")
             continue
         if len(occ) < int(cut_module_if_total_cells_lt):
-            _cut_all_occurrences(code, occ, f"module cut: total SU_Others cells < {cut_module_if_total_cells_lt} (cells={len(occ)})")
+            _cut_all_occurrences(code, occ, f"{len(occ)} cells < {cut_module_if_total_cells_lt}")
             continue
         if len(occ) <= 1:
-            _cut_all_occurrences(code, occ, "module cut: only 1 SU_Others cell for this module")
+            _cut_all_occurrences(code, occ, "only 1 cell total")
             continue
 
         occ_by_wid = defaultdict(list)
@@ -542,7 +541,7 @@ def cut_su_outlier_cells(
                     _remember_original_text(su_data, wid, dt, old, new)
                     worker_date_map[(wid, dt)] = new
                     corrections.append({"wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                                         "reason": "per-worker cut: only 1 day for this worker on this module (treated as outlier)"})
+                                         "reason": "only 1 day for this worker"})
                 continue
             wid_clusters = _cluster_by_date_gap(wid_dates, gap_days=cluster_gap_days)
             keep_dates = set()
@@ -560,7 +559,7 @@ def cut_su_outlier_cells(
                     _remember_original_text(su_data, wid, dt, old, new)
                     worker_date_map[(wid, dt)] = new
                     corrections.append({"wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                                         "reason": "per-worker cut: no cluster has >=2 consecutive days (treated as outliers)"})
+                                         "reason": "no run of 2+ consecutive days"})
                 continue
             for dt, text in wid_occ:
                 if dt in keep_dates:
@@ -574,14 +573,14 @@ def cut_su_outlier_cells(
                 _remember_original_text(su_data, wid, dt, old, new)
                 worker_date_map[(wid, dt)] = new
                 corrections.append({"wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                                     "reason": "per-worker cut: cluster is too small / not consecutive (outlier)"})
+                                     "reason": "isolated, non-consecutive cluster"})
 
         clean_occ = _rebuild_occ_for_code(code)
         if not clean_occ:
             continue
         clean_uniq_days = sorted(set(dt for dt, _, _ in clean_occ))
         if len(clean_uniq_days) < int(cut_module_if_unique_days_lt) or len(clean_occ) < int(cut_module_if_total_cells_lt):
-            _cut_all_occurrences(code, clean_occ, "module cut: cleaned evidence became too small after per-worker cleanup")
+            _cut_all_occurrences(code, clean_occ, "too small after per-worker cleanup")
             continue
 
         if planned_meta is not None and code in planned_meta:
@@ -621,8 +620,7 @@ def cut_su_outlier_cells(
                     _remember_original_text(su_data, wid, dt, old, new)
                     worker_date_map[(wid, dt)] = new
                     corrections.append({"wid": wid, "date": _to_ymd(dt), "code": code, "text": old,
-                                         "reason": (f"planned-window far cut with ongoing-tail rule: beyond planned end + {cut_if_far_from_planned_days}d "
-                                                    f"and more than {ONGOING_TAIL_KEEP_GAP_DAYS}d from last kept cleaned cluster")})
+                                         "reason": f"more than {cut_if_far_from_planned_days}d past planned end, {ONGOING_TAIL_KEEP_GAP_DAYS}d+ gap from last kept cluster"})
 
     def _final_cut_isolated_worker_module_pairs(su_data):
         if not su_data:
@@ -650,10 +648,10 @@ def cut_su_outlier_cells(
             reason = None
             if len(uniq_dates) <= 1:
                 cut_flag = True
-                reason = "final safety cut: worker has only 1 day on this module"
+                reason = "only 1 day for this worker"
             elif not _has_adjacent_pair(uniq_dates):
                 cut_flag = True
-                reason = "final safety cut: worker has no adjacent-day pair on this module"
+                reason = "no adjacent-day pair for this worker"
             if not cut_flag:
                 continue
             broken = _break_tool_code(code)
@@ -1181,9 +1179,9 @@ def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: p
 
         if not ordered:
             span = su_code_span.get(code)
-            reason = "missing phase start date(s) (p2/p3/p4)" if not complete else "phase start dates out of order"
+            reason = "missing p2/p3/p4" if not complete else "p2/p3/p4 out of order"
             if span is None:
-                cut_rows.append((code, f"DUMMY: {reason} in both 初期データ追加情報 files, and no SU_Others data found either"))
+                cut_rows.append((code, f"DUMMY: {reason}, no SU_Others data either"))
                 continue
             actual_start, actual_end = span
             total_days = int((actual_end - actual_start).days) + 1
@@ -1192,15 +1190,12 @@ def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: p
             p3s = p2s + pd.Timedelta(days=int(alloc[2]))
             p4s = p3s + pd.Timedelta(days=int(alloc[3]))
             deliv = actual_end
-            cut_rows.append((code, (
-                f"NOTE: {reason} in both 初期データ追加情報 files; SU_Others is the main source, so using "
-                f"its actual span {_to_ymd(actual_start)} - {_to_ymd(actual_end)} as the planned reference instead"
-            )))
+            cut_rows.append((code, f"NOTE: {reason}; using SU_Others span {_to_ymd(actual_start)}-{_to_ymd(actual_end)} as planned reference"))
 
         if deliv is None or deliv < p4s:
-            reason = "missing" if deliv is None else f"earlier than p4_start ({_to_ymd(deliv)} < {_to_ymd(p4s)})"
+            reason = "missing" if deliv is None else "before p4_start"
             deliv = max(p4s, plan_end)
-            cut_rows.append((code, f"NOTE: 希望納期 (delivery) {reason} in both files; defaulted to {_to_ymd(deliv)}"))
+            cut_rows.append((code, f"NOTE: delivery {reason}; defaulted to {_to_ymd(deliv)}"))
 
         overall_start = p2s
         overall_end = deliv
@@ -2015,12 +2010,12 @@ def build_env_and_schedule_decoder6(
         if code and txt and len(outlier_cut_summary[code]) < 20:
             outlier_cut_summary[code].append(txt)
     for code in sorted(outlier_cut_summary.keys()):
-        cut_rows.append((code, "SU_Others OUTLIER CUT: occurrences were converted to dummy 'other'"))
+        cut_rows.append((code, "outlier cells converted to 'other'"))
 
     short_span_codes = {rec.get("code") for rec in su_short_span_corrections if rec.get("code")}
     if short_span_codes:
         for code in sorted(short_span_codes):
-            cut_rows.append((code, f"DUMMY: SU_Others unique worked days < {MIN_WORKED_DAYS_FOR_TOOL} (converted to wf_other)"))
+            cut_rows.append((code, f"DUMMY: worked days < {MIN_WORKED_DAYS_FOR_TOOL}"))
             planned_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
         task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
@@ -2074,7 +2069,7 @@ def build_env_and_schedule_decoder6(
     if su_no_qc_corrections:
         no_qc_codes = {rec.get("code") for rec in su_no_qc_corrections if rec.get("code")}
         for code in sorted(no_qc_codes):
-            cut_rows.append((code, "DUMMY: no QC worker exists in actual task cells"))
+            cut_rows.append((code, "DUMMY: no QC worker assigned"))
             planned_meta.pop(code, None)
             shifted_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
@@ -2084,7 +2079,7 @@ def build_env_and_schedule_decoder6(
     if su_final_zero_phase_corrections:
         zero_codes = {rec.get("code") for rec in su_final_zero_phase_corrections if rec.get("code")}
         for code in sorted(zero_codes):
-            cut_rows.append((code, "DUMMY: final p2/p3/p4 workload contains zero"))
+            cut_rows.append((code, "DUMMY: a phase has zero workload"))
             planned_meta.pop(code, None)
             shifted_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
@@ -2093,7 +2088,7 @@ def build_env_and_schedule_decoder6(
     if SKIP_MODULE_IF_NO_SU_MATCH:
         no_su_codes = [code for code, m in shifted_meta.items() if not m.get("had_su_match")]
         for code in no_su_codes:
-            cut_rows.append((code, "SKIPPED: SU_Others NOT FOUND; module omitted from Schedule.yaml"))
+            cut_rows.append((code, "SKIPPED: no SU_Others match"))
             planned_meta.pop(code, None)
             shifted_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
@@ -2109,7 +2104,7 @@ def build_env_and_schedule_decoder6(
             cut_due_to_distance.append((code, gap))
     if cut_due_to_distance:
         for code, gap in cut_due_to_distance:
-            cut_rows.append((code, f"actual span is outside planned window by {gap} days (> {CUT_DISTANCE_DAYS})"))
+            cut_rows.append((code, f"DUMMY: actual span {gap}d outside planned window (> {CUT_DISTANCE_DAYS})"))
             planned_meta.pop(code, None)
             shifted_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
