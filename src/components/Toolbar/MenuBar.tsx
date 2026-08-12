@@ -50,6 +50,7 @@ export function MenuBar() {
     }
     try {
       await overwriteSaveFiles(state.envConfig, state.schedule, state.currentEnvPath, state.currentSchedulePath);
+      dispatch({ type: 'MARK_SAVED' });
       setSaveStatus(UI.savedMessage);
       setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {

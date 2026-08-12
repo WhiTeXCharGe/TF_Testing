@@ -235,13 +235,15 @@ export const UI = {
 
   // Send to scheduler dialog
   sendToSchedulerDialogTitle: '計画管理ツールへ送信',
-  sendToSchedulerConfirmBody: '現在の EnvConfig / Schedule をブラウザのダウンロードフォルダに保存したうえで、計画管理ツール（Scheduler Webapp）に送信します。計画管理ツールが起動していない場合は自動的に起動します（最大30秒程度かかることがあります）。送信後は計画管理ツール側の「新規実行」ダイアログに両ファイルが自動でセットされますが、実行の最終確認はそちらで行ってください。',
+  sendToSchedulerConfirmBody: '現在の EnvConfig / Schedule を計画管理ツール（Scheduler Webapp）に送信します。計画管理ツールが起動していない場合は自動的に起動します（最大30秒程度かかることがあります）。送信後は計画管理ツール側の「新規実行」ダイアログに両ファイルが自動でセットされますが、実行の最終確認はそちらで行ってください。',
   sendBtn: '送信',
   sendingStatus: '送信中…（計画管理ツールの起動待ちのため、最大30秒程度かかる場合があります）',
   sendDoneMessage: '送信しました。計画管理ツールの新しいタブが開きます。',
   sendDoneManualLinkHint: '自動で開かない場合はこちらをクリックしてください:',
   closeBtn: '閉じる',
   retryBtn: '再試行',
+  unsavedChangesBeforeSendMessage: '未保存の変更があります。送信する前に保存してください。',
+  saveAndSendFailedMessage: (msg: string) => `保存に失敗しました: ${msg}`,
 
   // Constraint result dialog
   constraintDialogTitle: '制約チェック結果',

@@ -18,6 +18,8 @@ const initialState: AppState = {
   workerDateCellFilter: { date: '', tasks: [] },
   currentEnvPath: null,
   currentSchedulePath: null,
+  savedScheduleRef: null,
+  savedEnvConfigRef: null,
   errorMessage: null,
   isTaskAddDialogOpen: false,
   isFileOpenDialogOpen: false,

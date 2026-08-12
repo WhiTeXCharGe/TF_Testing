@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { downloadBothYamlFiles } from '../../services/fileService';
+import { overwriteSaveFiles } from '../../services/fileService';
 import { sendToScheduler } from '../../services/handoffService';
 import { UI } from '../../config/uiText';
 
-type Stage = 'confirm' | 'sending' | 'done' | 'error';
+type Stage = 'confirm' | 'needs-save' | 'sending' | 'done' | 'error';
 
 export function SendToSchedulerDialog() {
   const { state, dispatch } = useAppContext();
@@ -15,6 +15,11 @@ export function SendToSchedulerDialog() {
   if (!state.isSendToSchedulerDialogOpen) return null;
   if (!state.envConfig || !state.schedule) return null;
 
+  // True when the in-memory schedule/envConfig differ (by reference) from
+  // what was last written to disk — every mutating action produces a new
+  // object, so a mismatch here reliably means there are unsaved changes.
+  const isDirty = state.schedule !== state.savedScheduleRef || state.envConfig !== state.savedEnvConfigRef;
+
   const close = () => {
     dispatch({ type: 'CLOSE_SEND_TO_SCHEDULER_DIALOG' });
     // Reset for next time the dialog is opened.
@@ -23,16 +28,10 @@ export function SendToSchedulerDialog() {
     setResultUrl(null);
   };
 
-  const handleConfirm = async () => {
+  const doSend = async () => {
     if (!state.envConfig || !state.schedule) return;
     setStage('sending');
     try {
-      downloadBothYamlFiles(
-        state.envConfig,
-        state.schedule,
-        state.currentEnvPath ?? 'EnvConfig.yaml',
-        state.currentSchedulePath ?? 'Schedule.yaml',
-      );
       const { url } = await sendToScheduler(state.envConfig, state.schedule);
       // url is null in desktop mode — the handoff was already delivered
       // straight to SchedulerWeb's window, nothing left to open here.
@@ -49,7 +48,35 @@ export function SendToSchedulerDialog() {
     }
   };
 
-  const canClose = stage === 'confirm' || stage === 'done' || stage === 'error';
+  const handleConfirm = async () => {
+    if (!state.envConfig || !state.schedule) return;
+    if (isDirty) {
+      setStage('needs-save');
+      return;
+    }
+    await doSend();
+  };
+
+  const handleSaveAndSend = async () => {
+    if (!state.envConfig || !state.schedule) return;
+    if (!state.currentEnvPath || !state.currentSchedulePath) {
+      setErrorMsg(UI.savePathUnknownMessage);
+      setStage('error');
+      return;
+    }
+    setStage('sending');
+    try {
+      await overwriteSaveFiles(state.envConfig, state.schedule, state.currentEnvPath, state.currentSchedulePath);
+      dispatch({ type: 'MARK_SAVED' });
+    } catch (e) {
+      setErrorMsg(UI.saveAndSendFailedMessage(e instanceof Error ? e.message : String(e)));
+      setStage('error');
+      return;
+    }
+    await doSend();
+  };
+
+  const canClose = stage === 'confirm' || stage === 'needs-save' || stage === 'done' || stage === 'error';
 
   return (
     <div
@@ -96,6 +123,41 @@ export function SendToSchedulerDialog() {
                 }}
               >
                 {UI.sendBtn}
+              </button>
+            </div>
+          </>
+        )}
+
+        {stage === 'needs-save' && (
+          <>
+            <div style={{
+              fontSize: 13, color: '#8a6d00', background: '#fff8e1', border: '1px solid #ffe082',
+              borderRadius: 4, padding: '8px 12px', marginBottom: 16, lineHeight: 1.6,
+            }}>
+              {UI.unsavedChangesBeforeSendMessage}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={close}
+                style={{
+                  padding: '6px 18px', border: '1px solid #c0d0e0', borderRadius: 4,
+                  background: '#f5f8fc', cursor: 'pointer', fontSize: 13,
+                  fontFamily: 'Meiryo, sans-serif', color: '#333',
+                }}
+              >
+                {UI.dialogCancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndSend}
+                style={{
+                  padding: '6px 18px', border: 'none', borderRadius: 4,
+                  background: '#1c4f8a', color: '#fff', cursor: 'pointer', fontSize: 13,
+                  fontFamily: 'Meiryo, sans-serif',
+                }}
+              >
+                {UI.saveConfirmBtn}
               </button>
             </div>
           </>

@@ -1,11 +1,11 @@
-﻿schedule:
+schedule:
   plan_range:
     start_date: 2025/09/01
     end_date: 2025/11/14
   workflow_task_list:
   - id: e1
     name: SU 1001A
-    description:
+    description: 
     workflow: workflow
     fab: f5
     phase_task_list:
@@ -21,821 +21,821 @@
         description: Test_Description_Operation
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: FFE599
       - id: e1p1o2
         name: Mech
         description: Test_Description_Operation
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: FFE599
       - id: e1p1o3
         name: Elec
         description: Test_Description_Operation
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: FFE599
     - id: e1p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/01
       end_date: 2025/10/07
       operation_task_list:
       - id: e1p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: FFE599
       - id: e1p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: FFE599
     - id: e1p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/01
       end_date: 2025/10/15
       operation_task_list:
       - id: e1p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: FFE599
     - id: e1p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/01
       end_date: 2025/10/24
       operation_task_list:
       - id: e1p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: FFE599
       - id: e1p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: FFE599
   - id: e2
     name: SU 1002A
-    description:
+    description: 
     workflow: workflow
     fab: f2
     phase_task_list:
     - id: e2p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/03
       end_date: 2025/09/18
       operation_task_list:
       - id: e2p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: FFD966
       - id: e2p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: FFD966
       - id: e2p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: FFD966
     - id: e2p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/03
       end_date: 2025/10/02
       operation_task_list:
       - id: e2p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: FFD966
       - id: e2p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: FFD966
     - id: e2p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/03
       end_date: 2025/10/10
       operation_task_list:
       - id: e2p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: FFD966
     - id: e2p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/03
       end_date: 2025/10/22
       operation_task_list:
       - id: e2p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: FFD966
       - id: e2p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: FFD966
   - id: e3
     name: SU 1003A
-    description:
+    description: 
     workflow: workflow
     fab: f6
     phase_task_list:
     - id: e3p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/08
       end_date: 2025/09/26
       operation_task_list:
       - id: e3p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: F9CB9C
       - id: e3p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: F9CB9C
       - id: e3p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: F9CB9C
     - id: e3p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/08
       end_date: 2025/10/14
       operation_task_list:
       - id: e3p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: F9CB9C
       - id: e3p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: F9CB9C
     - id: e3p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/08
       end_date: 2025/10/22
       operation_task_list:
       - id: e3p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: F9CB9C
     - id: e3p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/08
       end_date: 2025/10/31
       operation_task_list:
       - id: e3p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: F9CB9C
       - id: e3p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: F9CB9C
   - id: e4
     name: SU 1004A
-    description:
+    description: 
     workflow: workflow
     fab: f6
     phase_task_list:
     - id: e4p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/09
       end_date: 2025/09/29
       operation_task_list:
       - id: e4p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: F6B26B
       - id: e4p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: F6B26B
       - id: e4p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: F6B26B
     - id: e4p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/09
       end_date: 2025/10/15
       operation_task_list:
       - id: e4p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: F6B26B
       - id: e4p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: F6B26B
     - id: e4p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/09
       end_date: 2025/10/23
       operation_task_list:
       - id: e4p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: F6B26B
     - id: e4p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/09
       end_date: 2025/11/03
       operation_task_list:
       - id: e4p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: F6B26B
       - id: e4p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: F6B26B
   - id: e5
     name: SU 1005A
-    description:
+    description: 
     workflow: workflow
     fab: f3
     phase_task_list:
     - id: e5p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/10
       end_date: 2025/09/30
       operation_task_list:
       - id: e5p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: FCE5CD
       - id: e5p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: FCE5CD
       - id: e5p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: FCE5CD
     - id: e5p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/10
       end_date: 2025/10/16
       operation_task_list:
       - id: e5p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: FCE5CD
       - id: e5p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: FCE5CD
     - id: e5p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/10
       end_date: 2025/10/24
       operation_task_list:
       - id: e5p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: FCE5CD
     - id: e5p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/10
       end_date: 2025/11/04
       operation_task_list:
       - id: e5p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: FCE5CD
       - id: e5p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: FCE5CD
   - id: e6
     name: SU 1006A
-    description:
+    description: 
     workflow: workflow
     fab: f1
     phase_task_list:
     - id: e6p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/11
       end_date: 2025/10/01
       operation_task_list:
       - id: e6p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: B6D7A8
       - id: e6p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: B6D7A8
       - id: e6p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: B6D7A8
     - id: e6p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/11
       end_date: 2025/10/17
       operation_task_list:
       - id: e6p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: B6D7A8
       - id: e6p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: B6D7A8
     - id: e6p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/11
       end_date: 2025/10/27
       operation_task_list:
       - id: e6p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: B6D7A8
     - id: e6p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/11
       end_date: 2025/11/05
       operation_task_list:
       - id: e6p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: B6D7A8
       - id: e6p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: B6D7A8
   - id: e7
     name: SU 1007A
-    description:
+    description: 
     workflow: workflow
     fab: f1
     phase_task_list:
     - id: e7p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/15
       end_date: 2025/10/03
       operation_task_list:
       - id: e7p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: 93C47D
       - id: e7p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: 93C47D
       - id: e7p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: 93C47D
     - id: e7p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/15
       end_date: 2025/10/21
       operation_task_list:
       - id: e7p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: 93C47D
       - id: e7p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: 93C47D
     - id: e7p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/15
       end_date: 2025/10/29
       operation_task_list:
       - id: e7p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: 93C47D
     - id: e7p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/15
       end_date: 2025/11/07
       operation_task_list:
       - id: e7p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: 93C47D
       - id: e7p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: 93C47D
   - id: e8
     name: SU 1008A
-    description:
+    description: 
     workflow: workflow
     fab: f5
     phase_task_list:
     - id: e8p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/15
       end_date: 2025/10/03
       operation_task_list:
       - id: e8p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: 6AA84F
       - id: e8p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: 6AA84F
       - id: e8p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: 6AA84F
     - id: e8p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/15
       end_date: 2025/10/21
       operation_task_list:
       - id: e8p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: 6AA84F
       - id: e8p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: 6AA84F
     - id: e8p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/15
       end_date: 2025/10/29
       operation_task_list:
       - id: e8p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: 6AA84F
     - id: e8p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/15
       end_date: 2025/11/07
       operation_task_list:
       - id: e8p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: 6AA84F
       - id: e8p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: 6AA84F
   - id: e9
     name: SU 1009A
-    description:
+    description: 
     workflow: workflow
     fab: f6
     phase_task_list:
     - id: e9p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/17
       end_date: 2025/10/07
       operation_task_list:
       - id: e9p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: D9EAD3
       - id: e9p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: D9EAD3
       - id: e9p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: D9EAD3
     - id: e9p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/17
       end_date: 2025/10/23
       operation_task_list:
       - id: e9p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: D9EAD3
       - id: e9p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: D9EAD3
     - id: e9p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/17
       end_date: 2025/10/31
       operation_task_list:
       - id: e9p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: D9EAD3
     - id: e9p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/17
       end_date: 2025/11/11
       operation_task_list:
       - id: e9p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: D9EAD3
       - id: e9p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: D9EAD3
   - id: e10
     name: SU 1010A
-    description:
+    description: 
     workflow: workflow
     fab: f4
     phase_task_list:
     - id: e10p1
       name: Module Setup
-      description:
+      description: 
       phase: p1
       start_date: 2025/09/17
       end_date: 2025/10/07
       operation_task_list:
       - id: e10p1o1
         name: Heavy
-        description:
+        description: 
         operation: p1o1
         workload_hours: 240
-        color_code: 
+        color_code: E2EFDA
       - id: e10p1o2
         name: Mech
-        description:
+        description: 
         operation: p1o2
         workload_hours: 160
-        color_code: 
+        color_code: E2EFDA
       - id: e10p1o3
         name: Elec
-        description:
+        description: 
         operation: p1o3
         workload_hours: 160
-        color_code: 
+        color_code: E2EFDA
     - id: e10p2
       name: Hardware Setup
-      description:
+      description: 
       phase: p2
       start_date: 2025/09/17
       end_date: 2025/10/23
       operation_task_list:
       - id: e10p2o1
         name: Mech
-        description:
+        description: 
         operation: p2o1
         workload_hours: 240
-        color_code: 
+        color_code: E2EFDA
       - id: e10p2o2
         name: Elec
-        description:
+        description: 
         operation: p2o2
         workload_hours: 200
-        color_code: 
+        color_code: E2EFDA
     - id: e10p3
       name: Function Setup
-      description:
+      description: 
       phase: p3
       start_date: 2025/09/17
       end_date: 2025/10/31
       operation_task_list:
       - id: e10p3o1
         name: QC
-        description:
+        description: 
         operation: p3o1
         workload_hours: 120
-        color_code: 
+        color_code: E2EFDA
     - id: e10p4
       name: Acceptance Inspection
-      description:
+      description: 
       phase: p4
       start_date: 2025/09/17
       end_date: 2025/11/11
       operation_task_list:
       - id: e10p4o1
         name: QC
-        description:
+        description: 
         operation: p4o1
         workload_hours: 96
-        color_code: 
+        color_code: E2EFDA
       - id: e10p4o2
         name: Mech
-        description:
+        description: 
         operation: p4o2
         workload_hours: 64
-        color_code: 
+        color_code: E2EFDA
   misc_task_list:
-    - id: misc_1
-      name: PTC
-      description:
-      workflow: wf_misc
-      region: r1
-      color_code: F5A623
-    - id: misc_2
-      name: VISA
-      description:
-      workflow: wf_misc
-      region: r1
-      color_code: 7B68EE
+  - id: misc_1
+    name: PTC
+    description: 
+    workflow: wf_misc
+    region: r1
+    color_code: F5A623
+  - id: misc_2
+    name: VISA
+    description: 
+    workflow: wf_misc
+    region: r1
+    color_code: 7B68EE
   assignment_list:
   - worker: w13
     operation_task: e1p1o1
@@ -5341,7 +5341,7 @@
     - date: 2025/09/05
       hour: 8
     plan_flexibility: Fixed
-    description:
+    description: 
   - worker: w3
     operation_task: misc_1
     start_date: 2025/10/13
@@ -5358,3 +5358,4 @@
     - date: 2025/10/17
       hour: 8
     plan_flexibility: Fixed
+    description: 

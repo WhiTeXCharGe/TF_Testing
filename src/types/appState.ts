@@ -90,6 +90,12 @@ export interface AppState {
   workerDateCellFilter: WorkerDateCellFilter;
   currentEnvPath: string | null;
   currentSchedulePath: string | null;
+  // Snapshots of schedule/envConfig as of the last successful save (or load).
+  // Compared by reference against the live schedule/envConfig to detect
+  // unsaved changes — every mutating reducer action produces a new object
+  // reference, so a mismatch here means "dirty".
+  savedScheduleRef: ScheduleData | null;
+  savedEnvConfigRef: EnvConfig | null;
   errorMessage: string | null;
   isTaskAddDialogOpen: boolean;
   isFileOpenDialogOpen: boolean;
@@ -134,6 +140,7 @@ export type ActionType =
   | { type: 'ADD_WORKFLOW_TASKS'; payload: ScheduleData['workflowTaskList'] }
   | { type: 'MERGE_DATA'; payload: { schedule?: ScheduleData; envConfig?: EnvConfig } }
   | { type: 'SAVE_PATHS'; payload: { envPath?: string; schedulePath?: string } }
+  | { type: 'MARK_SAVED' }
   | { type: 'SELECT_UNAVAILABLE'; payload: { workerId: string; startDate: string; endDate: string } | null }
   | { type: 'DELETE_UNAVAILABLE_DATE'; payload: { workerId: string; date: string } }
   | { type: 'DELETE_UNAVAILABLE_RANGE'; payload: { workerId: string; startDate: string; endDate: string } }

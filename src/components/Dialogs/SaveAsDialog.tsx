@@ -23,6 +23,7 @@ export function SaveAsDialog({ envConfig, schedule, defaultEnvName, defaultSched
       const saved = await saveYamlFilesAsElectron(envConfig, schedule, envName, scheduleName);
       if (saved) {
         dispatch({ type: 'SAVE_PATHS', payload: saved });
+        dispatch({ type: 'MARK_SAVED' });
         onClose();
       }
       // saved === null means the user cancelled a native dialog — keep this modal open.

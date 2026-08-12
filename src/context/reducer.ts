@@ -54,6 +54,8 @@ export function reducer(state: AppState, action: ActionType): AppState {
         schedule: action.payload.schedule,
         currentEnvPath: action.payload.envPath,
         currentSchedulePath: action.payload.schedulePath,
+        savedScheduleRef: action.payload.schedule,
+        savedEnvConfigRef: action.payload.envConfig,
         undoStack: [],
         redoStack: [],
         violations: [],
@@ -444,6 +446,13 @@ export function reducer(state: AppState, action: ActionType): AppState {
         ...state,
         currentEnvPath: action.payload.envPath ?? state.currentEnvPath,
         currentSchedulePath: action.payload.schedulePath ?? state.currentSchedulePath,
+      };
+
+    case 'MARK_SAVED':
+      return {
+        ...state,
+        savedScheduleRef: state.schedule,
+        savedEnvConfigRef: state.envConfig,
       };
 
     case 'ADD_UNAVAILABLE_DATES': {
