@@ -132,13 +132,39 @@ function flowNumMap(obj: Record<string, number>): string {
   return '{' + Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(', ') + '}';
 }
 
+// Patterns for values that would be misread by a YAML parser if left as a bare
+// plain scalar. Kept in lockstep with js-yaml's own default-schema resolvers
+// (lib/type/int.js, float.js, timestamp.js) so quoting matches what the
+// parser would actually do to an unquoted value.
+const YAML_INT_RE = /^[-+]?(0b[01]+|0o[0-7]+|0x[0-9a-fA-F]+|[0-9]+)$/;
+const YAML_FLOAT_RE = /^(?:[-+]?[0-9]+(?:\.[0-9]*)?(?:[eE][-+]?[0-9]+)?|\.[0-9]+(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$/;
+const YAML_DATE_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const YAML_TIMESTAMP_RE = /^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?$/;
+// Characters that can never safely start a YAML plain scalar.
+const YAML_LEADING_INDICATOR_RE = /^[[\]{}&*!|>'"%@`#,]/;
+// '-' and '?' are only unsafe as leading chars when they are the whole
+// scalar or are followed by whitespace (YAML block-indicator rule) —
+// "foo-", "-x", "a-b" stay safe unquoted.
+const YAML_DASH_QUESTION_RE = /^[-?](?:\s|$)/;
+// ': ' anywhere, or a bare trailing ':', are both the mapping-value
+// indicator and break parsing; "foo:bar" and "C:\path" remain safe.
+const YAML_COLON_UNSAFE_RE = /:(?:\s|$)/;
+
 // YAML scalar string. Returns '' for undefined/null (YAML null), '""' for empty string, or the value.
 function ys(v: string | undefined | null): string {
   if (v === undefined || v === null) return '';
   if (v === '') return '""';
-  // Quote if value is a YAML boolean/null keyword or starts with special chars
-  if (/^(true|false|null|yes|no|on|off)$/i.test(v)) return `"${v}"`;
-  if (/^[\[{&*!|>'"%@`#:]/.test(v) || v.includes(': ') || v.includes('\n')) {
+  const needsQuote =
+    /^(true|false|null|yes|no|on|off|~)$/i.test(v) ||
+    YAML_INT_RE.test(v) ||
+    YAML_FLOAT_RE.test(v) ||
+    YAML_DATE_RE.test(v) ||
+    YAML_TIMESTAMP_RE.test(v) ||
+    YAML_LEADING_INDICATOR_RE.test(v) ||
+    YAML_DASH_QUESTION_RE.test(v) ||
+    YAML_COLON_UNSAFE_RE.test(v) ||
+    v.includes('\n');
+  if (needsQuote) {
     return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
   }
   return v;

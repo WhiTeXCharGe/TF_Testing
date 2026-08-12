@@ -1,4 +1,4 @@
-import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml } from '../../services/yamlService';
+import { parseScheduleYaml, parseEnvConfigYaml, stringifyScheduleYaml, stringifyEnvConfigYaml } from '../../services/yamlService';
 
 // ── Minimal valid YAML fixtures ────────────────────────────────────────────────
 
@@ -193,5 +193,72 @@ describe('stringifyScheduleYaml round-trip', () => {
     const yaml = stringifyScheduleYaml(original);
     const roundTripped = parseScheduleYaml(yaml);
     expect(roundTripped.assignmentList).toHaveLength(original.assignmentList.length);
+  });
+});
+
+// ── ys() quoting edge cases — regression test for the "-" / "," bug ─────────
+// Bug: description/name fields whose value was exactly "-" or "," (used as
+// N/A-style placeholders) got written back out unquoted on save, producing
+// invalid YAML that failed to parse on the next load.
+
+describe('ys() quoting edge cases (schedule round-trip)', () => {
+  const roundTripDescription = (value: string) => {
+    const original = parseScheduleYaml(SCHEDULE_YAML);
+    original.workflowTaskList[0].description = value;
+    const yaml = stringifyScheduleYaml(original);
+    const roundTripped = parseScheduleYaml(yaml);
+    return roundTripped.workflowTaskList[0].description;
+  };
+
+  it('round-trips a task description of "-"', () => {
+    expect(roundTripDescription('-')).toBe('-');
+  });
+
+  it('round-trips a task description of ","', () => {
+    expect(roundTripDescription(',')).toBe(',');
+  });
+
+  it('round-trips a task description of "?"', () => {
+    expect(roundTripDescription('?')).toBe('?');
+  });
+
+  it('round-trips a numeric-looking description "-1" as a string, not a number', () => {
+    const result = roundTripDescription('-1');
+    expect(typeof result).toBe('string');
+    expect(result).toBe('-1');
+  });
+
+  it('round-trips a numeric-looking description "007" as a string', () => {
+    const result = roundTripDescription('007');
+    expect(typeof result).toBe('string');
+    expect(result).toBe('007');
+  });
+
+  it('round-trips a date-looking description "2025-09-01" as a string, not a Date', () => {
+    const result = roundTripDescription('2025-09-01');
+    expect(typeof result).toBe('string');
+    expect(result).toBe('2025-09-01');
+  });
+
+  it('leaves a normal placeholder value "N/A" unquoted-safe and unchanged', () => {
+    expect(roundTripDescription('N/A')).toBe('N/A');
+  });
+});
+
+describe('ys() quoting edge cases (envConfig round-trip)', () => {
+  it('round-trips a worker 備考 field of "-"', () => {
+    const env = parseEnvConfigYaml(ENV_CONFIG_YAML);
+    env.workerList[0].description = { '備考': '-' };
+    const yaml = stringifyEnvConfigYaml(env);
+    const roundTripped = parseEnvConfigYaml(yaml);
+    expect(roundTripped.workerList[0].description?.['備考']).toBe('-');
+  });
+
+  it('round-trips a worker 業務形態 field of ","', () => {
+    const env = parseEnvConfigYaml(ENV_CONFIG_YAML);
+    env.workerList[0].description = { '業務形態': ',' };
+    const yaml = stringifyEnvConfigYaml(env);
+    const roundTripped = parseEnvConfigYaml(yaml);
+    expect(roundTripped.workerList[0].description?.['業務形態']).toBe(',');
   });
 });
