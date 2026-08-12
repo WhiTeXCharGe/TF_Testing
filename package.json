@@ -19,14 +19,36 @@
   "build": {
     "appId": "com.timefold.scheduler-web",
     "productName": "Timefold Scheduler",
-    "directories": { "output": "release" },
-    "files": ["electron-dist/**", "dist/**"],
-    "extraResources": [
-      { "from": "dist", "to": "app-dist" },
-      { "from": "localApi", "to": "localApi", "filter": ["dist/**", "node_modules/**", "package.json"] }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron-dist/**",
+      "dist/**"
     ],
-    "win": { "target": "nsis" },
-    "nsis": { "perMachine": false, "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "app-dist"
+      },
+      {
+        "from": "localApi",
+        "to": "localApi",
+        "filter": [
+          "dist/**",
+          "node_modules/**",
+          "package.json"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "perMachine": false,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "axios": "^1.7.7",
@@ -53,5 +75,9 @@
     "typescript": "^5.5.4",
     "vite": "^5.4.6",
     "wait-on": "^8.0.1"
+  },
+  "allowScripts": {
+    "electron@32.3.3": true,
+    "esbuild@0.21.5": true
   }
 }
