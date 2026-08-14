@@ -42,6 +42,7 @@ export interface ScheduleData {
 export interface Operation {
   id: string;
   name?: string;
+  workHours?: number[];
   workloadHours?: number;
   minWorkerNum?: number;
   maxWorkerNum?: number;
@@ -56,6 +57,12 @@ export interface Worker {
   skillMap?: Record<string, number>;
   unavailableDates: unknown[];
 }
+export interface WorkerCompany {
+  id: string;
+  name?: string;
+  annualOvertimeLimit?: number;
+  monthlyOvertimeLimit?: number;
+}
 export interface Fab { id: string; name?: string; region?: string }
 export interface Region { id: string; name?: string }
 export interface TransiteDayMap { from: string; to: string; days: number }
@@ -66,7 +73,7 @@ export interface EnvConfig {
   workerList: Worker[];
   transiteDayMap: TransiteDayMap[];
   customerCompanyList: unknown[];
-  workerCompanyList: unknown[];
+  workerCompanyList: WorkerCompany[];
 }
 
 export interface Violation {

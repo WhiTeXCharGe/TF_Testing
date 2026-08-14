@@ -5,17 +5,20 @@ export type ViewMode = 'device' | 'worker';
 
 export interface Violation {
   type:
-    | 'OVERLAP'
     | 'WORKER_UNAVAILABLE'
     | 'PHASE_OVERRUN'
     | 'WORK_HOUR_RANGE'
     | 'SKILL_MISMATCH'
-    | 'TASK_WORKER_COUNT'
+    | 'REGION_SUITABILITY'
+    | 'COMPANY_SUITABILITY'
     // backend-only
+    | 'OVERLAP'
+    | 'TASK_WORKER_COUNT'
     | 'PHASE_SEQUENCE'
     | 'WORKLOAD_TOTAL'
     | 'RESPONSIBLE_WORKER'
-    | 'TRAVEL_DAYS';
+    | 'TRAVEL_DAYS'
+    | 'OVERTIME';
   assignmentIndices: number[];
   message: string;
   date?: string;

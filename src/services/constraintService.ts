@@ -8,11 +8,10 @@ export function checkConstraints(envConfig: EnvConfig, schedule: ScheduleData): 
   return [
     ...checkDailyWorkHourRange(envConfig, schedule),
     ...checkSkillMapCompatibility(envConfig, schedule),
-    ...checkBarOverlaps(schedule),
-    ...checkTaskWorkerCount(envConfig, schedule),
     ...checkWorkerUnavailableDays(envConfig, schedule),
     ...checkPhaseDateOverrun(schedule),
-    ...checkWorkloadTotal(envConfig, schedule),
+    ...checkRegionSuitability(envConfig, schedule),
+    ...checkCompanySuitability(envConfig, schedule),
   ];
 }
 
@@ -139,91 +138,101 @@ function buildMiscTaskIds(schedule: ScheduleData): Set<string> {
   );
 }
 
-// Two assignments for the same worker overlap in time (including misc + normal same-day)
-function checkBarOverlaps(schedule: ScheduleData): Violation[] {
-  const violations: Violation[] = [];
-  const byWorker: Record<string, Array<{ assignment: ScheduleData['assignmentList'][0]; index: number }>> = {};
-  schedule.assignmentList.forEach((assignment, index) => {
-    (byWorker[assignment.worker] ??= []).push({ assignment, index });
-  });
-
-  for (const assignments of Object.values(byWorker)) {
-    const dayToIndices = new Map<string, number[]>();
-
-    for (const { assignment, index } of assignments) {
-      for (const wd of assignment.workDateList) {
-        if (wd.hour <= 0) continue;
-        const d = normalizeDate(wd.date);
-        const list = dayToIndices.get(d) ?? [];
-        list.push(index);
-        dayToIndices.set(d, list);
-      }
+// Resolve operationTask → regionId, mirroring workerViewModel.ts's opTaskRegionMap
+// (misc tasks — empty phaseTaskList — use wt.region directly since they have no fab).
+function buildOpTaskRegionMap(envConfig: EnvConfig, schedule: ScheduleData): Map<string, string | null> {
+  const fabRegionMap = new Map(envConfig.fabList.map(f => [f.id, f.region ?? null]));
+  const opTaskRegionMap = new Map<string, string | null>();
+  for (const wt of schedule.workflowTaskList) {
+    if (wt.phaseTaskList.length === 0) {
+      opTaskRegionMap.set(wt.id, wt.region ?? (wt.fab ? fabRegionMap.get(wt.fab) ?? null : null));
+      continue;
     }
-
-    for (const [date, indices] of dayToIndices) {
-      if (indices.length > 1) {
-        const [a, b] = indices;
-        if (a !== undefined && b !== undefined) {
-          violations.push({
-            type: 'OVERLAP',
-            assignmentIndices: [a, b],
-            date,
-            severity: 'error',
-            message: UI.overlapViolation(date),
-          });
-        }
+    const regionId = wt.fab ? fabRegionMap.get(wt.fab) ?? null : null;
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        opTaskRegionMap.set(ot.id, regionId);
       }
     }
   }
+  return opTaskRegionMap;
+}
+
+// Same idea as buildOpTaskRegionMap but for Fab.customerCompany. Misc tasks have
+// no fab reference, so they have no resolvable company and are skipped.
+function buildOpTaskCompanyMap(envConfig: EnvConfig, schedule: ScheduleData): Map<string, string | null> {
+  const fabCompanyMap = new Map(envConfig.fabList.map(f => [f.id, f.customerCompany ?? null]));
+  const opTaskCompanyMap = new Map<string, string | null>();
+  for (const wt of schedule.workflowTaskList) {
+    if (wt.phaseTaskList.length === 0) {
+      opTaskCompanyMap.set(wt.id, wt.fab ? fabCompanyMap.get(wt.fab) ?? null : null);
+      continue;
+    }
+    const companyId = wt.fab ? fabCompanyMap.get(wt.fab) ?? null : null;
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        opTaskCompanyMap.set(ot.id, companyId);
+      }
+    }
+  }
+  return opTaskCompanyMap;
+}
+
+// 地域適性: a worker assigned to a region where their fab_suitability_map (kind:
+// 'region') score is exactly 0 is unsuitable for that region. Workers/regions with
+// no explicit score entry are treated as unrestricted (no violation).
+function checkRegionSuitability(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+  const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
+  const opTaskRegionMap = buildOpTaskRegionMap(envConfig, schedule);
+
+  schedule.assignmentList.forEach((assignment, index) => {
+    const worker = workerById.get(assignment.worker);
+    if (!worker) return;
+    const regionId = opTaskRegionMap.get(assignment.operationTask);
+    if (!regionId) return;
+    const regionEntry = worker.fabSuitabilityMap?.find(e => e.kind === 'region');
+    const score = regionEntry?.suitability[regionId];
+    if (score !== 0) return;
+
+    const date = assignment.workDateList.find(wd => wd.hour > 0)?.date;
+    violations.push({
+      type: 'REGION_SUITABILITY',
+      assignmentIndices: [index],
+      date: date ? normalizeDate(date) : undefined,
+      severity: 'error',
+      message: UI.regionSuitabilityViolation(worker.name ?? worker.id, regionId),
+    });
+  });
+
   return violations;
 }
 
-function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+// 企業適性: same idea as region suitability, but keyed on fab_suitability_map's
+// 'customer_company' entry and Fab.customerCompany.
+function checkCompanySuitability(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
   const violations: Violation[] = [];
-  const operationLookup = buildOperationLookups(envConfig);
-  const operationTaskLookup = buildOperationTaskLookup(schedule);
+  const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
+  const opTaskCompanyMap = buildOpTaskCompanyMap(envConfig, schedule);
 
-  // Count unique workers per operation task across ALL dates (not per-day)
-  const opTaskWorkers = new Map<string, Set<string>>();
-  schedule.assignmentList.forEach(assignment => {
-    const hasWork = assignment.workDateList.some(wd => wd.hour > 0);
-    if (!hasWork) return;
-    const set = opTaskWorkers.get(assignment.operationTask) ?? new Set<string>();
-    set.add(assignment.worker);
-    opTaskWorkers.set(assignment.operationTask, set);
+  schedule.assignmentList.forEach((assignment, index) => {
+    const worker = workerById.get(assignment.worker);
+    if (!worker) return;
+    const companyId = opTaskCompanyMap.get(assignment.operationTask);
+    if (!companyId) return;
+    const companyEntry = worker.fabSuitabilityMap?.find(e => e.kind === 'customer_company');
+    const score = companyEntry?.suitability[companyId];
+    if (score !== 0) return;
+
+    const date = assignment.workDateList.find(wd => wd.hour > 0)?.date;
+    violations.push({
+      type: 'COMPANY_SUITABILITY',
+      assignmentIndices: [index],
+      date: date ? normalizeDate(date) : undefined,
+      severity: 'error',
+      message: UI.companySuitabilityViolation(worker.name ?? worker.id, companyId),
+    });
   });
-
-  for (const [operationTaskId, workerSet] of opTaskWorkers.entries()) {
-    const opTask = operationTaskLookup.get(operationTaskId);
-    if (!opTask) continue;
-    const op = operationLookup.get(opTask.operationId);
-
-    const min = opTask.recommendsWorkerMin ?? op?.minWorkerNum;
-    const max = opTask.recommendsWorkerMax ?? op?.maxWorkerNum;
-
-    const relatedIndices = schedule.assignmentList
-      .map((a, i) => ({ a, i }))
-      .filter(({ a }) => a.operationTask === operationTaskId && a.workDateList.some(wd => wd.hour > 0))
-      .map(x => x.i);
-
-    if (min != null && workerSet.size < min) {
-      violations.push({
-        type: 'TASK_WORKER_COUNT',
-        assignmentIndices: relatedIndices,
-        severity: 'error',
-        message: UI.minWorkerCountViolation(operationTaskId, workerSet.size, min),
-      });
-    }
-
-    if (max != null && workerSet.size > max) {
-      violations.push({
-        type: 'TASK_WORKER_COUNT',
-        assignmentIndices: relatedIndices,
-        severity: 'error',
-        message: UI.maxWorkerCountViolation(operationTaskId, workerSet.size, max),
-      });
-    }
-  }
 
   return violations;
 }
@@ -297,81 +306,9 @@ function checkPhaseDateOverrun(schedule: ScheduleData): Violation[] {
   return violations;
 }
 
-// Overwork: total assigned hours for an operation task exceeds workloadHours + X
-// X = numWorkersOnTask × phaseDays × maxSingleDayHours
-// This allows normal scheduling slack without false positives.
-// Misc tasks (empty phaseTaskList) are skipped — they have no workload requirement.
-function checkWorkloadTotal(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
-  const violations: Violation[] = [];
-
-  // IDs of misc tasks (no workload requirement)
-  const miscTaskIds = new Set(
-    schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0).map(wt => wt.id),
-  );
-
-  // operationTask → { workloadHours, phaseStartDate, phaseEndDate, opTaskName }
-  interface OpTaskMeta { workloadHours: number; phaseStart: string; phaseEnd: string; label: string }
-  const opTaskMeta = new Map<string, OpTaskMeta>();
-  for (const wt of schedule.workflowTaskList) {
-    for (const pt of wt.phaseTaskList) {
-      for (const ot of pt.operationTaskList) {
-        if (ot.workloadHours != null && ot.workloadHours > 0) {
-          opTaskMeta.set(ot.id, {
-            workloadHours: ot.workloadHours,
-            phaseStart: pt.startDate,
-            phaseEnd: pt.endDate,
-            label: ot.name ?? ot.id,
-          });
-        }
-      }
-    }
-  }
-  if (opTaskMeta.size === 0) return violations;
-
-  // Global maximum hours worked on any single day (used as worst-case daily ceiling)
-  let maxSingleDayHours = 0;
-  for (const assignment of schedule.assignmentList) {
-    if (miscTaskIds.has(assignment.operationTask)) continue;
-    for (const wd of assignment.workDateList) {
-      if (wd.hour > maxSingleDayHours) maxSingleDayHours = wd.hour;
-    }
-  }
-  if (maxSingleDayHours === 0) return violations;
-
-  // Sum actual hours and count workers per operationTask
-  const actualMap = new Map<string, { total: number; workers: Set<string>; indices: number[] }>();
-  schedule.assignmentList.forEach((assignment, idx) => {
-    const opTaskId = assignment.operationTask;
-    if (!opTaskMeta.has(opTaskId)) return;
-    const sum = assignment.workDateList.reduce((acc, wd) => acc + (wd.hour > 0 ? wd.hour : 0), 0);
-    if (sum === 0) return;
-    const entry = actualMap.get(opTaskId) ?? { total: 0, workers: new Set<string>(), indices: [] };
-    entry.total += sum;
-    entry.workers.add(assignment.worker);
-    entry.indices.push(idx);
-    actualMap.set(opTaskId, entry);
-  });
-
-  for (const [opTaskId, { total, workers, indices }] of actualMap.entries()) {
-    const meta = opTaskMeta.get(opTaskId)!;
-    const phaseDays = Math.max(1, Math.round(
-      (new Date(`${meta.phaseEnd}T00:00:00`).getTime() - new Date(`${meta.phaseStart}T00:00:00`).getTime()) / 86400000,
-    ) + 1);
-    // X = maximum schedulable hours for this task's workers over the phase period
-    const X = workers.size * phaseDays * maxSingleDayHours;
-    const threshold = meta.workloadHours + X;
-    if (total > threshold) {
-      violations.push({
-        type: 'WORKLOAD_TOTAL',
-        assignmentIndices: indices,
-        severity: 'warning',
-        message: UI.workloadOverThresholdViolation(meta.label, total, meta.workloadHours, threshold),
-      });
-    }
-  }
-
-  return violations;
-}
+// 必要作業量 (workload total) moved entirely to the backend
+// (server/src/services/backendConstraints.ts) — it's a heavy per-assignment
+// scan across every operationTask, too slow to re-run live on every edit.
 
 // Build a set of unavailable calendar dates from UnavailableDateEntry[]
 function collectUnavailableDays(entries: EnvConfig['workerList'][0]['unavailableDates'], planStart: string, planEnd: string): Set<string> {

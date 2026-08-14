@@ -481,7 +481,6 @@ export function ConstraintResultDialog() {
   ), [schedule]);
 
   const filteredBackend = useMemo(() => backendViolations.filter(v => {
-    if (v.type === 'WORKLOAD_TOTAL') return false;
     if (v.type === 'RESPONSIBLE_WORKER') {
       const isForMisc = v.assignmentIndices.some(idx => {
         const a = schedule?.assignmentList[idx];

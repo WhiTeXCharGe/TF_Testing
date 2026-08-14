@@ -2,11 +2,214 @@ import type { EnvConfig, ScheduleData, Violation } from '../types.js';
 
 export function runBackendConstraints(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
   return [
+    ...checkBarOverlaps(schedule),
+    ...checkTaskWorkerCount(envConfig, schedule),
     ...checkPhaseSequenceOrder(schedule),
     ...checkRequiredWorkload(envConfig, schedule),
     ...checkResponsibleWorker(envConfig, schedule),
     ...checkTravelDays(envConfig, schedule),
+    ...checkOvertimeLimits(envConfig, schedule),
   ];
+}
+
+// ── 残業時間制約: monthly/annual overtime per worker must stay within their company's limit ──
+// Overtime for a calendar day = hours worked beyond the standard 8h/day, summed
+// across ALL of that worker's assignments on that day (a worker can be on more
+// than one task the same day). Aggregated per worker per month (YYYY-MM) and
+// per year (YYYY), then compared against worker_company_list's
+// monthly_overtime_limit / annual_overtime_limit. Heavy (scans every work date
+// for every assignment) — this is why it only runs on-demand via 制約チェック
+// rather than live on every edit.
+const STANDARD_DAY_HOURS = 8;
+
+function checkOvertimeLimits(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+  const workerCompanyMap = new Map(envConfig.workerCompanyList.map(wc => [wc.id, wc]));
+  const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
+
+  // worker → date → total hours worked that day (across all their assignments)
+  const dailyHoursByWorker = new Map<string, Map<string, number>>();
+  // worker → set of assignment indices (for reporting)
+  const workerIndices = new Map<string, number[]>();
+  schedule.assignmentList.forEach((a, idx) => {
+    let dateMap = dailyHoursByWorker.get(a.worker);
+    if (!dateMap) { dateMap = new Map(); dailyHoursByWorker.set(a.worker, dateMap); }
+    let touchedThisAssignment = false;
+    for (const wd of a.workDateList) {
+      if (wd.hour <= 0) continue;
+      dateMap.set(wd.date, (dateMap.get(wd.date) ?? 0) + wd.hour);
+      touchedThisAssignment = true;
+    }
+    if (touchedThisAssignment) {
+      const list = workerIndices.get(a.worker) ?? [];
+      list.push(idx);
+      workerIndices.set(a.worker, list);
+    }
+  });
+
+  for (const [workerId, dateMap] of dailyHoursByWorker.entries()) {
+    const worker = workerById.get(workerId);
+    if (!worker) continue;
+    const company = worker.workerCompany ? workerCompanyMap.get(worker.workerCompany) : undefined;
+    if (!company) continue;
+
+    const monthlyOvertime = new Map<string, number>();
+    const annualOvertime = new Map<string, number>();
+    for (const [date, hours] of dateMap.entries()) {
+      const overtime = Math.max(0, hours - STANDARD_DAY_HOURS);
+      if (overtime <= 0) continue;
+      const [year, month] = date.split('-');
+      if (!year || !month) continue;
+      const monthKey = `${year}-${month}`;
+      monthlyOvertime.set(monthKey, (monthlyOvertime.get(monthKey) ?? 0) + overtime);
+      annualOvertime.set(year, (annualOvertime.get(year) ?? 0) + overtime);
+    }
+
+    const indices = workerIndices.get(workerId) ?? [];
+    const workerLabel = worker.name ?? workerId;
+
+    if (company.monthlyOvertimeLimit != null && company.monthlyOvertimeLimit > 0) {
+      for (const [monthKey, hours] of monthlyOvertime.entries()) {
+        if (hours > company.monthlyOvertimeLimit) {
+          violations.push({
+            type: 'OVERTIME',
+            assignmentIndices: indices,
+            severity: 'error',
+            message: `残業時間超過(月): worker=${workerLabel} ${monthKey} 残業=${hours}h 上限=${company.monthlyOvertimeLimit}h`,
+          });
+        }
+      }
+    }
+
+    if (company.annualOvertimeLimit != null && company.annualOvertimeLimit > 0) {
+      for (const [year, hours] of annualOvertime.entries()) {
+        if (hours > company.annualOvertimeLimit) {
+          violations.push({
+            type: 'OVERTIME',
+            assignmentIndices: indices,
+            severity: 'error',
+            message: `残業時間超過(年): worker=${workerLabel} ${year} 残業=${hours}h 上限=${company.annualOvertimeLimit}h`,
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+// ── 同一日作業重複禁止: same worker cannot have two assignments on the same day ──
+// (moved from the frontend live-checker for performance with large datasets — was
+// re-run on every bar move; now only runs on-demand via 制約チェック.)
+function checkBarOverlaps(schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+  const byWorker = new Map<string, number[]>();
+  schedule.assignmentList.forEach((a, index) => {
+    const list = byWorker.get(a.worker) ?? [];
+    list.push(index);
+    byWorker.set(a.worker, list);
+  });
+
+  for (const indices of byWorker.values()) {
+    const dayToIndices = new Map<string, number[]>();
+    for (const index of indices) {
+      const assignment = schedule.assignmentList[index]!;
+      for (const wd of assignment.workDateList) {
+        if (wd.hour <= 0) continue;
+        const list = dayToIndices.get(wd.date) ?? [];
+        list.push(index);
+        dayToIndices.set(wd.date, list);
+      }
+    }
+
+    for (const [date, dayIndices] of dayToIndices) {
+      if (dayIndices.length > 1) {
+        const [a, b] = dayIndices;
+        if (a !== undefined && b !== undefined) {
+          violations.push({
+            type: 'OVERLAP',
+            assignmentIndices: [a, b],
+            date,
+            severity: 'error',
+            message: `同一日作業重複禁止: ${date} に同一作業者へ複数割当`,
+          });
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+// ── 最小・最大作業者数: unique worker count per operationTask must stay within range ──
+function checkTaskWorkerCount(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+
+  // operationTask → { operationId, recommendsWorkerMin, recommendsWorkerMax }
+  const opTaskInfo = new Map<string, { operationId: string; min?: number; max?: number }>();
+  for (const wt of schedule.workflowTaskList) {
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        opTaskInfo.set(ot.id, {
+          operationId: ot.operation,
+          min: ot.recommendsWorkerMin,
+          max: ot.recommendsWorkerMax,
+        });
+      }
+    }
+  }
+
+  // operation → { minWorkerNum, maxWorkerNum } fallback when the task itself doesn't override it
+  const operationRange = new Map<string, { min?: number; max?: number }>();
+  for (const wf of envConfig.workflowList) {
+    for (const ph of wf.phaseList) {
+      for (const op of ph.operationList) {
+        operationRange.set(op.id, { min: op.minWorkerNum, max: op.maxWorkerNum });
+      }
+    }
+  }
+
+  // Count unique workers per operationTask across all dates (not per-day)
+  const opTaskWorkers = new Map<string, Set<string>>();
+  schedule.assignmentList.forEach(a => {
+    if (!a.workDateList.some(wd => wd.hour > 0)) return;
+    const set = opTaskWorkers.get(a.operationTask) ?? new Set<string>();
+    set.add(a.worker);
+    opTaskWorkers.set(a.operationTask, set);
+  });
+
+  for (const [operationTaskId, workerSet] of opTaskWorkers.entries()) {
+    const info = opTaskInfo.get(operationTaskId);
+    if (!info) continue;
+    const opRange = operationRange.get(info.operationId);
+
+    const min = info.min ?? opRange?.min;
+    const max = info.max ?? opRange?.max;
+
+    const relatedIndices = schedule.assignmentList
+      .map((a, i) => ({ a, i }))
+      .filter(({ a }) => a.operationTask === operationTaskId && a.workDateList.some(wd => wd.hour > 0))
+      .map(x => x.i);
+
+    if (min != null && workerSet.size < min) {
+      violations.push({
+        type: 'TASK_WORKER_COUNT',
+        assignmentIndices: relatedIndices,
+        severity: 'error',
+        message: `最小作業者数違反: ${operationTaskId} count=${workerSet.size} min=${min}`,
+      });
+    }
+
+    if (max != null && workerSet.size > max) {
+      violations.push({
+        type: 'TASK_WORKER_COUNT',
+        assignmentIndices: relatedIndices,
+        severity: 'error',
+        message: `最大作業者数違反: ${operationTaskId} count=${workerSet.size} max=${max}`,
+      });
+    }
+  }
+
+  return violations;
 }
 
 // ── 工程間順序: phase N+1 must not start before all assignments in phase N finish ──
@@ -67,50 +270,83 @@ function checkPhaseSequenceOrder(schedule: ScheduleData): Violation[] {
   return violations;
 }
 
-// ── 必要作業量: total assigned hours must meet workloadHours for each operationTask ──
-function checkRequiredWorkload(_envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+// ── 必要作業量: total assigned hours for an operationTask must land in
+// [required, required + X*T], where:
+//   required = ot.workloadHours (the declared target for the task)
+//   X        = number of unique workers actually assigned work on the task
+//   T        = the operation's max declared hours/day (op.workHours), i.e.
+//              one worker's biggest possible single-day contribution
+//
+// The ceiling is "required + one extra worker-day of slack" — formally
+// required=X·T·D and ceiling=X·T·(D+1), and since (D+1)−D is always 1,
+// ceiling−required always reduces to exactly X·T regardless of D. That
+// cancellation is deliberate: D (how many distinct days the task took) is
+// not well-defined when different workers on the same task work different,
+// non-overlapping date ranges. (Formerly duplicated on the frontend, which
+// re-ran this scan on every edit — moved here entirely for performance.)
+function checkRequiredWorkload(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
   const violations: Violation[] = [];
 
-  // Build operationTask → workloadHours map
-  const workloadRequired = new Map<string, number>();
-  const opTaskName = new Map<string, string>();
-  for (const wt of schedule.workflowTaskList) {
-    for (const pt of wt.phaseTaskList) {
-      for (const ot of pt.operationTaskList) {
-        if (ot.workloadHours > 0) workloadRequired.set(ot.id, ot.workloadHours);
-        opTaskName.set(ot.id, ot.name ?? ot.id);
+  // operation → declared max hours/day
+  const operationWorkHours = new Map<string, number[]>();
+  for (const wf of envConfig.workflowList) {
+    for (const ph of wf.phaseList) {
+      for (const op of ph.operationList) {
+        if (op.workHours && op.workHours.length > 0) operationWorkHours.set(op.id, op.workHours);
       }
     }
   }
 
-  // Sum assigned hours per operationTask
-  const assignedHours = new Map<string, { total: number; indices: number[] }>();
+  // operationTask → { workloadHours, operationId, label }
+  const opTaskMeta = new Map<string, { workloadHours: number; operationId: string; label: string }>();
+  for (const wt of schedule.workflowTaskList) {
+    for (const pt of wt.phaseTaskList) {
+      for (const ot of pt.operationTaskList) {
+        if (ot.workloadHours > 0) {
+          opTaskMeta.set(ot.id, { workloadHours: ot.workloadHours, operationId: ot.operation, label: ot.name ?? ot.id });
+        }
+      }
+    }
+  }
+  if (opTaskMeta.size === 0) return violations;
+
+  // Sum actual hours, unique workers, and the biggest single-day hour value
+  // actually observed, per operationTask.
+  const actualMap = new Map<string, { total: number; workers: Set<string>; maxObservedDayHours: number; indices: number[] }>();
   schedule.assignmentList.forEach((a, idx) => {
-    const hours = a.workDateList.reduce((sum, wd) => sum + (wd.hour > 0 ? wd.hour : 0), 0);
-    const existing = assignedHours.get(a.operationTask) ?? { total: 0, indices: [] };
-    assignedHours.set(a.operationTask, {
-      total: existing.total + hours,
-      indices: [...existing.indices, idx],
-    });
+    if (!opTaskMeta.has(a.operationTask)) return;
+    const sum = a.workDateList.reduce((acc, wd) => acc + (wd.hour > 0 ? wd.hour : 0), 0);
+    if (sum === 0) return;
+    const entry = actualMap.get(a.operationTask) ?? { total: 0, workers: new Set<string>(), maxObservedDayHours: 0, indices: [] };
+    entry.total += sum;
+    entry.workers.add(a.worker);
+    for (const wd of a.workDateList) {
+      if (wd.hour > entry.maxObservedDayHours) entry.maxObservedDayHours = wd.hour;
+    }
+    entry.indices.push(idx);
+    actualMap.set(a.operationTask, entry);
   });
 
-  for (const [opTaskId, required] of workloadRequired.entries()) {
-    const assigned = assignedHours.get(opTaskId);
-    const total = assigned?.total ?? 0;
-    if (total < required) {
+  for (const [opTaskId, { total, workers, maxObservedDayHours, indices }] of actualMap.entries()) {
+    const meta = opTaskMeta.get(opTaskId)!;
+    const declared = operationWorkHours.get(meta.operationId);
+    const T = declared && declared.length > 0 ? Math.max(...declared) : (maxObservedDayHours || 8);
+    const X = workers.size;
+    const ceiling = meta.workloadHours + X * T;
+
+    if (total < meta.workloadHours) {
       violations.push({
         type: 'WORKLOAD_TOTAL',
-        assignmentIndices: assigned?.indices ?? [],
+        assignmentIndices: indices,
         severity: 'warning',
-        message: `必要作業量不足: ${opTaskName.get(opTaskId) ?? opTaskId} — 必要 ${required}h / 割当 ${total}h (不足 ${required - total}h)`,
+        message: `必要作業量不足: ${meta.label} 実績=${total}h 必要=${meta.workloadHours}h (不足 ${meta.workloadHours - total}h)`,
       });
-    }
-    if (total > required) {
+    } else if (total > ceiling) {
       violations.push({
         type: 'WORKLOAD_TOTAL',
-        assignmentIndices: assigned?.indices ?? [],
+        assignmentIndices: indices,
         severity: 'warning',
-        message: `作業量超過: ${opTaskName.get(opTaskId) ?? opTaskId} — 必要 ${required}h / 割当 ${total}h (超過 ${total - required}h)`,
+        message: `過剰作業量: ${meta.label} 実績=${total}h 必要=${meta.workloadHours}h 上限=${ceiling}h`,
       });
     }
   }

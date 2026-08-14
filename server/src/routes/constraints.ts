@@ -56,6 +56,12 @@ const WorkerSchema = z.object({
 const FabSchema = z.object({ id: z.string(), name: z.string().optional(), region: z.string().optional() });
 const RegionSchema = z.object({ id: z.string(), name: z.string().optional() });
 const TransitSchema = z.object({ from: z.string(), to: z.string(), days: z.number() });
+const WorkerCompanySchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  annualOvertimeLimit: z.number().optional(),
+  monthlyOvertimeLimit: z.number().optional(),
+});
 const WorkflowSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
@@ -65,6 +71,7 @@ const WorkflowSchema = z.object({
     operationList: z.array(z.object({
       id: z.string(),
       name: z.string().optional(),
+      workHours: z.array(z.number()).optional(),
       workloadHours: z.number().optional(),
       minWorkerNum: z.number().optional(),
       maxWorkerNum: z.number().optional(),
@@ -78,7 +85,7 @@ const EnvConfigSchema = z.object({
   workerList: z.array(WorkerSchema).default([]),
   transiteDayMap: z.array(TransitSchema).default([]),
   customerCompanyList: z.array(z.unknown()).default([]),
-  workerCompanyList: z.array(z.unknown()).default([]),
+  workerCompanyList: z.array(WorkerCompanySchema).default([]),
 });
 
 const RequestSchema = z.object({

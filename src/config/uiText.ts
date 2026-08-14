@@ -214,17 +214,14 @@ export const UI = {
     `作業時間違反: ${op} ${date} ${hour}h (>24h)`,
   skillMismatchViolation: (workerName: string, operationId: string, required: number, actual: number) =>
     `スキル不足: worker=${workerName} operation=${operationId} required=${required} actual=${actual}`,
-  overlapViolation: (date: string) => `同一日作業重複禁止: ${date} に同一作業者へ複数割当`,
-  minWorkerCountViolation: (operationTaskId: string, count: number, min: number) =>
-    `最小作業者数違反: ${operationTaskId} count=${count} min=${min}`,
-  maxWorkerCountViolation: (operationTaskId: string, count: number, max: number) =>
-    `最大作業者数違反: ${operationTaskId} count=${count} max=${max}`,
   workerUnavailableViolation: (workerName: string, date: string) =>
     `Worker ${workerName}: 利用不可日に割り当て (${date})`,
   phaseOverrunViolation: (operationTask: string, startDate: string, endDate: string) =>
     `工程開始日・終了日違反: ${operationTask} (${startDate}..${endDate})`,
-  workloadOverThresholdViolation: (label: string, total: number, workloadHours: number, threshold: number) =>
-    `過剰作業量: ${label} 実績=${total}h 必要=${workloadHours}h 上限=${threshold}h`,
+  regionSuitabilityViolation: (workerName: string, regionId: string) =>
+    `地域適性違反: worker=${workerName} region=${regionId} suitability=0`,
+  companySuitabilityViolation: (workerName: string, companyId: string) =>
+    `企業適性違反: worker=${workerName} company=${companyId} suitability=0`,
 
   // Save As dialog
   envFileNameLabel: 'EnvConfig ファイル名',
@@ -278,6 +275,9 @@ export const UI = {
     WORKLOAD_TOTAL: '必要作業量',
     RESPONSIBLE_WORKER: '作業責任者',
     TRAVEL_DAYS: '移動日',
+    REGION_SUITABILITY: '地域適性',
+    COMPANY_SUITABILITY: '企業適性',
+    OVERTIME: '残業時間',
   } as Record<string, string>,
 
   // Menu bar status messages

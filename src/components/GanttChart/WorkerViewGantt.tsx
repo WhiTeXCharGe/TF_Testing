@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { WorkerTimelineGrid, BarDragCommit } from './WorkerTimelineGrid';
 import { buildWorkerTimelineModel } from './workerViewModel';
-import { addDays, formatDate } from '../../utils/dateUtils';
+import { addDays, formatDate, isWeekend } from '../../utils/dateUtils';
 
 type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 type ExtraFilterKey = 'workType' | 'assignedDuties' | 'visa' | 'overseasDriving';
@@ -287,10 +287,26 @@ export function WorkerViewGantt({ dates }: Props) {
       const newEndIdx = dateIndex.get(newEndDate) ?? dates.length - 1;
       if (newStartIdx > newEndIdx) return;
 
-      const filteredWorkDateList = assignment.workDateList.filter(wd => {
+      // Keep existing work-date entries that still fall in the new range...
+      const keptWorkDateList = assignment.workDateList.filter(wd => {
         const idx = dateIndex.get(wd.date);
         return idx !== undefined && idx >= newStartIdx && idx <= newEndIdx;
       });
+
+      // ...and add entries for any newly-included weekday that didn't already
+      // have one — a lengthening resize must add hours, not just move the
+      // boundary date, otherwise total assigned hours silently never changes
+      // (which made over-budget impossible to detect and, after a
+      // shorten-then-lengthen cycle, permanently lost hours the shorten step
+      // had filtered out).
+      const keptDates = new Set(keptWorkDateList.map(wd => wd.date));
+      const defaultHour = assignment.workDateList.find(wd => wd.hour > 0)?.hour ?? 8;
+      const addedWorkDateList = dates
+        .slice(newStartIdx, newEndIdx + 1)
+        .filter(d => !keptDates.has(d) && !isWeekend(d))
+        .map(d => ({ date: d, hour: defaultHour }));
+
+      const newWorkDateList = [...keptWorkDateList, ...addedWorkDateList];
 
       dispatch({
         type: 'UPDATE_ASSIGNMENT',
@@ -300,7 +316,7 @@ export function WorkerViewGantt({ dates }: Props) {
             worker: commit.newWorkerId,
             startDate: newStartDate,
             endDate: newEndDate,
-            workDateList: filteredWorkDateList.length > 0 ? filteredWorkDateList : [{ date: newStartDate, hour: 8 }],
+            workDateList: newWorkDateList.length > 0 ? newWorkDateList : [{ date: newStartDate, hour: 8 }],
           },
         },
       });
