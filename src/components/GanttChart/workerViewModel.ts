@@ -432,7 +432,7 @@ export function buildWorkerTimelineModel(
     const workerName = worker?.name ?? workerId;
     const company = worker ? getWorkerCompanyName(worker, envConfig) : '';
     const remarks = worker?.description?.['備考'] ?? '';
-    const manager = worker?.isManager ? 'Yes' : '';
+    const manager = worker?.isManager ? UI.workerGridManagerYes : '';
     const workType = worker?.description?.['業務形態'] ?? '';
     const visa = worker?.description?.['VISA'] ?? '';
     const overseasDriving = worker?.description?.['海外運転'] ?? '';

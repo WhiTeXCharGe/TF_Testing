@@ -387,8 +387,8 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
 
       <Field label={UI.deviceCodeLabel}>{module.moduleName}</Field>
 
-      {fab && <Field label="Fab">{fab.name ?? fab.id}</Field>}
-      {region && <Field label="Region">{region.name ?? region.id}</Field>}
+      {fab && <Field label={UI.fabFieldLabel}>{fab.name ?? fab.id}</Field>}
+      {region && <Field label={UI.regionFieldLabel}>{region.name ?? region.id}</Field>}
 
       <Field label={UI.planStartDateLabel}>
         <input type="date" value={phase.planStartDate} onChange={e => onChange({ startDate: e.target.value })} style={inputStyle} />

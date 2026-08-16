@@ -438,7 +438,7 @@ function WorkerDateRow({
       <div style={{ flex: 1 }}>
         <label style={{ display: 'block', fontSize: 10, color: '#666', fontWeight: 'bold', marginBottom: 2 }}>{UI.dialogHoursLabel}</label>
         <select style={S.input} value={wd.hoursPerDay} onChange={e => onChange({ hoursPerDay: Number(e.target.value) })}>
-          {hoursOptions.map(h => <option key={h} value={h}>{h}h</option>)}
+          {hoursOptions.map(h => <option key={h} value={h}>{h}{UI.hourUnitSuffix}</option>)}
         </select>
       </div>
       <div style={{ flex: 1 }}>

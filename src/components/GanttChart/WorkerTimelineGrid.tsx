@@ -15,7 +15,7 @@ type WorkerFilterKey = 'id' | 'company' | 'name' | 'manager' | 'remarks';
 // Always-visible columns
 const ALWAYS_COLUMNS: Array<{ key: WorkerFilterKey; label: string; width: number; align?: 'left' | 'center' }> = [
   { key: 'company', label: UI.workerGridCompany, width: 110, align: 'left' },
-  { key: 'id', label: 'ID', width: 52, align: 'left' },
+  { key: 'id', label: UI.workerGridId, width: 52, align: 'left' },
   { key: 'name', label: UI.workerGridName, width: 80, align: 'left' },
 ];
 
@@ -35,7 +35,7 @@ const EXTRA_COL_DESC_FIELD: Partial<Record<ExtraColKey, ExtraDescField>> = {
 const EXTRA_COLUMNS: Array<{ key: ExtraColKey; label: string; width: number }> = [
   { key: 'workType', label: UI.extraColWorkType, width: 96 },
   { key: 'assignedDuties', label: UI.extraColAssignedDuties, width: 140 },
-  { key: 'visa', label: 'VISA', width: 70 },
+  { key: 'visa', label: UI.extraColVisa, width: 70 },
   { key: 'overseasDriving', label: UI.extraColOverseasDriving, width: 92 },
 ];
 const TOGGLE_COL_WIDTH = 22;

@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { CELL_WIDTH, ROW_HEIGHT, ROW_HEADER_WIDTH, SHOW_WEEKEND_SHADING } from '../../config/appConfig';
 import { formatDateShort, isWeekend, diffDays, addDays } from '../../utils/dateUtils';
+import { UI } from '../../config/uiText';
 
 const NAVY = '#1c2b3a';
 const NAVY_MID = '#243447';
@@ -192,7 +193,7 @@ export function GanttChartArea({ rows, dates, onToggleRow, onBarClick, onBarDrag
           alignItems: 'center',
           paddingLeft: 8,
         }}>
-          <span style={{ fontSize: 10, color: '#7a9bb5', fontFamily: 'MS Gothic, monospace' }}>装置 / 工程</span>
+          <span style={{ fontSize: 10, color: '#7a9bb5', fontFamily: 'MS Gothic, monospace' }}>{UI.deviceCornerLabel}</span>
         </div>
 
         {/* Scrollable body — overflow hidden, scrollTop driven by right panel */}

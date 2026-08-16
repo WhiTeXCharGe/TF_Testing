@@ -388,7 +388,7 @@ function WorkHourTable({
                     outline: 'none',
                   }}
                 />
-                <span style={{ color: '#888', fontSize: 10, width: 10 }}>h</span>
+                <span style={{ color: '#888', fontSize: 10, width: 10 }}>{UI.hourUnitSuffix}</span>
               </div>
             </div>
           );
