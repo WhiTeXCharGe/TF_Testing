@@ -9,6 +9,7 @@
  * entries present in runs.json are shown.
  */
 import type { Run } from '@/types';
+import { UI } from '@/config/uiConfig';
 
 interface RunsResponse { runs: Run[] }
 interface UploadResponse { run: Run }
@@ -26,7 +27,7 @@ const API = {
 /** Load all runs from the JSON database. Newest first. */
 export async function fetchRuns(): Promise<Run[]> {
   const res = await fetch(API.runs, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`fetchRuns failed (${res.status})`);
+  if (!res.ok) throw new Error(UI.errors.fetchRunsFailed(res.status));
   const data = await res.json() as RunsResponse;
   return (data.runs ?? []).sort((a, b) => b.solveDate.localeCompare(a.solveDate));
 }
@@ -62,7 +63,7 @@ export async function uploadRun(p: UploadPayload): Promise<Run> {
   const res = await fetch(API.upload, { method: 'POST', body: form });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Upload failed (${res.status}): ${body || res.statusText}`);
+    throw new Error(UI.errors.uploadFailed(res.status, body || res.statusText));
   }
   const data = await res.json() as UploadResponse;
   return data.run;
@@ -73,7 +74,7 @@ export async function deleteRun(id: string): Promise<void> {
   const res = await fetch(API.run(id), { method: 'DELETE' });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Delete failed (${res.status}): ${body || res.statusText}`);
+    throw new Error(UI.errors.deleteFailed(res.status, body || res.statusText));
   }
 }
 
@@ -106,7 +107,7 @@ export async function saveOutput(id: string, blob: Blob, filename: string): Prom
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`出力の保存に失敗しました (${res.status}): ${body || res.statusText}`);
+    throw new Error(UI.errors.saveOutputFailed(res.status, body || res.statusText));
   }
   const data = await res.json() as { ok: boolean; yamlPath: string };
   return data.yamlPath;
@@ -117,7 +118,7 @@ export async function resetRuns(): Promise<void> {
   const res = await fetch(API.runs, { method: 'DELETE' });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Reset failed (${res.status}): ${body || res.statusText}`);
+    throw new Error(UI.errors.resetFailed(res.status, body || res.statusText));
   }
 }
 

@@ -74,12 +74,12 @@ function InputCell({ run, busy, onShowPaths, onShowCopy }: {
     <div className="input-cell">
       <div className="input-files-label">
         <FileChip
-          label="EnvConfig"
+          label={UI.runLog.envChipLabel}
           onClick={e => onShowPaths(e, 'env')}
           onHover={e => onShowPaths(e, 'env')}
         />
         <FileChip
-          label="Schedule"
+          label={UI.runLog.schedChipLabel}
           onClick={e => onShowPaths(e, 'sched')}
           onHover={e => onShowPaths(e, 'sched')}
         />
@@ -503,7 +503,7 @@ export function RunLogPage() {
     setBusy(prev => new Set(prev).add(run.id));
     try {
       if (!run.savedEnvPath || !run.savedSchedPath) {
-        throw new Error('入力ファイルが見つかりません');
+        throw new Error(UI.runLog.inputFilesNotFoundError);
       }
       const [envYaml, scheduleYaml] = await Promise.all([
         fetchText(run.savedEnvPath),
@@ -531,7 +531,7 @@ export function RunLogPage() {
       // Once downloaded from API, reuse the cached result instead of re-downloading.
       const cachedScheduleYaml = downloadedPaths[run.id] ? downloadedScheduleYaml[run.id] : undefined;
       if (cachedScheduleYaml) {
-        if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+        if (!run.savedEnvPath) throw new Error(UI.runLog.envConfigNotFoundError);
         const envYaml = await fetchText(run.savedEnvPath);
         await openInGanttEditor(envYaml, cachedScheduleYaml);
         return;
@@ -555,7 +555,7 @@ export function RunLogPage() {
         // Check whether the output YAML landed in public/local/<id>/output/
         const out = await checkOutput(run.id);
         if (out.hasYaml && out.yamlPath) {
-          if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+          if (!run.savedEnvPath) throw new Error(UI.runLog.envConfigNotFoundError);
           const [envYaml, scheduleYaml] = await Promise.all([
             fetchText(run.savedEnvPath),
             fetchText(out.yamlPath),
@@ -593,7 +593,7 @@ export function RunLogPage() {
       setDownloadedScheduleYaml(prev => ({ ...prev, [run.id]: scheduleYaml }));
       setSolverCompleted(null);
 
-      if (!run.savedEnvPath) throw new Error('EnvConfigファイルが見つかりません');
+      if (!run.savedEnvPath) throw new Error(UI.runLog.envConfigNotFoundError);
       const envYaml = await fetchText(run.savedEnvPath);
       await openInGanttEditor(envYaml, scheduleYaml);
     } catch (err) {
@@ -691,21 +691,21 @@ export function RunLogPage() {
               {loading && runs.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--text-sec)' }}>
-                    Loading runs.json…
+                    {UI.runLog.loadingRunsMessage}
                   </td>
                 </tr>
               )}
               {error && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 16, color: 'var(--red)' }}>
-                    Failed to load runs.json — {error}
+                    {UI.runLog.loadRunsFailedPrefix}{error}
                   </td>
                 </tr>
               )}
               {!loading && !error && runs.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--text-sec)' }}>
-                    No runs yet. Click <strong>New Run</strong> to upload inputs.
+                    {UI.runLog.emptyStatePrefix}<strong>{UI.runLog.newRun}</strong>{UI.runLog.emptyStateSuffix}
                   </td>
                 </tr>
               )}
@@ -741,8 +741,8 @@ export function RunLogPage() {
             <>
               <div>{solverEnabled ? UI.runLog.uploadDoneBodyApi : UI.runLog.uploadDoneBodyLocal}</div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {uploadDone.run.id}<br />
-                Input dir: {uploadDone.run.inputDir}
+                {UI.runLog.runIdLabel} {uploadDone.run.id}<br />
+                {UI.runLog.inputDirLabel} {uploadDone.run.inputDir}
               </div>
             </>
           }
@@ -756,7 +756,7 @@ export function RunLogPage() {
           title={UI.runLog.ganttDialogTitle}
           body={
             <>
-              <div>ポップアップがブロックされました。下のリンクから開いてください。</div>
+              <div>{UI.runLog.ganttPopupBlockedMessage}</div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, wordBreak: 'break-all' }}>
                 <a href={ganttTransferUrl} target="_blank" rel="noopener noreferrer">{ganttTransferUrl}</a>
               </div>
@@ -774,7 +774,7 @@ export function RunLogPage() {
             <>
               {UI.runLog.notReadyBody}
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {notReady.id}
+                {UI.runLog.runIdLabel} {notReady.id}
               </div>
             </>
           }
@@ -797,12 +797,12 @@ export function RunLogPage() {
                     : UI.runLog.solverStatusRunning}
                 {solverStatus.status.stage != null && (
                   <span style={{ marginLeft: 6, opacity: 0.7 }}>
-                    (Stage {String(solverStatus.status.stage)}, {progressPercent(solverStatus.status.progress)}%)
+                    ({UI.runLog.solverStageWord} {String(solverStatus.status.stage)}, {progressPercent(solverStatus.status.progress)}%)
                   </span>
                 )}
               </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {solverStatus.run.id}
+                {UI.runLog.runIdLabel} {solverStatus.run.id}
               </div>
             </>
           }
@@ -821,7 +821,7 @@ export function RunLogPage() {
                 ({progressPercent(solverCompleted.status.progress)}%)
               </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {solverCompleted.run.id}
+                {UI.runLog.runIdLabel} {solverCompleted.run.id}
               </div>
             </>
           }
@@ -849,7 +849,7 @@ export function RunLogPage() {
                 {solverErrorText(solverFailed.status)}
               </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {solverFailed.run.id}
+                {UI.runLog.runIdLabel} {solverFailed.run.id}
               </div>
             </>
           }
@@ -868,7 +868,7 @@ export function RunLogPage() {
                 {solverError.message}
               </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                Run id: {solverError.run.id}
+                {UI.runLog.runIdLabel} {solverError.run.id}
               </div>
             </>
           }
@@ -891,7 +891,7 @@ export function RunLogPage() {
               <>
                 {body}
                 <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
-                  Run id: {confirmDel.id}
+                  {UI.runLog.runIdLabel} {confirmDel.id}
                 </div>
               </>
             }

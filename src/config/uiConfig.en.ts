@@ -36,6 +36,9 @@ export const UI = {
     savedSchedLabel: 'Saved Schedule Path',
     savedOutputLabel: 'Saved Output Path',
     pathUnknown: '(not provided)',
+    // File chip labels (Input Files cell)
+    envChipLabel: 'EnvConfig',
+    schedChipLabel: 'Schedule',
     // New Run modal
     modalTitle: 'New Run',
     modalHint: 'Drag-and-drop or click to select the two YAML files. Each file will be copied into public/local/<runId>/input/. Optionally paste the file’s original disk path so it shows up in the hover popup.',
@@ -90,6 +93,47 @@ export const UI = {
     cancelConfirmBody: 'This will cancel the running  process AND remove the row + public/local/<id>/ on disk. This cannot be undone.',
     cancelConfirmYes: 'Cancel run',
     cancelConfirmNo: 'Keep',
+    // Runs table loading / error / empty states
+    loadingRunsMessage: 'Loading runs.json…',
+    loadRunsFailedPrefix: 'Failed to load runs.json — ',
+    emptyStatePrefix: 'No runs yet. Click ',
+    emptyStateSuffix: ' to upload inputs.',
+    // Dialog body labels
+    runIdLabel: 'Run id:',
+    inputDirLabel: 'Input dir:',
+    ganttPopupBlockedMessage: 'The popup was blocked. Please open it using the link below.',
+    solverStageWord: 'Stage',
+    // Errors thrown from handlers / surfaced in solverError dialog
+    inputFilesNotFoundError: 'Input files not found',
+    envConfigNotFoundError: 'EnvConfig file not found',
+  },
+
+  settings: {
+    subheading: 'Local prototype settings.',
+    solverApiTitle: 'Solver API',
+    baseUrlLabel: 'Base URL:',
+    baseUrlUnset: '(not set — running in mock mode)',
+    envVarHint: 'Set VITE_API_BASE_URL in webapp/.env to point at a live solver endpoint.',
+    runDbTitle: 'Run database',
+    runDbDescription: 'The run log is read from public/local/runs.json. Resetting empties the JSON database — folders under public/local/ are left on disk and can be removed manually.',
+    resetBtn: 'Reset runs.json',
+    resetConfirm: 'Clear runs.json? Folders under public/local/ are NOT deleted.',
+    resetFailedPrefix: 'Failed to reset: ',
+  },
+
+  errors: {
+    fetchTextFailed: (url: string) => `Failed to fetch file: ${url}`,
+    ganttLaunchFailed: 'Failed to launch GanttChartEditor',
+    ganttSendFailed: 'Failed to send to GanttChartEditor',
+    fetchRunsFailed: (status: number) => `fetchRuns failed (${status})`,
+    uploadFailed: (status: number, body: string) => `Upload failed (${status}): ${body}`,
+    deleteFailed: (status: number, body: string) => `Delete failed (${status}): ${body}`,
+    saveOutputFailed: (status: number, body: string) => `Failed to save output (${status}): ${body}`,
+    resetFailed: (status: number, body: string) => `Reset failed (${status}): ${body}`,
+    solverUploadFailed: 'Upload to solver failed',
+    solverStatusFailed: 'Failed to get run status',
+    solverDownloadFailed: 'Download failed',
+    solverCancelFailed: 'Cancel failed',
   },
 
   dataList: {

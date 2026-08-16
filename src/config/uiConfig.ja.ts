@@ -35,6 +35,9 @@ export const UI = {
     savedSchedLabel: 'Schedule 保存先パス',
     savedOutputLabel: '出力 保存先パス',
     pathUnknown: '(未指定)',
+    // File chip labels (Input Files cell)
+    envChipLabel: 'EnvConfig',
+    schedChipLabel: 'Schedule',
     // New Run modal
     modalTitle: '新規実行',
     modalHint: '2 つの YAML ファイルをドラッグ&ドロップ、またはクリックして選択してください。各ファイルは public/local/<runId>/input/ にコピーされます。任意で元のディスクパスを貼り付けると、ホバー時のポップアップに表示されます。',
@@ -89,6 +92,47 @@ export const UI = {
     cancelConfirmBody: '進行中の  プロセスをキャンセルし、この行および public/local/<id>/ をディスクから削除します。この操作は取り消せません。',
     cancelConfirmYes: '実行をキャンセル',
     cancelConfirmNo: '続行',
+    // Runs table loading / error / empty states
+    loadingRunsMessage: 'runs.json を読み込み中…',
+    loadRunsFailedPrefix: 'runs.json の読み込みに失敗しました — ',
+    emptyStatePrefix: '実行はまだありません。',
+    emptyStateSuffix: ' をクリックして入力ファイルをアップロードしてください。',
+    // Dialog body labels
+    runIdLabel: 'Run ID:',
+    inputDirLabel: '入力ディレクトリ:',
+    ganttPopupBlockedMessage: 'ポップアップがブロックされました。下のリンクから開いてください。',
+    solverStageWord: 'ステージ',
+    // Errors thrown from handlers / surfaced in solverError dialog
+    inputFilesNotFoundError: '入力ファイルが見つかりません',
+    envConfigNotFoundError: 'EnvConfigファイルが見つかりません',
+  },
+
+  settings: {
+    subheading: 'ローカル プロトタイプ設定。',
+    solverApiTitle: 'ソルバー API',
+    baseUrlLabel: 'ベース URL:',
+    baseUrlUnset: '（未設定 — モックモードで動作中）',
+    envVarHint: 'webapp/.env に VITE_API_BASE_URL を設定すると、稼働中のソルバーエンドポイントに接続します。',
+    runDbTitle: '実行データベース',
+    runDbDescription: '実行ログは public/local/runs.json から読み込まれます。リセットすると JSON データベースが空になります — public/local/ 配下のフォルダはディスク上に残るため、必要に応じて手動で削除してください。',
+    resetBtn: 'runs.json をリセット',
+    resetConfirm: 'runs.json をクリアしますか？ public/local/ 配下のフォルダは削除されません。',
+    resetFailedPrefix: 'リセットに失敗しました: ',
+  },
+
+  errors: {
+    fetchTextFailed: (url: string) => `ファイル取得に失敗しました: ${url}`,
+    ganttLaunchFailed: 'GanttChartEditorの起動に失敗しました',
+    ganttSendFailed: 'GanttChartEditorへの送信に失敗しました',
+    fetchRunsFailed: (status: number) => `runs.json の取得に失敗しました (${status})`,
+    uploadFailed: (status: number, body: string) => `アップロードに失敗しました (${status}): ${body}`,
+    deleteFailed: (status: number, body: string) => `削除に失敗しました (${status}): ${body}`,
+    saveOutputFailed: (status: number, body: string) => `出力の保存に失敗しました (${status}): ${body}`,
+    resetFailed: (status: number, body: string) => `リセットに失敗しました (${status}): ${body}`,
+    solverUploadFailed: 'ソルバーへのアップロードに失敗しました',
+    solverStatusFailed: '実行ステータスの取得に失敗しました',
+    solverDownloadFailed: 'ダウンロードに失敗しました',
+    solverCancelFailed: 'キャンセルに失敗しました',
   },
 
   dataList: {

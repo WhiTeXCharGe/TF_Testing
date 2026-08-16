@@ -4,12 +4,12 @@ import { resetRuns } from '@/services/runStore';
 
 export function SettingsPage() {
   async function handleReset() {
-    if (!window.confirm('Clear runs.json? Folders under public/local/ are NOT deleted.')) return;
+    if (!window.confirm(UI.settings.resetConfirm)) return;
     try {
       await resetRuns();
       window.location.href = '/';
     } catch (e) {
-      window.alert(`Failed to reset: ${String((e as Error).message || e)}`);
+      window.alert(`${UI.settings.resetFailedPrefix}${String((e as Error).message || e)}`);
     }
   }
 
@@ -17,24 +17,23 @@ export function SettingsPage() {
     <div>
       <div className="page-header">
         <h1 className="page-heading">{UI.sidebar.settings}</h1>
-        <p className="page-subheading">Local prototype settings.</p>
+        <p className="page-subheading">{UI.settings.subheading}</p>
       </div>
 
       <div className="card">
-        <div className="card-title">Solver API</div>
+        <div className="card-title">{UI.settings.solverApiTitle}</div>
         <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-sec)' }}>
-          Base URL: <code>{APP_CONFIG.apiBaseUrl || '(not set — running in mock mode)'}</code><br />
-          Set <code>VITE_API_BASE_URL</code> in <code>webapp/.env</code> to point at a live solver endpoint.
+          {UI.settings.baseUrlLabel} <code>{APP_CONFIG.apiBaseUrl || UI.settings.baseUrlUnset}</code><br />
+          {UI.settings.envVarHint}
         </p>
       </div>
 
       <div className="card">
-        <div className="card-title">Run database</div>
+        <div className="card-title">{UI.settings.runDbTitle}</div>
         <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-sec)', marginBottom: 12 }}>
-          The run log is read from <code>public/local/runs.json</code>. Resetting empties the JSON
-          database — folders under <code>public/local/</code> are left on disk and can be removed manually.
+          {UI.settings.runDbDescription}
         </p>
-        <button className="btn btn-secondary btn-sm" onClick={handleReset}>Reset runs.json</button>
+        <button className="btn btn-secondary btn-sm" onClick={handleReset}>{UI.settings.resetBtn}</button>
       </div>
     </div>
   );

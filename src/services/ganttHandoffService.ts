@@ -1,9 +1,10 @@
 // Sends a run's EnvConfig/Schedule YAML to GanttChartEditor (コピーファイル表示 / 結果を表示),
 // auto-launching it via the dev-only /api/handoff/create route in vite.config.ts if needed.
+import { UI } from '@/config/uiConfig';
 
 export async function fetchText(url: string): Promise<string> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`ファイル取得に失敗しました: ${url}`);
+  if (!res.ok) throw new Error(UI.errors.fetchTextFailed(url));
   return res.text();
 }
 
@@ -18,7 +19,7 @@ export async function sendToGanttEditor(envYaml: string, scheduleYaml: string): 
     // Make sure GanttChartEditor is up before minting a token — /api/handoff/create's
     // own dev-only "spawn npm run dev:all" fallback won't work in a packaged app.
     const ensureUp = await window.electronAPI.launchGanttEditor();
-    if (!ensureUp.ok) throw new Error(ensureUp.error ?? 'GanttChartEditorの起動に失敗しました');
+    if (!ensureUp.ok) throw new Error(ensureUp.error ?? UI.errors.ganttLaunchFailed);
   }
 
   const res = await fetch('/api/handoff/create', {
@@ -28,13 +29,13 @@ export async function sendToGanttEditor(envYaml: string, scheduleYaml: string): 
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok || !data.url) {
-    throw new Error(data.error ?? 'GanttChartEditorへの送信に失敗しました');
+    throw new Error(data.error ?? UI.errors.ganttSendFailed);
   }
 
   if (window.electronAPI) {
     // Deliver the token straight to GanttChartEditor's window instead of window.open().
     const deliver = await window.electronAPI.launchGanttEditor(data.url);
-    if (!deliver.ok) throw new Error(deliver.error ?? 'GanttChartEditorへの送信に失敗しました');
+    if (!deliver.ok) throw new Error(deliver.error ?? UI.errors.ganttSendFailed);
     return { url: null };
   }
   return { url: data.url };

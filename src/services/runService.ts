@@ -4,6 +4,7 @@
  */
 import axios, { AxiosError } from 'axios';
 import { APP_CONFIG } from '@/config/appConfig';
+import { UI } from '@/config/uiConfig';
 
 export interface SubmitResult {
   runId: string;
@@ -49,7 +50,7 @@ export async function submitRun(
     );
     return res.data;
   } catch (err) {
-    throw new Error(extractMessage(err, 'Upload to solver failed'));
+    throw new Error(extractMessage(err, UI.errors.solverUploadFailed));
   }
 }
 
@@ -64,7 +65,7 @@ export async function checkStatus(runId: string): Promise<RunStatus> {
     );
     return res.data;
   } catch (err) {
-    throw new Error(extractMessage(err, 'Failed to get run status'));
+    throw new Error(extractMessage(err, UI.errors.solverStatusFailed));
   }
 }
 
@@ -89,7 +90,7 @@ export async function downloadOutput(
 
     return { blob: res.data as Blob, filename };
   } catch (err) {
-    throw new Error(extractMessage(err, 'Download failed'));
+    throw new Error(extractMessage(err, UI.errors.solverDownloadFailed));
   }
 }
 
@@ -104,7 +105,7 @@ export async function cancelRun(runId: string): Promise<void> {
       `${APP_CONFIG.apiBaseUrl}/run/${encodeURIComponent(runId)}`,
     );
   } catch (err) {
-    throw new Error(extractMessage(err, 'Cancel failed'));
+    throw new Error(extractMessage(err, UI.errors.solverCancelFailed));
   }
 }
 
