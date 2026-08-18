@@ -9,144 +9,126 @@
       - id: p1o1
         name: Heavy
         work_hours: [8, 10, 12]
+        workload_hours: 240
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 240
       - id: p1o2
         name: Mech
         work_hours: [8, 10, 12]
+        workload_hours: 160
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 160
       - id: p1o3
         name: Elec
         work_hours: [8, 10, 12]
+        workload_hours: 160
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 160
     - id: p2
       name: Hardware Setup
       operation_list:
       - id: p2o1
         name: Mech
         work_hours: [8, 10, 12]
+        workload_hours: 240
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 240
       - id: p2o2
         name: Elec
         work_hours: [8, 10, 12]
+        workload_hours: 200
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 200
     - id: p3
       name: Function Setup
       operation_list:
       - id: p3o1
         name: QC
         work_hours: [8, 10, 12]
+        workload_hours: 120
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 120
     - id: p4
       name: Acceptance Inspection
       operation_list:
       - id: p4o1
         name: QC
         work_hours: [8, 10, 12]
+        workload_hours: 96
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 96
       - id: p4o2
         name: Mech
         work_hours: [8, 10, 12]
+        workload_hours: 64
         min_worker_num: 2
         max_worker_num: 3
-        workload_hours: 64
   fab_list:
   - id: f1
     name: AAA Fab1
     region: r1
     customer_company: c1
-    unavailable_dates: []
   - id: f2
     name: BBB Fab2
     region: r1
     customer_company: c2
-    unavailable_dates: []
   - id: f3
     name: AAA Fab3
     region: r2
     customer_company: c1
-    unavailable_dates: []
   - id: f4
     name: BBB Fab4
     region: r2
     customer_company: c2
-    unavailable_dates: []
   - id: f5
     name: AAA Fab5
     region: r3
     customer_company: c1
-    unavailable_dates: []
   - id: f6
     name: BBB Fab6
     region: r3
     customer_company: c2
-    unavailable_dates: []
   region_list:
   - id: r1
     name: America
-    max_stay_on: 80
-    max_annual_stay: 240
+    max_stay_on: 90
+    max_annual_stay: 270
     stay_off_interval: 3
-    unavailable_dates:
-    - weekly:
-        weekdays: [sat, sun]
+    unavailable_dates: []
   - id: r2
     name: Germany
-    max_stay_on: 80
-    max_annual_stay: 240
+    max_stay_on: 90
+    max_annual_stay: 270
     stay_off_interval: 3
-    unavailable_dates:
-    - weekly:
-        weekdays: [sat, sun]
+    unavailable_dates: []
   - id: r3
     name: Taiwan
-    max_stay_on: 80
-    max_annual_stay: 240
+    max_stay_on: 90
+    max_annual_stay: 270
     stay_off_interval: 3
-    unavailable_dates:
-    - weekly:
-        weekdays: [sat, sun]
+    unavailable_dates: []
   customer_company_list:
   - id: c1
     name: AAA
-    unavailable_dates: []
   - id: c2
     name: BBB
-    unavailable_dates: []
   worker_company_list:
   - id: wc1
     name: AAA
     annual_overtime_limit: 360
     monthly_overtime_limit: 40
-    unavailable_dates: []
   - id: wc2
     name: BBB
     annual_overtime_limit: 360
     monthly_overtime_limit: 40
-    unavailable_dates: []
   - id: wc3
     name: CCC
     annual_overtime_limit: 360
     monthly_overtime_limit: 40
-    unavailable_dates: []
   - id: wc4
     name: DDD
     annual_overtime_limit: 360
     monthly_overtime_limit: 40
-    unavailable_dates: []
   transite_day_map:
   - from: r1
     to: r2
@@ -166,55 +148,13 @@
   - from: r3
     to: r2
     days: 1
-  affinity_tag:
-  - id: wct1
-    weight: 2
-  - id: wct2
-    weight: 2
-  - id: wct3
-    weight: 2
-  - id: wct4
-    weight: 2
-  - id: a1
-    weight: 1
-  - id: a2
-    weight: -1
-  - id: a3
-    weight: 1
-  - id: a4
-    weight: 1
-  - id: a5
-    weight: 2
-  - id: a6
-    weight: 1
-  - id: a7
-    weight: 1
-  - id: a8
-    weight: 1
-  - id: a9
-    weight: 2
-  - id: a10
-    weight: 2
-  - id: a11
-    weight: -2
-  - id: a12
-    weight: 1
-  - id: a13
-    weight: 1
-  - id: a14
-    weight: 1
   worker_list:
   - id: w1
     name: AA
     worker_company: wc4
     is_manager: false
     skill_map: {p1o1: 2, p1o3: 3, p3o1: 3, p4o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p3o1: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p3o1: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -226,7 +166,7 @@
         - 2026/01/25
     affinity: [wct4, a3]
     description:
-      業務形態: "派遣"
+      業務形態: 派遣
       VISA: "Yes"
       海外運転: "Yes"
       備考: OJT
@@ -235,12 +175,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o3: 5, p2o2: 3, p3o1: 4, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o2: spot
-      p3o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o2: spot, p3o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -253,12 +188,7 @@
     worker_company: wc2
     is_manager: false
     skill_map: {p1o2: 2, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p2o2: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -276,13 +206,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 5, p3o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: spot
-      p2o1: regular
-      p2o2: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: spot, p2o1: regular, p2o2: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 2}
@@ -295,12 +219,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o2: 3, p1o3: 4, p2o2: 3, p4o1: 2, p4o2: 5}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o2: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 2}
@@ -316,12 +235,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 4, p1o3: 3, p4o1: 2, p4o2: 5}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: spot
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: spot, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -338,13 +252,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o3: 2, p2o1: 2, p2o2: 4, p3o1: 4, p4o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p3o1: spot
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o3: regular, p2o1: regular, p2o2: regular, p3o1: spot, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -368,13 +276,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o1: 5, p1o3: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p3o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o1: regular, p2o2: regular, p3o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -390,12 +292,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p1o3: 5, p2o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -418,12 +315,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 3, p2o1: 4, p2o2: 3, p3o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o1: regular
-      p2o2: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p2o1: regular, p2o2: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 2}
@@ -436,10 +328,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 3, p2o1: 2, p3o1: 2}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o1: regular
-      p3o1: regular
+    worker_type_by_operation: {p1o1: regular, p2o1: regular, p3o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -452,13 +341,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o1: 5, p2o2: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o1: regular, p2o2: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -471,10 +354,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 2, p1o3: 3, p3o1: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: spot
-      p3o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: spot, p3o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -493,11 +373,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 1, p1o2: 3, p3o1: 1, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -518,12 +394,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o1: 3, p2o1: 5, p3o1: 1, p4o1: 4, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: spot
-      p2o1: spot
-      p3o1: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p2o1: spot, p3o1: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 0, r3: 2}
@@ -536,10 +407,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o2: 3, p2o2: 2, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p2o2: regular
-      p4o1: spot
+    worker_type_by_operation: {p1o2: regular, p2o2: regular, p4o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 2}
@@ -555,10 +423,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o2: 1, p1o3: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -574,10 +439,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 3, p2o2: 4, p4o1: 3}
-    worker_type_by_operation:
-      p1o1: spot
-      p2o2: spot
-      p4o1: regular
+    worker_type_by_operation: {p1o1: spot, p2o2: spot, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -595,11 +457,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 1, p3o1: 4, p4o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: spot
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -612,10 +470,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o2: 3, p4o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -636,13 +491,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p2o2: 2, p3o1: 3, p4o1: 4, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p2o2: spot
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p2o2: spot, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -659,13 +508,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 5, p1o2: 1, p1o3: 2, p2o2: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o2: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -678,13 +521,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o2: 4, p1o3: 3, p2o1: 4, p2o2: 4, p4o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: spot
-      p1o3: regular
-      p2o1: regular
-      p2o2: spot
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: spot, p1o3: regular, p2o1: regular, p2o2: spot, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -701,13 +538,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p2o2: 3, p4o1: 4, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p1o3: spot
-      p2o2: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p1o3: spot, p2o2: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -720,11 +551,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 4, p1o3: 4, p2o1: 4, p3o1: 4}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o1: spot
-      p3o1: spot
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o1: spot, p3o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -737,13 +564,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o2: 3, p1o3: 2, p2o1: 2, p2o2: 3, p3o1: 3, p4o2: 2}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o1: regular, p2o2: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -756,12 +577,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o2: 1, p1o3: 2, p2o1: 3, p3o1: 4, p4o1: 5}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p3o1: spot
-      p4o1: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o1: regular, p3o1: spot, p4o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -774,12 +590,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o2: spot
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p2o2: spot, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -792,12 +603,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p2o2: 3, p4o1: 4}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p1o3: regular, p2o2: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -815,10 +621,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 4, p1o3: 5}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: spot
-      p1o3: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: spot, p1o3: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -839,12 +642,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 2, p1o3: 4, p2o2: 2, p4o2: 2}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o2: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -863,10 +661,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o3: 3, p2o2: 5, p4o1: 3}
-    worker_type_by_operation:
-      p1o3: spot
-      p2o2: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o3: spot, p2o2: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -879,10 +674,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 5, p1o3: 2, p3o1: 5}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p3o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p3o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 2}
@@ -898,11 +690,7 @@
     worker_company: wc2
     is_manager: false
     skill_map: {p2o1: 3, p3o1: 4, p4o1: 3, p4o2: 4}
-    worker_type_by_operation:
-      p2o1: spot
-      p3o1: spot
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p2o1: spot, p3o1: spot, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -915,13 +703,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 1, p1o2: 3, p2o1: 3, p3o1: 4, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p2o1: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p2o1: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -934,10 +716,7 @@
     worker_company: wc2
     is_manager: false
     skill_map: {p1o2: 3, p2o1: 4, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p2o1: regular
-      p4o1: spot
+    worker_type_by_operation: {p1o2: regular, p2o1: regular, p4o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -950,11 +729,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o2: 2, p2o1: 4, p3o1: 4, p4o2: 1}
-    worker_type_by_operation:
-      p1o2: spot
-      p2o1: spot
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o2: spot, p2o1: spot, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 2}
@@ -973,10 +748,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o2: 4, p1o3: 3, p3o1: 4}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p3o1: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p3o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -996,10 +768,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p3o1: 3, p4o1: 3, p4o2: 1}
-    worker_type_by_operation:
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1018,11 +787,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o1: 2, p2o2: 4, p4o1: 2, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o2: spot
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o1: regular, p2o2: spot, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1035,13 +800,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 2, p1o3: 2, p2o1: 2, p3o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o1: spot
-      p3o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o1: spot, p3o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1054,12 +813,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o2: 2, p1o3: 3, p2o1: 4, p3o1: 3, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: spot
-      p1o3: regular
-      p2o1: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o2: spot, p1o3: regular, p2o1: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1072,10 +826,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o2: 3, p1o3: 4, p2o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1088,11 +839,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p2o1: 3, p2o2: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o1: regular
-      p2o2: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p2o1: regular, p2o2: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1108,13 +855,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o3: 5, p2o1: 3, p2o2: 2, p4o1: 5, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o1: spot, p1o3: regular, p2o1: regular, p2o2: regular, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1127,12 +868,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o1: 4, p1o3: 3, p2o1: 2, p2o2: 3, p4o1: 5}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o1: regular, p2o2: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -1148,11 +884,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o1: 3, p1o3: 4, p3o1: 3, p4o1: 5}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o3: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o1: spot, p1o3: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 0}
@@ -1165,13 +897,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 3, p1o3: 4, p2o1: 5, p3o1: 2, p4o1: 4}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: spot
-      p1o3: regular
-      p2o1: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: spot, p1o3: regular, p2o1: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 0}
@@ -1187,10 +913,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o3: 1, p2o1: 3}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o3: spot
-      p2o1: regular
+    worker_type_by_operation: {p1o1: spot, p1o3: spot, p2o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1203,12 +926,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 3, p1o3: 3, p3o1: 4, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: spot
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: spot, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -1221,13 +939,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 5, p1o2: 4, p1o3: 3, p2o1: 3, p2o2: 4, p3o1: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p3o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p2o1: regular, p2o2: regular, p3o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -1240,12 +952,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o3: 3, p2o1: 4, p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o3: regular
-      p2o1: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o3: regular, p2o1: regular, p3o1: regular, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1265,11 +972,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o2: 3, p1o3: 4, p2o2: 2, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o2: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1282,12 +985,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p2o1: 3, p2o2: 3, p3o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p2o1: spot
-      p2o2: regular
-      p3o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p2o1: spot, p2o2: regular, p3o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1300,13 +998,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p1o3: 4, p2o1: 3, p3o1: 4, p4o2: 1}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p1o3: spot
-      p2o1: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p1o3: spot, p2o1: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -1322,11 +1014,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 5, p1o2: 3, p2o1: 4, p2o2: 4}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p2o1: spot
-      p2o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p2o1: spot, p2o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1342,11 +1030,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o2: 4, p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p3o1: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p3o1: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1359,12 +1043,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o2: 4, p1o3: 3, p2o2: 5, p3o1: 3, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o2: regular
-      p3o1: regular
-      p4o1: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o2: regular, p3o1: regular, p4o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 2}
@@ -1377,12 +1056,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 4, p1o2: 3, p1o3: 4, p4o1: 4, p4o2: 1}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p1o3: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p1o3: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1399,10 +1073,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o1: 3, p1o3: 3, p2o1: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o1: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1415,13 +1086,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 4, p1o3: 2, p2o1: 1, p2o2: 3, p4o1: 4, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o1: regular, p2o2: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1434,10 +1099,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p2o2: 3, p3o1: 3, p4o1: 3}
-    worker_type_by_operation:
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p2o2: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1450,12 +1112,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o3: 3, p2o2: 4, p3o1: 5, p4o1: 3, p4o2: 5}
-    worker_type_by_operation:
-      p1o3: spot
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o3: spot, p2o2: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 0}
@@ -1468,11 +1125,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o2: 5, p2o2: 4, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p2o2: regular
-      p4o1: spot
-      p4o2: regular
+    worker_type_by_operation: {p1o2: regular, p2o2: regular, p4o1: spot, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -1485,10 +1138,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p3o1: regular
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p3o1: regular, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -1501,13 +1151,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 4, p2o1: 4, p2o2: 3, p3o1: 3, p4o1: 3, p4o2: 1}
-    worker_type_by_operation:
-      p1o1: spot
-      p2o1: regular
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p2o1: regular, p2o2: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 2}
@@ -1526,12 +1170,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o2: 4, p1o3: 5, p2o2: 3, p3o1: 3, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: spot
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: spot, p2o2: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1544,13 +1183,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o1: 2, p1o2: 4, p2o2: 3, p3o1: 4, p4o1: 1, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o2: regular
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o2: regular, p2o2: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1563,13 +1196,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o2: 4, p1o3: 3, p2o1: 3, p2o2: 3, p4o1: 3, p4o2: 4}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o1: regular
-      p2o2: regular
-      p4o1: spot
-      p4o2: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o1: regular, p2o2: regular, p4o1: spot, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}
@@ -1590,12 +1217,7 @@
     worker_company: wc4
     is_manager: false
     skill_map: {p1o1: 5, p1o3: 3, p3o1: 2, p4o1: 5, p4o2: 2}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1614,13 +1236,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o2: 4, p1o3: 2, p2o1: 3, p2o2: 5, p3o1: 3, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p2o1: spot
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p2o1: spot, p2o2: regular, p3o1: regular, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 1}
@@ -1636,10 +1252,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p2o1: 4, p3o1: 4, p4o2: 3}
-    worker_type_by_operation:
-      p2o1: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p2o1: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 1}
@@ -1656,10 +1269,7 @@
     worker_company: wc4
     is_manager: true
     skill_map: {p1o2: 3, p1o3: 4, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 2, r3: 2}
@@ -1677,13 +1287,7 @@
     worker_company: wc3
     is_manager: false
     skill_map: {p1o2: 3, p1o3: 3, p2o1: 3, p2o2: 2, p3o1: 1, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: spot
-      p1o3: spot
-      p2o1: regular
-      p2o2: regular
-      p3o1: spot
-      p4o1: regular
+    worker_type_by_operation: {p1o2: spot, p1o3: spot, p2o1: regular, p2o2: regular, p3o1: spot, p4o1: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -1696,12 +1300,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o2: 5, p1o3: 3, p3o1: 3, p4o1: 2, p4o2: 3}
-    worker_type_by_operation:
-      p1o2: regular
-      p1o3: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o2: regular, p1o3: regular, p3o1: regular, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1714,10 +1313,7 @@
     worker_company: wc3
     is_manager: true
     skill_map: {p1o2: 5, p3o1: 4, p4o1: 3}
-    worker_type_by_operation:
-      p1o2: spot
-      p3o1: regular
-      p4o1: spot
+    worker_type_by_operation: {p1o2: spot, p3o1: regular, p4o1: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 1, r3: 1}
@@ -1735,12 +1331,7 @@
     worker_company: wc1
     is_manager: true
     skill_map: {p1o1: 3, p1o2: 3, p1o3: 3, p3o1: 5, p4o2: 4}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p1o3: regular
-      p3o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p1o3: regular, p3o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 1}
@@ -1761,11 +1352,7 @@
     worker_company: wc1
     is_manager: false
     skill_map: {p1o1: 5, p1o2: 3, p2o1: 3, p2o2: 1}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: spot
-      p2o1: regular
-      p2o2: regular
+    worker_type_by_operation: {p1o1: spot, p1o2: spot, p2o1: regular, p2o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 0, r3: 2}
@@ -1778,13 +1365,7 @@
     worker_company: wc2
     is_manager: true
     skill_map: {p1o1: 5, p1o3: 3, p2o2: 3, p3o1: 3, p4o1: 1, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: regular
-      p1o3: regular
-      p2o2: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: regular
+    worker_type_by_operation: {p1o1: regular, p1o3: regular, p2o2: regular, p3o1: regular, p4o1: regular, p4o2: regular}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 1, r2: 1, r3: 2}
@@ -1797,13 +1378,7 @@
     worker_company: wc4
     is_manager: false
     skill_map: {p1o1: 4, p1o2: 3, p1o3: 3, p3o1: 3, p4o1: 3, p4o2: 3}
-    worker_type_by_operation:
-      p1o1: spot
-      p1o2: regular
-      p1o3: regular
-      p3o1: regular
-      p4o1: regular
-      p4o2: spot
+    worker_type_by_operation: {p1o1: spot, p1o2: regular, p1o3: regular, p3o1: regular, p4o1: regular, p4o2: spot}
     fab_suitability_map:
     - kind: region
       suitability: {r1: 2, r2: 2, r3: 2}

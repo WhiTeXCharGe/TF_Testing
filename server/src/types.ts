@@ -64,7 +64,13 @@ export interface WorkerCompany {
   monthlyOvertimeLimit?: number;
 }
 export interface Fab { id: string; name?: string; region?: string }
-export interface Region { id: string; name?: string }
+export interface Region {
+  id: string;
+  name?: string;
+  maxStayOn?: number;
+  maxAnnualStay?: number;
+  stayOffInterval?: number;
+}
 export interface TransiteDayMap { from: string; to: string; days: number }
 export interface EnvConfig {
   workflowList: Workflow[];

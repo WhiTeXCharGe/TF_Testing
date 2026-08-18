@@ -9,6 +9,7 @@ export function runBackendConstraints(envConfig: EnvConfig, schedule: ScheduleDa
     ...checkResponsibleWorker(envConfig, schedule),
     ...checkTravelDays(envConfig, schedule),
     ...checkOvertimeLimits(envConfig, schedule),
+    ...checkStayDuration(envConfig, schedule),
   ];
 }
 
@@ -461,6 +462,190 @@ function checkTravelDays(envConfig: EnvConfig, schedule: ScheduleData): Violatio
           date: nextFirstDate,
           severity: 'error',
           message: `移動日不足: ${currRegion} → ${nextRegion} — 必要 ${requiredDays}日 / 実際 ${gapDays}日 (${currLastDate} → ${nextFirstDate})`,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+// ── 滞在期間制約: max_stay_on / max_annual_stay per region ──
+// Reuses the worker-view's FI/FO flight-stint logic (see
+// computeFlightStintsMultiRegion in src/components/GanttChart/workerViewModel.ts):
+// consecutive same-region assignments for a worker are merged into one stint
+// when the gap between them is within the region's stayOffInterval; the stint's
+// flightInDate/flightOutDate are firstWorkDate-1 / lastWorkDate+1. maxStayOn caps
+// a single stint's FO-FI span (works like a visa). maxAnnualStay caps the total
+// stint-days a worker spends in a region within one calendar year — a stint that
+// straddles a Dec/Jan boundary has its days split between the two years instead
+// of being attributed entirely to either one.
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / 86400000);
+}
+
+interface FlightStint {
+  regionId: string;
+  firstWorkDate: string;
+  lastWorkDate: string;
+  flightInDate: string;
+  flightOutDate: string;
+  indices: number[];
+}
+
+function computeFlightStintsMultiRegion(
+  assignments: Array<{ startDate: string; endDate: string; regionId: string; idx: number }>,
+  regionStayOff: Map<string, number>,
+): FlightStint[] {
+  if (assignments.length === 0) return [];
+  const sorted = [...assignments].sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  const stints: FlightStint[] = [];
+  const first = sorted[0]!;
+  let curRegion = first.regionId;
+  let curFirst = first.startDate;
+  let curLast = first.endDate;
+  let curIndices = [first.idx];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const { startDate, endDate, regionId, idx } = sorted[i]!;
+    if (regionId === curRegion) {
+      const gap = daysBetween(curLast, startDate) - 1;
+      const interval = regionStayOff.get(curRegion) ?? 0;
+      if (gap <= interval) {
+        if (endDate > curLast) curLast = endDate;
+        curIndices.push(idx);
+        continue;
+      }
+    }
+    stints.push({
+      regionId: curRegion,
+      firstWorkDate: curFirst,
+      lastWorkDate: curLast,
+      flightInDate: addDays(curFirst, -1),
+      flightOutDate: addDays(curLast, 1),
+      indices: curIndices,
+    });
+    curRegion = regionId;
+    curFirst = startDate;
+    curLast = endDate;
+    curIndices = [idx];
+  }
+  stints.push({
+    regionId: curRegion,
+    firstWorkDate: curFirst,
+    lastWorkDate: curLast,
+    flightInDate: addDays(curFirst, -1),
+    flightOutDate: addDays(curLast, 1),
+    indices: curIndices,
+  });
+  return stints;
+}
+
+// Splits the half-open interval [flightInDate, flightOutDate) into per-calendar-year
+// day counts, so a stint crossing a Dec/Jan boundary contributes only the days that
+// actually fall in each year toward that year's annual total.
+function splitStayByYear(flightInDate: string, flightOutDate: string): Map<string, number> {
+  const result = new Map<string, number>();
+  let cursor = flightInDate;
+  while (cursor < flightOutDate) {
+    const year = cursor.slice(0, 4);
+    const nextYearStart = `${Number(year) + 1}-01-01`;
+    const segmentEnd = nextYearStart < flightOutDate ? nextYearStart : flightOutDate;
+    result.set(year, (result.get(year) ?? 0) + daysBetween(cursor, segmentEnd));
+    cursor = segmentEnd;
+  }
+  return result;
+}
+
+function checkStayDuration(envConfig: EnvConfig, schedule: ScheduleData): Violation[] {
+  const violations: Violation[] = [];
+
+  const regionById = new Map(envConfig.regionList.map(r => [r.id, r]));
+  if (regionById.size === 0) return violations;
+
+  const fabRegion = new Map(envConfig.fabList.map(f => [f.id, f.region ?? null]));
+  const regionStayOff = new Map(envConfig.regionList.map(r => [r.id, r.stayOffInterval ?? 0]));
+
+  // operationTask (or misc workflowTask) id → regionId
+  const opTaskRegionMap = new Map<string, string | null>();
+  for (const wt of schedule.workflowTaskList) {
+    if (wt.phaseTaskList.length === 0) {
+      opTaskRegionMap.set(wt.id, wt.region ?? null);
+    } else {
+      const regionId = wt.fab ? (fabRegion.get(wt.fab) ?? null) : null;
+      for (const pt of wt.phaseTaskList) {
+        for (const ot of pt.operationTaskList) {
+          opTaskRegionMap.set(ot.id, regionId);
+        }
+      }
+    }
+  }
+
+  const workerById = new Map(envConfig.workerList.map(w => [w.id, w]));
+
+  const workerRegionAssignments = new Map<string, Array<{ startDate: string; endDate: string; regionId: string; idx: number }>>();
+  schedule.assignmentList.forEach((a, idx) => {
+    if (!a.workDateList.some(wd => wd.hour > 0)) return;
+    const regionId = opTaskRegionMap.get(a.operationTask) ?? null;
+    if (!regionId) return;
+    const list = workerRegionAssignments.get(a.worker) ?? [];
+    list.push({ startDate: a.startDate, endDate: a.endDate, regionId, idx });
+    workerRegionAssignments.set(a.worker, list);
+  });
+
+  for (const [workerId, assignments] of workerRegionAssignments.entries()) {
+    const worker = workerById.get(workerId);
+    const workerLabel = worker?.name ?? workerId;
+    const stints = computeFlightStintsMultiRegion(assignments, regionStayOff);
+
+    // worker+region+year → accumulated stint-days (for maxAnnualStay)
+    const annualTotals = new Map<string, { regionId: string; year: string; days: number; indices: Set<number> }>();
+
+    for (const stint of stints) {
+      const region = regionById.get(stint.regionId);
+      if (!region) continue;
+      const duration = daysBetween(stint.flightInDate, stint.flightOutDate);
+
+      if (region.maxStayOn != null && region.maxStayOn > 0 && duration > region.maxStayOn) {
+        violations.push({
+          type: 'STAY_DURATION',
+          assignmentIndices: stint.indices,
+          severity: 'error',
+          message: `滞在期間超過: worker=${workerLabel} region=${stint.regionId} ${stint.flightInDate}〜${stint.flightOutDate} 滞在=${duration}日 上限=${region.maxStayOn}日`,
+        });
+      }
+
+      if (region.maxAnnualStay != null && region.maxAnnualStay > 0) {
+        const yearSplit = splitStayByYear(stint.flightInDate, stint.flightOutDate);
+        for (const [year, days] of yearSplit.entries()) {
+          const key = `${stint.regionId}::${year}`;
+          const entry = annualTotals.get(key) ?? { regionId: stint.regionId, year, days: 0, indices: new Set<number>() };
+          entry.days += days;
+          for (const i of stint.indices) entry.indices.add(i);
+          annualTotals.set(key, entry);
+        }
+      }
+    }
+
+    for (const { regionId, year, days, indices } of annualTotals.values()) {
+      const region = regionById.get(regionId);
+      if (!region || region.maxAnnualStay == null || region.maxAnnualStay <= 0) continue;
+      if (days > region.maxAnnualStay) {
+        violations.push({
+          type: 'STAY_DURATION',
+          assignmentIndices: [...indices],
+          severity: 'error',
+          message: `年間滞在日数超過: worker=${workerLabel} region=${regionId} ${year}年 滞在=${days}日 上限=${region.maxAnnualStay}日`,
         });
       }
     }

@@ -91,10 +91,22 @@ environment:
   region_list:
   - id: r1
     name: America
+    max_stay_on: 90
+    max_annual_stay: 270
+    stay_off_interval: 3
+    unavailable_dates: []
   - id: r2
     name: Germany
+    max_stay_on: 90
+    max_annual_stay: 270
+    stay_off_interval: 3
+    unavailable_dates: []
   - id: r3
     name: Taiwan
+    max_stay_on: 90
+    max_annual_stay: 270
+    stay_off_interval: 3
+    unavailable_dates: []
   customer_company_list:
   - id: c1
     name: AAA

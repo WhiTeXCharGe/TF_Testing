@@ -18,7 +18,8 @@ export interface Violation {
     | 'WORKLOAD_TOTAL'
     | 'RESPONSIBLE_WORKER'
     | 'TRAVEL_DAYS'
-    | 'OVERTIME';
+    | 'OVERTIME'
+    | 'STAY_DURATION';
   assignmentIndices: number[];
   message: string;
   date?: string;

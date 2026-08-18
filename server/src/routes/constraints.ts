@@ -54,7 +54,13 @@ const WorkerSchema = z.object({
   unavailableDates: z.array(z.unknown()).default([]),
 });
 const FabSchema = z.object({ id: z.string(), name: z.string().optional(), region: z.string().optional() });
-const RegionSchema = z.object({ id: z.string(), name: z.string().optional() });
+const RegionSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  maxStayOn: z.number().optional(),
+  maxAnnualStay: z.number().optional(),
+  stayOffInterval: z.number().optional(),
+});
 const TransitSchema = z.object({ from: z.string(), to: z.string(), days: z.number() });
 const WorkerCompanySchema = z.object({
   id: z.string(),

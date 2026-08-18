@@ -278,6 +278,7 @@ export const UI = {
     REGION_SUITABILITY: '地域適性',
     COMPANY_SUITABILITY: '企業適性',
     OVERTIME: '残業時間',
+    STAY_DURATION: '滞在期間',
   } as Record<string, string>,
 
   // Menu bar status messages
