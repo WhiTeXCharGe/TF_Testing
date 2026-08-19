@@ -175,6 +175,33 @@ async function createBatchTask(runId) {
   }
 }
 
+/**
+ * Batch only uploads outputFiles (including status/<runId>.json) once the task's
+ * command line exits — see uploadCondition: 'taskCompletion' above. So while the
+ * task is still active/preparing/running, Blob never gets an update and status
+ * would show "Submitted" for the whole solve. These two helpers read the live
+ * status file straight off the node instead, via Batch's task-file REST API.
+ */
+async function getBatchTaskState(runId) {
+  const res = await batchFetch(`/jobs/${BATCH_JOB_ID}/tasks/${runId}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Batch task lookup failed (${res.status}): ${await res.text()}`);
+  const data = await res.json();
+  return data.state; // 'active' | 'preparing' | 'running' | 'completed'
+}
+
+async function readLiveStatusFile(runId) {
+  // STATUS_DIR (/work/status) is bind-mounted from $AZ_BATCH_TASK_WORKING_DIR/status,
+  // which the file API addresses as "wd/status/..." relative to the task directory.
+  const res = await batchFetch(`/jobs/${BATCH_JOB_ID}/tasks/${runId}/files/wd/status/${runId}.json`);
+  if (!res.ok) return null; // not written yet, or node unreachable — caller falls back to Blob
+  try {
+    return JSON.parse(await res.text());
+  } catch {
+    return null; // caught mid-write despite the atomic rename; caller falls back to Blob
+  }
+}
+
 async function terminateBatchTask(runId) {
   const res = await batchFetch(`/jobs/${BATCH_JOB_ID}/tasks/${runId}/terminate`, { method: 'POST' });
   // 404/409 = task doesn't exist or already finished — both fine to ignore.
@@ -235,9 +262,23 @@ app.get('/status/:runId', async (req, res) => {
   const { runId } = req.params;
   if (!isValidRunId(runId)) return res.status(400).json({ error: 'Invalid runId format' });
   try {
-    const status = await readJsonBlob(`status/${runId}.json`);
-    if (!status) return res.status(404).json({ error: `Run "${runId}" not found` });
-    res.json(status);
+    const blobStatus = await readJsonBlob(`status/${runId}.json`);
+    if (!blobStatus) return res.status(404).json({ error: `Run "${runId}" not found` });
+
+    // Blob only has "Submitted" (written at /runSolver time) or the final
+    // Completed/Failed/Cancelled (uploaded once at task completion) — while the
+    // task is still active/preparing/running, prefer the live file on the node
+    // so the caller actually sees Running + real progress instead of a stale
+    // "Submitted" for the whole run.
+    if (blobStatus.status === 'Submitted' || blobStatus.status === 'Running') {
+      const state = await getBatchTaskState(runId).catch(() => null);
+      if (state === 'active' || state === 'preparing' || state === 'running') {
+        const live = await readLiveStatusFile(runId).catch(() => null);
+        if (live) return res.json(live);
+      }
+    }
+
+    res.json(blobStatus);
   } catch (e) {
     console.error('[status]', e);
     res.status(500).json({ error: String(e.message || e) });
