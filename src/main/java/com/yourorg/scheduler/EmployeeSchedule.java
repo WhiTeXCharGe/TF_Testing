@@ -10,6 +10,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
@@ -3464,6 +3467,63 @@ public class EmployeeSchedule {
         } catch (IOException e) { /* best-effort; don't crash the solver */ }
     }
 
+    // ---------------- Live status reporting (STATUS_FILE) ----------------
+    //
+    // entrypoint.sh writes status=Running once, right before launching this JVM,
+    // then only writes again (Completed/Failed/Cancelled) after the JVM exits.
+    // On Azure Batch that meant the status blob showed "queued" for the whole
+    // solve — Batch only uploads outputFiles once the task command line exits
+    // (see api-controller's uploadCondition: 'taskCompletion'), so there was
+    // never an intermediate write for it to pick up. This ticker fills that gap
+    // by updating STATUS_FILE itself every few seconds with the real stage and
+    // an elapsed-time-based progress estimate, so a live reader (the API
+    // controller reading the task's file straight off the node) has something
+    // fresh to show while the task is still active/running.
+
+    static final long STAGE1_BUDGET_MS = java.time.Duration.ofMinutes(300).toMillis();
+    static final long STAGE2_BUDGET_MS = java.time.Duration.ofMinutes(60).toMillis();
+    static final long TOTAL_BUDGET_MS  = STAGE1_BUDGET_MS + STAGE2_BUDGET_MS;
+
+    private static final DateTimeFormatter STATUS_TS_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC);
+    private static String nowIsoUtc() { return STATUS_TS_FMT.format(java.time.Instant.now()); }
+
+    private static volatile String runStartedAtIso = null;
+
+    static void writeRunningStatus(int stage, double overallProgress) {
+        try {
+            String statusDir = System.getenv().getOrDefault("STATUS_DIR", "/work/status");
+            String runId = System.getenv().getOrDefault("RUN_ID", "local");
+            if (runStartedAtIso == null) runStartedAtIso = nowIsoUtc();
+            double clamped = Math.max(0.0, Math.min(0.99, overallProgress));
+
+            String json = String.format(Locale.ROOT,
+                "{%n  \"runId\": \"%s\",%n  \"status\": \"Running\",%n  \"stage\": %d,%n" +
+                "  \"progress\": %.4f,%n  \"startedAt\": \"%s\",%n  \"updatedAt\": \"%s\",%n" +
+                "  \"finishedAt\": null,%n  \"error\": null,%n  \"output\": null%n}%n",
+                runId, stage, clamped, runStartedAtIso, nowIsoUtc());
+
+            Path dir = Paths.get(statusDir);
+            Files.createDirectories(dir);
+            Path statusFile = dir.resolve(runId + ".json");
+            Path tmp = dir.resolve(runId + ".json.tmp");
+            Files.writeString(tmp, json, java.nio.charset.StandardCharsets.UTF_8);
+            Files.move(tmp, statusFile,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception ignored) {
+            // best-effort — never let status reporting break the solve
+        }
+    }
+
+    /** overall progress = time spent in earlier stages' budgets + fraction of the current stage's budget. */
+    static double overallProgressForStage(int stage, long msSpentInStage) {
+        long priorBudgetMs = (stage <= 1) ? 0 : STAGE1_BUDGET_MS;
+        long stageBudgetMs = (stage <= 1) ? STAGE1_BUDGET_MS : STAGE2_BUDGET_MS;
+        double stageFrac = Math.min(1.0, msSpentInStage / (double) stageBudgetMs);
+        return (priorBudgetMs + stageFrac * stageBudgetMs) / (double) TOTAL_BUDGET_MS;
+    }
+
         static final class ScoreFiles {
             static void writeText(java.nio.file.Path path, String header, String body) {
                 try (var bw = java.nio.file.Files.newBufferedWriter(
@@ -3941,6 +4001,23 @@ public class EmployeeSchedule {
             _pw.newLine();
         } catch (IOException ignored) {}
 
+        // Ticks every few seconds so STATUS_FILE always has a fresh Running
+        // stage/progress, independent of how often a new best score is found
+        // (score improvements can plateau for many minutes on a hard instance).
+        final java.util.concurrent.atomic.AtomicInteger tickerStage = new java.util.concurrent.atomic.AtomicInteger(1);
+        final java.util.concurrent.atomic.AtomicLong tickerStageStartNanos =
+                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+        ScheduledExecutorService progressTicker = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "status-progress-ticker");
+            t.setDaemon(true);
+            return t;
+        });
+        progressTicker.scheduleAtFixedRate(() -> {
+            int stage = tickerStage.get();
+            long msSpent = (System.nanoTime() - tickerStageStartNanos.get()) / 1_000_000L;
+            writeRunningStatus(stage, overallProgressForStage(stage, msSpent));
+        }, 5, 10, TimeUnit.SECONDS);
+
         System.out.println("Start SINGLE PASS (stage1) at " + nowClock());
         long t0 = System.nanoTime();
         // ---- Stage 1: current settings (e.g., 90/90) ----
@@ -3976,6 +4053,8 @@ public class EmployeeSchedule {
         writeFinalScoreAnalysis(factoryStage1, best1, "stage1_score.txt", 100);
 
         // ---- Stage 2 (polish): 60 minutes, start from stage1 result ----
+        tickerStage.set(2);
+        tickerStageStartNanos.set(System.nanoTime());
         System.out.println("Start POLISH (stage2, 60m) at " + nowClock());
 
         SolverFactory<SinglePassPlan> factoryStage2 = buildSolverFactory(
@@ -3998,6 +4077,7 @@ public class EmployeeSchedule {
             });
         }
         SinglePassPlan best2 = stage2.solve(best1);
+        progressTicker.shutdownNow();
 
         long t2 = System.nanoTime();
         System.out.printf("Stage2 done %s | duration=%s | score=%s%n",

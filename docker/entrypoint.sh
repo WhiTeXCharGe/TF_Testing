@@ -15,6 +15,10 @@ RUN_ID="${RUN_ID:-local-$(date +%Y%m%d_%H%M%S)}"
 INPUT_DIR="${INPUT_DIR:-/work/input}"
 OUTPUT_DIR="${OUTPUT_DIR:-/work/output}"
 STATUS_DIR="${STATUS_DIR:-/work/status}"
+# Exported so the java solver process (which writes its own progress updates
+# into STATUS_FILE while solving — see EmployeeSchedule.writeRunningStatus)
+# resolves the same run/paths as this script.
+export RUN_ID INPUT_DIR OUTPUT_DIR STATUS_DIR
 
 ENV_FILE="${INPUT_DIR}/EnvConfig.yaml"
 SCHED_FILE_IN="${INPUT_DIR}/Schedule.yaml"
