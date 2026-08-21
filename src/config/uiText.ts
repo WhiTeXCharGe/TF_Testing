@@ -343,4 +343,14 @@ export const UI = {
   filterSelectAll: 'すべて選択',
   filterSearchPlaceholder: '検索...',
   filterItemCount: (n: number) => `${n} 件選択`,
+
+  // Live View sharing
+  shareLiveViewBtn: 'ライブビューを共有',
+  stopSharingBtn: '共有を停止',
+  shareViewDialogTitle: 'ライブビューの共有',
+  shareViewDialogDesc: 'このリンクを開くと、他の人が現在の内容を閲覧専用で見ることができます（編集は不可）。ホストの操作に応じて自動で更新されます。',
+  shareViewLinkLoading: 'リンクを生成中…',
+  copyLinkBtn: 'コピー',
+  copyLinkCopied: 'コピーしました',
+  shareViewClose: '閉じる',
 } as const;

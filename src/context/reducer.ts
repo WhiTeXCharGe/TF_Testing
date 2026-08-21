@@ -557,6 +557,31 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'CLEAR_SCROLL_TO_ASSIGNMENT':
       return { ...state, scrollToSelectedAssignment: false };
 
+    case 'SET_SHARING_LIVE_VIEW':
+      return { ...state, isSharingLiveView: action.payload };
+
+    case 'SET_LIVE_VIEW_SHARE_LINK':
+      return { ...state, liveViewShareLink: action.payload };
+
+    case 'OPEN_SHARE_VIEW_DIALOG':
+      return { ...state, isShareViewDialogOpen: true };
+
+    case 'CLOSE_SHARE_VIEW_DIALOG':
+      return { ...state, isShareViewDialogOpen: false };
+
+    case 'SET_VIEW_CONNECTION_STATUS':
+      return { ...state, viewConnectionStatus: action.payload };
+
+    case 'SET_VIEW_STATE':
+      // Viewer-side only: mirrors whatever the host currently has. No undo/redo,
+      // no saved-ref tracking — this is a read-only reflection, not an edit.
+      return {
+        ...state,
+        schedule: action.payload.schedule,
+        envConfig: action.payload.envConfig,
+        currentView: action.payload.currentView,
+      };
+
     default:
       return state;
   }

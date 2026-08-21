@@ -31,6 +31,10 @@ const initialState: AppState = {
   constraintCheckedAt: null,
   showFlightStints: false,
   scrollToSelectedAssignment: false,
+  isSharingLiveView: false,
+  liveViewShareLink: null,
+  isShareViewDialogOpen: false,
+  viewConnectionStatus: 'disconnected',
 };
 
 interface ContextType {

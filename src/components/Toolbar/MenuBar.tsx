@@ -4,6 +4,7 @@ import { overwriteSaveFiles } from '../../services/fileService';
 import { exportScheduleToExcel } from '../../services/excelExportService';
 import { generateDateRange } from '../../utils/dateUtils';
 import { SaveAsDialog } from '../Dialogs/SaveAsDialog';
+import { ShareViewButton } from './ShareViewButton';
 import { UI } from '../../config/uiText';
 
 const NAVY = '#1c2b3a';
@@ -218,6 +219,10 @@ export function MenuBar() {
             {saveStatus}
           </span>
         )}
+
+        <div style={{ marginLeft: 'auto', marginRight: 8, display: 'flex' }}>
+          <ShareViewButton />
+        </div>
       </div>
 
       {showSaveAs && state.envConfig && state.schedule && (
