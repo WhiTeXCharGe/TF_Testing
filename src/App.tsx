@@ -42,7 +42,7 @@ function AppContent() {
 }
 
 function SessionJoinGate({ sessionId, role }: { sessionId: string; role: SessionRole }) {
-  const { joinCollabSession } = useAppContext();
+  const { joinCollabSession, state } = useAppContext();
   const [name, setName] = useState('');
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +56,21 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joining]);
+
+  // joinCollabSession's promise resolves as soon as the join request is sent —
+  // it doesn't wait for the server's actual sync-init reply. A bad/expired
+  // session id, or a connection that drops before it ever reaches 'connected',
+  // only ever shows up asynchronously as connectionStatus flipping to
+  // 'disconnected' (see collabService.ts's handleSyncInit/handleDisconnect).
+  // SET_SESSION always seeds state.session with connectionStatus: 'connecting'
+  // before this effect can run, so seeing 'disconnected' while joining is true
+  // can only mean a real failed/dropped join, never an initial idle state.
+  useEffect(() => {
+    if (!joining) return;
+    if (state.session?.connectionStatus === 'disconnected') {
+      setError(UI.joinSessionErrorFallback);
+    }
+  }, [joining, state.session?.connectionStatus]);
 
   if (error) {
     return (
