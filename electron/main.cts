@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Tray, Menu, nativeImage } from 'electron';
 import { ChildProcess, spawn } from 'node:child_process';
 import { promises as fs, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -35,6 +35,41 @@ function findSiblingExe(exeName: string): string | null {
 
 let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let sessionActive = false;
+
+// 1x1 transparent PNG — a placeholder tray icon good enough to make the
+// tray entry appear and be clickable; swap for a real icon asset later.
+const TRAY_ICON_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function ensureTray(): void {
+  if (tray) return;
+  tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
+  tray.setToolTip('GanttChartEditor — 共同編集セッション実行中');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: 'ウィンドウを開く',
+      click: () => {
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); } else { void createWindow(); }
+      },
+    },
+    {
+      label: '終了（セッションも終了します）',
+      click: () => { sessionActive = false; mainWindow?.destroy(); app.quit(); },
+    },
+  ]));
+}
+
+function destroyTray(): void {
+  tray?.destroy();
+  tray = null;
+}
+
+ipcMain.on('collab:session-active-changed', (_evt, active: boolean) => {
+  sessionActive = active;
+  if (active) ensureTray(); else destroyTray();
+});
 
 // A cross-app handoff passes the target URL (with its one-time ?incomingTransfer=
 // token) as a plain argv entry when spawning/re-spawning the sibling app.
@@ -114,7 +149,9 @@ function startEmbeddedServer(): void {
       DESKTOP_MODE: '1',
     },
     stdio: 'inherit',
+    detached: true,
   });
+  serverProcess.unref();
   serverProcess.on('error', err => console.error('[embedded-server] failed to start:', err));
 }
 
@@ -134,6 +171,13 @@ async function createWindow(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.on('close', (event) => {
+    if (sessionActive) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
   });
 
   if (app.isPackaged) {

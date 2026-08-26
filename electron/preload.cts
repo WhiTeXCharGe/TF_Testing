@@ -18,6 +18,10 @@ export interface ElectronAPI {
    * its one window straight to that URL instead of opening a second window.
    */
   launchScheduler: (transferUrl?: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Tells the main process whether a collab session is active, so it can
+   *  keep the embedded server running (hidden to tray) instead of quitting
+   *  when the window closes. */
+  setCollabSessionActive: (active: boolean) => void;
 }
 
 const api: ElectronAPI = {
@@ -26,6 +30,7 @@ const api: ElectronAPI = {
   pickSaveTarget: (defaultName: string) => ipcRenderer.invoke('dialog:pickSaveTarget', defaultName),
   writeTextFile: (path: string, content: string) => ipcRenderer.invoke('fs:writeTextFile', path, content),
   launchScheduler: (transferUrl?: string) => ipcRenderer.invoke('sibling:launchScheduler', transferUrl),
+  setCollabSessionActive: (active: boolean) => ipcRenderer.send('collab:session-active-changed', active),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
