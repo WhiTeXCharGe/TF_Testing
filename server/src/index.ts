@@ -6,7 +6,8 @@ import { writeFile } from 'node:fs/promises';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
-import { createViewBroadcastServer } from './collab/viewBroadcast.js';
+import { collabRouter } from './routes/collab.js';
+import { createCollabSocketServer } from './collab/collabSocket.js';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3010);
@@ -17,6 +18,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api', constraintsRouter);
 app.use('/api', handoffRouter);
 app.use('/api', networkInfoRouter);
+app.use('/api', collabRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, server: 'gantt-editor-api', time: new Date().toISOString() });
@@ -53,9 +55,9 @@ if (staticDir) {
 }
 
 // Plain app.listen() can't also host Socket.IO on the same port, so the
-// live-view broadcast server wraps app in its own http.Server first.
+// collab relay wraps app in its own http.Server first.
 const httpServer = createServer(app);
-createViewBroadcastServer(httpServer);
+createCollabSocketServer(httpServer);
 
 httpServer.listen(PORT, () => {
   console.log(`[server] running on http://localhost:${PORT}`);
