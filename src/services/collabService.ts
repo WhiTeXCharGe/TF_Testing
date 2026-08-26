@@ -99,7 +99,8 @@ export function sendCollabAction(type: string, payload: unknown): void {
 // reuses whatever port/path this client is currently on.
 export async function fetchCollabLink(sessionId: string, role: SessionRole): Promise<string> {
   const res = await fetch(`${getSocketOrigin()}/api/network-info`);
-  const data = (await res.json()) as { ok: boolean; addresses: string[] };
+  const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; addresses?: string[]; error?: string };
+  if (!res.ok || !data.ok || !data.addresses) throw new Error(data.error ?? 'ネットワーク情報の取得に失敗しました');
   const lanIp = data.addresses[0] ?? window.location.hostname;
   return `${window.location.protocol}//${lanIp}:${window.location.port}${window.location.pathname}?session=${sessionId}&role=${role}`;
 }
