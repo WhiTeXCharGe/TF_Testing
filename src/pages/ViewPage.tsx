@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { useViewerSync } from '../hooks/useViewerSync';
 import { DeviceViewGantt } from '../components/GanttChart/DeviceViewGantt';
 import { WorkerViewGantt } from '../components/GanttChart/WorkerViewGantt';
 import { generateDateRange } from '../utils/dateUtils';
@@ -44,9 +43,9 @@ const statusColor: Record<string, string> = {
 };
 
 export function ViewPage() {
-  useViewerSync();
   const { state } = useAppContext();
-  const { schedule, currentView, viewConnectionStatus } = state;
+  const { schedule, currentView, session } = state;
+  const viewConnectionStatus = session?.connectionStatus ?? 'disconnected';
 
   const scheduleExtent = useMemo(() => (schedule ? getScheduleExtent(schedule) : null), [schedule]);
   const dates = useMemo(() => {
