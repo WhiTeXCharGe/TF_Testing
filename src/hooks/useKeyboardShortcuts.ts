@@ -27,7 +27,7 @@ export function useKeyboardShortcuts() {
             break;
           case 'o':
             e.preventDefault();
-            dispatch({ type: 'OPEN_FILE_DIALOG' });
+            if (!state.session) dispatch({ type: 'OPEN_FILE_DIALOG' });
             break;
         }
       }
@@ -39,5 +39,5 @@ export function useKeyboardShortcuts() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state.schedule, state.envConfig, state.selectedAssignmentIndex, state.currentSchedulePath, state.currentEnvPath, dispatch]);
+  }, [state.schedule, state.envConfig, state.selectedAssignmentIndex, state.currentSchedulePath, state.currentEnvPath, state.session, dispatch]);
 }

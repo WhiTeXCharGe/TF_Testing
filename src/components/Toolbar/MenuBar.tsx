@@ -84,7 +84,7 @@ export function MenuBar() {
       id: 'file',
       label: UI.fileMenu,
       items: [
-        { label: UI.open, shortcut: 'Ctrl+O', action: openFileDialog },
+        { label: UI.open, shortcut: 'Ctrl+O', action: openFileDialog, disabled: !!state.session },
         { separator: true },
         { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave },
         { label: UI.saveAs, shortcut: 'Ctrl+Shift+S', action: saveFileAs, disabled: !canSave },
