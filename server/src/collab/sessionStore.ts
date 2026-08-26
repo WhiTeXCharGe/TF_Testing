@@ -52,7 +52,7 @@ export function getSession(
 ): { baseline: SessionBaseline; actions: LoggedAction[]; participants: SessionParticipant[] } | null {
   const session = sessions.get(id);
   if (!session) return null;
-  return { baseline: session.baseline, actions: session.actions, participants: [...session.participants.values()] };
+  return { baseline: { ...session.baseline }, actions: [...session.actions], participants: [...session.participants.values()] };
 }
 
 export function appendAction(sessionId: string, type: string, payload: unknown): LoggedAction | null {
