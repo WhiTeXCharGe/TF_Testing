@@ -284,6 +284,7 @@ export const UI = {
   // Menu bar status messages
   savePathUnknownMessage: '保存先パスが不明です。名前を付けて保存を使用してください。',
   collabNoScheduleError: 'スケジュールを読み込んでから開始してください',
+  collabActiveLoadBlockedError: 'セッション中はファイルを読み込めません。先にセッションを終了してください。',
   savedMessage: '保存しました',
   saveFailedMessage: (msg: string) => `保存失敗: ${msg}`,
   excelExportedMessage: 'Excelエクスポートしました',

@@ -76,6 +76,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // resulting schedule instead of the bare token, and everyone converges on
   // the same content regardless of their own undo history.
   const dispatch: Dispatch<ActionType> = useCallback((action: ActionType) => {
+    // Loading a file is inherently local (it's not in SYNCABLE_ACTION_TYPES),
+    // but nothing else stops it from firing mid-session — the menu, Ctrl+O,
+    // and the incoming-transfer hook from the sibling SchedulerWeb app can
+    // all dispatch LOAD_FILES with no session awareness. If it went through
+    // while a session is active, this client would silently swap to a
+    // different document while every other participant keeps sending
+    // index/id-based edits against what is now the wrong document here —
+    // real data corruption, not just a UI nuisance. Blocked regardless of
+    // role: even a viewer silently swapping documents mid-session is broken.
+    if (action.type === 'LOAD_FILES' && stateRef.current.session) {
+      rawDispatch({ type: 'SET_ERROR', payload: UI.collabActiveLoadBlockedError });
+      return;
+    }
     if (action.type === 'UNDO' || action.type === 'REDO') {
       const before = stateRef.current;
       rawDispatch(action);
