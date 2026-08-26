@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { fetchCollabLink } from '../../services/collabService';
 import { SessionRole } from '../../types/appState';
@@ -52,12 +52,14 @@ function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
   const session = state.session;
   if (!session) return null;
 
-  const loadLinks = () => {
-    if (editLink || viewLink) return;
-    void fetchCollabLink(session.id, 'edit').then(setEditLink);
-    void fetchCollabLink(session.id, 'view').then(setViewLink);
-  };
-  loadLinks();
+  useEffect(() => {
+    void fetchCollabLink(session.id, 'edit').then(setEditLink).catch(() => {
+      // Fail silently; link just won't be displayed (UI conditionally renders LinkRow only if link exists)
+    });
+    void fetchCollabLink(session.id, 'view').then(setViewLink).catch(() => {
+      // Fail silently; link just won't be displayed
+    });
+  }, [session.id]);
 
   return (
     <div>
