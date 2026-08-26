@@ -10,6 +10,8 @@
 
 Let multiple people edit the same in-memory schedule at the same time, live, through the existing custom Gantt UI — no locking, no per-seat login. Any reducer-driven edit any participant makes is wrapped and sent to a small relay server, which logs it and broadcasts it to everyone else; a client who joins mid-session loads the session's original data plus every action applied so far and replays it locally to catch up.
 
+**Solo use is completely unaffected.** Opening the app (or the browser build) and editing or just viewing a schedule alone works exactly as it does today, with no server, no session, nothing new — none of this activates until someone deliberately starts or joins a session from the new menu described in §5. A session is something that *happens on top of* the normal single-user flow, never a requirement for it.
+
 ## 2. What already exists (do not re-invent)
 
 - `server/src/index.ts` (Express + Socket.IO, port 3010) already runs alongside the app, already has `/api/network-info` (LAN IP) and a small collab module at `server/src/collab/viewBroadcast.ts`.
@@ -81,8 +83,14 @@ Every existing component keeps calling `dispatch(...)` exactly as today — no p
 
 - **Link, opened in a plain browser tab** (works today for view-only, extended to edit): `http://<lan-ip>:5173/?session=<id>&role=edit|view`. `App.tsx`'s existing `isViewMode()` check becomes a `getSessionParams()` check; when present, it shows a small "enter your name" prompt, then renders the normal `GanttPage` (not a stripped-down page) with the session already joining in the background. `role=view` keeps today's `pointer-events:none` read-only rendering; `role=edit` is the fully interactive page.
 - **Pasted into the app itself**: a "Join Session" dialog (replaces `ShareViewDialog`'s old read-only-only framing) with a text field — paste the full link or just the session id, pick a name, pick Edit/View, and the app parses and joins internally without navigating the Electron window's URL.
-- **Starting a session**: the existing `ShareViewButton` becomes "Start Session" — calls `createSession` with current data, shows the link (both the browser-link form and the raw session id for in-app pasting), and switches this client into `role=edit` on its own session.
-- **Presence**: a small bar (styled like today's `ViewPage` status strip) listing connected display names + role, shown in both `GanttPage` and browser joiners.
+- **Starting a session**: covered by the new menu entry below — calls `createSession` with current data, shows the link (both the browser-link form and the raw session id for in-app pasting), and switches this client into `role=edit` on its own session.
+
+**Menu bar placement (explicit UI change):** today, `ShareViewButton` sits alone at the far right of the navy menu bar in `MenuBar.tsx` (`marginLeft: 'auto'`, line 223-225 of that file) — separate from the ファイル/編集/表示/ヘルプ dropdown menus next to it. That standalone button is removed. In its place, a new dropdown menu joins the `menus` array in `MenuBar.tsx` alongside File/Edit/View/Help — e.g. **共同編集** ("Collaboration"; exact wording easy to tweak later) — with entries:
+- セッションを開始 (Start Session) — disabled until a schedule is loaded; opens the share link/id for others once created.
+- セッションに参加 (Join Session) — opens the paste-a-link-or-id dialog described above.
+- セッションを終了 (Leave/End Session) — only shown while a session is active for this client.
+
+**Presence**, instead of a standalone bar, reuses the same inline-text slot the menu bar already uses for `saveStatus` (`MenuBar.tsx:217-221`, e.g. "保存しました" flashing next to the menus) — while a session is active it shows something like "🟢 3人が参加中" (3 participants) next to the menus, and the browser-joiner page keeps its own small status strip (today's `ViewPage` header, extended to also show role and participant count) since it has no menu bar of its own.
 
 State additions to `AppState` (replacing the old `isSharingLiveView/liveViewShareLink/isShareViewDialogOpen/viewConnectionStatus/currentView-only SET_VIEW_STATE`): `session: { id, role, connectionStatus, participants } | null`, `isSessionDialogOpen`.
 
