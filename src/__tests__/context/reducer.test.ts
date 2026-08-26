@@ -58,6 +58,8 @@ const BASE_STATE: AppState = {
   isFileOpenDialogOpen: false,
   isNewScheduleDialogOpen: false,
   isSendToSchedulerDialogOpen: false,
+  session: null,
+  isSessionDialogOpen: false,
 };
 
 // ── SWITCH_VIEW ───────────────────────────────────────────────────────────────
@@ -266,5 +268,72 @@ describe('ADD_WORKFLOW_TASKS', () => {
     const dupTask = { id: 'wt001', name: 'Module A Dup', workflow: 'wf_std', phaseTaskList: [] };
     const next = reducer(BASE_STATE, { type: 'ADD_WORKFLOW_TASKS', payload: [dupTask] });
     expect(next.schedule!.workflowTaskList).toHaveLength(1);
+  });
+});
+
+// ── Live collaboration session ─────────────────────────────────────────────
+
+describe('SET_SESSION', () => {
+  it('sets the session', () => {
+    const session = { id: 's1', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] };
+    const next = reducer(BASE_STATE, { type: 'SET_SESSION', payload: session });
+    expect(next.session).toEqual(session);
+  });
+
+  it('clears the session', () => {
+    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
+    const next = reducer(state, { type: 'SET_SESSION', payload: null });
+    expect(next.session).toBeNull();
+  });
+});
+
+describe('SET_SESSION_BASELINE', () => {
+  it('replaces schedule/envConfig/currentView, resets undo/redo and selection', () => {
+    const state = {
+      ...BASE_STATE,
+      undoStack: [EMPTY_SCHEDULE],
+      redoStack: [EMPTY_SCHEDULE],
+      selectedAssignmentIndex: 0,
+      selectedUnavailableInfo: { workerId: 'w001', startDate: '2025-09-01', endDate: '2025-09-02' },
+    };
+    const newSchedule = { ...EMPTY_SCHEDULE, planRange: { startDate: '2026-01-01', endDate: '2026-01-31' } };
+    const next = reducer(state, { type: 'SET_SESSION_BASELINE', payload: { schedule: newSchedule, envConfig: EMPTY_ENV, currentView: 'device' } });
+    expect(next.schedule).toBe(newSchedule);
+    expect(next.currentView).toBe('device');
+    expect(next.undoStack).toEqual([]);
+    expect(next.redoStack).toEqual([]);
+    expect(next.selectedAssignmentIndex).toBeNull();
+    expect(next.selectedUnavailableInfo).toBeNull();
+  });
+});
+
+describe('SET_SESSION_CONNECTION_STATUS', () => {
+  it('updates connectionStatus on an existing session', () => {
+    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] } };
+    const next = reducer(state, { type: 'SET_SESSION_CONNECTION_STATUS', payload: 'connected' });
+    expect(next.session?.connectionStatus).toBe('connected');
+  });
+
+  it('is a no-op when there is no session', () => {
+    const next = reducer(BASE_STATE, { type: 'SET_SESSION_CONNECTION_STATUS', payload: 'connected' });
+    expect(next.session).toBeNull();
+  });
+});
+
+describe('SET_SESSION_PARTICIPANTS', () => {
+  it('updates participants on an existing session', () => {
+    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
+    const participants = [{ id: 'p1', name: 'Alice', role: 'edit' as const }];
+    const next = reducer(state, { type: 'SET_SESSION_PARTICIPANTS', payload: participants });
+    expect(next.session?.participants).toEqual(participants);
+  });
+});
+
+describe('OPEN_SESSION_DIALOG / CLOSE_SESSION_DIALOG', () => {
+  it('opens and closes the session dialog', () => {
+    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG' });
+    expect(opened.isSessionDialogOpen).toBe(true);
+    const closed = reducer(opened, { type: 'CLOSE_SESSION_DIALOG' });
+    expect(closed.isSessionDialogOpen).toBe(false);
   });
 });

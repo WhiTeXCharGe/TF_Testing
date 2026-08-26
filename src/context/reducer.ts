@@ -557,30 +557,38 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'CLEAR_SCROLL_TO_ASSIGNMENT':
       return { ...state, scrollToSelectedAssignment: false };
 
-    case 'SET_SHARING_LIVE_VIEW':
-      return { ...state, isSharingLiveView: action.payload };
+    case 'SET_SESSION':
+      return { ...state, session: action.payload };
 
-    case 'SET_LIVE_VIEW_SHARE_LINK':
-      return { ...state, liveViewShareLink: action.payload };
-
-    case 'OPEN_SHARE_VIEW_DIALOG':
-      return { ...state, isShareViewDialogOpen: true };
-
-    case 'CLOSE_SHARE_VIEW_DIALOG':
-      return { ...state, isShareViewDialogOpen: false };
-
-    case 'SET_VIEW_CONNECTION_STATUS':
-      return { ...state, viewConnectionStatus: action.payload };
-
-    case 'SET_VIEW_STATE':
-      // Viewer-side only: mirrors whatever the host currently has. No undo/redo,
-      // no saved-ref tracking — this is a read-only reflection, not an edit.
+    case 'SET_SESSION_BASELINE':
+      // Applied when this client just joined a session (or is catching up):
+      // replaces the working data with the session's current state. Undo/redo
+      // and selection reset because they'd otherwise reference data from
+      // before this client had any relationship to the session.
       return {
         ...state,
         schedule: action.payload.schedule,
         envConfig: action.payload.envConfig,
         currentView: action.payload.currentView,
+        undoStack: [],
+        redoStack: [],
+        selectedAssignmentIndex: null,
+        selectedUnavailableInfo: null,
+        savedScheduleRef: action.payload.schedule,
+        savedEnvConfigRef: action.payload.envConfig,
       };
+
+    case 'SET_SESSION_CONNECTION_STATUS':
+      return state.session ? { ...state, session: { ...state.session, connectionStatus: action.payload } } : state;
+
+    case 'SET_SESSION_PARTICIPANTS':
+      return state.session ? { ...state, session: { ...state.session, participants: action.payload } } : state;
+
+    case 'OPEN_SESSION_DIALOG':
+      return { ...state, isSessionDialogOpen: true };
+
+    case 'CLOSE_SESSION_DIALOG':
+      return { ...state, isSessionDialogOpen: false };
 
     default:
       return state;

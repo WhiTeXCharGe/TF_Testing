@@ -78,6 +78,28 @@ export interface WorkerDateCellFilter {
   tasks: string[];
 }
 
+export type SessionRole = 'edit' | 'view';
+export type SessionConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+
+export interface SessionParticipant {
+  id: string;
+  name: string;
+  role: SessionRole;
+}
+
+export interface SessionBaseline {
+  schedule: ScheduleData;
+  envConfig: EnvConfig;
+  currentView: ViewMode;
+}
+
+export interface SessionState {
+  id: string;
+  role: SessionRole;
+  connectionStatus: SessionConnectionStatus;
+  participants: SessionParticipant[];
+}
+
 export interface AppState {
   envConfig: EnvConfig | null;
   schedule: ScheduleData | null;
@@ -112,12 +134,10 @@ export interface AppState {
   constraintCheckedAt: string | null;
   showFlightStints: boolean;
   scrollToSelectedAssignment: boolean;
-  // Live View sharing (fast read-only broadcast, see services/viewBroadcastService.ts).
-  // Not a collaboration session — one-way, host-to-viewers, no editing on the viewer side.
-  isSharingLiveView: boolean;
-  liveViewShareLink: string | null;
-  isShareViewDialogOpen: boolean;
-  viewConnectionStatus: 'disconnected' | 'connecting' | 'connected';
+  // Live collaboration session (see services/collabService.ts). null when not
+  // in a session — solo editing/viewing is unaffected either way.
+  session: SessionState | null;
+  isSessionDialogOpen: boolean;
 }
 
 export type ActionType =
@@ -172,10 +192,10 @@ export type ActionType =
   | { type: 'TOGGLE_FLIGHT_STINTS' }
   | { type: 'SELECT_ASSIGNMENT_AND_SCROLL'; payload: number }
   | { type: 'CLEAR_SCROLL_TO_ASSIGNMENT' }
-  // Live View sharing
-  | { type: 'SET_SHARING_LIVE_VIEW'; payload: boolean }
-  | { type: 'SET_LIVE_VIEW_SHARE_LINK'; payload: string | null }
-  | { type: 'OPEN_SHARE_VIEW_DIALOG' }
-  | { type: 'CLOSE_SHARE_VIEW_DIALOG' }
-  | { type: 'SET_VIEW_CONNECTION_STATUS'; payload: 'disconnected' | 'connecting' | 'connected' }
-  | { type: 'SET_VIEW_STATE'; payload: { schedule: ScheduleData; envConfig: EnvConfig; currentView: ViewMode } };
+  // Live collaboration session
+  | { type: 'SET_SESSION'; payload: SessionState | null }
+  | { type: 'SET_SESSION_BASELINE'; payload: SessionBaseline }
+  | { type: 'SET_SESSION_CONNECTION_STATUS'; payload: SessionConnectionStatus }
+  | { type: 'SET_SESSION_PARTICIPANTS'; payload: SessionParticipant[] }
+  | { type: 'OPEN_SESSION_DIALOG' }
+  | { type: 'CLOSE_SESSION_DIALOG' };
