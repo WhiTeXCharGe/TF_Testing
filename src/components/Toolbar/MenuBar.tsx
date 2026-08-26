@@ -4,7 +4,6 @@ import { overwriteSaveFiles } from '../../services/fileService';
 import { exportScheduleToExcel } from '../../services/excelExportService';
 import { generateDateRange } from '../../utils/dateUtils';
 import { SaveAsDialog } from '../Dialogs/SaveAsDialog';
-import { ShareViewButton } from './ShareViewButton';
 import { UI } from '../../config/uiText';
 
 const NAVY = '#1c2b3a';
@@ -28,7 +27,7 @@ interface MenuDef {
 }
 
 export function MenuBar() {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, leaveCollabSession } = useAppContext();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -95,6 +94,16 @@ export function MenuBar() {
     },
     { id: 'edit', label: UI.editMenu, items: [] },
     { id: 'view', label: UI.viewMenu, items: [] },
+    {
+      id: 'collab',
+      label: UI.collabMenu,
+      items: state.session
+        ? [{ label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } }]
+        : [
+            { label: UI.startSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG' }); setOpenMenu(null); }, disabled: !canSave },
+            { label: UI.joinSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG' }); setOpenMenu(null); } },
+          ],
+    },
     { id: 'help', label: UI.helpMenu, items: [] },
   ];
 
@@ -220,9 +229,11 @@ export function MenuBar() {
           </span>
         )}
 
-        <div style={{ marginLeft: 'auto', marginRight: 8, display: 'flex' }}>
-          <ShareViewButton />
-        </div>
+        {state.session && (
+          <span style={{ color: '#a8d4f5', fontSize: 11, marginLeft: 16, fontFamily: 'Meiryo, sans-serif' }}>
+            {UI.sessionParticipantsLabel(state.session.participants.length)}
+          </span>
+        )}
       </div>
 
       {showSaveAs && state.envConfig && state.schedule && (
