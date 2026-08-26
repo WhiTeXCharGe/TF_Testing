@@ -7,3 +7,4 @@ dist-sse/
 .env.*
 electron-dist/
 release/
+.worktrees/
