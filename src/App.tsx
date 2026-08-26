@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { GanttPage } from './pages/GanttPage';
 import { ViewPage } from './pages/ViewPage';
@@ -46,9 +46,17 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
   const [name, setName] = useState('');
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tracks whether THIS join attempt has ever reached 'connected'. Only a
+  // 'disconnected' seen before that point means the join itself failed (bad
+  // id, unreachable server, sync-init {ok:false}) — a 'disconnected' seen
+  // afterward is just a live session's connection blipping, which the
+  // per-page status indicators (ViewPage's status bar, MenuBar's participant
+  // count) already surface without tearing down the editor/viewer underneath.
+  const hasConnectedOnceRef = useRef(false);
 
   useEffect(() => {
     if (!joining) return;
+    hasConnectedOnceRef.current = false;
     let cancelled = false;
     joinCollabSession(sessionId, name, role).catch(err => {
       if (!cancelled) setError(err instanceof Error ? err.message : UI.joinSessionErrorFallback);
@@ -64,10 +72,18 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
   // 'disconnected' (see collabService.ts's handleSyncInit/handleDisconnect).
   // SET_SESSION always seeds state.session with connectionStatus: 'connecting'
   // before this effect can run, so seeing 'disconnected' while joining is true
-  // can only mean a real failed/dropped join, never an initial idle state.
+  // and the session has never yet connected can only mean a real failed join —
+  // never an initial idle state. Once connected at least once, a later
+  // 'disconnected' (a transient blip, or the host ending the session) is left
+  // to the normal in-page UI rather than replacing it with a fatal screen.
   useEffect(() => {
     if (!joining) return;
-    if (state.session?.connectionStatus === 'disconnected') {
+    const status = state.session?.connectionStatus;
+    if (status === 'connected') {
+      hasConnectedOnceRef.current = true;
+      return;
+    }
+    if (status === 'disconnected' && !hasConnectedOnceRef.current) {
       setError(UI.joinSessionErrorFallback);
     }
   }, [joining, state.session?.connectionStatus]);
