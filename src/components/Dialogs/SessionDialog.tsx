@@ -1,0 +1,168 @@
+import { useState } from 'react';
+import { useAppContext } from '../../context/AppContext';
+import { fetchCollabLink } from '../../services/collabService';
+import { SessionRole } from '../../types/appState';
+import { UI } from '../../config/uiText';
+
+const overlayStyle: React.CSSProperties = {
+  position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+};
+const boxStyle: React.CSSProperties = {
+  backgroundColor: '#fff', borderRadius: 6, padding: 24, maxWidth: 480, width: '90%',
+  boxShadow: '0 4px 16px rgba(0,0,0,0.3)', fontFamily: 'MS Gothic, monospace',
+};
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box',
+};
+const primaryBtnStyle: React.CSSProperties = {
+  padding: '6px 16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
+};
+const dangerBtnStyle: React.CSSProperties = {
+  padding: '6px 16px', backgroundColor: '#c62828', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
+};
+const neutralBtnStyle: React.CSSProperties = {
+  padding: '6px 16px', backgroundColor: '#78909c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
+};
+
+function LinkRow({ label, link }: { label: string; link: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input readOnly value={link} onFocus={e => e.currentTarget.select()} style={{ ...inputStyle, flex: 1, backgroundColor: '#f8f9fa' }} />
+        <button onClick={() => void handleCopy()} style={{ ...primaryBtnStyle, backgroundColor: copied ? '#388e3c' : '#1976d2', whiteSpace: 'nowrap' }}>
+          {copied ? UI.copyLinkCopied : UI.copyLinkBtn}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
+  const { state, leaveCollabSession } = useAppContext();
+  const [editLink, setEditLink] = useState<string | null>(null);
+  const [viewLink, setViewLink] = useState<string | null>(null);
+  const session = state.session;
+  if (!session) return null;
+
+  const loadLinks = () => {
+    if (editLink || viewLink) return;
+    void fetchCollabLink(session.id, 'edit').then(setEditLink);
+    void fetchCollabLink(session.id, 'view').then(setViewLink);
+  };
+  loadLinks();
+
+  return (
+    <div>
+      <div style={{ fontSize: 15, fontWeight: 'bold', color: '#1a2e3f', marginBottom: 8 }}>{UI.sessionActiveTitle}</div>
+      {editLink && <LinkRow label={UI.sessionEditLinkLabel} link={editLink} />}
+      {viewLink && <LinkRow label={UI.sessionViewLinkLabel} link={viewLink} />}
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>
+        {UI.sessionParticipantsLabel(session.participants.length)}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button onClick={() => { leaveCollabSession(); onClose(); }} style={dangerBtnStyle}>{UI.sessionLeaveBtn}</button>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
+      </div>
+    </div>
+  );
+}
+
+function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
+  const { startCollabSession, joinCollabSession } = useAppContext();
+  const [tab, setTab] = useState<'start' | 'join'>('start');
+  const [name, setName] = useState('');
+  const [joinInput, setJoinInput] = useState('');
+  const [joinRole, setJoinRole] = useState<SessionRole>('edit');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleStart = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await startCollabSession(name.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (!name.trim() || !joinInput.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await joinCollabSession(joinInput.trim(), name.trim(), joinRole);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setTab('start')} style={{ ...primaryBtnStyle, backgroundColor: tab === 'start' ? '#1976d2' : '#b0bec5' }}>{UI.startSessionItem}</button>
+        <button onClick={() => setTab('join')} style={{ ...primaryBtnStyle, backgroundColor: tab === 'join' ? '#1976d2' : '#b0bec5' }}>{UI.joinSessionItem}</button>
+      </div>
+
+      <div style={{ fontSize: 15, fontWeight: 'bold', color: '#1a2e3f', marginBottom: 8 }}>
+        {tab === 'start' ? UI.sessionDialogStartTitle : UI.sessionDialogJoinTitle}
+      </div>
+      <div style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>
+        {tab === 'start' ? UI.sessionDialogStartDesc : UI.sessionDialogJoinDesc}
+      </div>
+
+      <input placeholder={UI.sessionNamePlaceholder} value={name} onChange={e => setName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+
+      {tab === 'join' && (
+        <>
+          <input placeholder={UI.sessionJoinLinkPlaceholder} value={joinInput} onChange={e => setJoinInput(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+          <div style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 12 }}>
+            <label><input type="radio" checked={joinRole === 'edit'} onChange={() => setJoinRole('edit')} /> {UI.sessionJoinRoleEdit}</label>
+            <label><input type="radio" checked={joinRole === 'view'} onChange={() => setJoinRole('view')} /> {UI.sessionJoinRoleView}</label>
+          </div>
+        </>
+      )}
+
+      {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button
+          onClick={() => void (tab === 'start' ? handleStart() : handleJoin())}
+          disabled={busy || !name.trim() || (tab === 'join' && !joinInput.trim())}
+          style={primaryBtnStyle}
+        >
+          {tab === 'start' ? UI.sessionStartBtn : UI.sessionJoinBtn}
+        </button>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
+      </div>
+    </div>
+  );
+}
+
+export function SessionDialog() {
+  const { state, dispatch } = useAppContext();
+  if (!state.isSessionDialogOpen) return null;
+  const handleClose = () => dispatch({ type: 'CLOSE_SESSION_DIALOG' });
+
+  return (
+    <div style={overlayStyle}>
+      <div style={boxStyle}>
+        {state.session ? <ActiveSessionPanel onClose={handleClose} /> : <StartOrJoinPanel onClose={handleClose} />}
+      </div>
+    </div>
+  );
+}
