@@ -8,3 +8,4 @@ dist-sse/
 electron-dist/
 release/
 .worktrees/
+.superpowers/
