@@ -8,19 +8,30 @@ import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
 import { collabRouter } from './routes/collab.js';
 import { createCollabSocketServer } from './collab/collabSocket.js';
+import { isLocalOrLanOrigin } from './lanOrigin.js';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3010);
 
-// Reflect any origin. A collab joiner opens the shared link on their own PC as
+// A collab joiner opens the shared link on their own PC as
 // http://<lan-ip>:5173/?session=... , so their browser sends
-// Origin: http://192.168.x.x:5173 — a fixed localhost allowlist would
-// preflight-reject every /api/collab/*, /api/network-info, … call they make,
+// Origin: http://192.168.x.x:5173 — the old fixed localhost allowlist
+// preflight-rejected every /api/collab/*, /api/network-info, … call they made,
 // breaking the LAN case this feature exists for (invisible both in packaged
-// Electron, which is same-origin, and in a localhost-only test). This matches
-// what the Socket.IO relay already does (collabSocket.ts: cors origin: true)
-// and fits the app's design constraints: no login, self-hosted, local/LAN only.
-app.use(cors({ origin: true }));
+// Electron, which is same-origin, and in a localhost-only test).
+//
+// Permissive enough for that, and no more: reflecting *any* origin would also
+// hand every website the user's browser visits a working cross-origin POST to
+// /api/save-files, which writes an absolute path taken from the request body.
+// See lanOrigin.ts.
+app.use(cors({
+  origin: (origin, callback) => {
+    // No Origin header at all: same-origin (packaged Electron serves the
+    // frontend from this very server), or a non-browser caller like curl or
+    // the Electron main process. Nothing for CORS to gate either way.
+    callback(null, !origin || isLocalOrLanOrigin(origin));
+  },
+}));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', constraintsRouter);
