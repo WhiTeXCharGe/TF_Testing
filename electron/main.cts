@@ -37,11 +37,21 @@ let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let sessionActive = false;
+// Set by the 'before-quit' handler at the bottom of this file. The window's
+// 'close' handler needs it to tell a *window* close (hide to tray, keeping
+// the session alive) apart from an actual application quit — Ctrl/Cmd+Q, the
+// app menu, app.quit() from anywhere, and OS shutdown/logoff all fire 'close'
+// on every window first, and without this flag the session's preventDefault()
+// swallowed all of them.
+let isQuitting = false;
 
-// 1x1 transparent PNG — a placeholder tray icon good enough to make the
-// tray entry appear and be clickable; swap for a real icon asset later.
+// 16x16 solid blue (#1976d2, the app accent) circle — inlined so the tray
+// entry is genuinely visible without shipping an asset file. Swap for a real
+// branded icon later; the point of this one is that, unlike the transparent
+// placeholder it replaced, a user can actually see and click it — and the
+// tray menu is the recovery path when the window is hidden mid-session.
 const TRAY_ICON_DATA_URL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAaklEQVR42mOQLLvEgAVbAHEuEDdAaQsc6hjQBbyA+BQQ/8eCT0HlcRqQi0MjOs7FZoAXkZph2AvdgFMkGnAK2QALEjXDsAXMgFwyDciFGdBApgENVHMBxWFAcSxQJR1QnBKpkheokhtJxgDO8vsDCYQo1QAAAABJRU5ErkJggg==';
 
 function ensureTray(): void {
   if (tray) return;
@@ -173,8 +183,13 @@ async function createWindow(): Promise<void> {
     },
   });
 
+  // Closing the window mid-session hides to tray instead of tearing the
+  // collab session down — but only for a genuine window close. Once the app
+  // is actually quitting (isQuitting, set in 'before-quit'), the close must
+  // go through or the quit is silently swallowed and the app is unkillable
+  // except through the tray.
   mainWindow.on('close', (event) => {
-    if (sessionActive) {
+    if (sessionActive && !isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -293,5 +308,10 @@ if (!gotSingleInstanceLock) {
     if (process.platform !== 'darwin') app.quit();
   });
 
-  app.on('before-quit', stopEmbeddedServer);
+  app.on('before-quit', () => {
+    // Fires before any window's 'close', so the session-active close intercept
+    // above sees this and lets the quit through.
+    isQuitting = true;
+    stopEmbeddedServer();
+  });
 }

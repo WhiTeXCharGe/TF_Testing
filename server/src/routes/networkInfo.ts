@@ -3,8 +3,9 @@ import os from 'node:os';
 
 export const networkInfoRouter = Router();
 
-// Lets the client build a LAN-reachable share link (e.g. http://192.168.x.x:5173/?view=1)
-// without the browser being able to discover its own machine's LAN-facing address itself.
+// Lets the client build a LAN-reachable share link
+// (e.g. http://192.168.x.x:5173/?session=<id>&role=edit|view) — a browser has no
+// way to discover its own machine's LAN-facing address on its own.
 networkInfoRouter.get('/network-info', (_req, res) => {
   const interfaces = os.networkInterfaces();
   const addresses: string[] = [];

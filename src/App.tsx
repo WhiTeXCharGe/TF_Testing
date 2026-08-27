@@ -24,7 +24,11 @@ function getSessionParamsFromUrl(): { sessionId: string; role: SessionRole } | n
   return { sessionId, role: params.get('role') === 'view' ? 'view' : 'edit' };
 }
 
-function AppContent() {
+// The full editing UI. Its hooks (global shortcuts incl. Ctrl+S/Ctrl+O, the
+// constraint checker, the SchedulerWeb incoming-transfer listener) only ever
+// mount for a participant who is actually allowed to edit — a view-role
+// participant gets ViewPage instead, so none of them run.
+function EditorShell() {
   useKeyboardShortcuts();
   useConstraintCheck();
   useIncomingGanttTransfer();
@@ -39,6 +43,18 @@ function AppContent() {
       <ErrorDialog />
     </>
   );
+}
+
+// The ONE place read-only rendering is decided, so it can't drift per
+// entry point. Read-only is a property of the joined session's role, not of
+// how the session was joined: both the URL path (?session=...&role=view, via
+// SessionJoinGate) and the in-app SessionDialog's "閲覧のみ" join end up here
+// with state.session.role === 'view' and get the same read-only ViewPage.
+// Solo mode (no session) and edit-role sessions render the editor as before.
+// Exported for App.test.tsx, which drives this decision directly.
+export function AppContent() {
+  const { state } = useAppContext();
+  return state.session?.role === 'view' ? <ViewPage /> : <EditorShell />;
 }
 
 function SessionJoinGate({ sessionId, role }: { sessionId: string; role: SessionRole }) {
@@ -123,7 +139,11 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
     );
   }
 
-  return role === 'view' ? <ViewPage /> : <AppContent />;
+  // No role branch here: joinCollabSession has already seeded state.session
+  // with this join's role, and AppContent makes the one read-only decision for
+  // every entry point. (SET_SESSION is dispatched synchronously by the effect
+  // above, so this resolves on the render right after `joining` flips.)
+  return <AppContent />;
 }
 
 export default function App() {

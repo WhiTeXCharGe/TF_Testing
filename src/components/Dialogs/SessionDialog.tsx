@@ -50,16 +50,28 @@ function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
   const [editLink, setEditLink] = useState<string | null>(null);
   const [viewLink, setViewLink] = useState<string | null>(null);
   const session = state.session;
-  if (!session) return null;
 
+  // Declared BEFORE the `if (!session)` guard below: hooks must run
+  // unconditionally and in the same order on every render, so the early
+  // return can never sit above a hook. That's why the deps and the body use
+  // optional chaining — `session` may legitimately be null here.
   useEffect(() => {
-    void fetchCollabLink(session.id, 'edit').then(setEditLink).catch(() => {
+    const sessionId = session?.id;
+    if (!sessionId) return;
+    // Both fetches are fire-and-forget and can resolve after this dialog has
+    // closed/unmounted; the flag keeps them from setting state on a dead
+    // component.
+    let cancelled = false;
+    void fetchCollabLink(sessionId, 'edit').then(link => { if (!cancelled) setEditLink(link); }).catch(() => {
       // Fail silently; link just won't be displayed (UI conditionally renders LinkRow only if link exists)
     });
-    void fetchCollabLink(session.id, 'view').then(setViewLink).catch(() => {
+    void fetchCollabLink(sessionId, 'view').then(link => { if (!cancelled) setViewLink(link); }).catch(() => {
       // Fail silently; link just won't be displayed
     });
-  }, [session.id]);
+    return () => { cancelled = true; };
+  }, [session?.id]);
+
+  if (!session) return null;
 
   return (
     <div>

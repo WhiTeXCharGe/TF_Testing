@@ -12,7 +12,15 @@ import { createCollabSocketServer } from './collab/collabSocket.js';
 const app = express();
 const PORT = Number(process.env.PORT ?? 3010);
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }));
+// Reflect any origin. A collab joiner opens the shared link on their own PC as
+// http://<lan-ip>:5173/?session=... , so their browser sends
+// Origin: http://192.168.x.x:5173 — a fixed localhost allowlist would
+// preflight-reject every /api/collab/*, /api/network-info, … call they make,
+// breaking the LAN case this feature exists for (invisible both in packaged
+// Electron, which is same-origin, and in a localhost-only test). This matches
+// what the Socket.IO relay already does (collabSocket.ts: cors origin: true)
+// and fits the app's design constraints: no login, self-hosted, local/LAN only.
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', constraintsRouter);

@@ -14,18 +14,20 @@ export function Toolbar() {
   const { state, dispatch } = useAppContext();
   const { schedule, currentView, showFlightStints } = state;
   const has = !!schedule;
+  // 新規製番追加 needs a loaded schedule AND no active session — see the button below.
+  const canAddSeiban = has && !state.session;
   const { runCheck, isChecking } = useBackendConstraintCheck();
 
-  const mkBtn = (bg: string): React.CSSProperties => ({
+  const mkBtn = (bg: string, enabled: boolean = has): React.CSSProperties => ({
     padding: '4px 10px',
     backgroundColor: bg,
     color: '#fff',
     border: 'none',
     borderRadius: 3,
-    cursor: has ? 'pointer' : 'default',
+    cursor: enabled ? 'pointer' : 'default',
     fontSize: 12,
     fontFamily: 'MS Gothic, monospace',
-    opacity: has ? 1 : 0.4,
+    opacity: enabled ? 1 : 0.4,
   });
 
   return (
@@ -40,7 +42,12 @@ export function Toolbar() {
           onClick={() => dispatch({ type: 'OPEN_TASK_ADD_DIALOG' })}>
           {UI.addBarBtn}
         </button>
-        <button style={mkBtn(palette.accentDark)} disabled={!has}
+        {/* Session-gated like the File > 開く menu item (which LOAD_FILES is
+            also hard-blocked for in AppContext): 新規製番追加's MERGE_DATA does
+            sync, so it doesn't diverge participants, but it's a destructive,
+            unconfirmed rewrite of the document everyone else is looking at.
+            UX affordance only — MERGE_DATA still works normally solo. */}
+        <button style={mkBtn(palette.accentDark, canAddSeiban)} disabled={!canAddSeiban}
           onClick={() => dispatch({ type: 'OPEN_NEW_SCHEDULE_DIALOG' })}>
           {UI.addSeibanBtn}
         </button>

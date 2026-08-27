@@ -106,6 +106,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Inbound guard. The relay (server/src/collab/collabSocket.ts) forwards
+  // whatever `type` string an edit-role participant emits without validating
+  // it, so an inbound action is untrusted input: a buggy, malicious, or
+  // simply newer/older client could send SAVE_PATHS, SET_ERROR, or — worst —
+  // LOAD_FILES, which would sail straight past the mid-session load block in
+  // the outgoing wrapper below and silently swap this client's document.
+  // SYNCABLE_ACTION_TYPES is the single source of truth for "a real
+  // cross-participant edit" in both directions; anything else is ignored.
+  const applyRemoteAction = useCallback((action: { type: string; payload: unknown }) => {
+    if (!SYNCABLE_ACTION_TYPES.has(action.type as ActionType['type'])) return;
+    rawDispatch({ type: action.type, payload: action.payload } as ActionType);
+  }, []);
+
   const joinInternal = useCallback((sessionId: string, name: string, role: SessionRole, isCreator: boolean) => {
     disconnectRef.current?.();
     disconnectRef.current = joinCollabRoom(
@@ -115,13 +128,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // otherwise a remote action would be immediately re-forwarded back
         // to the server and echo forever.
         rawDispatch({ type: 'SET_SESSION_BASELINE', payload: baseline });
-        for (const a of actions) rawDispatch({ type: a.type, payload: a.payload } as ActionType);
+        for (const a of actions) applyRemoteAction(a);
       },
-      (action) => rawDispatch({ type: action.type, payload: action.payload } as ActionType),
+      applyRemoteAction,
       (participants) => rawDispatch({ type: 'SET_SESSION_PARTICIPANTS', payload: participants }),
       (status) => rawDispatch({ type: 'SET_SESSION_CONNECTION_STATUS', payload: status }),
     );
-  }, []);
+  }, [applyRemoteAction]);
 
   const startCollabSession = useCallback(async (name: string) => {
     const { schedule, envConfig, currentView } = stateRef.current;

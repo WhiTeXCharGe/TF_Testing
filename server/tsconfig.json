@@ -10,5 +10,10 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests must not reach dist/: it is shipped verbatim inside the packaged
+  // Electron app (see extraResources in the root package.json), and compiling
+  // them would drag their vitest / socket.io-client devDependency imports in
+  // with them.
+  "exclude": ["src/**/*.test.ts"]
 }

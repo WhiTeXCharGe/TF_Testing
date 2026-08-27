@@ -51,16 +51,27 @@ export function joinCollabRoom(
   const s = ensureSocket();
   onStatusChange('connecting');
 
+  // Consumed by the FIRST sync-init only. socket.io-client reconnects on its
+  // own, and every reconnect re-emits 'join' and so gets another sync-init —
+  // if the creator kept skipping those, they'd silently miss every action
+  // that landed while they were disconnected while still reporting
+  // 'connected'. From their second sync-init onward the creator catches up
+  // via baseline + log replay exactly like every other participant.
+  let skipBaselineReplay = isCreator;
+
   const handleConnect = () => s.emit('join', { sessionId, name, role });
   const handleSyncInit = (payload: { ok: boolean; baseline?: SessionBaseline; actions?: LoggedAction[]; participants?: SessionParticipant[] }) => {
     if (!payload.ok || !payload.baseline) {
       onStatusChange('disconnected');
       return;
     }
-    // The creator's local state already IS the baseline (it was just POSTed
-    // from there) — re-applying it would needlessly wipe their own undo
-    // history. Everyone else (a real joiner) replays baseline + log to catch up.
-    if (!isCreator) {
+    // On the very first sync-init the creator's local state already IS the
+    // baseline (it was just POSTed from there) — re-applying it would
+    // needlessly wipe their own undo history. Everyone else (a real joiner)
+    // replays baseline + log to catch up.
+    if (skipBaselineReplay) {
+      skipBaselineReplay = false;
+    } else {
       onSyncInit(payload.baseline, payload.actions ?? []);
     }
     onPresence(payload.participants ?? []);

@@ -30,10 +30,13 @@ function getScheduleExtent(schedule: ScheduleData): { startDate: string; endDate
   return min && max ? { startDate: min, endDate: max } : null;
 }
 
+// Session framing, not host framing: there is no single "host" — any
+// edit-role participant can change the shared state, and the session outlives
+// whoever started it.
 const statusLabel: Record<string, string> = {
   connecting: '接続中…',
-  connected: 'ライブ — ホストに接続済み',
-  disconnected: '未接続 — ホストの共有待ち',
+  connected: 'ライブ — セッションに接続済み',
+  disconnected: '未接続 — セッションへの接続待ち',
 };
 
 const statusColor: Record<string, string> = {
@@ -76,7 +79,7 @@ export function ViewPage() {
           handler in the reused Gantt components can fire, without touching any of
           their (fairly involved) internal drag logic. Known trade-off for this fast
           first cut: it also blocks the grid's own scroll/pan, so a viewer currently
-          sees whatever portion of the timeline the host's default view renders. */}
+          sees whatever portion of the timeline the default view renders. */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative', pointerEvents: 'none' }}>
         {!schedule ? (
           <div
@@ -91,7 +94,7 @@ export function ViewPage() {
               backgroundColor: '#f8f9fa',
             }}
           >
-            ホストがスケジュールを共有するのを待っています…
+            セッションのスケジュールを待っています…
           </div>
         ) : currentView === 'device' ? (
           <DeviceViewGantt dates={dates} />

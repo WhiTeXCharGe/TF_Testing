@@ -167,6 +167,65 @@ it('does not forward actions when joined as a view-only participant', async () =
   expect(mockedCollab.sendCollabAction).not.toHaveBeenCalled();
 });
 
+// The relay forwards whatever `type` string an edit-role peer emits without
+// validating it, so inbound actions are untrusted: SYNCABLE_ACTION_TYPES has
+// to gate the applying side too, not just the sending side.
+it('ignores an inbound action whose type is not syncable', async () => {
+  let capturedOnAction: ((action: { type: string; payload: unknown }) => void) | null = null;
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, onAction) => {
+    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    capturedOnAction = onAction;
+    return () => {};
+  });
+
+  renderApp();
+  await userEvent.click(screen.getByText('join'));
+  await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+  act(() => capturedOnAction!({ type: 'SET_ERROR', payload: 'injected by a peer' }));
+
+  expect(screen.getByTestId('error-message')).toHaveTextContent('none');
+});
+
+// The mid-session load block lives in the OUTGOING wrapper only, so an
+// inbound LOAD_FILES would otherwise sail straight past it and silently swap
+// this participant's document — the exact corruption that block exists to stop.
+it('ignores an inbound LOAD_FILES, which would otherwise bypass the mid-session load block', async () => {
+  let capturedOnAction: ((action: { type: string; payload: unknown }) => void) | null = null;
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, onAction) => {
+    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    capturedOnAction = onAction;
+    return () => {};
+  });
+
+  renderApp();
+  await userEvent.click(screen.getByText('join'));
+  await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+  act(() => capturedOnAction!({
+    type: 'LOAD_FILES',
+    payload: { schedule: { ...SCHEDULE, planRange: { startDate: '2030-01-01', endDate: '2030-01-31' } }, envConfig: ENV_CONFIG, envPath: 'x.yaml', schedulePath: 'y.yaml' },
+  }));
+
+  expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'); // unchanged
+});
+
+it('filters non-syncable action types out of the sync-init log replay too', async () => {
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
+    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, [
+      { seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-04-01', endDate: '2026-04-30' } },
+      { seq: 2, type: 'SET_ERROR', payload: 'injected into the log' },
+    ]);
+    return () => {};
+  });
+
+  renderApp();
+  await userEvent.click(screen.getByText('join'));
+
+  await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-04-01')); // real edit replayed
+  expect(screen.getByTestId('error-message')).toHaveTextContent('none'); // the injected one was not
+});
+
 it('rejects starting a session when no schedule is loaded yet', async () => {
   renderApp();
 
