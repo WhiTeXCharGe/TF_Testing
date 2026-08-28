@@ -4,7 +4,6 @@ export interface ElectronAPI {
   pickSaveTarget: (defaultName: string) => Promise<string | null>;
   writeTextFile: (path: string, content: string) => Promise<void>;
   launchScheduler: (transferUrl?: string) => Promise<{ ok: boolean; error?: string }>;
-  setCollabSessionActive: (active: boolean) => void;
 }
 
 declare global {

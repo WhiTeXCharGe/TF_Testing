@@ -160,10 +160,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => disconnectRef.current?.(), []);
 
-  useEffect(() => {
-    window.electronAPI?.setCollabSessionActive(state.session !== null);
-  }, [state.session]);
-
   return (
     <AppContext.Provider value={{ state, dispatch, startCollabSession, joinCollabSession, leaveCollabSession }}>
       {children}
