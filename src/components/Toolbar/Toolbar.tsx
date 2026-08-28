@@ -14,8 +14,6 @@ export function Toolbar() {
   const { state, dispatch } = useAppContext();
   const { schedule, currentView, showFlightStints } = state;
   const has = !!schedule;
-  // 新規製番追加 needs a loaded schedule AND no active session — see the button below.
-  const canAddSeiban = has && !state.session;
   const { runCheck, isChecking } = useBackendConstraintCheck();
 
   const mkBtn = (bg: string, enabled: boolean = has): React.CSSProperties => ({
@@ -42,12 +40,14 @@ export function Toolbar() {
           onClick={() => dispatch({ type: 'OPEN_TASK_ADD_DIALOG' })}>
           {UI.addBarBtn}
         </button>
-        {/* Session-gated like the File > 開く menu item (which LOAD_FILES is
-            also hard-blocked for in AppContext): 新規製番追加's MERGE_DATA does
-            sync, so it doesn't diverge participants, but it's a destructive,
-            unconfirmed rewrite of the document everyone else is looking at.
-            UX affordance only — MERGE_DATA still works normally solo. */}
-        <button style={mkBtn(palette.accentDark, canAddSeiban)} disabled={!canAddSeiban}
+        {/* Unlike File > 開く (LOAD_FILES, hard-blocked in AppContext because it
+            swaps out the whole document from under other participants), both
+            of 新規製番追加's actions are additive and already fully synced:
+            the form tab's ADD_WORKFLOW_TASKS just appends a new task with a
+            fresh id, and the import tab's MERGE_DATA only merges in workflow
+            tasks whose id isn't already present and appends new assignments —
+            neither ever overwrites existing data. Safe to use during a session. */}
+        <button style={mkBtn(palette.accentDark)} disabled={!has}
           onClick={() => dispatch({ type: 'OPEN_NEW_SCHEDULE_DIALOG' })}>
           {UI.addSeibanBtn}
         </button>
