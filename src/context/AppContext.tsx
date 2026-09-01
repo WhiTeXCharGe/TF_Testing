@@ -5,7 +5,7 @@ import {
 } from '../types/appState';
 import { reducer } from './reducer';
 import {
-  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, parseSessionId,
+  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, parseSessionId, parseSessionOrigin,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 
@@ -89,6 +89,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rawDispatch({ type: 'SET_ERROR', payload: UI.collabActiveLoadBlockedError });
       return;
     }
+    // Connection gate: an edit-role participant's data-mutating actions only
+    // mean anything if they can actually reach the server. socket.io buffers
+    // emits while disconnected, so a bar dragged after the host shut the
+    // server down would move locally and appear synced, yet never leave this
+    // machine — a silent divergence from everyone else. Block such actions up
+    // front (nothing moves) until the connection is back. Purely local UI
+    // actions (selection, filters, dialogs, view) are not syncable and stay
+    // usable while offline.
+    const isSyncingEdit = stateRef.current.session?.role === 'edit';
+    const needsLiveConnection =
+      action.type === 'UNDO' || action.type === 'REDO' || SYNCABLE_ACTION_TYPES.has(action.type);
+    if (isSyncingEdit && needsLiveConnection && stateRef.current.session?.connectionStatus !== 'connected') {
+      rawDispatch({ type: 'SET_ERROR', payload: UI.collabDisconnectedEditBlockedError });
+      return;
+    }
     if (action.type === 'UNDO' || action.type === 'REDO') {
       const before = stateRef.current;
       rawDispatch(action);
@@ -105,7 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendCollabAction(action.type, (action as { payload?: unknown }).payload);
     }
   }, []);
-
+  
   // Inbound guard. The relay (server/src/collab/collabSocket.ts) forwards
   // whatever `type` string an edit-role participant emits without validating
   // it, so an inbound action is untrusted input: a buggy, malicious, or
@@ -119,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rawDispatch({ type: action.type, payload: action.payload } as ActionType);
   }, []);
 
-  const joinInternal = useCallback((sessionId: string, name: string, role: SessionRole, isCreator: boolean) => {
+  const joinInternal = useCallback((sessionId: string, name: string, role: SessionRole, isCreator: boolean, origin?: string) => {
     disconnectRef.current?.();
     disconnectRef.current = joinCollabRoom(
       sessionId, name, role, isCreator,
@@ -133,6 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       applyRemoteAction,
       (participants) => rawDispatch({ type: 'SET_SESSION_PARTICIPANTS', payload: participants }),
       (status) => rawDispatch({ type: 'SET_SESSION_CONNECTION_STATUS', payload: status }),
+      origin,
     );
   }, [applyRemoteAction]);
 
@@ -148,8 +164,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const joinCollabSession = useCallback(async (idOrLink: string, name: string, role: SessionRole) => {
     const sessionId = parseSessionId(idOrLink);
+    // A link pasted into the "Join Session" dialog may point at another
+    // machine — the desktop app's window never navigates there like a
+    // browser would, so the socket must be told that host explicitly or it
+    // silently connects to the joiner's own machine instead (see
+    // parseSessionOrigin in collabService.ts).
+    const origin = parseSessionOrigin(idOrLink) ?? undefined;
     rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, role, connectionStatus: 'connecting', participants: [] } });
-    joinInternal(sessionId, name, role, false);
+    joinInternal(sessionId, name, role, false, origin);
   }, [joinInternal]);
 
   const leaveCollabSession = useCallback(() => {

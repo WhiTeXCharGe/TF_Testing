@@ -16,10 +16,26 @@ function getSocketOrigin(): string {
 }
 
 let socket: Socket | null = null;
+let socketOrigin: string | null = null;
 
-function ensureSocket(): Socket {
+// origin: explicit host to connect to (a joiner's parsed link) — falls back
+// to this page's own host, which is only correct when the page itself was
+// navigated to the host's URL (a plain browser join). The desktop app's
+// window never navigates like that (it always loads its own embedded
+// server), so joining a link pasted into its "Join Session" dialog MUST pass
+// the link's host explicitly or it silently connects to the wrong machine.
+// The port is always forced to 3010 (the API/socket server) regardless of
+// the link's own port, which is the FRONTEND port — 5173 in dev, where no
+// socket server listens; see socketOriginFromLink below.
+function ensureSocket(origin?: string): Socket {
+  const targetOrigin = origin ?? getSocketOrigin();
+  if (socket && socketOrigin !== targetOrigin) {
+    socket.disconnect();
+    socket = null;
+  }
   if (!socket) {
-    socket = io(getSocketOrigin(), {
+    socketOrigin = targetOrigin;
+    socket = io(targetOrigin, {
       path: '/collab/socket.io',
       transports: ['websocket', 'polling'],
     });
@@ -47,8 +63,9 @@ export function joinCollabRoom(
   onAction: (action: { type: string; payload: unknown }) => void,
   onPresence: (participants: SessionParticipant[]) => void,
   onStatusChange: (status: SessionConnectionStatus) => void,
+  origin?: string,
 ): () => void {
-  const s = ensureSocket();
+  const s = ensureSocket(origin);
   onStatusChange('connecting');
 
   // Consumed by the FIRST sync-init only. socket.io-client reconnects on its
@@ -98,6 +115,7 @@ export function joinCollabRoom(
     s.emit('leave');
     s.disconnect();
     socket = null;
+    socketOrigin = null;
   };
 }
 
@@ -114,6 +132,20 @@ export async function fetchCollabLink(sessionId: string, role: SessionRole): Pro
   if (!res.ok || !data.ok || !data.addresses) throw new Error(data.error ?? 'ネットワーク情報の取得に失敗しました');
   const lanIp = data.addresses[0] ?? window.location.hostname;
   return `${window.location.protocol}//${lanIp}:${window.location.port}${window.location.pathname}?session=${sessionId}&role=${role}`;
+}
+
+// Derives the API/socket origin from a full join link. Keeps the link's host
+// but ALWAYS forces port 3010 — the link's own port is the frontend port
+// (5173 in dev, 3010 in prod) and the socket/API server only ever listens on
+// 3010. Returns null for a bare session id (no host to extract).
+export function parseSessionOrigin(input: string): string | null {
+  const trimmed = input.trim();
+  try {
+    const url = new URL(trimmed);
+    return `${url.protocol}//${url.hostname}:3010`;
+  } catch {
+    return null;
+  }
 }
 
 // Accepts either a bare session id or a full link (as produced by

@@ -14,7 +14,7 @@ interface OpEntry {
   maxWorker: number;
 }
 
-interface WTEntry {
+export interface WTEntry {
   key: string;
   name: string;
   workflowId: string;
@@ -44,9 +44,26 @@ function initOpEntries(workflow: Workflow): OpEntry[][] {
   );
 }
 
-function buildWorkflowTask(entry: WTEntry, workflow: Workflow): WorkflowTask {
+/**
+ * Resolve one end date per phase.
+ * The last phase's end date is required in the form. Any earlier phase left
+ * blank inherits the next phase's (already resolved) end date, so every phase
+ * gets a real end date and the solver receives a valid window instead of a
+ * zero-width one (start === end).
+ */
+export function resolvePhaseEndDates(phaseEndDates: string[], phaseCount: number, fallback: string): string[] {
+  const resolved: string[] = new Array(phaseCount);
+  for (let pi = phaseCount - 1; pi >= 0; pi--) {
+    const entered = phaseEndDates[pi]?.trim();
+    resolved[pi] = entered || resolved[pi + 1] || fallback;
+  }
+  return resolved;
+}
+
+export function buildWorkflowTask(entry: WTEntry, workflow: Workflow): WorkflowTask {
   const base = entry.name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 12)
     + '_' + Date.now().toString(36).slice(-4);
+  const endDates = resolvePhaseEndDates(entry.phaseEndDates, workflow.phaseList.length, entry.startDate);
   return {
     id: base,
     name: entry.name,
@@ -59,7 +76,7 @@ function buildWorkflowTask(entry: WTEntry, workflow: Workflow): WorkflowTask {
         name: phase.name,
         phase: phase.id,
         startDate: entry.startDate,
-        endDate: entry.phaseEndDates[pi] ?? entry.startDate,
+        endDate: endDates[pi],
         operationTaskList: phase.operationList.map((op, oi): OperationTask => {
           const oe = entry.opEntries[pi]?.[oi];
           return {
@@ -176,10 +193,21 @@ export function NewScheduleDialog() {
       return { ...e, opEntries: next };
     }));
 
+  // An entry is submittable only when the name / workflow / start date are set
+  // AND the last phase's end date is filled in — that value anchors the end
+  // dates of every earlier blank phase (see resolvePhaseEndDates).
+  const isEntryComplete = (e: WTEntry): boolean => {
+    if (!e.name.trim() || !e.workflowId || !e.startDate) return false;
+    const wf = validWorkflows.find(w => w.id === e.workflowId);
+    if (!wf || wf.phaseList.length === 0) return false;
+    const lastEnd = e.phaseEndDates[wf.phaseList.length - 1];
+    return !!(lastEnd && lastEnd.trim());
+  };
+
   const handleFormOk = () => {
     if (!envConfig) return;
     const tasks: WorkflowTask[] = entries
-      .filter(e => e.name.trim() && e.workflowId && e.startDate)
+      .filter(isEntryComplete)
       .map(e => buildWorkflowTask(e, validWorkflows.find(w => w.id === e.workflowId)!));
     if (tasks.length === 0) return;
     dispatch({ type: 'ADD_WORKFLOW_TASKS', payload: tasks });
@@ -187,7 +215,7 @@ export function NewScheduleDialog() {
   };
 
   const canUpload = (schedFile || envFile) && !uploading;
-  const canFormSubmit = entries.some(e => e.name.trim() && e.workflowId && e.startDate);
+  const canFormSubmit = entries.some(isEntryComplete);
 
   const S = styles;
 
@@ -278,17 +306,23 @@ export function NewScheduleDialog() {
                         {wf && entry.opEntries.length > 0 && (
                           <div>
                             <div style={S.sectionTitle}>{UI.phaseSettingsSectionTitle}</div>
-                            {wf.phaseList.map((phase, pi) => (
+                            {wf.phaseList.map((phase, pi) => {
+                              const isLastPhase = pi === wf.phaseList.length - 1;
+                              const endValue = entry.phaseEndDates[pi] ?? '';
+                              const endMissing = isLastPhase && !endValue.trim();
+                              return (
                               <div key={phase.id} style={S.phaseBlock}>
                                 <div style={S.phaseLabel}>{phase.name ?? phase.id}</div>
 
-                                {/* Per-phase end date */}
+                                {/* Per-phase end date — last phase is required, earlier blanks inherit it */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                  <span style={{ fontSize: 11, color: '#555', width: 68, flexShrink: 0 }}>{UI.phaseEndDateLabel}</span>
+                                  <span style={{ fontSize: 11, color: '#555', width: 68, flexShrink: 0 }}>
+                                    {isLastPhase ? UI.phaseEndDateRequiredLabel : UI.phaseEndDateLabel}
+                                  </span>
                                   <input
-                                    style={{ ...S.input, flex: 1 }}
+                                    style={{ ...S.input, flex: 1, ...(endMissing ? { border: '1px solid #d32f2f' } : null) }}
                                     type="date"
-                                    value={entry.phaseEndDates[pi] ?? ''}
+                                    value={endValue}
                                     onChange={e => setPhaseEndDate(entry.key, pi, e.target.value)}
                                   />
                                 </div>
@@ -319,7 +353,8 @@ export function NewScheduleDialog() {
                                   );
                                 })}
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         )}
                       </div>
