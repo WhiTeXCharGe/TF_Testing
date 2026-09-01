@@ -5,28 +5,80 @@
 
 ---
 
-## Option A — Build Our Own Real-Time Sync
+## Option A — Build Our Own Real-Time Sync  
 
-```mermaid
-sequenceDiagram
-    participant A as User A (App)
-    participant S as Collab Server
-    participant B as User B (App)
-    A->>S: Join session
-    B->>S: Join session
-    S-->>B: Current live state
-    A->>S: Edit (drag task)
-    S-->>B: Live update (<1s)
-    B->>S: Edit
-    S-->>A: Live update (<1s)
-    Note over A,B: Same custom UI, both editing at once
-```
+  
 
-| Keeps our UI | Live edit | New infra | Est. time |
-|---|---|---|---|
-| ✅ | ✅ | Small custom server | 3–8 wks |
+```mermaid  
 
-**Pro:** true live co-editing, our UI unchanged, no per-seat license.
+sequenceDiagram  
+
+participant A as Host (App)  
+
+participant S as Collab Server (owns session state)  
+
+participant B as User B (App)  
+
+A->>S: Start session with 2 YAML (EnvConfig + Schedule)  
+
+S-->>A: Session link  
+
+Note over A,B: Share the link with the team  
+
+B->>S: Join via link  
+
+S-->>B: Current live state (2 YAML + edits so far)  
+
+A->>S: Edit (drag task) = reducer action  
+
+S-->>B: Live update (<1s)  
+
+B->>S: Edit  
+
+S-->>A: Live update (<1s)  
+
+A->>S: Host leaves  
+
+Note over S,B: Session continues — server keeps the state  
+
+B->>S: Submit to Scheduler (shared state)  
+
+```  
+
+  
+
+| Keeps our UI | Live edit | New infra           | Est. time |
+| ------------ | --------- | ------------------- | --------- |
+| Yes          | Yes       | Small custom server | 1-2 wks   |
+
+**How it works**  
+
+- Host loads the 2 YAML and starts a session → gets a shareable link.  
+
+- Anyone with the link joins and sees the current state (initial data + edits already made).  
+
+- Everyone, including the host, sees the same board and edits together.  
+
+- Only the small edit "action" is sent each time (reused reducer actions), not the whole file.  
+
+  
+
+**Key points**  
+
+- **No login needed** — a per-device token can identify each PC instead.  
+
+- **Testable on one PC** — run the server on localhost, open 2 tabs/windows.  
+
+- **Host leaving ≠ session ends** — state lives on the server; it ends only when the server drops an idle room (persistence can save it first).  
+
+- **Submit to Scheduler still works** — from the shared state, within a session.  
+
+- **Cost:** one small always-on server (free on localhost / self-host; small monthly on Azure). No per-seat license.  
+
+  
+
+**Pro:** true live co-editing, our UI unchanged, no per-seat license.  
+
 **Con:** most engineering effort, we own the sync logic.
 
 ---
@@ -106,27 +158,136 @@ sequenceDiagram
 
 ## Option E — Check-Out / File-Lock Server *(senpai's idea)*
 
+  
+
 ```mermaid
+
 sequenceDiagram
-    participant A as User A
-    participant L as File Server (2 YAML + lock)
-    participant B as User B
-    A->>L: Open (request lock)
-    L-->>A: Lock granted + YAML
-    B->>L: Open (request lock)
-    L-->>B: Locked by A — wait / read-only
-    A->>A: Edits locally (as today)
-    A->>L: Save (upload YAML, release lock)
-    B->>L: Open (request lock)
-    L-->>B: Lock granted + latest YAML
-    Note over A,B: Works, but only one editor at a time — not simultaneous
+
+    participant A as GanttChartEditor (PC-A)
+
+    participant S as File/Lock Server
+
+    participant B as GanttChartEditor (PC-B)
+
+    A->>S: Open project-001
+
+    S-->>A: 2 YAML (read-only, key is free)
+
+    B->>S: Open project-001
+
+    S-->>B: 2 YAML (read-only, key is free)
+
+    Note over A,B: Everyone starts read-only
+
+    A->>S: Click "Edit" (request key)
+
+    S-->>A: Key granted → editable
+
+    loop every few min
+
+        A->>S: heartbeat(leaseToken)
+
+        S-->>A: lease renewed
+
+    end
+
+    B->>S: Click "Edit"
+
+    S-->>B: Denied — key held by PC-A (button disabled)
+
+    A->>S: Save & Release (2 YAML + leaseToken)
+
+    S-->>A: Saved + key released
+
+    B->>S: Click "Edit" (retry)
+
+    S-->>B: Key granted → editable (latest YAML)
+
+    Note over A,B: One editor at a time — others watch read-only
+
 ```
 
-| Keeps our UI | Live edit | New infra | Est. time |
+  
+
+|Keeps our UI|Live edit|New infra|Est. time|
 |---|---|---|---|
-| ✅ | ❌ (one editor at a time) | Small file+lock server | 3 days–2 wks |
+|✅|❌ (one editor at a time)|Small file+lock server|3 days–2 wks|
+
+  
+
+**What the server stores** (folder-per-project + one lock record each)
+
+  
+
+```
+
+server-storage/
+
+  project-001/
+
+    EnvConfig.yaml
+
+    Schedule.yaml
+
+    lock.json      ← the "edit key" record
+
+  project-002/
+
+    EnvConfig.yaml
+
+    Schedule.yaml
+
+    lock.json
+
+```
+
+  
+
+```json
+
+// project-001/lock.json  (when held)
+
+{ "locked": true, "holder": "PC-A", "since": "10:32",
+
+  "lastHeartbeat": "10:41", "leaseToken": "xyz789" }
+
+```
+
+  
+
+**How the edit key works**
+
+- **Acquire** on open → if free, server grants lock + a fresh `leaseToken` (the key).
+
+- **Hold** → app heartbeats every few min so the key stays valid.
+
+- **Save** → must present the `leaseToken`; server writes YAML, then releases the lock.
+
+- **Auto-expire** → no heartbeat for N min (crash/network loss) = key invalidated, lock freed.
+
+- Lock is **per project** — project-001 locked doesn't block project-002.
+
+  
+
+**What GanttChartEditor needs (small addition)**
+
+- "Open from server" screen: list projects + lock status (available / "locked by X").
+
+- Locked project → opens read-only; reuse the **existing YAML import** for the rest.
+
+- Swap Save target from local disk → server; add a heartbeat timer.
+
+- Core timeline/reducer/YAML format **unchanged**.
+
+  
+
+**Note:** lock lives in the server record, not the OS file — opening the raw YAML in VS Code does **not** lock it (only the app's shared-open path respects the lock).
+
+  
 
 **Pro:** cheapest server-based option, our UI unchanged, **zero data-loss risk** (only the lock-holder can write).
+
 **Con:** does not show others' edits before save — no true "live" collaboration; can bottleneck if files stay open a long time.
 
 ---
@@ -148,7 +309,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    Q1{Need true live\nsimultaneous editing?} -->|No, rare| E[Option E\ncheck-out lock]
+    Q1{Need true live \n simultaneous editing?} -->|No, rare| E[Option E\ncheck-out lock]
     Q1 -->|Yes, common| Q2{Keep our custom\nGantt UI?}
     Q2 -->|Yes| A[Option A\ncustom sync]
     Q2 -->|OK to lose it| B[Option B / C\nMicrosoft or ONLYOFFICE]
