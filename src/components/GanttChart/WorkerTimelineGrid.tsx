@@ -576,6 +576,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   {col.key === 'remarks' ? (
                     <input
                       type="text"
+                      readOnly={readOnly}
                       defaultValue={row.meta.remarks}
                       onBlur={e => onChangeRemarks(row.workerId, e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -588,9 +589,9 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                         fontFamily: 'Meiryo, sans-serif',
                         color: '#25384f',
                         outline: 'none',
-                        cursor: 'text',
+                        cursor: readOnly ? 'default' : 'text',
                       }}
-                      title={UI.editInPlaceTitle}
+                      title={readOnly ? undefined : UI.editInPlaceTitle}
                     />
                   ) : (
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -623,6 +624,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                     {descField ? (
                       <input
                         type="text"
+                        readOnly={readOnly}
                         defaultValue={row.meta[col.key]}
                         onBlur={e => onChangeDescField(row.workerId, descField, e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -635,9 +637,9 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                           fontFamily: 'Meiryo, sans-serif',
                           color: '#25384f',
                           outline: 'none',
-                          cursor: 'text',
+                          cursor: readOnly ? 'default' : 'text',
                         }}
-                        title={UI.editInPlaceTitle}
+                        title={readOnly ? undefined : UI.editInPlaceTitle}
                       />
                     ) : (
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -814,6 +816,10 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                   <button
                     key={`${row.workerId}_${segment.startIndex}_${segment.endIndex}_${segment.kind}_${segment.assignmentIndex ?? 'na'}`}
                     type="button"
+                    data-testid={segment.kind === 'unavailable' ? 'unavailable-bar' : 'assignment-bar'}
+                    data-worker-id={row.workerId}
+                    data-start-index={segment.startIndex}
+                    data-end-index={segment.endIndex}
                     onClick={e => {
                       e.stopPropagation();
                       if (segment.kind === 'unavailable') {

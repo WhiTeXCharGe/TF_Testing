@@ -380,12 +380,12 @@ export function WorkerViewGantt({ dates }: Props) {
       onClearSelectedDateTask={() =>
         dispatch({ type: 'SET_WORKER_DATE_CELL_FILTER', payload: { date: selectedDateForCellFilter, tasks: [] } })
       }
-      onChangeRemarks={(workerId, value) =>
-        dispatch({ type: 'UPDATE_WORKER_DEFINITION', payload: { workerId, definition: value } })
-      }
-      onChangeDescField={(workerId, field, value) =>
-        dispatch({ type: 'UPDATE_WORKER_DESC_FIELD', payload: { workerId, field, value } })
-      }
+      onChangeRemarks={(workerId, value) => {
+        if (!isReadOnly) dispatch({ type: 'UPDATE_WORKER_DEFINITION', payload: { workerId, definition: value } });
+      }}
+      onChangeDescField={(workerId, field, value) => {
+        if (!isReadOnly) dispatch({ type: 'UPDATE_WORKER_DESC_FIELD', payload: { workerId, field, value } });
+      }}
       onUnavailableDragCommit={(workerId, oldStartDate, oldEndDate, newStartDate, newEndDate) => {
         if (oldStartDate === oldEndDate && newStartDate === newEndDate) {
           dispatch({ type: 'MOVE_UNAVAILABLE_DATE', payload: { workerId, oldDate: oldStartDate, newDate: newStartDate } });

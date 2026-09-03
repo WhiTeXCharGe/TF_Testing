@@ -5,8 +5,10 @@
  * Call this after cy.visit('/') to put the app into a data-loaded state.
  */
 Cypress.Commands.add('loadFixtures', () => {
-  // Open file dialog
-  cy.contains('button', '開く').click({ force: true });
+  // Open file dialog via the ファイル menu — '開く' is a dropdown item inside
+  // that menu, not a bare button on the page.
+  cy.contains('ファイル').click();
+  cy.contains('開く').click();
 
   // Wait for dialog
   cy.contains('ファイルを開く').should('be.visible');
