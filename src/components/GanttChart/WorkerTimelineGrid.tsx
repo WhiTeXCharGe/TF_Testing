@@ -96,6 +96,7 @@ interface Props {
   planRangeEnd: string;
   selectedAssignmentIndex: number | null;
   violationAssignmentIndices: Set<number>;
+  readOnly: boolean;
   onSelectAssignment: (index: number | null) => void;
   onSelectUnavailable: (workerId: string, startDate: string, endDate: string) => void;
   onBarCommit: (commit: BarDragCommit) => void;
@@ -136,6 +137,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
   planRangeEnd,
   selectedAssignmentIndex,
   violationAssignmentIndices,
+  readOnly,
   onSelectAssignment,
   onSelectUnavailable,
   onBarCommit,
@@ -228,6 +230,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
     rowIndex: number,
     mode: DragMode,
   ) => {
+    if (readOnly) return;
     if (segment.assignmentIndex === undefined) return;
     e.preventDefault();
     e.stopPropagation();
@@ -333,6 +336,7 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
     segEndIndex: number,
     mode: 'move' | 'resize-start' | 'resize-end',
   ) => {
+    if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
 

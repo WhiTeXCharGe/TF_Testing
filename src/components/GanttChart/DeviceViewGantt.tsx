@@ -38,6 +38,7 @@ function barGeom(start: string | null, end: string | null, viewStart: string, vi
 
 export function DeviceViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
+  const isReadOnly = state.session?.role === 'view';
   const { schedule, envConfig, moduleViewFilter } = state;
 
   const leftBodyRef = useRef<HTMLDivElement>(null);
@@ -350,7 +351,7 @@ export function DeviceViewGantt({ dates }: Props) {
               module={selectedPhase.module}
               phase={selectedPhase.phase}
               envConfig={envConfig}
-              onChange={updates => dispatch({ type: 'UPDATE_PHASE_TASK', payload: { workflowTaskId: selectedPhase.module.moduleId, phaseTaskId: selectedPhase.phase.phaseId, updates } })}
+              onChange={updates => { if (!isReadOnly) dispatch({ type: 'UPDATE_PHASE_TASK', payload: { workflowTaskId: selectedPhase.module.moduleId, phaseTaskId: selectedPhase.phase.phaseId, updates } }); }}
             />
           ) : selectedTask ? (
             <TaskPanel
@@ -358,8 +359,8 @@ export function DeviceViewGantt({ dates }: Props) {
               phase={selectedTask.phase}
               module={selectedTask.module}
               envConfig={envConfig}
-              onChangeWorker={(ai, wid) => dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: ai, updates: { worker: wid } } })}
-              onChangeOpTask={(oid, updates) => dispatch({ type: 'UPDATE_OPERATION_TASK', payload: { workflowTaskId: selectedTask.module.moduleId, phaseTaskId: selectedTask.phase.phaseId, operationTaskId: oid, updates } })}
+              onChangeWorker={(ai, wid) => { if (!isReadOnly) dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: ai, updates: { worker: wid } } }); }}
+              onChangeOpTask={(oid, updates) => { if (!isReadOnly) dispatch({ type: 'UPDATE_OPERATION_TASK', payload: { workflowTaskId: selectedTask.module.moduleId, phaseTaskId: selectedTask.phase.phaseId, operationTaskId: oid, updates } }); }}
             />
           ) : null}
         </div>

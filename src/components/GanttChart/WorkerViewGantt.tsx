@@ -52,6 +52,7 @@ function buildWorkerAssignmentIndex(
 
 export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
+  const isReadOnly = state.session?.role === 'view';
   const {
     schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter,
     workerColumnFilter, workerDateCellFilter, showFlightStints, scrollToSelectedAssignment,
@@ -334,6 +335,7 @@ export function WorkerViewGantt({ dates }: Props) {
       planRangeEnd={schedule?.planRange.endDate ?? ''}
       selectedAssignmentIndex={selectedAssignmentIndex}
       violationAssignmentIndices={violationIndices}
+      readOnly={isReadOnly}
       onSelectAssignment={index => dispatch({ type: 'SELECT_ASSIGNMENT', payload: index })}
       onSelectUnavailable={(workerId, startDate, endDate) =>
         dispatch({ type: 'SELECT_UNAVAILABLE', payload: { workerId, startDate, endDate } })
