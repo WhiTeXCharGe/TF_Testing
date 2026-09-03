@@ -63,9 +63,9 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
   // Tracks whether THIS join attempt has ever reached 'connected'. Only a
   // 'disconnected' seen before that point means the join itself failed (bad
   // id, unreachable server, sync-init {ok:false}) — a 'disconnected' seen
-  // afterward is just a live session's connection blipping, which the
-  // per-page status indicators (ViewPage's status bar, MenuBar's participant
-  // count) already surface without tearing down the editor/viewer underneath.
+  // afterward is just a live session's connection blipping, which MenuBar's
+  // participant count and view-only indicator already surface without
+  // tearing down the editor/viewer underneath.
   const hasConnectedOnceRef = useRef(false);
 
   useEffect(() => {

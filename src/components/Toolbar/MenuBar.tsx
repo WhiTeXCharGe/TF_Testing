@@ -242,6 +242,11 @@ export function MenuBar() {
             >
               {UI.sessionParticipantsLabel(state.session.participants.length)}
             </span>
+            {state.session.role === 'view' && (
+              <span style={{ color: '#f5c542', fontSize: 11, fontFamily: 'Meiryo, sans-serif', marginLeft: 10 }}>
+                {UI.viewOnlyIndicatorLabel}
+              </span>
+            )}
             {showParticipants && (
               <div
                 style={{
