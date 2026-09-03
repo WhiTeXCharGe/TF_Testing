@@ -1,5 +1,5 @@
 import { reducer } from '../../context/reducer';
-import { AppState, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER } from '../../types/appState';
+import { AppState, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../../types/appState';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
 
@@ -51,15 +51,26 @@ const BASE_STATE: AppState = {
   expandedDeviceIds: new Set(),
   workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
   moduleViewFilter: { ...DEFAULT_MODULE_VIEW_FILTER },
+  workerColumnFilter: { ...DEFAULT_WORKER_COLUMN_FILTER },
+  workerDateCellFilter: { date: '', tasks: [] },
   currentEnvPath: null,
   currentSchedulePath: null,
+  savedScheduleRef: null,
+  savedEnvConfigRef: null,
   errorMessage: null,
   isTaskAddDialogOpen: false,
   isFileOpenDialogOpen: false,
   isNewScheduleDialogOpen: false,
   isSendToSchedulerDialogOpen: false,
+  isConstraintDialogOpen: false,
+  isConstraintChecking: false,
+  backendViolations: [],
+  constraintCheckedAt: null,
+  showFlightStints: false,
+  scrollToSelectedAssignment: false,
   session: null,
   isSessionDialogOpen: false,
+  sessionDialogTab: 'start' as const,
 };
 
 // ── SWITCH_VIEW ───────────────────────────────────────────────────────────────
@@ -275,13 +286,13 @@ describe('ADD_WORKFLOW_TASKS', () => {
 
 describe('SET_SESSION', () => {
   it('sets the session', () => {
-    const session = { id: 's1', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] };
+    const session = { id: 's1', name: 'Test Session', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] };
     const next = reducer(BASE_STATE, { type: 'SET_SESSION', payload: session });
     expect(next.session).toEqual(session);
   });
 
   it('clears the session', () => {
-    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
+    const state = { ...BASE_STATE, session: { id: 's1', name: 'Test Session', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
     const next = reducer(state, { type: 'SET_SESSION', payload: null });
     expect(next.session).toBeNull();
   });
@@ -309,7 +320,7 @@ describe('SET_SESSION_BASELINE', () => {
 
 describe('SET_SESSION_CONNECTION_STATUS', () => {
   it('updates connectionStatus on an existing session', () => {
-    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] } };
+    const state = { ...BASE_STATE, session: { id: 's1', name: 'Test Session', role: 'edit' as const, connectionStatus: 'connecting' as const, participants: [] } };
     const next = reducer(state, { type: 'SET_SESSION_CONNECTION_STATUS', payload: 'connected' });
     expect(next.session?.connectionStatus).toBe('connected');
   });
@@ -322,7 +333,7 @@ describe('SET_SESSION_CONNECTION_STATUS', () => {
 
 describe('SET_SESSION_PARTICIPANTS', () => {
   it('updates participants on an existing session', () => {
-    const state = { ...BASE_STATE, session: { id: 's1', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
+    const state = { ...BASE_STATE, session: { id: 's1', name: 'Test Session', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
     const participants = [{ id: 'p1', name: 'Alice', role: 'edit' as const }];
     const next = reducer(state, { type: 'SET_SESSION_PARTICIPANTS', payload: participants });
     expect(next.session?.participants).toEqual(participants);
@@ -330,10 +341,29 @@ describe('SET_SESSION_PARTICIPANTS', () => {
 });
 
 describe('OPEN_SESSION_DIALOG / CLOSE_SESSION_DIALOG', () => {
-  it('opens and closes the session dialog', () => {
-    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG' });
+  it('opens on the start tab and closes', () => {
+    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'start' });
     expect(opened.isSessionDialogOpen).toBe(true);
+    expect(opened.sessionDialogTab).toBe('start');
     const closed = reducer(opened, { type: 'CLOSE_SESSION_DIALOG' });
     expect(closed.isSessionDialogOpen).toBe(false);
+  });
+
+  it('opens on the join tab when asked', () => {
+    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'join' });
+    expect(opened.sessionDialogTab).toBe('join');
+  });
+});
+
+describe('SET_SESSION_NAME', () => {
+  it('updates the name on an existing session', () => {
+    const state = { ...BASE_STATE, session: { id: 's1', name: 'Old Name', role: 'edit' as const, connectionStatus: 'connected' as const, participants: [] } };
+    const next = reducer(state, { type: 'SET_SESSION_NAME', payload: 'New Name' });
+    expect(next.session?.name).toBe('New Name');
+  });
+
+  it('is a no-op when there is no session', () => {
+    const next = reducer(BASE_STATE, { type: 'SET_SESSION_NAME', payload: 'New Name' });
+    expect(next.session).toBeNull();
   });
 });

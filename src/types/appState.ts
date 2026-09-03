@@ -95,6 +95,7 @@ export interface SessionBaseline {
 
 export interface SessionState {
   id: string;
+  name: string;
   role: SessionRole;
   connectionStatus: SessionConnectionStatus;
   participants: SessionParticipant[];
@@ -138,6 +139,7 @@ export interface AppState {
   // in a session — solo editing/viewing is unaffected either way.
   session: SessionState | null;
   isSessionDialogOpen: boolean;
+  sessionDialogTab: 'start' | 'join';
 }
 
 export type ActionType =
@@ -197,5 +199,6 @@ export type ActionType =
   | { type: 'SET_SESSION_BASELINE'; payload: SessionBaseline }
   | { type: 'SET_SESSION_CONNECTION_STATUS'; payload: SessionConnectionStatus }
   | { type: 'SET_SESSION_PARTICIPANTS'; payload: SessionParticipant[] }
-  | { type: 'OPEN_SESSION_DIALOG' }
-  | { type: 'CLOSE_SESSION_DIALOG' };
+  | { type: 'OPEN_SESSION_DIALOG'; payload: 'start' | 'join' }
+  | { type: 'CLOSE_SESSION_DIALOG' }
+  | { type: 'SET_SESSION_NAME'; payload: string };

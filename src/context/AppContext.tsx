@@ -40,6 +40,7 @@ const initialState: AppState = {
   scrollToSelectedAssignment: false,
   session: null,
   isSessionDialogOpen: false,
+  sessionDialogTab: 'start',
 };
 
 // Reducer actions that mutate schedule/envConfig content and must reach every
@@ -157,7 +158,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!schedule || !envConfig) throw new Error(UI.collabNoScheduleError);
     const sessionId = await createCollabSession({ schedule, envConfig, currentView });
     const link = await fetchCollabLink(sessionId, 'edit');
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, role: 'edit', connectionStatus: 'connecting', participants: [] } });
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name, role: 'edit', connectionStatus: 'connecting', participants: [] } });
     joinInternal(sessionId, name, 'edit', true);
     return { sessionId, link };
   }, [joinInternal]);
@@ -170,7 +171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // silently connects to the joiner's own machine instead (see
     // parseSessionOrigin in collabService.ts).
     const origin = parseSessionOrigin(idOrLink) ?? undefined;
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, role, connectionStatus: 'connecting', participants: [] } });
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name, role, connectionStatus: 'connecting', participants: [] } });
     joinInternal(sessionId, name, role, false, origin);
   }, [joinInternal]);
 
