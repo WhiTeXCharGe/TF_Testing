@@ -40,14 +40,14 @@ function joinAndWaitForSync(client: ClientSocket, payload: { sessionId: string; 
 }
 
 describe('join', () => {
-  it('replies with the baseline, empty action log, and participant list for a fresh session', async () => {
-    const sessionId = createSession(BASELINE);
+  it('replies with the baseline, session name, empty action log, and participant list for a fresh session', async () => {
+    const sessionId = createSession('Test Session', BASELINE);
     const client = connect();
     const syncInit = await new Promise<any>(resolve => {
       client.on('connect', () => client.emit('join', { sessionId, name: 'Alice', role: 'edit' }));
       client.on('sync-init', resolve);
     });
-    expect(syncInit).toEqual({ ok: true, baseline: BASELINE, actions: [], participants: [{ id: expect.any(String), name: 'Alice', role: 'edit' }] });
+    expect(syncInit).toEqual({ ok: true, name: 'Test Session', baseline: BASELINE, actions: [], participants: [{ id: expect.any(String), name: 'Alice', role: 'edit' }] });
     client.disconnect();
   });
 
@@ -64,7 +64,7 @@ describe('join', () => {
 
 describe('action relay', () => {
   it('broadcasts an edit-role action to other participants but not back to the sender', async () => {
-    const sessionId = createSession(BASELINE);
+    const sessionId = createSession('Test Session', BASELINE);
     const alice = connect();
     const bob = connect();
     const aliceReady = joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
@@ -85,7 +85,7 @@ describe('action relay', () => {
   });
 
   it('ignores actions from view-role participants', async () => {
-    const sessionId = createSession(BASELINE);
+    const sessionId = createSession('Test Session', BASELINE);
     const alice = connect();
     const viewer = connect();
     const aliceReady = joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
@@ -106,7 +106,7 @@ describe('action relay', () => {
 
 describe('presence', () => {
   it('notifies remaining participants when someone disconnects', async () => {
-    const sessionId = createSession(BASELINE);
+    const sessionId = createSession('Test Session', BASELINE);
     const alice = connect();
     const bob = connect();
     const aliceReady = joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });

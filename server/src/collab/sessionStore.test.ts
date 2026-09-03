@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  createSession, getSession, appendAction, addParticipant, removeParticipant,
+  createSession, getSession, getSessionName, appendAction, addParticipant, removeParticipant,
   sweepIdleSessions, _resetForTests,
 } from './sessionStore.js';
 
@@ -10,7 +10,7 @@ beforeEach(() => _resetForTests());
 
 describe('createSession / getSession', () => {
   it('creates a session with the given baseline and no actions or participants', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     const session = getSession(id);
     expect(session).not.toBeNull();
     expect(session?.baseline).toEqual(BASELINE);
@@ -23,7 +23,7 @@ describe('createSession / getSession', () => {
   });
 
   it('returns defensive copies — mutations to returned data do not affect internal state', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     appendAction(id, 'SET_SCHEDULE', { hello: 'world' });
 
     // Get the session and attempt to mutate the returned data
@@ -37,11 +37,18 @@ describe('createSession / getSession', () => {
     expect(session2.actions[0]).toEqual({ seq: 0, type: 'SET_SCHEDULE', payload: { hello: 'world' } });
     expect(session2.baseline).toEqual(BASELINE);
   });
+
+  describe('createSession / getSession — name', () => {
+    it('stores and returns the session name', () => {
+      const id = createSession('My Session', BASELINE);
+      expect(getSession(id)?.name).toBe('My Session');
+    });
+  });
 });
 
 describe('appendAction', () => {
   it('assigns increasing sequence numbers and stores the action', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     const a1 = appendAction(id, 'SET_SCHEDULE', { hello: 'world' });
     const a2 = appendAction(id, 'UPDATE_PLAN_RANGE', { startDate: '2026-01-01', endDate: '2026-01-31' });
     expect(a1).toEqual({ seq: 0, type: 'SET_SCHEDULE', payload: { hello: 'world' } });
@@ -56,13 +63,13 @@ describe('appendAction', () => {
 
 describe('addParticipant / removeParticipant', () => {
   it('adds a participant and returns the full list', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     const list = addParticipant(id, 'p1', 'Alice', 'edit');
     expect(list).toEqual([{ id: 'p1', name: 'Alice', role: 'edit' }]);
   });
 
   it('removes a participant and returns the remaining list', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     addParticipant(id, 'p1', 'Alice', 'edit');
     addParticipant(id, 'p2', 'Bob', 'view');
     const list = removeParticipant(id, 'p1');
@@ -77,14 +84,14 @@ describe('addParticipant / removeParticipant', () => {
 
 describe('sweepIdleSessions', () => {
   it('removes sessions with zero participants past the idle threshold', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     const removed = sweepIdleSessions(1000, Date.now() + 2000);
     expect(removed).toBe(1);
     expect(getSession(id)).toBeNull();
   });
 
   it('keeps sessions that still have participants', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     addParticipant(id, 'p1', 'Alice', 'edit');
     const removed = sweepIdleSessions(1000, Date.now() + 2000);
     expect(removed).toBe(0);
@@ -92,9 +99,20 @@ describe('sweepIdleSessions', () => {
   });
 
   it('keeps sessions inside the idle threshold', () => {
-    const id = createSession(BASELINE);
+    const id = createSession('Test Session', BASELINE);
     const removed = sweepIdleSessions(60_000, Date.now() + 1000);
     expect(removed).toBe(0);
     expect(getSession(id)).not.toBeNull();
+  });
+});
+
+describe('getSessionName', () => {
+  it('returns the name for a real session', () => {
+    const id = createSession('Weekly Plan', BASELINE);
+    expect(getSessionName(id)).toBe('Weekly Plan');
+  });
+
+  it('returns null for an unknown session id', () => {
+    expect(getSessionName('does-not-exist')).toBeNull();
   });
 });

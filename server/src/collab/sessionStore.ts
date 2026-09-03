@@ -25,6 +25,7 @@ export interface SessionParticipant {
 
 interface CollabSession {
   id: string;
+  name: string;
   baseline: SessionBaseline;
   actions: LoggedAction[];
   participants: Map<string, SessionParticipant>;
@@ -34,10 +35,11 @@ interface CollabSession {
 
 const sessions = new Map<string, CollabSession>();
 
-export function createSession(baseline: SessionBaseline): string {
+export function createSession(name: string, baseline: SessionBaseline): string {
   const id = randomUUID();
   sessions.set(id, {
     id,
+    name,
     baseline,
     actions: [],
     participants: new Map(),
@@ -49,10 +51,14 @@ export function createSession(baseline: SessionBaseline): string {
 
 export function getSession(
   id: string,
-): { baseline: SessionBaseline; actions: LoggedAction[]; participants: SessionParticipant[] } | null {
+): { name: string; baseline: SessionBaseline; actions: LoggedAction[]; participants: SessionParticipant[] } | null {
   const session = sessions.get(id);
   if (!session) return null;
-  return { baseline: { ...session.baseline }, actions: [...session.actions], participants: [...session.participants.values()] };
+  return { name: session.name, baseline: { ...session.baseline }, actions: [...session.actions], participants: [...session.participants.values()] };
+}
+
+export function getSessionName(id: string): string | null {
+  return sessions.get(id)?.name ?? null;
 }
 
 export function appendAction(sessionId: string, type: string, payload: unknown): LoggedAction | null {

@@ -39,7 +39,7 @@ export function createCollabSocketServer(httpServer: HttpServer): Server {
       joinedRole = role;
       void socket.join(sessionId);
       const participants = store.addParticipant(sessionId, participantId, name, role) ?? [];
-      socket.emit('sync-init', { ok: true, baseline: session.baseline, actions: session.actions, participants });
+      socket.emit('sync-init', { ok: true, name: session.name, baseline: session.baseline, actions: session.actions, participants });
       socket.to(sessionId).emit('presence', participants);
     });
 
