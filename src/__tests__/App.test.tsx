@@ -9,16 +9,12 @@ import * as collabService from '../services/collabService';
 import { ScheduleData } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 
-// The two pages are stubbed so this file tests exactly one thing: which of
-// them AppContent picks. Their real rendering is covered elsewhere.
+// GanttPage is stubbed so this file tests exactly one thing: that AppContent
+// renders the shared shell for every role. Read-only button-level behavior
+// (Toolbar, UndoRedoButtons, useKeyboardShortcuts) is proven end-to-end
+// against the real page by cypress/e2e/06_viewer_parity.cy.ts instead.
 jest.mock('../pages/GanttPage', () => ({ GanttPage: () => <div data-testid="editor-page" /> }));
-jest.mock('../pages/ViewPage', () => ({ ViewPage: () => <div data-testid="view-page" /> }));
-
-// Editor-only hooks. Asserting these never mount for a view participant is the
-// point: useKeyboardShortcuts is what binds Ctrl+S (saving a document that has
-// diverged from the shared one) and Ctrl+O.
-const mockUseKeyboardShortcuts = jest.fn();
-jest.mock('../hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () => mockUseKeyboardShortcuts() }));
+jest.mock('../hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: jest.fn() }));
 jest.mock('../hooks/useConstraintCheck', () => ({ useConstraintCheck: jest.fn() }));
 jest.mock('../hooks/useIncomingGanttTransfer', () => ({ useIncomingGanttTransfer: jest.fn() }));
 
@@ -59,49 +55,30 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockedCollab.parseSessionId.mockImplementation((s: string) => s);
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Test Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 });
 
-it('renders the editor in solo mode (no session)', () => {
+it('renders the shared editor shell in solo mode (no session)', () => {
   renderApp();
-
   expect(screen.getByTestId('editor-page')).toBeInTheDocument();
-  expect(screen.queryByTestId('view-page')).not.toBeInTheDocument();
 });
 
-it('renders the editor for an edit-role session', async () => {
+it('renders the shared editor shell for an edit-role session', async () => {
   renderApp();
-
   await userEvent.click(screen.getByText('join-edit'));
-
   await waitFor(() => expect(screen.getByTestId('editor-page')).toBeInTheDocument());
-  expect(screen.queryByTestId('view-page')).not.toBeInTheDocument();
 });
 
 // The regression this file exists for: joining as 閲覧のみ from inside the app
 // (the SessionDialog path) used to leave the fully interactive editor on
 // screen, because read-only rendering was decided from the URL's ?role=view
-// rather than from the session's own role.
-it('renders the read-only ViewPage for a view-role session joined from inside the app', async () => {
+// rather than from the session's own role. Now there is only ever one shell,
+// so the assertion is simply that it renders here too — read-only-ness is a
+// property of gating inside that shell, not of which shell got picked.
+it('renders the same shared editor shell for a view-role session joined from inside the app', async () => {
   renderApp();
-
   await userEvent.click(screen.getByText('join-view'));
-
-  await waitFor(() => expect(screen.getByTestId('view-page')).toBeInTheDocument());
-  expect(screen.queryByTestId('editor-page')).not.toBeInTheDocument();
-});
-
-it('does not mount the editor-only hooks (Ctrl+S / Ctrl+O) for a view-role session', async () => {
-  renderApp();
-  expect(mockUseKeyboardShortcuts).toHaveBeenCalled(); // solo: editor is up
-
-  await userEvent.click(screen.getByText('join-view'));
-  await waitFor(() => expect(screen.getByTestId('view-page')).toBeInTheDocument());
-
-  mockUseKeyboardShortcuts.mockClear();
-  // Re-render the tree; the view participant's shell must not call it again.
-  await userEvent.click(screen.getByText('join-view'));
-  expect(mockUseKeyboardShortcuts).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByTestId('editor-page')).toBeInTheDocument());
 });

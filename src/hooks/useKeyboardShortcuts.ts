@@ -5,6 +5,7 @@ import { UI } from '../config/uiText';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch } = useAppContext();
+  const isReadOnly = state.session?.role === 'view';
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -12,11 +13,11 @@ export function useKeyboardShortcuts() {
         switch (e.key.toLowerCase()) {
           case 'z':
             e.preventDefault();
-            dispatch({ type: 'UNDO' });
+            if (!isReadOnly) dispatch({ type: 'UNDO' });
             break;
           case 'y':
             e.preventDefault();
-            dispatch({ type: 'REDO' });
+            if (!isReadOnly) dispatch({ type: 'REDO' });
             break;
           case 's':
             e.preventDefault();
@@ -31,7 +32,7 @@ export function useKeyboardShortcuts() {
             break;
         }
       }
-      if (e.key === 'Delete' && state.selectedAssignmentIndex !== null) {
+      if (e.key === 'Delete' && state.selectedAssignmentIndex !== null && !isReadOnly) {
         if (window.confirm(UI.deleteConfirm)) {
           dispatch({ type: 'DELETE_ASSIGNMENT', payload: state.selectedAssignmentIndex });
         }
@@ -39,5 +40,5 @@ export function useKeyboardShortcuts() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state.schedule, state.envConfig, state.selectedAssignmentIndex, state.currentSchedulePath, state.currentEnvPath, state.session, dispatch]);
+  }, [state.schedule, state.envConfig, state.selectedAssignmentIndex, state.currentSchedulePath, state.currentEnvPath, state.session, isReadOnly, dispatch]);
 }

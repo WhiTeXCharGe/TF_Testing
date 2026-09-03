@@ -14,6 +14,8 @@ export function Toolbar() {
   const { state, dispatch } = useAppContext();
   const { schedule, currentView, showFlightStints } = state;
   const has = !!schedule;
+  const isReadOnly = state.session?.role === 'view';
+  const canEdit = has && !isReadOnly;
   const { runCheck, isChecking } = useBackendConstraintCheck();
 
   const mkBtn = (bg: string, enabled: boolean = has): React.CSSProperties => ({
@@ -36,7 +38,7 @@ export function Toolbar() {
         <div style={S.divider} />
         <UndoRedoButtons />
         <div style={S.divider} />
-        <button style={mkBtn('#2e7d32')} disabled={!has}
+        <button style={mkBtn('#2e7d32')} disabled={!canEdit}
           onClick={() => dispatch({ type: 'OPEN_TASK_ADD_DIALOG' })}>
           {UI.addBarBtn}
         </button>
@@ -47,7 +49,7 @@ export function Toolbar() {
             fresh id, and the import tab's MERGE_DATA only merges in workflow
             tasks whose id isn't already present and appends new assignments —
             neither ever overwrites existing data. Safe to use during a session. */}
-        <button style={mkBtn(palette.accentDark)} disabled={!has}
+        <button style={mkBtn(palette.accentDark, canEdit)} disabled={!canEdit}
           onClick={() => dispatch({ type: 'OPEN_NEW_SCHEDULE_DIALOG' })}>
           {UI.addSeibanBtn}
         </button>
@@ -93,9 +95,9 @@ export function Toolbar() {
         </button>
         <div style={{ marginLeft: 'auto' }}>
           <button
-            disabled={!has}
+            disabled={!canEdit}
             onClick={() => dispatch({ type: 'OPEN_SEND_TO_SCHEDULER_DIALOG' })}
-            style={S.submitBtn(has)}
+            style={S.submitBtn(canEdit)}
           >
             {UI.sendToSchedulerBtn}
           </button>

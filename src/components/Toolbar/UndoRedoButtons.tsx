@@ -14,8 +14,9 @@ const btn: CSSProperties = {
 
 export function UndoRedoButtons() {
   const { state, dispatch } = useAppContext();
-  const canUndo = state.undoStack.length > 0;
-  const canRedo = state.redoStack.length > 0;
+  const isReadOnly = state.session?.role === 'view';
+  const canUndo = state.undoStack.length > 0 && !isReadOnly;
+  const canRedo = state.redoStack.length > 0 && !isReadOnly;
 
   return (
     <div style={{ display: 'flex', gap: 4 }}>

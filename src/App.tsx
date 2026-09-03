@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { GanttPage } from './pages/GanttPage';
-import { ViewPage } from './pages/ViewPage';
 import { ErrorDialog } from './components/Dialogs/ErrorDialog';
 import { TaskAddDialog } from './components/Dialogs/TaskAddDialog';
 import { NewScheduleDialog } from './components/Dialogs/NewScheduleDialog';
@@ -24,10 +23,11 @@ function getSessionParamsFromUrl(): { sessionId: string; role: SessionRole } | n
   return { sessionId, role: params.get('role') === 'view' ? 'view' : 'edit' };
 }
 
-// The full editing UI. Its hooks (global shortcuts incl. Ctrl+S/Ctrl+O, the
-// constraint checker, the SchedulerWeb incoming-transfer listener) only ever
-// mount for a participant who is actually allowed to edit — a view-role
-// participant gets ViewPage instead, so none of them run.
+// The shared shell for every session role. Its hooks (global shortcuts,
+// constraint checker, SchedulerWeb incoming-transfer listener) mount
+// unconditionally; each one internally no-ops the specific actions a
+// view-role participant shouldn't trigger, rather than the page deciding
+// not to mount them at all — see useKeyboardShortcuts.ts and Toolbar.tsx.
 function EditorShell() {
   useKeyboardShortcuts();
   useConstraintCheck();
@@ -45,16 +45,14 @@ function EditorShell() {
   );
 }
 
-// The ONE place read-only rendering is decided, so it can't drift per
-// entry point. Read-only is a property of the joined session's role, not of
-// how the session was joined: both the URL path (?session=...&role=view, via
-// SessionJoinGate) and the in-app SessionDialog's "閲覧のみ" join end up here
-// with state.session.role === 'view' and get the same read-only ViewPage.
-// Solo mode (no session) and edit-role sessions render the editor as before.
-// Exported for App.test.tsx, which drives this decision directly.
+// EditorShell is now shared by every role — a view-role participant gets the
+// exact same page as an editor, with only the specific data-mutating
+// interactions disabled (Toolbar/useKeyboardShortcuts here; the Gantt chart's
+// own drag handlers in a later task). This replaced an earlier, separate
+// read-only ViewPage that could only mirror — it couldn't scroll, filter, or
+// run a constraint check, which real usage showed people wanted.
 export function AppContent() {
-  const { state } = useAppContext();
-  return state.session?.role === 'view' ? <ViewPage /> : <EditorShell />;
+  return <EditorShell />;
 }
 
 function SessionJoinGate({ sessionId, role }: { sessionId: string; role: SessionRole }) {
