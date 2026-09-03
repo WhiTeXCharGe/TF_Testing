@@ -58,25 +58,21 @@ function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const sessionId = session?.id;
     if (!sessionId) return;
-    // Both fetches are fire-and-forget and can resolve after this dialog has
-    // closed/unmounted; the flag keeps them from setting state on a dead
-    // component.
     let cancelled = false;
-    void fetchCollabLink(sessionId, 'edit').then(link => { if (!cancelled) setEditLink(link); }).catch(() => {
-      // Fail silently; link just won't be displayed (UI conditionally renders LinkRow only if link exists)
-    });
-    void fetchCollabLink(sessionId, 'view').then(link => { if (!cancelled) setViewLink(link); }).catch(() => {
-      // Fail silently; link just won't be displayed
-    });
+    if (session?.role === 'edit') {
+      void fetchCollabLink(sessionId, 'edit').then(link => { if (!cancelled) setEditLink(link); }).catch(() => {});
+    }
+    void fetchCollabLink(sessionId, 'view').then(link => { if (!cancelled) setViewLink(link); }).catch(() => {});
     return () => { cancelled = true; };
-  }, [session?.id]);
+  }, [session?.id, session?.role]);
 
   if (!session) return null;
 
   return (
     <div>
-      <div style={{ fontSize: 15, fontWeight: 'bold', color: '#1a2e3f', marginBottom: 8 }}>{UI.sessionActiveTitle}</div>
-      {editLink && <LinkRow label={UI.sessionEditLinkLabel} link={editLink} />}
+      <div style={{ fontSize: 15, fontWeight: 'bold', color: '#1a2e3f', marginBottom: 4 }}>{UI.sessionActiveTitle}</div>
+      <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>{UI.sessionNameLabel}: {session.name}</div>
+      {session.role === 'edit' && editLink && <LinkRow label={UI.sessionEditLinkLabel} link={editLink} />}
       {viewLink && <LinkRow label={UI.sessionViewLinkLabel} link={viewLink} />}
       <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>
         {UI.sessionParticipantsLabel(session.participants.length)}

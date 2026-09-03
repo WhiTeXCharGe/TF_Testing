@@ -99,7 +99,10 @@ export function MenuBar() {
       id: 'collab',
       label: UI.collabMenu,
       items: state.session
-        ? [{ label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } }]
+        ? [
+            { label: UI.sessionInfoItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'start' }); setOpenMenu(null); } },
+            { label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } },
+          ]
         : [
             { label: UI.startSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'start' }); setOpenMenu(null); }, disabled: !canSave },
             { label: UI.joinSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'join' }); setOpenMenu(null); } },
