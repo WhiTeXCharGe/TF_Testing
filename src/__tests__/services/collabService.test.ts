@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import { io } from 'socket.io-client';
-import { joinCollabRoom } from '../../services/collabService';
+import { joinCollabRoom, fetchSessionName } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
 jest.mock('socket.io-client', () => ({ io: jest.fn() }));
@@ -58,7 +58,7 @@ function join(isCreator: boolean) {
   return { onSyncInit, onStatusChange };
 }
 
-const SYNC_INIT_OK = { ok: true, baseline: BASELINE, actions: [], participants: [] };
+const SYNC_INIT_OK = { ok: true, name: 'Test Session', baseline: BASELINE, actions: [], participants: [] };
 
 it('skips the baseline replay for the creator on their first sync-init', () => {
   const { onSyncInit } = join(true);
@@ -82,7 +82,7 @@ it('replays the baseline for the creator on a later (reconnect) sync-init', () =
   });
 
   expect(onSyncInit).toHaveBeenCalledTimes(1);
-  expect(onSyncInit).toHaveBeenCalledWith(BASELINE, [
+  expect(onSyncInit).toHaveBeenCalledWith('Test Session', BASELINE, [
     { seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-05-01', endDate: '2026-05-31' } },
   ]);
 });
@@ -103,4 +103,16 @@ it('reports disconnected and replays nothing when sync-init comes back not-ok', 
 
   expect(onSyncInit).not.toHaveBeenCalled();
   expect(onStatusChange).toHaveBeenLastCalledWith('disconnected');
+});
+
+it('fetchSessionName resolves the name for a real session', async () => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, name: 'Weekly Plan' }) }) as any;
+  const name = await fetchSessionName('abc123');
+  expect(name).toBe('Weekly Plan');
+});
+
+it('fetchSessionName resolves null for an unknown session', async () => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) }) as any;
+  const name = await fetchSessionName('nope');
+  expect(name).toBeNull();
 });

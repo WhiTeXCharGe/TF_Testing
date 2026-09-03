@@ -43,11 +43,11 @@ function ensureSocket(origin?: string): Socket {
   return socket;
 }
 
-export async function createCollabSession(baseline: SessionBaseline): Promise<string> {
+export async function createCollabSession(name: string, baseline: SessionBaseline): Promise<string> {
   const res = await fetch(`${getSocketOrigin()}/api/collab/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(baseline),
+    body: JSON.stringify({ name, ...baseline }),
   });
   const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; sessionId?: string; error?: string };
   if (!res.ok || !data.ok || !data.sessionId) throw new Error(data.error ?? 'セッションの作成に失敗しました');
@@ -59,7 +59,7 @@ export function joinCollabRoom(
   name: string,
   role: SessionRole,
   isCreator: boolean,
-  onSyncInit: (baseline: SessionBaseline, actions: LoggedAction[]) => void,
+  onSyncInit: (sessionName: string, baseline: SessionBaseline, actions: LoggedAction[]) => void,
   onAction: (action: { type: string; payload: unknown }) => void,
   onPresence: (participants: SessionParticipant[]) => void,
   onStatusChange: (status: SessionConnectionStatus) => void,
@@ -77,8 +77,8 @@ export function joinCollabRoom(
   let skipBaselineReplay = isCreator;
 
   const handleConnect = () => s.emit('join', { sessionId, name, role });
-  const handleSyncInit = (payload: { ok: boolean; baseline?: SessionBaseline; actions?: LoggedAction[]; participants?: SessionParticipant[] }) => {
-    if (!payload.ok || !payload.baseline) {
+  const handleSyncInit = (payload: { ok: boolean; name?: string; baseline?: SessionBaseline; actions?: LoggedAction[]; participants?: SessionParticipant[] }) => {
+    if (!payload.ok || !payload.baseline || !payload.name) {
       onStatusChange('disconnected');
       return;
     }
@@ -89,7 +89,7 @@ export function joinCollabRoom(
     if (skipBaselineReplay) {
       skipBaselineReplay = false;
     } else {
-      onSyncInit(payload.baseline, payload.actions ?? []);
+      onSyncInit(payload.name, payload.baseline, payload.actions ?? []);
     }
     onPresence(payload.participants ?? []);
     onStatusChange('connected');
@@ -132,6 +132,13 @@ export async function fetchCollabLink(sessionId: string, role: SessionRole): Pro
   if (!res.ok || !data.ok || !data.addresses) throw new Error(data.error ?? 'ネットワーク情報の取得に失敗しました');
   const lanIp = data.addresses[0] ?? window.location.hostname;
   return `${window.location.protocol}//${lanIp}:${window.location.port}${window.location.pathname}?session=${sessionId}&role=${role}`;
+}
+
+export async function fetchSessionName(sessionId: string): Promise<string | null> {
+  const res = await fetch(`${getSocketOrigin()}/api/collab/sessions/${sessionId}/name`);
+  const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; name?: string };
+  if (!res.ok || !data.ok || !data.name) return null;
+  return data.name;
 }
 
 // Derives the API/socket origin from a full join link. Keeps the link's host

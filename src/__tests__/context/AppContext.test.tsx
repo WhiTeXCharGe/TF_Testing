@@ -34,6 +34,7 @@ function TestConsumer() {
     <div>
       <div data-testid="schedule-start">{state.schedule?.planRange.startDate ?? 'none'}</div>
       <div data-testid="session-role">{state.session?.role ?? 'none'}</div>
+      <div data-testid="session-name">{state.session?.name ?? 'none'}</div>
       <div data-testid="error-message">{state.errorMessage ?? 'none'}</div>
       <button onClick={() => dispatch({ type: 'LOAD_FILES', payload: { schedule: SCHEDULE, envConfig: ENV_CONFIG, envPath: 'e.yaml', schedulePath: 's.yaml' } })}>load</button>
       <button onClick={() => dispatch({ type: 'LOAD_FILES', payload: { schedule: { ...SCHEDULE, planRange: { startDate: '2030-01-01', endDate: '2030-01-31' } }, envConfig: ENV_CONFIG, envPath: 'e2.yaml', schedulePath: 's2.yaml' } })}>load-other</button>
@@ -41,7 +42,7 @@ function TestConsumer() {
       <button onClick={() => dispatch({ type: 'UNDO' })}>undo</button>
       <button onClick={() => dispatch({ type: 'REDO' })}>redo</button>
       <button onClick={() => dispatch({ type: 'TOGGLE_FLIGHT_STINTS' })}>toggle-local</button>
-      <button onClick={() => void startCollabSession('Alice')}>start</button>
+      <button onClick={() => void startCollabSession('Alice', 'My Session')}>start</button>
       <button onClick={() => void joinCollabSession('abc', 'Bob', 'edit')}>join</button>
       <button onClick={() => void joinCollabSession('abc', 'Carol', 'view')}>join-view</button>
       <button onClick={() => leaveCollabSession()}>leave</button>
@@ -81,7 +82,7 @@ it('forwards a syncable action to the server while in an edit session, but not a
 it('applies a remote action via the raw dispatch without forwarding it back to the server', async () => {
   let capturedOnAction: ((action: { type: string; payload: unknown }) => void) | null = null;
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, onAction) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     capturedOnAction = onAction;
     return () => {};
   });
@@ -101,7 +102,7 @@ it('skips re-applying the baseline for the session creator', async () => {
   mockedCollab.fetchCollabLink.mockResolvedValue('http://host/?session=s1&role=edit');
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, isCreator, onSyncInit) => {
     if (!isCreator) {
-      onSyncInit({ schedule: { ...SCHEDULE, planRange: { startDate: '1999-01-01', endDate: '1999-01-02' } }, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      onSyncInit('Mock Session', { schedule: { ...SCHEDULE, planRange: { startDate: '1999-01-01', endDate: '1999-01-02' } }, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     }
     return () => {};
   });
@@ -116,7 +117,7 @@ it('skips re-applying the baseline for the session creator', async () => {
 
 it('forwards undo as the resulting SET_SCHEDULE snapshot, not the bare UNDO token', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, _onAction, _onPresence, onStatusChange) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     onStatusChange('connected');
     return () => {};
   });
@@ -136,7 +137,7 @@ it('forwards undo as the resulting SET_SCHEDULE snapshot, not the bare UNDO toke
 
 it('forwards redo as the resulting SET_SCHEDULE snapshot, not the bare REDO token', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, _onAction, _onPresence, onStatusChange) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     onStatusChange('connected');
     return () => {};
   });
@@ -158,7 +159,7 @@ it('forwards redo as the resulting SET_SCHEDULE snapshot, not the bare REDO toke
 
 it('does not forward actions when joined as a view-only participant', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 
@@ -178,7 +179,7 @@ it('does not forward actions when joined as a view-only participant', async () =
 it('ignores an inbound action whose type is not syncable', async () => {
   let capturedOnAction: ((action: { type: string; payload: unknown }) => void) | null = null;
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, onAction) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     capturedOnAction = onAction;
     return () => {};
   });
@@ -198,7 +199,7 @@ it('ignores an inbound action whose type is not syncable', async () => {
 it('ignores an inbound LOAD_FILES, which would otherwise bypass the mid-session load block', async () => {
   let capturedOnAction: ((action: { type: string; payload: unknown }) => void) | null = null;
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, onAction) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     capturedOnAction = onAction;
     return () => {};
   });
@@ -217,7 +218,7 @@ it('ignores an inbound LOAD_FILES, which would otherwise bypass the mid-session 
 
 it('filters non-syncable action types out of the sync-init log replay too', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, [
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, [
       { seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-04-01', endDate: '2026-04-30' } },
       { seq: 2, type: 'SET_ERROR', payload: 'injected into the log' },
     ]);
@@ -234,12 +235,12 @@ it('filters non-syncable action types out of the sync-init log replay too', asyn
 it('rejects starting a session when no schedule is loaded yet', async () => {
   renderApp();
 
-  await expect(capturedApi!.startCollabSession('Alice')).rejects.toThrow(UI.collabNoScheduleError);
+  await expect(capturedApi!.startCollabSession('Alice', 'My Session')).rejects.toThrow(UI.collabNoScheduleError);
 });
 
 it('lets a participant leave a session, clearing session state', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 
@@ -254,7 +255,7 @@ it('lets a participant leave a session, clearing session state', async () => {
 
 it('blocks LOAD_FILES while a session is active, regardless of role, and surfaces an error', async () => {
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 
@@ -275,4 +276,15 @@ it('still allows LOAD_FILES normally when no session is active (solo mode is una
 
   expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01');
   expect(screen.getByTestId('error-message')).toHaveTextContent('none');
+});
+
+it('sets the session name from the sync-init reply when joining', async () => {
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
+    onSyncInit('Joined Session Name', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    return () => {};
+  });
+
+  renderApp();
+  await act(async () => { await userEvent.click(screen.getByText('join')); });
+  await waitFor(() => expect(screen.getByTestId('session-name')).toHaveTextContent('Joined Session Name'));
 });

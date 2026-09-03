@@ -5,7 +5,7 @@ import {
 } from '../types/appState';
 import { reducer } from './reducer';
 import {
-  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, parseSessionId, parseSessionOrigin,
+  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, fetchSessionName, parseSessionId, parseSessionOrigin,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 
@@ -57,7 +57,7 @@ const SYNCABLE_ACTION_TYPES = new Set<ActionType['type']>([
 interface ContextType {
   state: AppState;
   dispatch: Dispatch<ActionType>;
-  startCollabSession: (name: string) => Promise<{ sessionId: string; link: string }>;
+  startCollabSession: (displayName: string, sessionName: string) => Promise<{ sessionId: string; link: string }>;
   joinCollabSession: (idOrLink: string, name: string, role: SessionRole) => Promise<void>;
   leaveCollabSession: () => void;
 }
@@ -139,10 +139,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     disconnectRef.current?.();
     disconnectRef.current = joinCollabRoom(
       sessionId, name, role, isCreator,
-      (baseline, actions) => {
+      (sessionName, baseline, actions) => {
         // Incoming: applied via the raw dispatch, never the wrapped one —
         // otherwise a remote action would be immediately re-forwarded back
         // to the server and echo forever.
+        rawDispatch({ type: 'SET_SESSION_NAME', payload: sessionName });
         rawDispatch({ type: 'SET_SESSION_BASELINE', payload: baseline });
         for (const a of actions) applyRemoteAction(a);
       },
@@ -153,13 +154,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [applyRemoteAction]);
 
-  const startCollabSession = useCallback(async (name: string) => {
+  const startCollabSession = useCallback(async (displayName: string, sessionName: string) => {
     const { schedule, envConfig, currentView } = stateRef.current;
     if (!schedule || !envConfig) throw new Error(UI.collabNoScheduleError);
-    const sessionId = await createCollabSession({ schedule, envConfig, currentView });
+    const sessionId = await createCollabSession(sessionName, { schedule, envConfig, currentView });
     const link = await fetchCollabLink(sessionId, 'edit');
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name, role: 'edit', connectionStatus: 'connecting', participants: [] } });
-    joinInternal(sessionId, name, 'edit', true);
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: sessionName, role: 'edit', connectionStatus: 'connecting', participants: [] } });
+    joinInternal(sessionId, displayName, 'edit', true);
     return { sessionId, link };
   }, [joinInternal]);
 
@@ -171,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // silently connects to the joiner's own machine instead (see
     // parseSessionOrigin in collabService.ts).
     const origin = parseSessionOrigin(idOrLink) ?? undefined;
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name, role, connectionStatus: 'connecting', participants: [] } });
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: '', role, connectionStatus: 'connecting', participants: [] } });
     joinInternal(sessionId, name, role, false, origin);
   }, [joinInternal]);
 

@@ -59,7 +59,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockedCollab.parseSessionId.mockImplementation((s: string) => s);
   mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 });
