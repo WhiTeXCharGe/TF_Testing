@@ -354,6 +354,8 @@ export const UI = {
   joinSessionItem: 'セッションに参加',
   leaveSessionItem: 'セッションを終了',
   sessionParticipantsLabel: (n: number) => `🟢 ${n}人が参加中`,
+  sessionParticipantRoleEdit: '編集者',
+  sessionParticipantRoleView: '閲覧者',
   sessionDialogStartTitle: 'セッションを開始',
   sessionDialogStartDesc: '現在のスケジュールを元にセッションを開始します。他の人は編集用または閲覧用のリンクから参加できます。',
   sessionDialogJoinTitle: 'セッションに参加',

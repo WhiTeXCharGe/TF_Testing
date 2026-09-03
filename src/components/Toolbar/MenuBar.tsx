@@ -31,6 +31,7 @@ export function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [showParticipants, setShowParticipants] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   const canSave = !!(state.schedule && state.envConfig);
@@ -111,6 +112,7 @@ export function MenuBar() {
     const handleClick = (e: MouseEvent) => {
       if (barRef.current && !barRef.current.contains(e.target as Node)) {
         setOpenMenu(null);
+        setShowParticipants(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -230,9 +232,30 @@ export function MenuBar() {
         )}
 
         {state.session && (
-          <span style={{ color: '#a8d4f5', fontSize: 11, marginLeft: 16, fontFamily: 'Meiryo, sans-serif' }}>
-            {UI.sessionParticipantsLabel(state.session.participants.length)}
-          </span>
+          <div style={{ position: 'relative', marginLeft: 16 }}>
+            <span
+              onClick={() => setShowParticipants(v => !v)}
+              style={{ color: '#a8d4f5', fontSize: 11, fontFamily: 'Meiryo, sans-serif', cursor: 'pointer' }}
+            >
+              {UI.sessionParticipantsLabel(state.session.participants.length)}
+            </span>
+            {showParticipants && (
+              <div
+                style={{
+                  position: 'absolute', top: 20, right: 0, minWidth: 160,
+                  backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: 2,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.25)', zIndex: 500, padding: '6px 0',
+                }}
+              >
+                {state.session.participants.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px', fontSize: 12, fontFamily: 'MS Gothic, monospace', color: '#222' }}>
+                    <span>{p.name}</span>
+                    <span style={{ color: '#666', marginLeft: 12 }}>{p.role === 'edit' ? UI.sessionParticipantRoleEdit : UI.sessionParticipantRoleView}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
