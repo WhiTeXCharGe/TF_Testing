@@ -68,6 +68,7 @@ export function SidePanel() {
   const { state, dispatch } = useAppContext();
   const { schedule, envConfig, selectedAssignmentIndex, selectedUnavailableInfo, violations } = state;
   const panelRef = useRef<HTMLDivElement>(null);
+  const isReadOnly = state.session?.role === 'view';
 
   const isOpen = selectedAssignmentIndex !== null || selectedUnavailableInfo !== null;
 
@@ -111,22 +112,22 @@ export function SidePanel() {
   if (!isOpen || !envConfig) return null;
 
   if (selectedUnavailableInfo) {
-    return <UnavailablePanel ref={panelRef} />;
+    return <UnavailablePanel ref={panelRef} isReadOnly={isReadOnly} />;
   }
 
   if (!assignment || selectedAssignmentIndex === null) return null;
 
   if (taskInfo?.type === 'misc') {
-    return <MiscPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} />;
+    return <MiscPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
   }
 
-  return <WorkTaskPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} />;
+  return <WorkTaskPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
 }
 
 // ── Work Task Panel ──────────────────────────────────────────────────────────
 
-const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
-  function WorkTaskPanel({ assignmentIndex }, ref) {
+const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isReadOnly: boolean }>(
+  function WorkTaskPanel({ assignmentIndex, isReadOnly }, ref) {
     const { state, dispatch } = useAppContext();
     const { schedule, envConfig, violations } = state;
     const assignment = schedule?.assignmentList[assignmentIndex];
@@ -214,13 +215,14 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={valueStyle}>{assignment.startDate} 〜 {assignment.endDate}</span>
         </div>
 
-        <WorkHourTable assignment={assignment} assignmentIndex={assignmentIndex} />
+        <WorkHourTable assignment={assignment} assignmentIndex={assignmentIndex} isReadOnly={isReadOnly} />
 
         <div style={rowStyle}>
           <span style={labelStyle}>{UI.barColorLabel}</span>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="color"
+              disabled={isReadOnly}
               value={`#${colorDraft.padEnd(6, '0')}`}
               onChange={e => {
                 const hex = e.target.value.slice(1).toUpperCase();
@@ -229,8 +231,8 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
                   dispatch({ type: 'UPDATE_OPERATION_TASK_COLOR', payload: { operationTaskId: taskInfo.ot.id, colorCode: hex } });
                 }
               }}
-              style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', background: 'none' }}
-              title={UI.colorPickerTitle}
+              style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: isReadOnly ? 'default' : 'pointer', background: 'none', opacity: isReadOnly ? 0.6 : 1 }}
+              title={isReadOnly ? undefined : UI.colorPickerTitle}
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
@@ -240,11 +242,12 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.flexibilityLabel}</span>
           <select
             value={assignment.planFlexibility}
+            disabled={isReadOnly}
             onChange={e => dispatch({
               type: 'UPDATE_ASSIGNMENT',
               payload: { index: assignmentIndex, updates: { planFlexibility: e.target.value as PlanFlexibility } },
             })}
-            style={inputStyle}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'pointer', backgroundColor: isReadOnly ? '#f0f0f0' : undefined }}
           >
             {flexibilityOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -268,6 +271,7 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.remarksLabel}</span>
           <textarea
             value={descDraft}
+            readOnly={isReadOnly}
             onChange={e => setDescDraft(e.target.value)}
             onBlur={() => dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { description: descDraft } } })}
             rows={3}
@@ -277,12 +281,13 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
               resize: 'vertical',
               fontFamily: 'Meiryo, sans-serif',
               fontSize: 12,
+              cursor: isReadOnly ? 'default' : 'text',
             }}
             placeholder={UI.remarksPlaceholder}
           />
         </div>
 
-        <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>
+        <button onClick={handleDelete} disabled={isReadOnly} style={{ ...deleteBtn, opacity: isReadOnly ? 0.4 : 1, cursor: isReadOnly ? 'default' : 'pointer' }}>{UI.deleteButton}</button>
       </div>
     );
   },
@@ -293,9 +298,11 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
 function WorkHourTable({
   assignment,
   assignmentIndex,
+  isReadOnly,
 }: {
   assignment: { startDate: string; endDate: string; workDateList: Array<{ date: string; hour: number }> };
   assignmentIndex: number;
+  isReadOnly: boolean;
 }) {
   const { dispatch } = useAppContext();
 
@@ -371,6 +378,7 @@ function WorkHourTable({
                   type="number"
                   min={0}
                   max={24}
+                  readOnly={isReadOnly}
                   defaultValue={hour}
                   key={`${date}-${hour}`}
                   onBlur={e => commitHour(date, Number(e.target.value))}
@@ -386,6 +394,7 @@ function WorkHourTable({
                     color: isZero ? '#b0a0a0' : '#1c2b3a',
                     backgroundColor: isZero ? '#fdf5f5' : '#fff',
                     outline: 'none',
+                    cursor: isReadOnly ? 'default' : 'text',
                   }}
                 />
                 <span style={{ color: '#888', fontSize: 10, width: 10 }}>{UI.hourUnitSuffix}</span>
@@ -400,8 +409,8 @@ function WorkHourTable({
 
 // ── Misc Task Panel ───────────────────────────────────────────────────────────
 
-const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
-  function MiscPanel({ assignmentIndex }, ref) {
+const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isReadOnly: boolean }>(
+  function MiscPanel({ assignmentIndex, isReadOnly }, ref) {
     const { state, dispatch } = useAppContext();
     const { schedule, envConfig } = state;
     const assignment = schedule?.assignmentList[assignmentIndex];
@@ -462,7 +471,8 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.startLabel}</span>
           <input
             type="date"
-            style={inputStyle}
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
             onBlur={() => commitDates(startDate, endDate)}
@@ -473,7 +483,8 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.endLabel}</span>
           <input
             type="date"
-            style={inputStyle}
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
             value={endDate}
             onChange={e => setEndDate(e.target.value)}
             onBlur={() => commitDates(startDate, endDate)}
@@ -485,6 +496,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="color"
+              disabled={isReadOnly}
               value={`#${colorDraft.padEnd(6, '0')}`}
               onChange={e => {
                 const hex = e.target.value.slice(1).toUpperCase();
@@ -493,8 +505,8 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
                   dispatch({ type: 'UPDATE_WORKFLOW_TASK_COLOR', payload: { workflowTaskId: miscTask.id, colorCode: hex } });
                 }
               }}
-              style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: 'pointer', background: 'none' }}
-              title={UI.colorPickerTitle}
+              style={{ width: 44, height: 32, padding: 2, border: '1px solid #ccc', borderRadius: 4, cursor: isReadOnly ? 'default' : 'pointer', background: 'none', opacity: isReadOnly ? 0.6 : 1 }}
+              title={isReadOnly ? undefined : UI.colorPickerTitle}
             />
             <span style={{ color: '#666', fontSize: 11 }}>#{colorDraft}</span>
           </div>
@@ -504,11 +516,12 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.flexibilityLabel}</span>
           <select
             value={assignment.planFlexibility}
+            disabled={isReadOnly}
             onChange={e => dispatch({
               type: 'UPDATE_ASSIGNMENT',
               payload: { index: assignmentIndex, updates: { planFlexibility: e.target.value as PlanFlexibility } },
             })}
-            style={inputStyle}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'pointer', backgroundColor: isReadOnly ? '#f0f0f0' : undefined }}
           >
             {flexibilityOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -520,6 +533,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
           <span style={labelStyle}>{UI.remarksLabel}</span>
           <textarea
             key={assignmentIndex}
+            readOnly={isReadOnly}
             defaultValue={assignment.description ?? ''}
             onBlur={e => dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { description: e.target.value } } })}
             rows={3}
@@ -529,12 +543,13 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
               resize: 'vertical',
               fontFamily: 'Meiryo, sans-serif',
               fontSize: 12,
+              cursor: isReadOnly ? 'default' : 'text',
             }}
             placeholder={UI.remarksPlaceholder}
           />
         </div>
 
-        <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>
+        <button onClick={handleDelete} disabled={isReadOnly} style={{ ...deleteBtn, opacity: isReadOnly ? 0.4 : 1, cursor: isReadOnly ? 'default' : 'pointer' }}>{UI.deleteButton}</button>
       </div>
     );
   },
@@ -542,8 +557,8 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number }>(
 
 // ── Unavailable Date Panel ───────────────────────────────────────────────────
 
-const UnavailablePanel = forwardRef<HTMLDivElement>(
-  function UnavailablePanel(_, ref) {
+const UnavailablePanel = forwardRef<HTMLDivElement, { isReadOnly: boolean }>(
+  function UnavailablePanel({ isReadOnly }, ref) {
     const { state, dispatch } = useAppContext();
     const { selectedUnavailableInfo, envConfig } = state;
     const [startDraft, setStartDraft] = useState('');
@@ -588,7 +603,8 @@ const UnavailablePanel = forwardRef<HTMLDivElement>(
           <span style={labelStyle}>{UI.startLabel}</span>
           <input
             type="date"
-            style={inputStyle}
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
             value={startDraft}
             onChange={e => setStartDraft(e.target.value)}
             onBlur={() => commitRange(startDraft, endDraft)}
@@ -599,14 +615,15 @@ const UnavailablePanel = forwardRef<HTMLDivElement>(
           <span style={labelStyle}>{UI.endLabel}</span>
           <input
             type="date"
-            style={inputStyle}
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
             value={endDraft}
             onChange={e => setEndDraft(e.target.value)}
             onBlur={() => commitRange(startDraft, endDraft)}
           />
         </div>
 
-        <button onClick={handleDelete} style={deleteBtn}>{UI.deleteButton}</button>
+        <button onClick={handleDelete} disabled={isReadOnly} style={{ ...deleteBtn, opacity: isReadOnly ? 0.4 : 1, cursor: isReadOnly ? 'default' : 'pointer' }}>{UI.deleteButton}</button>
       </div>
     );
   },

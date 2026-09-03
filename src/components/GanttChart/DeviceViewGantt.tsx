@@ -351,6 +351,7 @@ export function DeviceViewGantt({ dates }: Props) {
               module={selectedPhase.module}
               phase={selectedPhase.phase}
               envConfig={envConfig}
+              isReadOnly={isReadOnly}
               onChange={updates => { if (!isReadOnly) dispatch({ type: 'UPDATE_PHASE_TASK', payload: { workflowTaskId: selectedPhase.module.moduleId, phaseTaskId: selectedPhase.phase.phaseId, updates } }); }}
             />
           ) : selectedTask ? (
@@ -359,6 +360,7 @@ export function DeviceViewGantt({ dates }: Props) {
               phase={selectedTask.phase}
               module={selectedTask.module}
               envConfig={envConfig}
+              isReadOnly={isReadOnly}
               onChangeWorker={(ai, wid) => { if (!isReadOnly) dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: ai, updates: { worker: wid } } }); }}
               onChangeOpTask={(oid, updates) => { if (!isReadOnly) dispatch({ type: 'UPDATE_OPERATION_TASK', payload: { workflowTaskId: selectedTask.module.moduleId, phaseTaskId: selectedTask.phase.phaseId, operationTaskId: oid, updates } }); }}
             />
@@ -371,10 +373,11 @@ export function DeviceViewGantt({ dates }: Props) {
 
 // ── KouteiPanel ───────────────────────────────────────────────────────────────
 
-function KouteiPanel({ module, phase, envConfig, onChange }: {
+function KouteiPanel({ module, phase, envConfig, isReadOnly, onChange }: {
   module: ModuleNode;
   phase: ModulePhase;
   envConfig: import('../../types/envConfig').EnvConfig;
+  isReadOnly: boolean;
   onChange: (updates: { startDate?: string; endDate?: string; description?: string }) => void;
 }) {
   const fab = module.fab ? envConfig.fabList.find(f => f.id === module.fab) : undefined;
@@ -392,10 +395,10 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
       {region && <Field label={UI.regionFieldLabel}>{region.name ?? region.id}</Field>}
 
       <Field label={UI.planStartDateLabel}>
-        <input type="date" value={phase.planStartDate} onChange={e => onChange({ startDate: e.target.value })} style={inputStyle} />
+        <input type="date" readOnly={isReadOnly} value={phase.planStartDate} onChange={e => onChange({ startDate: e.target.value })} style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }} />
       </Field>
       <Field label={UI.phaseEndDateLabel}>
-        <input type="date" value={phase.planEndDate} onChange={e => onChange({ endDate: e.target.value })} style={inputStyle} />
+        <input type="date" readOnly={isReadOnly} value={phase.planEndDate} onChange={e => onChange({ endDate: e.target.value })} style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }} />
       </Field>
       <Field label={UI.actualPeriodLabel}>
         {phase.barStartDate && phase.barEndDate ? `${phase.barStartDate} 〜 ${phase.barEndDate}` : '—'}
@@ -406,10 +409,11 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
         <span style={labelStyle}>{UI.remarksLabel}</span>
         <textarea
           key={phaseKey}
+          readOnly={isReadOnly}
           defaultValue={phase.description ?? ''}
           onBlur={e => onChange({ description: e.target.value })}
           rows={3}
-          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
+          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2, cursor: isReadOnly ? 'default' : 'text' }}
           placeholder={UI.remarksPlaceholder}
         />
       </div>
@@ -419,11 +423,12 @@ function KouteiPanel({ module, phase, envConfig, onChange }: {
 
 // ── TaskPanel ─────────────────────────────────────────────────────────────────
 
-function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpTask }: {
+function TaskPanel({ task, phase, module, envConfig, isReadOnly, onChangeWorker, onChangeOpTask }: {
   task: ModuleTask;
   phase: ModulePhase;
   module: ModuleNode;
   envConfig: import('../../types/envConfig').EnvConfig;
+  isReadOnly: boolean;
   onChangeWorker: (assignmentIndex: number, workerId: string) => void;
   onChangeOpTask: (operationTaskId: string, updates: { recommendsWorkerMin?: number; recommendsWorkerMax?: number; workloadHours?: number; description?: string }) => void;
 }) {
@@ -465,30 +470,33 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
           <span style={labelStyle}>{UI.minWorkerLabel}</span>
           <input
             type="number" min={1} value={minDraft}
+            readOnly={isReadOnly}
             onChange={e => setMinDraft(Number(e.target.value))}
             onBlur={e => commitMin(Number(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') commitMin(Number((e.target as HTMLInputElement).value)); }}
-            style={{ ...inputStyle, width: '100%' }}
+            style={{ ...inputStyle, width: '100%', cursor: isReadOnly ? 'default' : 'text' }}
           />
         </div>
         <div style={{ flex: 1 }}>
           <span style={labelStyle}>{UI.maxWorkerLabel}</span>
           <input
             type="number" min={minDraft} value={maxDraft}
+            readOnly={isReadOnly}
             onChange={e => setMaxDraft(Number(e.target.value))}
             onBlur={e => commitMax(Number(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') commitMax(Number((e.target as HTMLInputElement).value)); }}
-            style={{ ...inputStyle, width: '100%' }}
+            style={{ ...inputStyle, width: '100%', cursor: isReadOnly ? 'default' : 'text' }}
           />
         </div>
         <div style={{ flex: 1 }}>
           <span style={labelStyle}>{UI.workloadHoursLabel}</span>
           <input
             type="number" min={1} value={workloadDraft}
+            readOnly={isReadOnly}
             onChange={e => setWorkloadDraft(Number(e.target.value))}
             onBlur={e => commitWorkload(Number(e.target.value))}
             onKeyDown={e => { if (e.key === 'Enter') commitWorkload(Number((e.target as HTMLInputElement).value)); }}
-            style={{ ...inputStyle, width: '100%' }}
+            style={{ ...inputStyle, width: '100%', cursor: isReadOnly ? 'default' : 'text' }}
           />
         </div>
       </div>
@@ -506,6 +514,7 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
             <SearchableSelect
               value={slot.workerId}
               options={workerOptions}
+              disabled={isReadOnly}
               onChange={v => onChangeWorker(slot.assignmentIndex, v)}
             />
             {slot.companyName && <div style={{ color: '#5a6b7d', fontSize: 10, marginTop: 3 }}>{slot.companyName}</div>}
@@ -517,10 +526,11 @@ function TaskPanel({ task, phase, module, envConfig, onChangeWorker, onChangeOpT
         <span style={labelStyle}>{UI.remarksLabel}</span>
         <textarea
           key={task.taskId}
+          readOnly={isReadOnly}
           defaultValue={task.description ?? ''}
           onBlur={e => onChangeOpTask(task.taskId, { description: e.target.value })}
           rows={3}
-          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2 }}
+          style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'MS Gothic, monospace', marginTop: 2, cursor: isReadOnly ? 'default' : 'text' }}
           placeholder={UI.remarksPlaceholder}
         />
       </div>
