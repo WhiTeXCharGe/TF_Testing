@@ -90,20 +90,21 @@ function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
 }
 
 function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
-  const { startCollabSession, joinCollabSession } = useAppContext();
-  const [tab, setTab] = useState<'start' | 'join'>('start');
-  const [name, setName] = useState('');
+  const { state, startCollabSession, joinCollabSession } = useAppContext();
+  const [tab, setTab] = useState<'start' | 'join'>(state.sessionDialogTab);
+  const [displayName, setDisplayName] = useState('');
+  const [sessionName, setSessionName] = useState('');
   const [joinInput, setJoinInput] = useState('');
   const [joinRole, setJoinRole] = useState<SessionRole>('edit');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleStart = async () => {
-    if (!name.trim()) return;
+    if (!displayName.trim() || !sessionName.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await startCollabSession(name.trim());
+      await startCollabSession(displayName.trim(), sessionName.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -112,11 +113,11 @@ function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
   };
 
   const handleJoin = async () => {
-    if (!name.trim() || !joinInput.trim()) return;
+    if (!displayName.trim() || !joinInput.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await joinCollabSession(joinInput.trim(), name.trim(), joinRole);
+      await joinCollabSession(joinInput.trim(), displayName.trim(), joinRole);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -139,7 +140,11 @@ function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
         {tab === 'start' ? UI.sessionDialogStartDesc : UI.sessionDialogJoinDesc}
       </div>
 
-      <input placeholder={UI.sessionNamePlaceholder} value={name} onChange={e => setName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+      {tab === 'start' && (
+        <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={e => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+      )}
+
+      <input placeholder={UI.sessionNamePlaceholder} value={displayName} onChange={e => setDisplayName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
 
       {tab === 'join' && (
         <>
@@ -156,7 +161,7 @@ function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button
           onClick={() => void (tab === 'start' ? handleStart() : handleJoin())}
-          disabled={busy || !name.trim() || (tab === 'join' && !joinInput.trim())}
+          disabled={busy || !displayName.trim() || (tab === 'start' && !sessionName.trim()) || (tab === 'join' && !joinInput.trim())}
           style={primaryBtnStyle}
         >
           {tab === 'start' ? UI.sessionStartBtn : UI.sessionJoinBtn}

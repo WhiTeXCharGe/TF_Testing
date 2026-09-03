@@ -359,6 +359,7 @@ export const UI = {
   sessionDialogJoinTitle: 'セッションに参加',
   sessionDialogJoinDesc: '受け取ったリンク、またはセッションIDを貼り付けてください。',
   sessionNamePlaceholder: '表示名を入力',
+  sessionNameFieldPlaceholder: 'セッション名を入力',
   sessionStartBtn: '開始する',
   sessionJoinLinkPlaceholder: 'リンクまたはセッションID',
   sessionJoinRoleEdit: '編集',
