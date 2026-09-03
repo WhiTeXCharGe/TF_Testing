@@ -61,7 +61,10 @@ beforeEach(() => {
 it('forwards a syncable action to the server while in an edit session, but not a local-only one', async () => {
   mockedCollab.createCollabSession.mockResolvedValue('s1');
   mockedCollab.fetchCollabLink.mockResolvedValue('http://host/?session=s1&role=edit');
-  mockedCollab.joinCollabRoom.mockReturnValue(() => {});
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, _onSyncInit, _onAction, _onPresence, onStatusChange) => {
+    onStatusChange('connected');
+    return () => {};
+  });
 
   renderApp();
   await userEvent.click(screen.getByText('load'));
@@ -112,8 +115,9 @@ it('skips re-applying the baseline for the session creator', async () => {
 });
 
 it('forwards undo as the resulting SET_SCHEDULE snapshot, not the bare UNDO token', async () => {
-  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, _onAction, _onPresence, onStatusChange) => {
     onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onStatusChange('connected');
     return () => {};
   });
 
@@ -131,8 +135,9 @@ it('forwards undo as the resulting SET_SCHEDULE snapshot, not the bare UNDO toke
 });
 
 it('forwards redo as the resulting SET_SCHEDULE snapshot, not the bare REDO token', async () => {
-  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit, _onAction, _onPresence, onStatusChange) => {
     onSyncInit({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+    onStatusChange('connected');
     return () => {};
   });
 
