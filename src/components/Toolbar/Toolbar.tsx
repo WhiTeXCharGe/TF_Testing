@@ -53,8 +53,19 @@ export function Toolbar() {
           onClick={() => dispatch({ type: 'OPEN_NEW_SCHEDULE_DIALOG' })}>
           {UI.addSeibanBtn}
         </button>
-        <PlanFlexBulkSettings />
-        <PlanRangeEditDialog />
+        {/* PlanFlexBulkSettings/PlanRangeEditDialog render their own trigger
+            button internally (no props, no `disabled` to forward), so
+            `disabled={!canEdit}` can't be applied to their button the way
+            it is above without touching those files. Gating render on
+            `canEdit` here — the same condition already used for the row 2
+            filter panels below — keeps the fix entirely inside Toolbar.tsx:
+            a view-role participant never gets the button in the DOM at all,
+            so there's no click *or* keyboard path into BULK_UPDATE_FLEXIBILITY
+            / UPDATE_PLAN_RANGE. (`canEdit` already implies `has`, so this
+            also preserves today's behavior of hiding both when there's no
+            schedule loaded.) */}
+        {canEdit && <PlanFlexBulkSettings />}
+        {canEdit && <PlanRangeEditDialog />}
         <div style={S.divider} />
         <button
           disabled={!has || isChecking}
