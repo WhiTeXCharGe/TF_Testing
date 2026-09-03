@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { fetchCollabLink } from '../../services/collabService';
+import { fetchCollabLink, fetchSessionName, parseSessionId } from '../../services/collabService';
 import { SessionRole } from '../../types/appState';
 import { UI } from '../../config/uiText';
 
@@ -98,6 +98,26 @@ function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
   const [joinRole, setJoinRole] = useState<SessionRole>('edit');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedSessionName, setResolvedSessionName] = useState<string | null>(null);
+  const [nameLookupFailed, setNameLookupFailed] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'join' || !joinInput.trim()) {
+      setResolvedSessionName(null);
+      setNameLookupFailed(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const id = parseSessionId(joinInput.trim());
+      void fetchSessionName(id).then(name => {
+        if (cancelled) return;
+        setResolvedSessionName(name);
+        setNameLookupFailed(!name);
+      });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [tab, joinInput]);
 
   const handleStart = async () => {
     if (!displayName.trim() || !sessionName.trim()) return;
@@ -149,6 +169,12 @@ function StartOrJoinPanel({ onClose }: { onClose: () => void }) {
       {tab === 'join' && (
         <>
           <input placeholder={UI.sessionJoinLinkPlaceholder} value={joinInput} onChange={e => setJoinInput(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+          {resolvedSessionName && (
+            <div style={{ fontSize: 12, color: '#1976d2', marginBottom: 12 }}>{UI.sessionJoinResolvedName(resolvedSessionName)}</div>
+          )}
+          {nameLookupFailed && (
+            <div style={{ fontSize: 12, color: '#c62828', marginBottom: 12 }}>{UI.sessionJoinUnresolvedName}</div>
+          )}
           <div style={{ display: 'flex', gap: 16, marginBottom: 16, fontSize: 12 }}>
             <label><input type="radio" checked={joinRole === 'edit'} onChange={() => setJoinRole('edit')} /> {UI.sessionJoinRoleEdit}</label>
             <label><input type="radio" checked={joinRole === 'view'} onChange={() => setJoinRole('view')} /> {UI.sessionJoinRoleView}</label>

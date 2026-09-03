@@ -362,6 +362,8 @@ export const UI = {
   sessionNameFieldPlaceholder: 'セッション名を入力',
   sessionStartBtn: '開始する',
   sessionJoinLinkPlaceholder: 'リンクまたはセッションID',
+  sessionJoinResolvedName: (name: string) => `「${name}」というセッションに参加します`,
+  sessionJoinUnresolvedName: 'セッションが見つかりません。リンクまたはIDを確認してください。',
   sessionJoinRoleEdit: '編集',
   sessionJoinRoleView: '閲覧のみ',
   sessionJoinBtn: '参加する',
