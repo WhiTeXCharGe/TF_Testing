@@ -135,10 +135,14 @@ export async function fetchCollabLink(sessionId: string, role: SessionRole): Pro
 }
 
 export async function fetchSessionName(sessionId: string): Promise<string | null> {
-  const res = await fetch(`${getSocketOrigin()}/api/collab/sessions/${sessionId}/name`);
-  const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; name?: string };
-  if (!res.ok || !data.ok || !data.name) return null;
-  return data.name;
+  try {
+    const res = await fetch(`${getSocketOrigin()}/api/collab/sessions/${sessionId}/name`);
+    const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; name?: string };
+    if (!res.ok || !data.ok || !data.name) return null;
+    return data.name;
+  } catch {
+    return null;
+  }
 }
 
 // Derives the API/socket origin from a full join link. Keeps the link's host
