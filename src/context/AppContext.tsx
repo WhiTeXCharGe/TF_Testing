@@ -5,7 +5,7 @@ import {
 } from '../types/appState';
 import { reducer } from './reducer';
 import {
-  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, fetchSessionName, parseSessionId, parseSessionOrigin,
+  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, parseSessionId, parseSessionOrigin,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 

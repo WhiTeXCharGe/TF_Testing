@@ -10,7 +10,7 @@ collabRouter.post('/collab/sessions', (req, res) => {
     envConfig?: unknown;
     currentView?: 'worker' | 'device';
   };
-  if (!name || !schedule || !envConfig || (currentView !== 'worker' && currentView !== 'device')) {
+  if (!name?.trim() || !schedule || !envConfig || (currentView !== 'worker' && currentView !== 'device')) {
     res.status(400).json({ ok: false, error: 'name, schedule, envConfig, currentView are required' });
     return;
   }

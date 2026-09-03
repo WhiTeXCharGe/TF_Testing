@@ -19,11 +19,8 @@ describe('06 – Viewer Parity', () => {
     cy.contains('button', '開始する').click();
     cy.contains('セッション情報', { timeout: 8000 }).should('exist');
 
-    cy.window().then(win => {
-      const url = new URL(win.location.href);
-      // The session id isn't in this window's own URL (it's the creator, not
-      // a link-joiner) — read it from the copyable edit-link input instead.
-    });
+    // The session id isn't in this window's own URL (it's the creator, not
+    // a link-joiner) — read it from the copyable edit-link input instead.
     cy.get('input[readonly]').first().invoke('val').then(editLink => {
       const sessionId = new URL(String(editLink)).searchParams.get('session');
 
