@@ -1,6 +1,6 @@
 {
   "name": "gantt-chart-editor",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "type": "module",
   "main": "electron-dist/main.cjs",
   "scripts": {
