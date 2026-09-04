@@ -10,6 +10,7 @@ import { SessionDialog } from './components/Dialogs/SessionDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useConstraintCheck } from './hooks/useConstraintCheck';
 import { useIncomingGanttTransfer } from './hooks/useIncomingGanttTransfer';
+import { fetchSessionName } from './services/collabService';
 import { UI } from './config/uiText';
 import { SessionRole } from './types/appState';
 
@@ -60,6 +61,21 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
   const [name, setName] = useState('');
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionName, setSessionName] = useState<string | null>(null);
+
+  // Best-effort label for the prompt title below — sessionId is fixed for
+  // this gate's lifetime (it comes from the URL, not user typing), so a
+  // single fetch on mount is enough; no debounce needed like the in-app
+  // join dialog's lookup-as-you-type. A failed/unresolved lookup (bad id,
+  // offline server) just leaves the generic fallback title in place —
+  // fetchSessionName already swallows network errors into a null result.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSessionName(sessionId).then(resolved => {
+      if (!cancelled) setSessionName(resolved);
+    });
+    return () => { cancelled = true; };
+  }, [sessionId]);
   // Tracks whether THIS join attempt has ever reached 'connected'. Only a
   // 'disconnected' seen before that point means the join itself failed (bad
   // id, unreachable server, sync-init {ok:false}) — a 'disconnected' seen
@@ -117,7 +133,9 @@ function SessionJoinGate({ sessionId, role }: { sessionId: string; role: Session
           onSubmit={e => { e.preventDefault(); if (name.trim()) setJoining(true); }}
           style={{ display: 'flex', flexDirection: 'column', gap: 12, width: 280 }}
         >
-          <div style={{ fontSize: 14, fontWeight: 'bold' }}>{UI.joinSessionPromptTitle}</div>
+          <div style={{ fontSize: 14, fontWeight: 'bold' }}>
+            {sessionName ? UI.joinSessionPromptTitleNamed(sessionName) : UI.joinSessionPromptTitle}
+          </div>
           <input
             autoFocus
             value={name}

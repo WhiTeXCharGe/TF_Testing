@@ -32,6 +32,7 @@ export function MenuBar() {
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [hoveringParticipants, setHoveringParticipants] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   const canSave = !!(state.schedule && state.envConfig);
@@ -235,7 +236,11 @@ export function MenuBar() {
         )}
 
         {state.session && (
-          <div style={{ position: 'relative', marginLeft: 16 }}>
+          <div
+            style={{ position: 'relative', marginLeft: 16 }}
+            onMouseEnter={() => setHoveringParticipants(true)}
+            onMouseLeave={() => setHoveringParticipants(false)}
+          >
             <span
               onClick={() => setShowParticipants(v => !v)}
               style={{ color: '#a8d4f5', fontSize: 11, fontFamily: 'Meiryo, sans-serif', cursor: 'pointer' }}
@@ -247,7 +252,7 @@ export function MenuBar() {
                 {UI.viewOnlyIndicatorLabel}
               </span>
             )}
-            {showParticipants && (
+            {(showParticipants || hoveringParticipants) && (
               <div
                 style={{
                   position: 'absolute', top: 20, right: 0, minWidth: 160,

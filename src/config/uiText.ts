@@ -380,6 +380,7 @@ export const UI = {
   copyLinkBtn: 'コピー',
   copyLinkCopied: 'コピーしました',
   joinSessionPromptTitle: 'このセッションに参加',
+  joinSessionPromptTitleNamed: (name: string) => `「${name}」の参加`,
   joinSessionNamePlaceholder: '表示名を入力',
   joinSessionSubmitBtn: '参加する',
   joinSessionErrorFallback: 'セッションへの参加に失敗しました',

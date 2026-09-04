@@ -74,8 +74,16 @@ function ActiveSessionPanel({ onClose }: { onClose: () => void }) {
       <div style={{ fontSize: 12, color: '#666', marginBottom: 12 }}>{UI.sessionNameLabel}: {session.name}</div>
       {session.role === 'edit' && editLink && <LinkRow label={UI.sessionEditLinkLabel} link={editLink} />}
       {viewLink && <LinkRow label={UI.sessionViewLinkLabel} link={viewLink} />}
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
         {UI.sessionParticipantsLabel(session.participants.length)}
+      </div>
+      <div style={{ marginBottom: 16, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        {session.participants.map(p => (
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 10px', fontSize: 12, fontFamily: 'MS Gothic, monospace', color: '#222' }}>
+            <span>{p.name}</span>
+            <span style={{ color: '#666', marginLeft: 12 }}>{p.role === 'edit' ? UI.sessionParticipantRoleEdit : UI.sessionParticipantRoleView}</span>
+          </div>
+        ))}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button onClick={() => { leaveCollabSession(); onClose(); }} style={dangerBtnStyle}>{UI.sessionLeaveBtn}</button>
