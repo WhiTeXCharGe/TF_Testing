@@ -13,15 +13,11 @@
 - If your target edit's object **was** touched by someone else since, Undo/Redo is blocked outright: nothing changes, you're told why, and you'd need to try again later (no silent skip to an older edit, no partial application).
 - Applies uniformly to every kind of edit — bar moves, colors, worker fields, unavailable-date ranges, bulk operations — not just bar drags.
 
-## 2. Server: tag every action with its sender
+## 2. No server change needed: "own action" is already free
 
-`server/src/collab/collabSocket.ts` already generates a `participantId` per socket connection but never uses it beyond presence tracking. Two additions:
+The server broadcasts with `socket.to(sessionId).emit('action', ...)` (`collabSocket.ts`), not `io.to(...)` — this is standard Socket.IO behavior that **excludes the sending socket**, confirmed by reading the code. A client's own outgoing edits are never echoed back to it. That means the client already has two structurally separate paths for "my edit" (the outgoing `dispatch()` wrapper in `AppContext.tsx`) versus "someone else's edit" (`applyRemoteAction`, wired only to the inbound `'action'` socket event) — no new sender-tagging is needed anywhere to tell them apart; `myPendingUndo`/`myPendingRedo` (§3) are populated only from the outgoing path, never from `applyRemoteAction`.
 
-- `sessionStore.ts`'s `LoggedAction` gains `senderId: string`; `appendAction` takes and stores it.
-- The `action` socket handler passes its own `participantId` through to `appendAction`, and includes `senderId` in both the broadcast to other participants and the `actions` array replayed to late joiners via `sync-init`.
-- The server also tells a client its own `participantId` at join time (new field on the `sync-init` payload, or a dedicated field alongside it) — today nothing tells a client its own identity at all.
-
-This is the only server-side change. The server remains "dumb" per its existing design comment (`sessionStore.ts`'s header) — it still just stores and orders actions; it never interprets them or computes anything about ownership or conflicts itself.
+One accepted edge case: if your own client disconnects and reconnects mid-session, `sync-init`'s baseline+log replay re-applies session history through `applyRemoteAction` (`AppContext.tsx`'s `joinInternal`), which may include edits you made before the drop — those won't re-enter your personal undo list. This matches the existing convention that a fresh baseline resets undo history (`SET_SESSION_BASELINE` already clears both stacks today) and isn't worth solving here.
 
 ## 3. Client: per-action before/after patches replace the snapshot stacks
 
@@ -88,7 +84,6 @@ Reuses the existing `SET_ERROR` → `ErrorDialog` pattern already used for the m
 
 ## 6. Testing
 
-- **Server (Vitest):** `senderId` is stored and round-trips through the broadcast and the `sync-init` replay; a joining client receives its own `participantId`.
 - **Client (Jest):** the "is every target's current value still what I set it to" check is a pure function, tested directly against constructed state + `UndoEntry` fixtures — including this design's originating scenario (userA: P1/P2 both on O1, P3 on O4, P4 on O5; userB: P1 on O6, P2 on O1) as a named test case, asserting userA can undo P4 and P3 freely, is blocked on P2 (O1, touched by userB after), and — once blocked — that a further Undo click doesn't cascade past it. Plus an `AppContext`-level integration test reproducing the same flow end-to-end through real dispatch, and per-type coverage for the three new compound revert actions.
 - **Cross-client proof:** a two-socket Vitest integration test against the real collab server (this codebase already has that pattern in `collabSocket.test.ts`) — a genuine two-participant conflict can't be driven from a single Cypress browser context, same reasoning already documented in the companion reliability design.
 - **Cypress:** extend or add a spec proving, from one client's point of view, that a safe undo/redo works and that a blocked one shows the error message without changing anything on screen.
@@ -99,4 +94,4 @@ Reuses the existing `SET_ERROR` → `ErrorDialog` pattern already used for the m
 - No automatic retry, queueing, or "undo the next-safe one instead" fallback — a blocked entry simply blocks, matching the existing reliability design's "no silent retry" philosophy.
 - No change to the action-delivery reliability problem described in the companion `ReliabilityDesign` doc (whether an edit reliably reaches the server at all) — this pass assumes today's best-effort delivery and only changes what Undo/Redo compute once actions have arrived.
 - No persistent/cross-session identity — `senderId`/`participantId` remains per-connection, exactly as today's presence system already works; rejoining a session starts your pending-undo lists fresh, same as today's stack reset on join.
-- **Deferred, not discarded: the shared action-log/replay approach originally designed above.** If a future need arises that per-action patches can't express well (e.g. true reordering/rebasing of concurrent edits, or undo semantics that need to see the *entire* session history rather than just your own edits), revisit that version — the server-side `senderId` tagging from §2 is required by both approaches, so nothing here is wasted if that upgrade happens later.
+- **Deferred, not discarded: the shared action-log/replay approach originally designed above.** If a future need arises that per-action patches can't express well (e.g. true reordering/rebasing of concurrent edits, or undo semantics that need to see the *entire* session history rather than just your own edits, surviving your own reconnects), revisit that version — it would need the server to tag actions with a sender id (unnecessary for this pass, per §2) so a replayed log can still identify "mine" after a reconnect, which this pass's "two separate code paths" trick doesn't need to solve.
