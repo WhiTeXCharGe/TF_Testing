@@ -3,10 +3,15 @@ import { ScheduleData, PlanFlexibility } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { MAX_UNDO_STACK } from '../config/appConfig';
 import { generateDateRange } from '../utils/dateUtils';
+import { generateId } from '../utils/id';
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
   const existingIds = new Set(existing.map(x => x.id));
   return [...existing, ...incoming.filter(x => !existingIds.has(x.id))];
+}
+
+function withAssignmentIds(assignmentList: ScheduleData['assignmentList']): ScheduleData['assignmentList'] {
+  return assignmentList.map(a => (a._id ? a : { ...a, _id: generateId() }));
 }
 
 function pushUndo(state: AppState): ScheduleData[] {
@@ -51,7 +56,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return {
         ...state,
         envConfig: action.payload.envConfig,
-        schedule: action.payload.schedule,
+        schedule: { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) },
         currentEnvPath: action.payload.envPath,
         currentSchedulePath: action.payload.schedulePath,
         savedScheduleRef: action.payload.schedule,
@@ -415,7 +420,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         newSchedule = {
           ...state.schedule,
           workflowTaskList: [...state.schedule.workflowTaskList, ...newWts],
-          assignmentList: [...state.schedule.assignmentList, ...incomingSched.assignmentList],
+          assignmentList: [...state.schedule.assignmentList, ...withAssignmentIds(incomingSched.assignmentList)],
         };
       }
 
@@ -567,7 +572,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
       // before this client had any relationship to the session.
       return {
         ...state,
-        schedule: action.payload.schedule,
+        schedule: { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) },
         envConfig: action.payload.envConfig,
         currentView: action.payload.currentView,
         undoStack: [],

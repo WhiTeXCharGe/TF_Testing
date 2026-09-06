@@ -2,6 +2,7 @@ import { reducer } from '../../context/reducer';
 import { AppState, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../../types/appState';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
+import { generateId } from '../../utils/id';
 
 // ── Minimal fixtures ──────────────────────────────────────────────────────────
 
@@ -308,7 +309,7 @@ describe('SET_SESSION_BASELINE', () => {
     };
     const newSchedule = { ...EMPTY_SCHEDULE, planRange: { startDate: '2026-01-01', endDate: '2026-01-31' } };
     const next = reducer(state, { type: 'SET_SESSION_BASELINE', payload: { schedule: newSchedule, envConfig: EMPTY_ENV, currentView: 'device' } });
-    expect(next.schedule).toBe(newSchedule);
+    expect(next.schedule?.planRange).toEqual(newSchedule.planRange);
     expect(next.currentView).toBe('device');
     expect(next.undoStack).toEqual([]);
     expect(next.redoStack).toEqual([]);
@@ -365,5 +366,44 @@ describe('SET_SESSION_NAME', () => {
   it('is a no-op when there is no session', () => {
     const next = reducer(BASE_STATE, { type: 'SET_SESSION_NAME', payload: 'New Name' });
     expect(next.session).toBeNull();
+  });
+});
+
+// ── Assignment _id backfill ───────────────────────────────────────────────────
+
+describe('Assignment _id backfill', () => {
+  it('LOAD_FILES assigns _id to every assignment that lacks one', () => {
+    const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+    const next = reducer(BASE_STATE, {
+      type: 'LOAD_FILES',
+      payload: { schedule, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' },
+    });
+    expect(next.schedule?.assignmentList[0]._id).toEqual(expect.any(String));
+  });
+
+  it('LOAD_FILES preserves an existing _id instead of generating a new one', () => {
+    const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0], _id: 'keep-me' }] };
+    const next = reducer(BASE_STATE, {
+      type: 'LOAD_FILES',
+      payload: { schedule, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' },
+    });
+    expect(next.schedule?.assignmentList[0]._id).toBe('keep-me');
+  });
+
+  it('SET_SESSION_BASELINE assigns _id to every assignment that lacks one', () => {
+    const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+    const next = reducer(BASE_STATE, {
+      type: 'SET_SESSION_BASELINE',
+      payload: { schedule, envConfig: EMPTY_ENV, currentView: 'worker' },
+    });
+    expect(next.schedule?.assignmentList[0]._id).toEqual(expect.any(String));
+  });
+
+  it('MERGE_DATA assigns _id to newly merged-in assignments', () => {
+    const state = { ...BASE_STATE, schedule: EMPTY_SCHEDULE };
+    const incoming = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0], operationTask: 'wt001_p0_o0', worker: 'w002' }] };
+    const next = reducer(state, { type: 'MERGE_DATA', payload: { schedule: incoming } });
+    const merged = next.schedule?.assignmentList.find(a => a.worker === 'w002');
+    expect(merged?._id).toEqual(expect.any(String));
   });
 });

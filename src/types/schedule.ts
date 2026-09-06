@@ -11,6 +11,10 @@ export interface WorkDate {
 }
 
 export interface Assignment {
+  // Session-local stable identity (see src/utils/id.ts) — never read or
+  // written by yamlService.ts, which only serializes the named fields
+  // below; purely an in-memory concern for undo/redo conflict detection.
+  _id?: string;
   worker: string;
   operationTask: string;
   startDate: string;
