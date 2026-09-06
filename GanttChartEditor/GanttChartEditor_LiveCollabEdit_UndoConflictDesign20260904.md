@@ -23,16 +23,16 @@
 
 This is the only server-side change. The server remains "dumb" per its existing design comment (`sessionStore.ts`'s header) — it still just stores and orders actions; it never interprets them or computes anything about ownership or conflicts itself.
 
-## 3. Client: a shared action log replaces the snapshot stacks
+## 3. Client: per-action before/after patches replace the snapshot stacks
+
+**Revised from the originally-approved shared-log/replay approach** (kept below in §7 as a noted future option) after finding two things while digging into the actual reducer: (1) `envConfig`-mutating actions (worker fields, unavailable dates) have **no undo support at all today** — `undoStack`/`redoStack` only ever store `ScheduleData`, so a replay engine would need a new mechanism to reconstruct `envConfig` too; (2) almost every action type already targets a specific object by a stable id (`operationTaskId`, `workerId`, ...) — only assignments are index-based. That means we don't need a shared history to replay at all: for each of *your own* edits we can just remember what the touched object's value was **before** and **after**, and undo becomes "if the object's current value still equals what I set it to, put the old value back" — a plain comparison against live state, no log-scanning, no replay.
 
 `AppState` drops `undoStack`/`redoStack: ScheduleData[]` in favor of:
 
-- **`actionLog: { senderId: string; type: ActionType['type']; payload: unknown }[]`** — every syncable action applied on this client, yours or remote, in the order applied. Appended in exactly one place (a single point in the reducer, or the dispatch wrapper) instead of the ~14 separate `undoStack: pushUndo(state)` call sites scattered across today's reducer cases — a simplification as a side effect of this change.
-- **`myPendingUndo` / `myPendingRedo`** — small lists of indices into `actionLog` (or the entries themselves) that are *this client's own*, not yet undone / just undone, most-recent-first. These are what the Undo/Redo buttons actually walk — `canUndo`/`canRedo` become "does this list have entries," same shape as today's `undoStack.length > 0` check.
+- **`myPendingUndo` / `myPendingRedo`: `UndoEntry[]`**, most-recent-first, where `UndoEntry` is `{ type: ActionType['type']; targets: { key: string; oldValue: unknown; newValue: unknown }[] }` — one entry per edit *you* made (never someone else's — inbound remote actions never get pushed here at all, which is simpler than filtering a mixed log after the fact). `targets` is almost always a single-item array; only the compound actions (§ below) have more than one.
+- `canUndo`/`canRedo` become "does this list have entries" — same shape as today's `undoStack.length > 0` check.
 
-`LOAD_FILES` / `SET_SESSION_BASELINE` reset all three to empty, same as today's stack reset.
-
-**`actionLog` is intentionally uncapped for the session's lifetime** — unlike today's snapshot stacks (`MAX_UNDO_STACK = 100`), replay correctness needs the true, complete history back to the session's baseline, so nothing can be evicted. This is affordable because each entry is a lightweight `{senderId, type, payload}` triple, not a full document copy — the old cap existed specifically because full-schedule snapshots are heavy; this log is not.
+`LOAD_FILES` / `SET_SESSION_BASELINE` reset both lists to empty, same as today's stack reset. The existing `MAX_UNDO_STACK = 100` cap still applies (entries are small before/after values now, not full documents, so this is even cheaper than before).
 
 ### Object identity
 
@@ -54,17 +54,28 @@ Every syncable action type gets a one-line **"what object(s) does this touch"** 
 
 ## 4. Undo / Redo mechanics
 
+**When you make an edit** (any syncable action type), before applying it the dispatch wrapper looks up the current value at that action's object key(s) (the same key(s) from the §3 table), applies the edit as normal, then pushes `{ type, targets: [{ key, oldValue, newValue }] }` onto `myPendingUndo` and clears `myPendingRedo` — replacing the `pushUndo(state)` call at each of the ~14 mutating reducer cases with this one recording step, done once in the dispatch wrapper rather than scattered per case.
+
 **Undo button click:**
 1. Take the most recent entry in `myPendingUndo`. If empty, nothing to do (button is disabled anyway).
-2. Compute that entry's object key(s).
-3. Scan `actionLog` for any entry **after** it, from a **different** `senderId`, whose object key(s) overlap.
-   - **No overlap found (safe):** recompute the document by starting from the session's baseline schedule (the same one already used for late-joiner `sync-init`) and replaying every remaining `actionLog` entry in order — skipping only the one being undone — through the same reducer already used for normal forward-apply (no bespoke reverse logic needed; this is the payoff of logging actions instead of snapshots: replay-minus-one naturally keeps every other edit, including ones that came after the undone one). Apply the result locally and forward it to the server exactly the way Undo already syncs today (`sendCollabAction('SET_SCHEDULE', resulting)` — no server/wire protocol change here; this only changes *how* the client computes what to send). Remove the entry from `myPendingUndo`, push it onto `myPendingRedo`.
-   - **Overlap found (blocked):** nothing is changed or sent. Dispatch `SET_ERROR` with a message naming the conflict (§6). `myPendingUndo` is untouched — clicking Undo again re-checks the same entry and shows the same result, until whatever changed about the situation (nothing does so automatically; this is a dead end for that specific edit unless the user takes some other action).
-4. **Bulk actions** (`BULK_UPDATE_FLEXIBILITY`, `ADD_WORKFLOW_TASKS`, `MERGE_DATA`) are one unit for this check: if *any* of the objects they touched were later touched by someone else, the whole undo is blocked — no partial undo of "the part that's still safe."
+2. For every `target` in that entry, compare its `key`'s value in the **current live state** to `target.newValue`.
+   - **All match (safe):** apply `target.oldValue` back at each `key`, through the same reducer case the original action used (so it applies and syncs exactly like a normal edit — no new sync mechanism). Move the entry from `myPendingUndo` to `myPendingRedo`.
+   - **Any mismatch (blocked):** someone changed at least one of the touched objects since. Nothing is changed or sent. Dispatch `SET_ERROR` with a message naming the conflict (§5). `myPendingUndo` is untouched — clicking Undo again re-checks the same entry and shows the same result; nothing resolves this automatically.
+3. Multi-target entries (bulk actions) are one unit: *any* mismatched target blocks the whole undo, matching the all-or-nothing default already agreed.
 
-**Redo button click:** symmetric, but simpler — no replay needed since redo is inherently a forward step. Take the most recent entry in `myPendingRedo`, re-run the same overlap scan (using the *current*, post-undo log) against its object key(s); if safe, reapply its original `{type, payload}` directly onto the current live state via the normal dispatch path (same as making a fresh edit), push it back onto `myPendingUndo`; if blocked, same stop-and-tell behavior as Undo.
+**Redo button click:** symmetric — take the top of `myPendingRedo`, compare current values against `target.oldValue` (what undo just set), and if all match, reapply `target.newValue` and move the entry back to `myPendingUndo`; otherwise block the same way.
 
 Making any new edit after an undo clears `myPendingRedo`, same convention as today.
+
+### Compound actions need a small revert vehicle
+
+Most action types are naturally reversible by resending the same action type with old values (e.g. undo `UPDATE_WORKER_DEFINITION` by sending another `UPDATE_WORKER_DEFINITION` with the old text). Three don't fit that shape and need one new, internal-only action type each, used solely as the undo/redo vehicle (never dispatched by the UI directly):
+
+- **`BULK_UPDATE_FLEXIBILITY`** → revert via a new `RESTORE_ASSIGNMENT_FIELDS: { assignmentId: string; updates: Partial<Assignment> }[]` (restores each affected assignment's own recorded old flexibility in one batch).
+- **`ADD_WORKFLOW_TASKS`** → revert via a new `REMOVE_WORKFLOW_TASKS_BY_ID: string[]` (removes exactly the workflow task ids that were newly added — `ADD_WORKFLOW_TASKS` already dedupes against existing ids, so "newly added" is well-defined at apply time).
+- **`MERGE_DATA`** → revert via a new `REVERT_MERGE: { workflowTaskIds: string[]; assignmentCount: number; envConfigAdditions: { [list: string]: string[] } }` (removes the specific items that were newly merged in — same "already deduped, so newly-added is known at apply time" logic, across both `schedule` and `envConfig`).
+
+`ADD_ASSIGNMENT`/`DELETE_ASSIGNMENT`/`UPDATE_ASSIGNMENT` don't need a new action type — they revert via each other (add↔delete, update↔update-with-old-values) — see §3's assignment `_id`.
 
 ## 5. UX
 
@@ -78,7 +89,7 @@ Reuses the existing `SET_ERROR` → `ErrorDialog` pattern already used for the m
 ## 6. Testing
 
 - **Server (Vitest):** `senderId` is stored and round-trips through the broadcast and the `sync-init` replay; a joining client receives its own `participantId`.
-- **Client (Jest):** the "does this action's target overlap with anything after it from someone else, and what does the document look like with it removed" logic is a pure function, tested directly against constructed logs — including this design's originating scenario (userA: P1/P2 both on O1, P3 on O4, P4 on O5; userB: P1 on O6, P2 on O1) as a named test case, asserting userA can undo P4 and P3 freely, is blocked on P2 (O1, touched by userB after), and — once blocked — that a further Undo click doesn't cascade past it. Plus an `AppContext`-level integration test reproducing the same flow end-to-end through real dispatch.
+- **Client (Jest):** the "is every target's current value still what I set it to" check is a pure function, tested directly against constructed state + `UndoEntry` fixtures — including this design's originating scenario (userA: P1/P2 both on O1, P3 on O4, P4 on O5; userB: P1 on O6, P2 on O1) as a named test case, asserting userA can undo P4 and P3 freely, is blocked on P2 (O1, touched by userB after), and — once blocked — that a further Undo click doesn't cascade past it. Plus an `AppContext`-level integration test reproducing the same flow end-to-end through real dispatch, and per-type coverage for the three new compound revert actions.
 - **Cross-client proof:** a two-socket Vitest integration test against the real collab server (this codebase already has that pattern in `collabSocket.test.ts`) — a genuine two-participant conflict can't be driven from a single Cypress browser context, same reasoning already documented in the companion reliability design.
 - **Cypress:** extend or add a spec proving, from one client's point of view, that a safe undo/redo works and that a blocked one shows the error message without changing anything on screen.
 
@@ -88,3 +99,4 @@ Reuses the existing `SET_ERROR` → `ErrorDialog` pattern already used for the m
 - No automatic retry, queueing, or "undo the next-safe one instead" fallback — a blocked entry simply blocks, matching the existing reliability design's "no silent retry" philosophy.
 - No change to the action-delivery reliability problem described in the companion `ReliabilityDesign` doc (whether an edit reliably reaches the server at all) — this pass assumes today's best-effort delivery and only changes what Undo/Redo compute once actions have arrived.
 - No persistent/cross-session identity — `senderId`/`participantId` remains per-connection, exactly as today's presence system already works; rejoining a session starts your pending-undo lists fresh, same as today's stack reset on join.
+- **Deferred, not discarded: the shared action-log/replay approach originally designed above.** If a future need arises that per-action patches can't express well (e.g. true reordering/rebasing of concurrent edits, or undo semantics that need to see the *entire* session history rather than just your own edits), revisit that version — the server-side `senderId` tagging from §2 is required by both approaches, so nothing here is wasted if that upgrade happens later.
