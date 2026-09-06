@@ -2,254 +2,246 @@
 
 ### Team meeting · 2026-09-04
 
-Goal: **collaborators no longer need the same network** · keep **cost near zero** for
-bursty, meeting-time use · auth stays **anonymous share-link**.
+**Goal:** collaborators no longer need to be on the same network.
+**Constraint:** keep running cost near zero for bursty, meeting-time use.
+**Auth:** stays an anonymous share-link — no login.
 
-Full engineering detail: `GanttChartEditor_OnlineCollabAzure_Design20260904.md`
+Engineering detail (CLI, config, code): `GanttChartEditor_OnlineCollabAzure_Design20260904.md`
 
 ---
 
-## 1. Today — LAN only
+## 1. Today — same network only
 
 ```mermaid
 flowchart LR
-  subgraph creator["Creator PC"]
-    E["Electron app<br/>(React frontend)"]
-    S["Node relay<br/>Express + Socket.IO :3010<br/>in-memory sessions"]
+  subgraph creator["Creator's PC"]
+    E["Gantt editor app"]
+    S["Small relay server<br/>(runs on the same PC)"]
     E --- S
   end
-  J["Joiner<br/>http://192.168.x.x:5173"]
-  J -- "must be on the same LAN" --> S
+  J["Other participant"]
+  J -- "only works on the same office network" --> S
 
   style J stroke-dasharray: 4 4
 ```
 
-| Works | Doesn't |
+| What already works | What blocks "online" |
 |---|---|
-| Event-sourced model: baseline + ordered action log, client reducer is source of truth | Joiner must be on the **same LAN** (`192.168.x.x` link) |
-| Clients already replay the log on every reconnect | Sessions live in **one process's memory** — no restart survival |
-| Roles: `edit` / `view` | **No authentication** — `join` only checks the session exists |
-| | CORS locked to LAN; share link is a LAN IP |
+| Live shared editing: everyone sees each edit in under a second | Participants must be on the **same network** — no remote / home / other-office |
+| A late joiner catches up automatically to the current state | The session lives **only on the creator's PC** — close the app, session is gone |
+| Two roles: **edit** and **view** | Anyone who gets the link is trusted — no real check |
 
 ---
 
-## 2. Target — hosted relay on Azure
+## 2. Target — a shared relay hosted on Azure
 
 ```mermaid
 flowchart LR
-  D["Desktop app<br/>(RELAY_URL set)"]
-  W["Browser join<br/>Azure Static Web Apps (Free)"]
-  subgraph azure["Azure"]
-    R["Relay<br/>compute option A / B / C / D"]
-    ST["Session store<br/>Blob / Cosmos / Redis"]
-    KV["Key Vault<br/>join-token secret"]
+  D["Desktop app<br/>(any location)"]
+  W["Browser join<br/>(no install)"]
+  subgraph azure["Azure (the cloud)"]
+    R["Shared relay<br/>(one of 4 options below)"]
+    ST["Saved session state"]
     R --- ST
-    R --- KV
   end
-  D -- "wss + REST + signed token" --> R
-  W -- "wss + REST + signed token" --> R
+  D -- "secure connection + link token" --> R
+  W -- "secure connection + link token" --> R
 ```
 
-**Unchanged:** event-sourced model, `reducer.ts`, roles.
-**Added:** recoverable session store · signed anonymous join token · real CORS ·
-desktop-only routes removed from the public build · TLS + custom domain · abuse limits.
+- The relay moves off the creator's PC into Azure, reachable from anywhere.
+- The session survives the creator closing their app.
+- The share link carries a **signed token** (session + role + expiry) that the relay checks — the link can't be tampered with, and it expires.
+- Participants can join from a **browser, no install** (hosted free).
+- The live-editing behaviour the team already knows does **not** change.
 
 ---
 
-## 3. Four compute options
+## 3. Four ways to host the relay
 
 ```mermaid
 flowchart TD
-  Q{"Who operates<br/>connection scaling?"}
-  Q -- "We do (self-host Socket.IO)" --> SIO
-  Q -- "Azure does (Web PubSub)" --> WPS
-  SIO --> A["A · Container Apps<br/>run existing container"]
-  SIO --> B["B · App Service<br/>classic Node PaaS"]
-  WPS --> C["C · Web PubSub + small API"]
-  WPS --> D["D · Functions + Web PubSub<br/>fully serverless"]
+  Q{"Who runs the<br/>hard part (scaling<br/>live connections)?"}
+  Q -- "We do" --> SIO["Keep our current tech<br/>(Socket.IO)"]
+  Q -- "Azure does" --> WPS["Use Azure's realtime service<br/>(Web PubSub)"]
+  SIO --> A["A · Container Apps"]
+  SIO --> B["B · App Service"]
+  WPS --> C["C · Web PubSub + small service"]
+  WPS --> D["D · Fully serverless<br/>(Functions + Web PubSub)"]
 ```
 
-| | A · Container Apps | B · App Service | C · Web PubSub + API | D · Functions + Web PubSub |
+| | A · Container Apps | B · App Service | C · Web PubSub + service | D · Fully serverless |
 |---|---|---|---|---|
-| **Client change** | none | none | small (C1) / rewrite (C2) | rewrite `collabService` |
-| **Server change** | none (+Dockerfile) | none | swap 1 transport line | rewrite as Functions |
-| **Idle cost** | ~1 small replica | **full plan 24/7** | Free tier **$0** / $50 unit | **storage only** + WPS |
-| **Scales connections** | you (Redis + affinity) | you (Redis + affinity) | **Azure** | **Azure** |
-| **Cold starts** | none (min 1) | none (Always On) | small API only | HTTP Functions |
-| **Ops burden** | low–medium | low–medium | medium | medium–high |
-| **Lock-in** | low | low–medium | medium / high | high |
-| **Big sync payload** | fine (20 MB) | fine (20 MB) | **1 MB cap → Blob+SAS** | **1 MB cap → Blob+SAS** |
-| **Local dev** | `node` | `node` | `+ awps-tunnel` | `+ Core Tools + awps-tunnel` |
-| **Best when** | least rework, clear scale path | App Service is the team standard | don't want to run realtime infra | near-zero idle cost is mandatory |
+| **Work to get there** | least — run what we have | least — run what we have | some — adopt a new Azure service | most — rebuild the server side |
+| **Cost when nobody is using it** | one small instance, ~$5–20/mo | **full plan, 24/7** | **near $0** (free tier) | **near $0** (storage only) |
+| **Who handles scaling** | us | us | **Azure** | **Azure** |
+| **First-join delay after idle** | none | none | slight | slight |
+| **Effort to run day-to-day** | low | low | medium | medium–higher |
+| **Tied to Azure** | barely | a little | somewhat | heavily |
+| **Big starting schedule** | fine | fine | needs a small workaround | needs a small workaround |
+| **Best when** | we want online fast, minimal change | App Service is already our standard | we don't want to operate realtime infra | zero idle cost is non-negotiable |
 
-**Rejected:** AKS (too much ops) · bare VM (re-own everything) · Azure SignalR (.NET-first
-sibling — analysis transfers if preferred).
+**Not pursued:** self-managed Kubernetes (too much to operate) · a plain virtual machine (we'd own everything) · Azure SignalR (works, but a poorer fit for our stack).
 
 ---
 
-## 4. Protocol fork — the decision to make in the room
+## 4. The one real decision — which realtime approach
 
 ```mermaid
 flowchart LR
-  subgraph sio["Self-hosted Socket.IO  (A / B)"]
-    s1["Client: unchanged"]
-    s2["Server holds connections"]
-    s3["Scale-out: you add Redis adapter + sticky sessions"]
-    s4["No message-size limit beyond yours (20 MB)"]
-    s5["Lock-in: low (portable container)"]
+  subgraph sio["Keep Socket.IO  (A / B)"]
+    s1["No change for participants"]
+    s2["We operate the scaling"]
+    s3["Proven — running on the LAN today"]
+    s4["Easy to move off Azure later"]
   end
   subgraph wps["Azure Web PubSub  (C / D)"]
-    w1["Client: small change (C1) or rewrite (C2)"]
-    w2["Azure holds connections"]
-    w3["Scale-out: built in, no Redis, no affinity"]
-    w4["1 MB message cap → big baseline via Blob + SAS"]
-    w5["Lock-in: medium–high (Azure-specific)"]
+    w1["Azure operates the scaling"]
+    w2["Free tier covers a real pilot"]
+    w3["Small change now, or a bigger rebuild"]
+    w4["Large starting schedule needs a workaround"]
+    w5["More locked to Azure"]
   end
 ```
 
-| | Socket.IO (self-host) | Azure Web PubSub |
+| | Keep Socket.IO | Azure Web PubSub |
 |---|---|---|
-| Client change | none | small (C1) / rewrite (C2) |
-| Connection scaling & fan-out | **you** (Redis adapter + sticky) | **Azure** (built in) |
-| Idle cost floor | ~1 replica always on | Free tier $0, else ~$50 / 1,000-conn unit |
-| Message size | 20 MB (as configured now) | **1 MB hard cap** |
-| Reconnect + backfill | your `seq` log (already built) | your `seq` log (same) |
-| Local dev | run `node` | run `node` + `awps-tunnel` |
-| Maturity in our stack | **in production on LAN today** | "for Socket.IO" shim is newer |
+| Change for participants | none | small, or a rewrite |
+| Who scales the live connections | **us** | **Azure** |
+| Cost floor when idle | one small instance always on | free tier, then ~$50/mo per 1,000 users |
+| Large starting schedule | fine as-is | needs a workaround |
+| Proven in our product | **yes, in use today** | newer for us |
+
+Everything else (which of A/B/C/D, the cost) follows from this choice.
 
 ---
 
-## 5. Session store (every option needs one)
+## 5. One shared piece either way — saved session state
 
-| Store | Cost | Use for |
+Wherever the relay runs, the live session (the starting schedule + the list of edits) must be
+**saved outside the relay** so a restart or a busy day doesn't lose an in-progress meeting.
+
+| Option | Cost | When |
 |---|---|---|
-| **Blob Storage** | cents/mo | baseline snapshot + log flush — small scale, 1 replica |
-| **Cosmos DB serverless** | ~$1–10/mo bursty | durable action log at medium scale (pairs with Functions) |
-| **Azure Managed Redis** | ~$16–60/mo, always-on | Socket.IO multi-replica backplane — only once you scale past 1 replica |
-
-Progression: **Blob only → add Redis when Socket.IO goes multi-replica → Cosmos if Web PubSub path.**
+| Simple file storage | cents / month | small internal use — start here |
+| Serverless database | ~$1–10 / month | medium use, many parallel sessions |
+| In-memory cache (Redis) | ~$16–60 / month, always on | only if we keep Socket.IO **and** grow to many instances |
 
 ---
 
-## 6. Sequence — create session + join (Socket.IO path)
+## 6. How a session starts and people join
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant C as Creator (desktop)
-  participant R as Relay (Azure)
-  participant BL as Store (Blob)
-  participant P as Participant (browser, anywhere)
+  participant C as Creator
+  participant R as Cloud relay
+  participant ST as Saved state
+  participant P as Participant (anywhere)
 
-  C->>R: POST /collab/sessions {schedule, envConfig, view}
-  R->>BL: write baseline
-  R-->>C: { sessionId, editToken, viewToken }
-  C->>C: build link  ...&session=<id>&role=edit&t=<token>
+  C->>R: Start a session (send the current schedule)
+  R->>ST: Save the starting state
+  R-->>C: Share link (with an edit token and a view token)
 
-  C->>R: ws join {sessionId, role:edit, token}
-  R->>R: verify token (sig, exp, role)
-  R-->>C: sync-init { baseline, actions:[] }
-
-  P->>R: open link → ws join {sessionId, role, token}
-  R->>R: verify token
-  R->>BL: load baseline + log (if not in memory)
-  R-->>P: sync-init { baseline, actions:[...] }
-  P->>P: reducer replays baseline + log
-  R-->>C: presence [C, P]
-  R-->>P: presence [C, P]
+  C->>P: Send the link
+  P->>R: Open link — join (link token checked: role + not expired)
+  R->>ST: Load the session if it isn't already in memory
+  R-->>P: Send the full current state
+  P->>P: Rebuild the Gantt chart locally
+  R-->>C: "Participant joined"
+  R-->>P: Shows who else is here
 ```
 
 ---
 
-## 7. Sequence — live edit + reconnect
+## 7. Live editing and recovering from a drop
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant P as Participant (edit)
-  participant R as Relay
-  participant BL as Store
-  participant O as Other participants
+  participant R as Cloud relay
+  participant ST as Saved state
+  participant O as Everyone else
 
-  P->>R: action {type, payload}
-  R->>R: role == edit? append + stamp seq
-  R-->>O: action {type, payload}
-  R--)BL: flush log (async, batched)
-  O->>O: reducer applies in seq order
+  P->>R: Makes an edit (e.g. drag a task)
+  R->>R: Confirm this person may edit, record the edit in order
+  R-->>O: Push the edit (under ~1s)
+  R--)ST: Save the updated edit list (in the background)
 
-  Note over P,R: later — network blip / relay redeploy
-  P-xR: socket drops
-  P->>R: auto-reconnect → join {token}
-  R->>BL: reload baseline + full log if needed
-  R-->>P: sync-init { baseline, full log }
-  P->>P: reducer rebuilds (idempotent by seq)
+  Note over P,R: later — network blip or relay update
+  P-xR: Connection drops
+  P->>R: Reconnects automatically, re-joins
+  R-->>P: Sends the starting state + every edit so far
+  P->>P: Rebuilds to the exact current state
 ```
 
 ---
 
-## 8. Sequence — Web PubSub variant (C / D)
+## 8. Same flow with Azure Web PubSub (options C / D)
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant P as Participant
-  participant N as API /negotiate
+  participant N as Small entry service
   participant W as Azure Web PubSub
-  participant S as Server logic
-  participant BL as Store
+  participant S as Our session logic
+  participant ST as Saved state
 
-  P->>N: GET /negotiate?session=<id>&t=<token>
-  N->>N: verify join token
-  N-->>P: { endpoint, accessToken }
-  P->>W: ws connect (Azure holds the connection)
-  W->>S: "connected" webhook
-  S->>BL: load baseline + log
-  S->>W: sendToConnection(sync-init)  %% SAS URL if > 1 MB
-  W-->>P: sync-init
+  P->>N: Open link (link token checked)
+  N-->>P: One-time connection ticket
+  P->>W: Connect — Azure holds the live connection
+  W->>S: "Someone connected"
+  S->>ST: Load the session
+  S-->>W: Send the current state
+  W-->>P: Current state
 
-  P->>W: "action" {type, payload}
-  W->>S: "action" webhook
-  S->>S: verify role, append seq
-  S->>W: sendToGroup(session, action)
-  W-->>P: action  (Azure fans out to the whole group)
+  P->>W: Makes an edit
+  W->>S: Forward the edit
+  S->>S: Check permission, record in order
+  S->>ST: Save
+  S-->>W: Send to the whole session
+  W-->>P: Azure fans it out to everyone
 ```
+
+*Difference from options A/B: Azure owns the live connections and the fan-out, so we don't
+build that. Cost of that: a new Azure service to learn, and the large-starting-schedule
+workaround.*
 
 ---
 
-## 9. Anonymous link — hardened
+## 9. The anonymous link, made safe for the internet
 
 ```mermaid
 flowchart LR
-  CR["Create session"] --> TK["Mint signed token<br/>HMAC( sid + role + exp )"]
-  TK --> LK["Share link<br/>...?session=sid&role=edit&t=token"]
-  LK --> JN["join / negotiate"]
-  JN --> VF{"verify<br/>sig · exp · role"}
-  VF -- ok --> IN["allowed into session"]
-  VF -- fail --> RJ["rejected"]
+  CR["Create session"] --> TK["Generate a signed link token<br/>(session + role + expiry)"]
+  TK --> LK["Share link"]
+  LK --> JN["Someone opens it"]
+  JN --> VF{"Token valid?<br/>right role · not expired"}
+  VF -- yes --> IN["Allowed in"]
+  VF -- no --> RJ["Refused"]
 ```
 
-| Control | Value (start) |
+| Safeguard | Starting value |
 |---|---|
-| Session-create rate limit | 10 / hour / IP |
-| Max participants / session | 25 |
-| Action payload cap | 1 MB (matches Web PubSub; big baseline → Blob) |
-| Session TTL | 30 min idle (today) + 8 h absolute |
-| CORS | web origin only + allow no-Origin (desktop) |
-| Public routes | `/api/collab/*` + `/api/health` only — `save-files` etc. removed |
-| Phase-2 hook | swap anonymous for Entra ID at the **same** token check |
+| New sessions per hour, per person | 10 |
+| Participants per session | 25 |
+| Session lifetime | ends 30 min after everyone leaves · hard stop at 8 h |
+| Reachable from the internet | only the collaboration features — local-file features are removed from the hosted build |
+| Later, if needed | swap the anonymous link for company sign-in at the same check — no redesign |
 
 ---
 
-## 10. Cost — approximate, single region, JSON traffic
+## 10. Cost — approximate, one region
 
 | Path | Small (internal, ≤25 online) | Medium (100–500 online) |
 |---|---|---|
-| **A · Container Apps** + Blob + Static Web Apps | **~$5–20 / mo** | ~$50–100 / mo (+ Managed Redis) |
-| **B · App Service B1** + Blob | ~$15 / mo (always on) | ~$110+ / mo (S1 + Redis) |
-| **C · Web PubSub** + small API | ~$1 / mo (Free tier) · ~$55 (Standard) | ~$65 / mo |
-| **D · Functions + Web PubSub** | ~$5 / mo (Free tier) · ~$55–70 (Standard) | ~$65 / mo |
+| **A · Container Apps** | **~$5–20 / mo** | ~$50–100 / mo |
+| **B · App Service** | ~$15 / mo (always on) | ~$110+ / mo |
+| **C · Web PubSub + service** | ~$1 / mo (free tier) · ~$55 (paid tier) | ~$65 / mo |
+| **D · Fully serverless** | ~$5 / mo (free tier) · ~$55–70 (paid tier) | ~$65 / mo |
 
-Static Web Apps (browser join) = **Free**. Verify on the Azure Pricing Calculator before committing.
+Browser join hosting is **free**. Figures are estimates — to be confirmed on Azure's pricing calculator.
 
 ---
 
@@ -257,18 +249,18 @@ Static Web Apps (browser join) = **Free**. Verify on the Azure Pricing Calculato
 
 ```mermaid
 flowchart TD
-  R1["Start: Option A — Container Apps<br/>min 1 replica · Blob store · no Redis<br/>+ Static Web Apps for browser join"]
-  R1 --> R2["No socket-code change · ~$5–20/mo · low lock-in<br/>clear path to scale (add Redis + affinity later)"]
-  ALT["If near-zero idle cost is mandatory →<br/>Option D (Functions + Web PubSub), accept a server rewrite"]
-  AVOID["Avoid Option B unless App Service is already the team standard"]
+  R1["Start with Option A — Container Apps"]
+  R1 --> R2["Runs what we already have · ~$5–20/mo<br/>online fast · easy to change direction later"]
+  ALT["If zero idle cost is mandatory →<br/>Option D, accepting a server-side rebuild"]
+  AVOID["Avoid Option B unless App Service is already our standard"]
 ```
 
 **Decide in the room:**
 
-1. **Protocol** — self-hosted Socket.IO (less change, we operate scaling) **vs** Azure Web PubSub (more change + 1 MB workaround, Azure operates scaling)
-2. Is **~$15/mo always-on** acceptable, or is **scale-to-zero** a hard requirement?
-3. Expected **concurrency** at 6 / 12 months → small vs medium sizing
-4. **Custom domain** for browser-join origin + API?
-5. **Azure subscription / resource group / cost owner**
-6. **Region** (Japan East assumed) — any data-residency constraint?
-7. Does **browser-join ship in v1**, or desktop-only pointing at the cloud relay first?
+1. **Realtime approach** — keep Socket.IO (less change, we run scaling) **vs** Azure Web PubSub (Azure runs scaling, more change)
+2. Is **~$15/mo always-on** acceptable, or is **near-zero idle cost** a hard requirement?
+3. Expected number of simultaneous users at 6 and 12 months
+4. Do we have a **custom domain** for the join page and the relay?
+5. Who owns the **Azure subscription and the cost**?
+6. **Region** — Japan East assumed; any data-location rule?
+7. Does **browser join ship first**, or desktop-only pointing at the cloud relay first?
