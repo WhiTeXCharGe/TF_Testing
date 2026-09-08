@@ -1,12 +1,15 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { randomUUID } from 'node:crypto';
-import * as store from './sessionStore.js';
+import type { SessionStore } from './sessionStore.js';
+import type { AppConfig } from '../config.js';
+import { hashOwnerToken } from './persistence.js';
 
 interface JoinPayload {
   sessionId: string;
   name: string;
   role: 'edit' | 'view';
+  ownerToken?: string;
 }
 
 interface ActionPayload {
@@ -14,13 +17,16 @@ interface ActionPayload {
   payload: unknown;
 }
 
-const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-const IDLE_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-
-export function createCollabSocketServer(httpServer: HttpServer): Server {
+export function createCollabSocketServer(
+  httpServer: HttpServer,
+  store: SessionStore,
+  config: AppConfig,
+): Server {
   const io = new Server(httpServer, {
     path: '/collab/socket.io',
-    cors: { origin: true },
+    // Reflect any origin in local/LAN mode (webOrigin null); pin to the known
+    // web origin once we know it (aca2 cloud build).
+    cors: { origin: config.webOrigin ?? true },
     maxHttpBufferSize: 20 * 1024 * 1024, // schedules can be a few MB of JSON
   });
 
@@ -28,40 +34,71 @@ export function createCollabSocketServer(httpServer: HttpServer): Server {
     const participantId = randomUUID();
     let joinedSessionId: string | null = null;
     let joinedRole: 'edit' | 'view' = 'view';
+    let isOwner = false;
 
-    socket.on('join', ({ sessionId, name, role }: JoinPayload) => {
-      const session = store.getSession(sessionId);
-      if (!session) {
+    socket.on('join', async ({ sessionId, name, role, ownerToken }: JoinPayload) => {
+      const ok = store.isLoaded(sessionId) || (await store.activateFromStorage(sessionId));
+      if (!ok) {
         socket.emit('sync-init', { ok: false });
         return;
       }
       joinedSessionId = sessionId;
       joinedRole = role;
+      isOwner = !!ownerToken && store.ownerTokenHash(sessionId) === hashOwnerToken(ownerToken);
       void socket.join(sessionId);
       const participants = store.addParticipant(sessionId, participantId, name, role) ?? [];
-      socket.emit('sync-init', { ok: true, name: session.name, baseline: session.baseline, actions: session.actions, participants });
+      const s = store.getSession(sessionId)!;
+      socket.emit('sync-init', {
+        ok: true,
+        name: s.name,
+        baseline: s.baseline,
+        actions: s.actions,
+        participants,
+        status: s.status,
+      });
       socket.to(sessionId).emit('presence', participants);
     });
 
     socket.on('action', ({ type, payload }: ActionPayload) => {
       if (!joinedSessionId || joinedRole !== 'edit') return;
+      // A locked session is read-only for everyone, the owner included.
+      if (store.getSession(joinedSessionId)?.status === 'lock') return;
       const logged = store.appendAction(joinedSessionId, type, payload);
       if (!logged) return;
       socket.to(joinedSessionId).emit('action', { type: logged.type, payload: logged.payload });
     });
 
-    const handleLeave = () => {
+    const setLock = async (locked: boolean): Promise<void> => {
+      if (!joinedSessionId || !isOwner) return;
+      const status = store.setLocked(joinedSessionId, locked);
+      if (!status) return;
+      await store.flush(joinedSessionId);
+      io.to(joinedSessionId).emit('session-status', { status });
+    };
+    socket.on('lock', () => void setLock(true));
+    socket.on('unlock', () => void setLock(false));
+
+    const handleLeave = async (): Promise<void> => {
       if (!joinedSessionId) return;
-      const participants = store.removeParticipant(joinedSessionId, participantId) ?? [];
-      socket.to(joinedSessionId).emit('presence', participants);
-      joinedSessionId = null;
+      const sid = joinedSessionId;
+      joinedSessionId = null; // guard against leave + disconnect double-firing
+      const participants = store.removeParticipant(sid, participantId) ?? [];
+      socket.to(sid).emit('presence', participants);
+      if (store.participantCount(sid) === 0) {
+        await store.evict(sid);      // flushes baseline+log to storage
+        await store.markClosed(sid); // status.json → close, relay pointer cleared
+      }
     };
 
-    socket.on('leave', handleLeave);
-    socket.on('disconnect', handleLeave);
+    socket.on('leave', () => void handleLeave());
+    socket.on('disconnect', () => void handleLeave());
   });
 
-  setInterval(() => store.sweepIdleSessions(IDLE_SESSION_TIMEOUT_MS), IDLE_SWEEP_INTERVAL_MS).unref();
+  const sweep = setInterval(() => {
+    store.sweepIdleSessions(config.idleSessionTimeoutMs);
+    void store.flushAll();
+  }, config.idleSweepMs);
+  sweep.unref();
 
   return io;
 }

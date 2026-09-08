@@ -2,11 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { loadConfig } from './config.js';
 
 describe('loadConfig', () => {
-  it('defaults to local + fs + port 3010', () => {
+  it('defaults to local + in-memory storage + port 3010', () => {
     const c = loadConfig({});
     expect(c.role).toBe('local');
     expect(c.port).toBe(3010);
+    expect(c.storage).toEqual({ kind: 'memory' });
+  });
+
+  it('cloud roles default to fs storage under mock-blob', () => {
+    const c = loadConfig({ ROLE: 'aca2', INTERNAL_KEY: 'k' });
     expect(c.storage).toEqual({ kind: 'fs', rootDir: expect.stringContaining('mock-blob') });
+  });
+
+  it('honours an explicit STORAGE=fs in local mode', () => {
+    const c = loadConfig({ STORAGE: 'fs', MOCK_BLOB_DIR: '/tmp/x' });
+    expect(c.storage).toEqual({ kind: 'fs', rootDir: expect.stringContaining('x') });
   });
 
   it('reads role and port', () => {

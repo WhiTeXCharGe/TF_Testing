@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 export type Role = 'local' | 'aca1' | 'aca2';
 
 export type StorageConfig =
+  | { kind: 'memory' }
   | { kind: 'fs'; rootDir: string }
   | { kind: 'blob'; connectionString: string; container: string };
 
@@ -61,7 +62,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error(`INTERNAL_KEY is required when ROLE=${role}`);
   }
 
-  const storageKind = env.STORAGE ?? 'fs';
+  // Local mode keeps session state in-process (as it did before persistence
+  // existed); the cloud roles default to the folder-backed mock store.
+  const storageKind = env.STORAGE ?? (role === 'local' ? 'memory' : 'fs');
   let storage: StorageConfig;
   if (storageKind === 'blob') {
     const connectionString = env.BLOB_CONNECTION_STRING ?? '';
@@ -69,8 +72,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     storage = { kind: 'blob', connectionString, container: env.BLOB_CONTAINER ?? 'sessions' };
   } else if (storageKind === 'fs') {
     storage = { kind: 'fs', rootDir: resolve(process.cwd(), env.MOCK_BLOB_DIR ?? '../mock-blob') };
+  } else if (storageKind === 'memory') {
+    storage = { kind: 'memory' };
   } else {
-    throw new Error(`STORAGE must be fs | blob, got: ${storageKind}`);
+    throw new Error(`STORAGE must be memory | fs | blob, got: ${storageKind}`);
   }
 
   const port = parsePort(env.PORT, DEFAULT_PORT[role]);

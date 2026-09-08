@@ -6,12 +6,19 @@ import { writeFile } from 'node:fs/promises';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
-import { collabRouter } from './routes/collab.js';
+import { createLocalCollabRouter } from './routes/collab.js';
 import { createCollabSocketServer } from './collab/collabSocket.js';
 import { isLocalOrLanOrigin } from './lanOrigin.js';
+import { loadConfig } from './config.js';
+import { makeStorage } from './collab/storage/index.js';
+import { createSessionStore } from './collab/sessionStore.js';
+
+const config = loadConfig();
+const storage = makeStorage(config.storage);
+const collabStore = createSessionStore({ storage });
 
 const app = express();
-const PORT = Number(process.env.PORT ?? 3010);
+const PORT = config.port;
 
 // A collab joiner opens the shared link on their own PC as
 // http://<lan-ip>:5173/?session=... , so their browser sends
@@ -37,7 +44,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api', constraintsRouter);
 app.use('/api', handoffRouter);
 app.use('/api', networkInfoRouter);
-app.use('/api', collabRouter);
+app.use('/api', createLocalCollabRouter({ storage }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, server: 'gantt-editor-api', time: new Date().toISOString() });
@@ -76,7 +83,7 @@ if (staticDir) {
 // Plain app.listen() can't also host Socket.IO on the same port, so the
 // collab relay wraps app in its own http.Server first.
 const httpServer = createServer(app);
-createCollabSocketServer(httpServer);
+createCollabSocketServer(httpServer, collabStore, config);
 
 httpServer.listen(PORT, () => {
   console.log(`[server] running on http://localhost:${PORT}`);
