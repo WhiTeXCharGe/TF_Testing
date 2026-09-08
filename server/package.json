@@ -18,7 +18,9 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.3",
     "@types/node": "^22.15.30",
+    "@types/supertest": "^7.2.1",
     "socket.io-client": "^4.8.3",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.4",
     "typescript": "~5.5.3",
     "vitest": "^4.1.11"
