@@ -9,3 +9,4 @@ electron-dist/
 release/
 .worktrees/
 .superpowers/
+mock-blob/

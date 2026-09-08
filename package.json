@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:server": "npm run dev --prefix server",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
+    "dev:mock": "node scripts/dev-mock.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "jest --passWithNoTests",

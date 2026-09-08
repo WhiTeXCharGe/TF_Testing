@@ -1,0 +1,31 @@
+# Local stand-in for the Azure deployment: ACA1 + ACA2 from the one image,
+# sharing ./mock-blob as "Blob storage".
+#   docker compose -f docker-compose.mock.yml up --build
+# Then the session API is on http://localhost:4000 and the relay on :4010.
+services:
+  aca1:
+    build: .
+    environment:
+      ROLE: aca1
+      PORT: "4000"
+      STORAGE: fs
+      MOCK_BLOB_DIR: /data
+      INTERNAL_KEY: mock-internal-key
+      ACA2_URL: http://aca2:4010
+      WEB_ORIGIN: http://localhost:5173
+    ports: ["4000:4000"]
+    volumes: ["./mock-blob:/data"]
+    depends_on: [aca2]
+
+  aca2:
+    build: .
+    environment:
+      ROLE: aca2
+      PORT: "4010"
+      STORAGE: fs
+      MOCK_BLOB_DIR: /data
+      INTERNAL_KEY: mock-internal-key
+      PUBLIC_RELAY_URL: http://localhost:4010
+      WEB_ORIGIN: http://localhost:5173
+    ports: ["4010:4010"]
+    volumes: ["./mock-blob:/data"]

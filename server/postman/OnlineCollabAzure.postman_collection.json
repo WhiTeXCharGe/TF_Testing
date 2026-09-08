@@ -1,0 +1,106 @@
+{
+  "info": {
+    "name": "GanttChartEditor — Online Collab (ACA1)",
+    "description": "Session API for the ACA1/ACA2 online-collaboration stack. Point {{baseUrl}} at the local mock (http://localhost:4000) or the deployed ACA1. Lock/unlock are Socket.IO events on ACA2, not HTTP — see src/__integration__/localFlow.test.ts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000" },
+    { "key": "sessionId", "value": "" },
+    { "key": "ownerToken", "value": "" },
+    { "key": "relayUrl", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+    },
+    {
+      "name": "Create session (JSON — desktop path)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const b = pm.response.json();",
+              "pm.test('ok', () => pm.expect(b.ok).to.be.true);",
+              "pm.collectionVariables.set('sessionId', b.sessionId);",
+              "pm.collectionVariables.set('ownerToken', b.ownerToken);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/sessions",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Postman session\",\n  \"schedule\": { \"assignmentList\": [] },\n  \"envConfig\": { \"workerList\": [] },\n  \"currentView\": \"worker\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Create session (2 YAML — browser path)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const b = pm.response.json();",
+              "pm.collectionVariables.set('sessionId', b.sessionId);",
+              "pm.collectionVariables.set('ownerToken', b.ownerToken);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/sessions",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "name", "value": "Postman YAML session", "type": "text" },
+            { "key": "schedule", "type": "file", "src": "../Test_data/Schedule.yaml" },
+            { "key": "envConfig", "type": "file", "src": "../Test_data/EnvConfig.yaml" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "List sessions",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/sessions" }
+    },
+    {
+      "name": "Get session",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/sessions/{{sessionId}}" }
+    },
+    {
+      "name": "Open session",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const b = pm.response.json();",
+              "pm.test('open', () => pm.expect(b.status).to.eql('open'));",
+              "pm.collectionVariables.set('relayUrl', b.relayUrl);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": { "method": "POST", "url": "{{baseUrl}}/api/sessions/{{sessionId}}/open" }
+    },
+    {
+      "name": "Delete session",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "x-owner-token", "value": "{{ownerToken}}" }],
+        "url": "{{baseUrl}}/api/sessions/{{sessionId}}"
+      }
+    }
+  ]
+}
