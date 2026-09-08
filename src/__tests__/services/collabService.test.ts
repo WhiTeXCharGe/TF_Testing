@@ -130,19 +130,25 @@ it('listSessions returns the sessions array', async () => {
   expect(list).toEqual([{ id: 's1', name: 'A', status: 'open', participantCount: 2 }]);
 });
 
-it('createSessionFromYaml posts a multipart form with both files', async () => {
-  const captured: { body?: unknown } = {};
-  global.fetch = jest.fn().mockImplementation((_url: string, init: RequestInit) => {
+it('createSessionFromYaml parses the files client-side and posts a JSON baseline', async () => {
+  const captured: { url?: string; body?: unknown } = {};
+  global.fetch = jest.fn().mockImplementation((url: string, init: RequestInit) => {
+    captured.url = url;
     captured.body = init.body;
     return Promise.resolve({ ok: true, json: async () => ({ ok: true, sessionId: 'new', ownerToken: 'tok' }) });
   }) as never;
-  const res = await createSessionFromYaml('S', new File(['a: 1'], 'Schedule.yaml'), new File(['b: 2'], 'EnvConfig.yaml'));
+  const res = await createSessionFromYaml(
+    'S',
+    new File(['plan_range: { start_date: "2026-01-01", end_date: "2026-01-31" }'], 'Schedule.yaml'),
+    new File(['worker_list: []'], 'EnvConfig.yaml'),
+  );
   expect(res).toEqual({ sessionId: 'new', ownerToken: 'tok' });
-  expect(captured.body).toBeInstanceOf(FormData);
-  const form = captured.body as FormData;
-  expect(form.get('name')).toBe('S');
-  expect((form.get('schedule') as File).name).toBe('Schedule.yaml');
-  expect((form.get('envConfig') as File).name).toBe('EnvConfig.yaml');
+  expect(captured.url).toMatch(/\/api\/sessions$/);
+  const body = JSON.parse(captured.body as string);
+  expect(body.name).toBe('S');
+  expect(body.currentView).toBe('worker');
+  expect(body.schedule.planRange).toEqual({ startDate: '2026-01-01', endDate: '2026-01-31' });
+  expect(body.envConfig).toBeDefined();
 });
 
 it('fetchSessionName resolves the name for a real session', async () => {

@@ -3,6 +3,7 @@ import type {
   SessionBaseline, SessionParticipant, SessionRole, SessionConnectionStatus,
   SessionStatus, SessionSummary,
 } from '../types/appState';
+import { parseScheduleYaml, parseEnvConfigYaml } from './yamlService';
 
 export interface LoggedAction {
   seq: number;
@@ -77,17 +78,24 @@ export async function createSessionFromState(name: string, baseline: SessionBase
   return { sessionId: data.sessionId as string, ownerToken: data.ownerToken as string };
 }
 
+// The two uploaded YAML files are parsed and normalised *here*, with the same
+// yamlService the app uses for File > Open, then sent to ACA1 as JSON — so the
+// relay only ever stores a baseline the reducer/UI can consume directly.
 export async function createSessionFromYaml(
   name: string, scheduleFile: File, envConfigFile: File,
 ): Promise<CreateResult> {
-  const form = new FormData();
-  form.append('name', name);
-  form.append('schedule', scheduleFile);
-  form.append('envConfig', envConfigFile);
-  const res = await fetch(`${aca1Base()}/api/sessions`, { method: 'POST', body: form });
-  const data = await readJson(res);
-  if (!res.ok || !data.ok || !data.sessionId) throw new Error((data.error as string) ?? 'セッションの作成に失敗しました');
-  return { sessionId: data.sessionId as string, ownerToken: data.ownerToken as string };
+  const [scheduleText, envText] = await Promise.all([scheduleFile.text(), envConfigFile.text()]);
+  let baseline: SessionBaseline;
+  try {
+    baseline = {
+      schedule: parseScheduleYaml(scheduleText),
+      envConfig: parseEnvConfigYaml(envText),
+      currentView: 'worker',
+    };
+  } catch (err) {
+    throw new Error(`YAML の解析に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return createSessionFromState(name, baseline);
 }
 
 export async function openSession(sessionId: string): Promise<{ relayUrl: string; status: SessionStatus }> {

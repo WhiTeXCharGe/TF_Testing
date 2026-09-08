@@ -5,3 +5,16 @@ import '@testing-library/jest-dom';
 // `@jest-environment jsdom` docblock (the project's default test
 // environment is 'node'). Harmless for non-DOM test files.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// jsdom's Blob/File predates Blob.prototype.text(); every target browser
+// (and Electron 32) has it. Polyfill so file-reading code can be unit-tested.
+if (typeof Blob !== 'undefined' && typeof Blob.prototype.text !== 'function') {
+  Blob.prototype.text = function text(this: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(this);
+    });
+  };
+}
