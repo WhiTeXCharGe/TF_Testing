@@ -171,6 +171,32 @@ describe('lock / unlock', () => {
   });
 });
 
+describe('participant cap', () => {
+  it('rejects a non-owner join past maxParticipants but lets the owner in', async () => {
+    const capServer = createServer();
+    const capStore = createSessionStore({ storage });
+    const capConfig = { ...config, limits: { ...config.limits, maxParticipants: 1 } };
+    createCollabSocketServer(capServer, capStore, capConfig);
+    await new Promise<void>((resolve) => capServer.listen(0, resolve));
+    const capPort = (capServer.address() as AddressInfo).port;
+    const cc = () => ioClient(`http://localhost:${capPort}`, { path: '/collab/socket.io', transports: ['websocket'] });
+
+    const first = cc();
+    await new Promise<any>((res) => { first.on('connect', () => first.emit('join', { sessionId, name: 'One', role: 'edit' })); first.on('sync-init', res); });
+
+    const second = cc();
+    const secondSync = await new Promise<any>((res) => { second.on('connect', () => second.emit('join', { sessionId, name: 'Two', role: 'edit' })); second.on('sync-init', res); });
+    expect(secondSync).toEqual({ ok: false, error: 'session is full' });
+
+    const owner = cc();
+    const ownerSync = await new Promise<any>((res) => { owner.on('connect', () => owner.emit('join', { sessionId, name: 'Owner', role: 'edit', ownerToken: OWNER_TOKEN })); owner.on('sync-init', res); });
+    expect(ownerSync.ok).toBe(true);
+
+    first.disconnect(); second.disconnect(); owner.disconnect();
+    await new Promise<void>((resolve) => capServer.close(() => resolve()));
+  });
+});
+
 describe('presence + last-leave persistence', () => {
   it('notifies remaining participants when someone disconnects', async () => {
     const alice = connect();

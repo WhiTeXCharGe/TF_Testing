@@ -29,6 +29,18 @@ export interface AppConfig {
   absoluteSessionMaxMs: number;
   idleSweepMs: number;
   idleSessionTimeoutMs: number;
+  limits: {
+    /** POST /api/sessions per IP per hour (ACA1). */
+    createPerHourPerIp: number;
+    /** Reject session creation past this many live records. */
+    maxConcurrentSessions: number;
+    /** Reject a socket `join` past this many participants in a session. */
+    maxParticipants: number;
+    /** multipart YAML upload cap, bytes. */
+    maxUploadBytes: number;
+    /** Socket.IO maxHttpBufferSize, bytes. */
+    maxSocketMessageBytes: number;
+  };
 }
 
 const ROLES: readonly Role[] = ['local', 'aca1', 'aca2'];
@@ -51,6 +63,13 @@ function parseMs(raw: string | undefined, fallback: number): number {
   return n;
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`expected a positive integer, got: ${raw}`);
+  return n;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const role = (env.ROLE ?? 'local') as Role;
   if (!ROLES.includes(role)) {
@@ -65,6 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   // Local mode keeps session state in-process (as it did before persistence
   // existed); the cloud roles default to the folder-backed mock store.
   const storageKind = env.STORAGE ?? (role === 'local' ? 'memory' : 'fs');
+
   let storage: StorageConfig;
   if (storageKind === 'blob') {
     const connectionString = env.BLOB_CONNECTION_STRING ?? '';
@@ -76,6 +96,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     storage = { kind: 'memory' };
   } else {
     throw new Error(`STORAGE must be memory | fs | blob, got: ${storageKind}`);
+  }
+
+  // A real deployment (STORAGE=blob) must pin CORS and use a strong shared
+  // key — the mock (memory/fs) stays frictionless for local/LAN testing.
+  if (storage.kind === 'blob' && !env.WEB_ORIGIN) {
+    throw new Error('WEB_ORIGIN is required when STORAGE=blob (CORS must be pinned to the web origin)');
+  }
+  if (storage.kind === 'blob' && internalKey.length < 16) {
+    throw new Error('INTERNAL_KEY must be at least 16 characters when STORAGE=blob');
   }
 
   const port = parsePort(env.PORT, DEFAULT_PORT[role]);
@@ -92,5 +121,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     absoluteSessionMaxMs: parseMs(env.ABSOLUTE_SESSION_MAX_MS, 8 * 60 * 60 * 1000),
     idleSweepMs: parseMs(env.IDLE_SWEEP_MS, 5 * 60 * 1000),
     idleSessionTimeoutMs: parseMs(env.IDLE_SESSION_TIMEOUT_MS, 30 * 60 * 1000),
+    limits: {
+      createPerHourPerIp: parsePositiveInt(env.CREATE_RATE_PER_HOUR, 10),
+      maxConcurrentSessions: parsePositiveInt(env.MAX_SESSIONS, 100),
+      maxParticipants: parsePositiveInt(env.MAX_PARTICIPANTS, 25),
+      maxUploadBytes: parsePositiveInt(env.MAX_UPLOAD_MB, 5) * 1024 * 1024,
+      maxSocketMessageBytes: parsePositiveInt(env.MAX_SOCKET_MB, 10) * 1024 * 1024,
+    },
   };
 }

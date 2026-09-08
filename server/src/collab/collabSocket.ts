@@ -3,7 +3,7 @@ import { Server, Socket } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import type { SessionStore } from './sessionStore.js';
 import type { AppConfig } from '../config.js';
-import { hashOwnerToken } from './persistence.js';
+import { ownerTokenMatches } from './persistence.js';
 
 interface JoinPayload {
   sessionId: string;
@@ -27,7 +27,9 @@ export function createCollabSocketServer(
     // Reflect any origin in local/LAN mode (webOrigin null); pin to the known
     // web origin once we know it (aca2 cloud build).
     cors: { origin: config.webOrigin ?? true },
-    maxHttpBufferSize: 20 * 1024 * 1024, // schedules can be a few MB of JSON
+    // Big enough for a full baseline / sync-init (schedules are a few MB of
+    // JSON); caps a hostile oversized frame. Configurable via MAX_SOCKET_MB.
+    maxHttpBufferSize: config.limits.maxSocketMessageBytes,
   });
 
   io.on('connection', (socket: Socket) => {
@@ -42,9 +44,16 @@ export function createCollabSocketServer(
         socket.emit('sync-init', { ok: false });
         return;
       }
+      // Cap participants per session (owner-token holder is let past so a
+      // creator can always reach their own full session).
+      const ownerHash = store.ownerTokenHash(sessionId);
+      isOwner = !!ownerToken && !!ownerHash && ownerTokenMatches(ownerToken, ownerHash);
+      if (!isOwner && store.participantCount(sessionId) >= config.limits.maxParticipants) {
+        socket.emit('sync-init', { ok: false, error: 'session is full' });
+        return;
+      }
       joinedSessionId = sessionId;
       joinedRole = role;
-      isOwner = !!ownerToken && store.ownerTokenHash(sessionId) === hashOwnerToken(ownerToken);
       void socket.join(sessionId);
       const participants = store.addParticipant(sessionId, participantId, name, role) ?? [];
       const s = store.getSession(sessionId)!;

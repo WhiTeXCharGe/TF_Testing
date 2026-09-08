@@ -6,7 +6,7 @@ import type { AppConfig } from '../config.js';
 import type { SessionMeta, SessionStatusRecord, SessionSummary } from '../collab/types.js';
 import {
   createSessionRecord, deleteSessionRecord, hashOwnerToken, listSessionIds,
-  metaKey, statusKey,
+  metaKey, ownerTokenMatches, statusKey,
 } from '../collab/persistence.js';
 import { intake, IntakeError } from './yamlIntake.js';
 import type { Aca2Client } from './aca2Client.js';
@@ -17,14 +17,6 @@ export interface SessionApiDeps {
   config: AppConfig;
 }
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 2 },
-}).fields([
-  { name: 'schedule', maxCount: 1 },
-  { name: 'envConfig', maxCount: 1 },
-]);
-
 function fileText(
   files: Record<string, Express.Multer.File[]> | undefined,
   field: string,
@@ -33,8 +25,16 @@ function fileText(
 }
 
 export function createSessionApiRouter(deps: SessionApiDeps): Router {
-  const { storage, aca2 } = deps;
+  const { storage, aca2, config } = deps;
   const router = Router();
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: config.limits.maxUploadBytes, files: 2 },
+  }).fields([
+    { name: 'schedule', maxCount: 1 },
+    { name: 'envConfig', maxCount: 1 },
+  ]);
 
   async function buildSummary(id: string): Promise<SessionSummary | null> {
     const [meta, status] = await Promise.all([
@@ -63,6 +63,11 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
     const isMultipart = req.is('multipart/form-data');
     try {
+      const liveCount = (await listSessionIds(storage)).length;
+      if (liveCount >= config.limits.maxConcurrentSessions) {
+        res.status(429).json({ ok: false, error: 'too many active sessions; try again later' });
+        return;
+      }
       const result = intake(
         isMultipart
           ? {
@@ -130,7 +135,7 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
       return;
     }
     const token = req.get('x-owner-token') ?? '';
-    if (hashOwnerToken(token) !== meta.ownerTokenHash) {
+    if (!token || !ownerTokenMatches(token, meta.ownerTokenHash)) {
       res.status(403).json({ ok: false, error: 'owner token required' });
       return;
     }

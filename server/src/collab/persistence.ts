@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { StorageClient } from './storage/storageClient.js';
 import type {
   SessionBaseline, LoggedAction, SessionMeta, SessionStatusRecord,
@@ -18,6 +18,13 @@ export const logKey = (id: string): string => `sessions/${id}/log.json`;
 
 export function hashOwnerToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** Constant-time check that `presentedToken` hashes to `expectedHash`. */
+export function ownerTokenMatches(presentedToken: string, expectedHash: string): boolean {
+  const a = Buffer.from(hashOwnerToken(presentedToken), 'hex');
+  const b = Buffer.from(expectedHash, 'hex');
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
 export interface SessionRecord {

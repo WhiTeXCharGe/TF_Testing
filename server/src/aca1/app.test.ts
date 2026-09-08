@@ -7,7 +7,10 @@ import { createAca1App } from './app.js';
 import type { Aca2Client } from './aca2Client.js';
 import type { AppConfig } from '../config.js';
 
-const config = { webOrigin: null, instanceId: 'r1', publicRelayUrl: 'http://relay:4010' } as AppConfig;
+const DEFAULT_LIMITS = { createPerHourPerIp: 10, maxConcurrentSessions: 100, maxParticipants: 25, maxUploadBytes: 5 * 1024 * 1024, maxSocketMessageBytes: 10 * 1024 * 1024 };
+const config = { webOrigin: null, instanceId: 'r1', publicRelayUrl: 'http://relay:4010', limits: DEFAULT_LIMITS } as AppConfig;
+const configWith = (limits: Partial<typeof DEFAULT_LIMITS>) =>
+  ({ ...config, limits: { ...DEFAULT_LIMITS, ...limits } }) as AppConfig;
 
 let storage: StorageClient;
 let aca2: {
@@ -60,6 +63,21 @@ describe('POST /api/sessions', () => {
 
   it('rejects a bad body with 400', async () => {
     await request(app).post('/api/sessions').send({ name: '' }).expect(400);
+  });
+
+  it('rate-limits creation per IP (429 past the hourly limit)', async () => {
+    const limited = createAca1App({ storage, aca2: aca2 as unknown as Aca2Client, config: configWith({ createPerHourPerIp: 2 }) });
+    const body = { name: 'P', schedule: { a: 1 }, envConfig: { b: 2 }, currentView: 'worker' };
+    await request(limited).post('/api/sessions').send(body).expect(200);
+    await request(limited).post('/api/sessions').send(body).expect(200);
+    await request(limited).post('/api/sessions').send(body).expect(429);
+  });
+
+  it('rejects creation past the concurrent-session cap (429)', async () => {
+    const capped = createAca1App({ storage, aca2: aca2 as unknown as Aca2Client, config: configWith({ maxConcurrentSessions: 1 }) });
+    const body = { name: 'P', schedule: { a: 1 }, envConfig: { b: 2 }, currentView: 'worker' };
+    await request(capped).post('/api/sessions').send(body).expect(200);
+    await request(capped).post('/api/sessions').send(body).expect(429);
   });
 });
 
