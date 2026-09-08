@@ -10,7 +10,7 @@
 
 **Tech Stack:** Node 20 + TypeScript (ESM, NodeNext), Express, Socket.IO 4, `js-yaml`, `zod`, `multer`, Vitest + `supertest` + `socket.io-client` (tests), Docker + Docker Compose, Postman (manual API checks). Azure (phase 7 only): Container Apps, Container Registry, Blob Storage, Key Vault, Static Web Apps, `az` CLI, GitHub Actions.
 
-> **Status (2026-09-08):** Phases 1–2 **implemented** on branch `online-collab-aca` (16 commits). Server: **111 vitest** green incl. the full local integration flow + an Azure Blob `StorageClient` verified against the fs contract via Azurite. Client (`GanttChartEditor_OnlineCollabAzure_ACA_ClientPlan20260908.md`): **174 jest** green, `vite build` clean, session list / create-by-YAML / open / owner lock wired. Verified end-to-end against `npm run dev:mock`: two browser tabs join one session via ACA1→ACA2, both render the replayed baseline, presence shows "2人が参加中", no console errors. Also ready but not run: `infra/deploy.sh` + `.github/workflows/deploy-collab.yml` (Phase 4 — needs Azure access). Not verified: `docker compose` (Docker not installable on the dev machine — virtualization/App-Control locked). `local` Electron/LAN mode unchanged. Remaining: Phase 3 security limits (Appendix B), Phase 4 Azure deploy (Appendix C), Phase 5 docs (Appendix D).
+> **Status (2026-09-08):** Phases 1–3 **implemented** on branch `online-collab-aca` (18 commits). Server: **120 vitest** green incl. the full local integration flow, an Azure Blob `StorageClient` (verified via Azurite), and abuse limits (rate limit, session/participant caps, timing-safe owner check). Client (`GanttChartEditor_OnlineCollabAzure_ACA_ClientPlan20260908.md`): **174 jest** green, `vite build` clean. Verified end-to-end against `npm run dev:mock`: two browser tabs join one session via ACA1→ACA2, both render the replayed baseline, presence shows "2人が参加中", no console errors. Ready but not run: `infra/deploy.sh` + `.github/workflows/deploy-collab.yml` (Phase 4 — needs Azure access). Not verified: `docker compose` (Docker not installable on the dev machine — virtualization/App-Control locked). `local` Electron/LAN mode unchanged. Remaining: Phase 4 Azure deploy (Appendix C), Phase 5 docs (Appendix D).
 
 ## Global Constraints
 
@@ -1326,15 +1326,17 @@ Own plan file: `GanttChartEditor_OnlineCollabAzure_ACA_ClientPlan<date>.md`. Tas
 7. Cold-start: `openSession` retries on `502/503`/timeout with backoff and a "waking the session…" spinner.
 8. Tests: Jest+RTL for `SessionListPage` and create flow (mock `fetch`); extend Cypress viewer-gating specs with a locked-session case.
 
-## Appendix B — Follow-on plan: Security & limits (Phase 3)
+## Appendix B — Security & limits (Phase 3) — **DONE** (commit `feat(server): abuse limits …`)
 
-1. `express-rate-limit` on `POST /api/sessions` — 10/hour/IP (`aca1/app.ts`).
-2. Config-driven caps: `MAX_CONCURRENT_SESSIONS` (default 100) checked in `POST /api/sessions`; `MAX_PARTICIPANTS` (default 25) checked in `collabSocket` `join`; `multer` `fileSize` from config (default 5 MB).
-3. `maxHttpBufferSize` on the Socket.IO server ← config (default 1 MB) to match Web-PubSub-compatible sizing.
-4. `internalAuth` already in place (Task 7) — add a startup assertion that `INTERNAL_KEY` is ≥ 16 chars in non-local roles.
-5. Owner token: already hashed at rest (Task 4). Add constant-time compare in `DELETE` and in the socket `lock`/`unlock` owner check (`crypto.timingSafeEqual`).
-6. Secrets: document the env set; in Azure, `INTERNAL_KEY` and `BLOB_CONNECTION_STRING` become Key Vault secret refs (Appendix C).
-7. CORS: in `aca1`/`aca2` cloud roles, `WEB_ORIGIN` is required (no reflect-any); add a test.
+1. ✅ `express-rate-limit` on `POST /api/sessions` — `config.limits.createPerHourPerIp` (default 10/hr/IP), `app.set('trust proxy', 1)` so it keys on the real client IP behind ACA ingress.
+2. ✅ `config.limits.maxConcurrentSessions` (100) → 429 in `POST /api/sessions`; `maxParticipants` (25) checked in `collabSocket` `join` (owner-token holder always admitted); `multer` `fileSize` = `config.limits.maxUploadBytes` (5 MiB).
+3. ✅ `maxHttpBufferSize` = `config.limits.maxSocketMessageBytes` (default **10 MiB** — Option A / Socket.IO keeps large baselines inline; the 1 MB figure was Web-PubSub-specific).
+4. ✅ `INTERNAL_KEY` must be ≥ 16 chars **when `STORAGE=blob`** (real deploy); mock (`memory`/`fs`) stays frictionless.
+5. ✅ `ownerTokenMatches()` in `persistence.ts` — `crypto.timingSafeEqual` — used by `DELETE /api/sessions/:id` and the socket `lock`/`unlock` owner check.
+6. ⏳ Secrets: `infra/deploy.sh` passes `INTERNAL_KEY` / `BLOB_CONNECTION_STRING` as `--secrets`; Key Vault `secretref` swap is noted in `infra/README.md` (Phase 4).
+7. ✅ `WEB_ORIGIN` required when `STORAGE=blob` (pinned CORS, no reflect-any); covered by `config.test.ts`.
+
+New env knobs: `CREATE_RATE_PER_HOUR`, `MAX_SESSIONS`, `MAX_PARTICIPANTS`, `MAX_UPLOAD_MB`, `MAX_SOCKET_MB`.
 
 ## Appendix C — Follow-on plan: Azure deploy (Phase 4, needs Azure access)
 
