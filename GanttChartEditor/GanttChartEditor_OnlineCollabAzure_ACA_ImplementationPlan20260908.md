@@ -10,6 +10,8 @@
 
 **Tech Stack:** Node 20 + TypeScript (ESM, NodeNext), Express, Socket.IO 4, `js-yaml`, `zod`, `multer`, Vitest + `supertest` + `socket.io-client` (tests), Docker + Docker Compose, Postman (manual API checks). Azure (phase 7 only): Container Apps, Container Registry, Blob Storage, Key Vault, Static Web Apps, `az` CLI, GitHub Actions.
 
+> **Status (2026-09-08):** Phase 1 (Tasks 1–13, the local mock backend) is **implemented** on branch `online-collab-aca` — 12 commits, 105 server tests + 161 client tests green, `tsc` + `npm run build` clean, `local` Electron/LAN mode verified unchanged, `npm run dev:mock` verified (ACA1 :4000 + ACA2 :4010 + web :5173). Not verified: `docker compose` path (Docker not installed on the dev machine). Next: Phase 2 (web client, Appendix A).
+
 ## Global Constraints
 
 - Node **20**, TypeScript **~5.5.3**, `"type": "module"`, `module`/`moduleResolution` **NodeNext** — every relative import ends in `.js`.
