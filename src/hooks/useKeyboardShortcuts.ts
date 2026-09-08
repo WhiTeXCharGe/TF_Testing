@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { isSessionReadOnly } from '../lib/sessionReadOnly';
 import { overwriteSaveFiles } from '../services/fileService';
 import { UI } from '../config/uiText';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch } = useAppContext();
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

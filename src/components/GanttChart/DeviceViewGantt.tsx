@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { UI } from '../../config/uiText';
 import { diffDays, getRangeOverlayGeom } from '../../utils/dateUtils';
 import { buildModuleViewModel, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
@@ -38,7 +39,7 @@ function barGeom(start: string | null, end: string | null, viewStart: string, vi
 
 export function DeviceViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
   const { schedule, envConfig, moduleViewFilter } = state;
 
   const leftBodyRef = useRef<HTMLDivElement>(null);

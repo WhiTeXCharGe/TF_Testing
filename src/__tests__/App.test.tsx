@@ -54,8 +54,9 @@ function renderApp() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedCollab.parseSessionId.mockImplementation((s: string) => s);
-  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, onSyncInit) => {
-    onSyncInit('Test Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+  mockedCollab.openSession.mockResolvedValue({ relayUrl: 'http://relay:4010', status: 'open' });
+  mockedCollab.joinCollabRoom.mockImplementation((_id, _name, _role, _isCreator, _relay, _token, cb) => {
+    cb.onSyncInit('Test Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
     return () => {};
   });
 });

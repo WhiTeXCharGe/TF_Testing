@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { UI } from '../../config/uiText';
 
 const btn: CSSProperties = {
@@ -14,7 +15,7 @@ const btn: CSSProperties = {
 
 export function UndoRedoButtons() {
   const { state, dispatch } = useAppContext();
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
   const canUndo = state.undoStack.length > 0 && !isReadOnly;
   const canRedo = state.redoStack.length > 0 && !isReadOnly;
 

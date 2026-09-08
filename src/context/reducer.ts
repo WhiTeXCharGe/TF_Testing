@@ -581,6 +581,9 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'SET_SESSION_CONNECTION_STATUS':
       return state.session ? { ...state, session: { ...state.session, connectionStatus: action.payload } } : state;
 
+    case 'SET_SESSION_STATUS':
+      return state.session ? { ...state, session: { ...state.session, status: action.payload } } : state;
+
     case 'SET_SESSION_PARTICIPANTS':
       return state.session ? { ...state, session: { ...state.session, participants: action.payload } } : state;
 

@@ -5,7 +5,8 @@ import {
 } from '../types/appState';
 import { reducer } from './reducer';
 import {
-  createCollabSession, joinCollabRoom, sendCollabAction, fetchCollabLink, parseSessionId, parseSessionOrigin,
+  createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
+  sendCollabLock, sendCollabUnlock, openSession, parseSessionId,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 
@@ -40,7 +41,7 @@ const initialState: AppState = {
   scrollToSelectedAssignment: false,
   session: null,
   isSessionDialogOpen: false,
-  sessionDialogTab: 'start',
+  sessionDialogTab: 'list',
 };
 
 // Reducer actions that mutate schedule/envConfig content and must reach every
@@ -57,8 +58,11 @@ const SYNCABLE_ACTION_TYPES = new Set<ActionType['type']>([
 interface ContextType {
   state: AppState;
   dispatch: Dispatch<ActionType>;
-  startCollabSession: (displayName: string, sessionName: string) => Promise<{ sessionId: string; link: string }>;
-  joinCollabSession: (idOrLink: string, name: string, role: SessionRole) => Promise<void>;
+  startCollabSession: (displayName: string, sessionName: string) => Promise<{ sessionId: string }>;
+  createUploadSession: (displayName: string, sessionName: string, scheduleFile: File, envConfigFile: File) => Promise<{ sessionId: string }>;
+  joinCollabSession: (sessionId: string, name: string, role: SessionRole) => Promise<void>;
+  lockSession: () => void;
+  unlockSession: () => void;
   leaveCollabSession: () => void;
 }
 
@@ -77,31 +81,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // resulting schedule instead of the bare token, and everyone converges on
   // the same content regardless of their own undo history.
   const dispatch: Dispatch<ActionType> = useCallback((action: ActionType) => {
-    // Loading a file is inherently local (it's not in SYNCABLE_ACTION_TYPES),
-    // but nothing else stops it from firing mid-session — the menu, Ctrl+O,
-    // and the incoming-transfer hook from the sibling SchedulerWeb app can
-    // all dispatch LOAD_FILES with no session awareness. If it went through
-    // while a session is active, this client would silently swap to a
-    // different document while every other participant keeps sending
-    // index/id-based edits against what is now the wrong document here —
-    // real data corruption, not just a UI nuisance. Blocked regardless of
-    // role: even a viewer silently swapping documents mid-session is broken.
+    // Loading a file mid-session would silently swap this client's document
+    // while everyone else keeps editing the old one — real corruption.
     if (action.type === 'LOAD_FILES' && stateRef.current.session) {
       rawDispatch({ type: 'SET_ERROR', payload: UI.collabActiveLoadBlockedError });
       return;
     }
-    // Connection gate: an edit-role participant's data-mutating actions only
-    // mean anything if they can actually reach the server. socket.io buffers
-    // emits while disconnected, so a bar dragged after the host shut the
-    // server down would move locally and appear synced, yet never leave this
-    // machine — a silent divergence from everyone else. Block such actions up
-    // front (nothing moves) until the connection is back. Purely local UI
-    // actions (selection, filters, dialogs, view) are not syncable and stay
-    // usable while offline.
-    const isSyncingEdit = stateRef.current.session?.role === 'edit';
+    const session = stateRef.current.session;
+    const isSyncingEdit = session?.role === 'edit';
     const needsLiveConnection =
       action.type === 'UNDO' || action.type === 'REDO' || SYNCABLE_ACTION_TYPES.has(action.type);
-    if (isSyncingEdit && needsLiveConnection && stateRef.current.session?.connectionStatus !== 'connected') {
+    // A locked session is read-only for everyone. The relay drops these
+    // anyway; blocking here stops the optimistic local apply that would
+    // otherwise diverge this client until the next sync-init.
+    if (isSyncingEdit && needsLiveConnection && session?.status === 'lock') {
+      rawDispatch({ type: 'SET_ERROR', payload: UI.collabLockedEditBlockedError });
+      return;
+    }
+    // socket.io buffers emits while disconnected, so a bar dragged after the
+    // connection dropped would move locally and look synced yet never leave
+    // this machine. Block such actions until the connection is back.
+    if (isSyncingEdit && needsLiveConnection && session?.connectionStatus !== 'connected') {
       rawDispatch({ type: 'SET_ERROR', payload: UI.collabDisconnectedEditBlockedError });
       return;
     }
@@ -121,60 +121,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendCollabAction(action.type, (action as { payload?: unknown }).payload);
     }
   }, []);
-  
-  // Inbound guard. The relay (server/src/collab/collabSocket.ts) forwards
-  // whatever `type` string an edit-role participant emits without validating
-  // it, so an inbound action is untrusted input: a buggy, malicious, or
-  // simply newer/older client could send SAVE_PATHS, SET_ERROR, or — worst —
-  // LOAD_FILES, which would sail straight past the mid-session load block in
-  // the outgoing wrapper below and silently swap this client's document.
-  // SYNCABLE_ACTION_TYPES is the single source of truth for "a real
-  // cross-participant edit" in both directions; anything else is ignored.
+
+  // Inbound guard. The relay forwards whatever `type` string an edit-role
+  // participant emits without validating it, so an inbound action is
+  // untrusted input. SYNCABLE_ACTION_TYPES is the single source of truth for
+  // "a real cross-participant edit" in both directions; anything else is ignored.
   const applyRemoteAction = useCallback((action: { type: string; payload: unknown }) => {
     if (!SYNCABLE_ACTION_TYPES.has(action.type as ActionType['type'])) return;
     rawDispatch({ type: action.type, payload: action.payload } as ActionType);
   }, []);
 
-  const joinInternal = useCallback((sessionId: string, name: string, role: SessionRole, isCreator: boolean, origin?: string) => {
+  const joinInternal = useCallback((
+    sessionId: string, name: string, role: SessionRole, isCreator: boolean,
+    relayUrl: string, ownerToken: string | undefined,
+  ) => {
     disconnectRef.current?.();
-    disconnectRef.current = joinCollabRoom(
-      sessionId, name, role, isCreator,
-      (sessionName, baseline, actions) => {
+    disconnectRef.current = joinCollabRoom(sessionId, name, role, isCreator, relayUrl, ownerToken, {
+      onSyncInit: (sessionName, baseline, actions) => {
         // Incoming: applied via the raw dispatch, never the wrapped one —
-        // otherwise a remote action would be immediately re-forwarded back
-        // to the server and echo forever.
+        // otherwise a remote action would be immediately re-forwarded and echo forever.
         rawDispatch({ type: 'SET_SESSION_NAME', payload: sessionName });
         rawDispatch({ type: 'SET_SESSION_BASELINE', payload: baseline });
         for (const a of actions) applyRemoteAction(a);
       },
-      applyRemoteAction,
-      (participants) => rawDispatch({ type: 'SET_SESSION_PARTICIPANTS', payload: participants }),
-      (status) => rawDispatch({ type: 'SET_SESSION_CONNECTION_STATUS', payload: status }),
-      origin,
-    );
+      onAction: applyRemoteAction,
+      onPresence: (participants) => rawDispatch({ type: 'SET_SESSION_PARTICIPANTS', payload: participants }),
+      onStatusChange: (status) => rawDispatch({ type: 'SET_SESSION_CONNECTION_STATUS', payload: status }),
+      onSessionStatus: (status) => rawDispatch({ type: 'SET_SESSION_STATUS', payload: status }),
+    });
   }, [applyRemoteAction]);
 
   const startCollabSession = useCallback(async (displayName: string, sessionName: string) => {
     const { schedule, envConfig, currentView } = stateRef.current;
     if (!schedule || !envConfig) throw new Error(UI.collabNoScheduleError);
-    const sessionId = await createCollabSession(sessionName, { schedule, envConfig, currentView });
-    const link = await fetchCollabLink(sessionId, 'edit');
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: sessionName, role: 'edit', connectionStatus: 'connecting', participants: [] } });
-    joinInternal(sessionId, displayName, 'edit', true);
-    return { sessionId, link };
+    const { sessionId, ownerToken } = await createSessionFromState(sessionName, { schedule, envConfig, currentView });
+    const { relayUrl, status } = await openSession(sessionId);
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: sessionName, role: 'edit', connectionStatus: 'connecting', participants: [], status, ownerToken } });
+    joinInternal(sessionId, displayName, 'edit', true, relayUrl, ownerToken);
+    return { sessionId };
+  }, [joinInternal]);
+
+  const createUploadSession = useCallback(async (
+    displayName: string, sessionName: string, scheduleFile: File, envConfigFile: File,
+  ) => {
+    const { sessionId, ownerToken } = await createSessionFromYaml(sessionName, scheduleFile, envConfigFile);
+    const { relayUrl, status } = await openSession(sessionId);
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: sessionName, role: 'edit', connectionStatus: 'connecting', participants: [], status, ownerToken } });
+    joinInternal(sessionId, displayName, 'edit', false, relayUrl, ownerToken);
+    return { sessionId };
   }, [joinInternal]);
 
   const joinCollabSession = useCallback(async (idOrLink: string, name: string, role: SessionRole) => {
     const sessionId = parseSessionId(idOrLink);
-    // A link pasted into the "Join Session" dialog may point at another
-    // machine — the desktop app's window never navigates there like a
-    // browser would, so the socket must be told that host explicitly or it
-    // silently connects to the joiner's own machine instead (see
-    // parseSessionOrigin in collabService.ts).
-    const origin = parseSessionOrigin(idOrLink) ?? undefined;
-    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: '', role, connectionStatus: 'connecting', participants: [] } });
-    joinInternal(sessionId, name, role, false, origin);
+    const { relayUrl, status } = await openSession(sessionId);
+    rawDispatch({ type: 'SET_SESSION', payload: { id: sessionId, name: '', role, connectionStatus: 'connecting', participants: [], status } });
+    joinInternal(sessionId, name, role, false, relayUrl, undefined);
   }, [joinInternal]);
+
+  const lockSession = useCallback(() => sendCollabLock(), []);
+  const unlockSession = useCallback(() => sendCollabUnlock(), []);
 
   const leaveCollabSession = useCallback(() => {
     disconnectRef.current?.();
@@ -185,7 +190,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => disconnectRef.current?.(), []);
 
   return (
-    <AppContext.Provider value={{ state, dispatch, startCollabSession, joinCollabSession, leaveCollabSession }}>
+    <AppContext.Provider value={{
+      state, dispatch, startCollabSession, createUploadSession, joinCollabSession,
+      lockSession, unlockSession, leaveCollabSession,
+    }}>
       {children}
     </AppContext.Provider>
   );

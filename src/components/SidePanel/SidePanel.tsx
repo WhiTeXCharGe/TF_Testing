@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { UI } from '../../config/uiText';
 import { generateDateRange } from '../../utils/dateUtils';
 import { PlanFlexibility } from '../../types/schedule';
@@ -68,7 +69,7 @@ export function SidePanel() {
   const { state, dispatch } = useAppContext();
   const { schedule, envConfig, selectedAssignmentIndex, selectedUnavailableInfo, violations } = state;
   const panelRef = useRef<HTMLDivElement>(null);
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
 
   const isOpen = selectedAssignmentIndex !== null || selectedUnavailableInfo !== null;
 

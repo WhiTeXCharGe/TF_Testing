@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { WorkerTimelineGrid, BarDragCommit } from './WorkerTimelineGrid';
 import { buildWorkerTimelineModel } from './workerViewModel';
 import { addDays, formatDate, isWeekend } from '../../utils/dateUtils';
@@ -52,7 +53,7 @@ function buildWorkerAssignmentIndex(
 
 export function WorkerViewGantt({ dates }: Props) {
   const { state, dispatch } = useAppContext();
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
   const {
     schedule, envConfig, selectedAssignmentIndex, violations, workerViewFilter,
     workerColumnFilter, workerDateCellFilter, showFlightStints, scrollToSelectedAssignment,

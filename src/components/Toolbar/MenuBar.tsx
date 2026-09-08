@@ -101,12 +101,12 @@ export function MenuBar() {
       label: UI.collabMenu,
       items: state.session
         ? [
-            { label: UI.sessionInfoItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'start' }); setOpenMenu(null); } },
+            { label: UI.sessionInfoItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'list' }); setOpenMenu(null); } },
             { label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } },
           ]
         : [
-            { label: UI.startSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'start' }); setOpenMenu(null); }, disabled: !canSave },
-            { label: UI.joinSessionItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'join' }); setOpenMenu(null); } },
+            { label: UI.sessionListTab, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'list' }); setOpenMenu(null); } },
+            { label: UI.sessionCreateTab, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'create' }); setOpenMenu(null); } },
           ],
     },
     { id: 'help', label: UI.helpMenu, items: [] },
@@ -247,7 +247,11 @@ export function MenuBar() {
             >
               {UI.sessionParticipantsLabel(state.session.participants.length)}
             </span>
-            {state.session.role === 'view' && (
+            {state.session.status === 'lock' ? (
+              <span style={{ color: '#f5a142', fontSize: 11, fontFamily: 'Meiryo, sans-serif', marginLeft: 10 }}>
+                {UI.lockedIndicatorLabel}
+              </span>
+            ) : state.session.role === 'view' && (
               <span style={{ color: '#f5c542', fontSize: 11, fontFamily: 'Meiryo, sans-serif', marginLeft: 10 }}>
                 {UI.viewOnlyIndicatorLabel}
               </span>

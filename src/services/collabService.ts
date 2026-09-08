@@ -1,5 +1,8 @@
 import { io, Socket } from 'socket.io-client';
-import type { SessionBaseline, SessionParticipant, SessionRole, SessionConnectionStatus } from '../types/appState';
+import type {
+  SessionBaseline, SessionParticipant, SessionRole, SessionConnectionStatus,
+  SessionStatus, SessionSummary,
+} from '../types/appState';
 
 export interface LoggedAction {
   seq: number;
@@ -7,51 +10,131 @@ export interface LoggedAction {
   payload: unknown;
 }
 
-// Same-machine relay: the API/socket server always runs on port 3010 on the
-// same machine as the frontend, whether reached as localhost (host) or a LAN
-// IP (a joiner who opened the shared link) — window.location.hostname already
-// reflects whichever address was actually used to load the page.
-function getSocketOrigin(): string {
-  return `${window.location.protocol}//${window.location.hostname}:3010`;
+export interface CreateResult {
+  sessionId: string;
+  ownerToken: string;
 }
 
-let socket: Socket | null = null;
-let socketOrigin: string | null = null;
-
-// origin: explicit host to connect to (a joiner's parsed link) — falls back
-// to this page's own host, which is only correct when the page itself was
-// navigated to the host's URL (a plain browser join). The desktop app's
-// window never navigates like that (it always loads its own embedded
-// server), so joining a link pasted into its "Join Session" dialog MUST pass
-// the link's host explicitly or it silently connects to the wrong machine.
-// The port is always forced to 3010 (the API/socket server) regardless of
-// the link's own port, which is the FRONTEND port — 5173 in dev, where no
-// socket server listens; see socketOriginFromLink below.
-function ensureSocket(origin?: string): Socket {
-  const targetOrigin = origin ?? getSocketOrigin();
-  if (socket && socketOrigin !== targetOrigin) {
-    socket.disconnect();
-    socket = null;
-  }
-  if (!socket) {
-    socketOrigin = targetOrigin;
-    socket = io(targetOrigin, {
-      path: '/collab/socket.io',
-      transports: ['websocket', 'polling'],
-    });
-  }
-  return socket;
+export interface JoinCallbacks {
+  onSyncInit: (sessionName: string, baseline: SessionBaseline, actions: LoggedAction[]) => void;
+  onAction: (action: { type: string; payload: unknown }) => void;
+  onPresence: (participants: SessionParticipant[]) => void;
+  onStatusChange: (status: SessionConnectionStatus) => void;
+  onSessionStatus: (status: SessionStatus) => void;
 }
 
-export async function createCollabSession(name: string, baseline: SessionBaseline): Promise<string> {
-  const res = await fetch(`${getSocketOrigin()}/api/collab/sessions`, {
+// Injected by Vite's `define` (see vite.config.ts) — a string literal at build
+// time, absent under jest (guarded by `typeof`). Empty string in dev/LAN.
+declare const __ACA1_URL__: string | undefined;
+
+// ACA1 (session API) base URL. In dev/LAN it defaults to the current host on
+// the mock's ACA1 port; a build sets VITE_ACA1_URL to the deployed ACA1.
+function aca1Base(): string {
+  const configured = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
+  if (configured) return configured.replace(/\/+$/, '');
+  return `${window.location.protocol}//${window.location.hostname}:4000`;
+}
+
+// ACA1 records its own reachable URL as PUBLIC_RELAY_URL. Locally that is
+// http://localhost:4010, which is wrong for a LAN participant — rewrite the
+// loopback host to whatever host actually loaded this page. A real Azure FQDN
+// has no loopback host and is left untouched.
+function rewriteLoopback(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+      u.hostname = window.location.hostname;
+    }
+    return u.toString().replace(/\/+$/, '');
+  } catch {
+    return url;
+  }
+}
+
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  return (await res.json().catch(() => ({ ok: false }))) as Record<string, unknown>;
+}
+
+// ---- session lifecycle (HTTP to ACA1) -------------------------------------
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const res = await fetch(`${aca1Base()}/api/sessions`);
+  const data = await readJson(res);
+  if (!res.ok || !data.ok || !Array.isArray(data.sessions)) {
+    throw new Error((data.error as string) ?? 'セッション一覧の取得に失敗しました');
+  }
+  return data.sessions as SessionSummary[];
+}
+
+export async function createSessionFromState(name: string, baseline: SessionBaseline): Promise<CreateResult> {
+  const res = await fetch(`${aca1Base()}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, ...baseline }),
   });
-  const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; sessionId?: string; error?: string };
-  if (!res.ok || !data.ok || !data.sessionId) throw new Error(data.error ?? 'セッションの作成に失敗しました');
-  return data.sessionId;
+  const data = await readJson(res);
+  if (!res.ok || !data.ok || !data.sessionId) throw new Error((data.error as string) ?? 'セッションの作成に失敗しました');
+  return { sessionId: data.sessionId as string, ownerToken: data.ownerToken as string };
+}
+
+export async function createSessionFromYaml(
+  name: string, scheduleFile: File, envConfigFile: File,
+): Promise<CreateResult> {
+  const form = new FormData();
+  form.append('name', name);
+  form.append('schedule', scheduleFile);
+  form.append('envConfig', envConfigFile);
+  const res = await fetch(`${aca1Base()}/api/sessions`, { method: 'POST', body: form });
+  const data = await readJson(res);
+  if (!res.ok || !data.ok || !data.sessionId) throw new Error((data.error as string) ?? 'セッションの作成に失敗しました');
+  return { sessionId: data.sessionId as string, ownerToken: data.ownerToken as string };
+}
+
+export async function openSession(sessionId: string): Promise<{ relayUrl: string; status: SessionStatus }> {
+  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST' });
+  const data = await readJson(res);
+  if (!res.ok || !data.ok || !data.relayUrl) throw new Error((data.error as string) ?? 'セッションを開けませんでした');
+  return { relayUrl: rewriteLoopback(data.relayUrl as string), status: data.status as SessionStatus };
+}
+
+export async function deleteSession(sessionId: string, ownerToken: string): Promise<void> {
+  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: { 'x-owner-token': ownerToken },
+  });
+  if (!res.ok) {
+    const data = await readJson(res);
+    throw new Error((data.error as string) ?? 'セッションの削除に失敗しました');
+  }
+}
+
+export async function fetchSessionName(sessionId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`);
+    const data = await readJson(res);
+    const session = data.session as { name?: string } | undefined;
+    if (!res.ok || !data.ok || !session?.name) return null;
+    return session.name;
+  } catch {
+    return null;
+  }
+}
+
+// ---- live relay (Socket.IO to ACA2) -------------------------------------
+
+let socket: Socket | null = null;
+let socketOrigin: string | null = null;
+
+function ensureSocket(relayUrl: string): Socket {
+  if (socket && socketOrigin !== relayUrl) {
+    socket.disconnect();
+    socket = null;
+  }
+  if (!socket) {
+    socketOrigin = relayUrl;
+    socket = io(relayUrl, { path: '/collab/socket.io', transports: ['websocket', 'polling'] });
+  }
+  return socket;
 }
 
 export function joinCollabRoom(
@@ -59,49 +142,47 @@ export function joinCollabRoom(
   name: string,
   role: SessionRole,
   isCreator: boolean,
-  onSyncInit: (sessionName: string, baseline: SessionBaseline, actions: LoggedAction[]) => void,
-  onAction: (action: { type: string; payload: unknown }) => void,
-  onPresence: (participants: SessionParticipant[]) => void,
-  onStatusChange: (status: SessionConnectionStatus) => void,
-  origin?: string,
+  relayUrl: string,
+  ownerToken: string | undefined,
+  cb: JoinCallbacks,
 ): () => void {
-  const s = ensureSocket(origin);
-  onStatusChange('connecting');
+  const s = ensureSocket(relayUrl);
+  cb.onStatusChange('connecting');
 
   // Consumed by the FIRST sync-init only. socket.io-client reconnects on its
-  // own, and every reconnect re-emits 'join' and so gets another sync-init —
-  // if the creator kept skipping those, they'd silently miss every action
-  // that landed while they were disconnected while still reporting
-  // 'connected'. From their second sync-init onward the creator catches up
-  // via baseline + log replay exactly like every other participant.
+  // own and re-emits 'join' on every reconnect; from the creator's second
+  // sync-init onward they catch up via baseline + log replay like everyone
+  // else (otherwise they would silently miss edits made while disconnected).
   let skipBaselineReplay = isCreator;
 
-  const handleConnect = () => s.emit('join', { sessionId, name, role });
-  const handleSyncInit = (payload: { ok: boolean; name?: string; baseline?: SessionBaseline; actions?: LoggedAction[]; participants?: SessionParticipant[] }) => {
+  const handleConnect = () => s.emit('join', { sessionId, name, role, ownerToken });
+  const handleSyncInit = (payload: {
+    ok: boolean; name?: string; baseline?: SessionBaseline; actions?: LoggedAction[];
+    participants?: SessionParticipant[]; status?: SessionStatus;
+  }) => {
     if (!payload.ok || !payload.baseline || !payload.name) {
-      onStatusChange('disconnected');
+      cb.onStatusChange('disconnected');
       return;
     }
-    // On the very first sync-init the creator's local state already IS the
-    // baseline (it was just POSTed from there) — re-applying it would
-    // needlessly wipe their own undo history. Everyone else (a real joiner)
-    // replays baseline + log to catch up.
+    if (payload.status) cb.onSessionStatus(payload.status);
     if (skipBaselineReplay) {
       skipBaselineReplay = false;
     } else {
-      onSyncInit(payload.name, payload.baseline, payload.actions ?? []);
+      cb.onSyncInit(payload.name, payload.baseline, payload.actions ?? []);
     }
-    onPresence(payload.participants ?? []);
-    onStatusChange('connected');
+    cb.onPresence(payload.participants ?? []);
+    cb.onStatusChange('connected');
   };
-  const handleAction = (payload: { type: string; payload: unknown }) => onAction(payload);
-  const handlePresence = (participants: SessionParticipant[]) => onPresence(participants);
-  const handleDisconnect = () => onStatusChange('disconnected');
+  const handleAction = (payload: { type: string; payload: unknown }) => cb.onAction(payload);
+  const handlePresence = (participants: SessionParticipant[]) => cb.onPresence(participants);
+  const handleSessionStatus = (payload: { status: SessionStatus }) => cb.onSessionStatus(payload.status);
+  const handleDisconnect = () => cb.onStatusChange('disconnected');
 
   s.on('connect', handleConnect);
   s.on('sync-init', handleSyncInit);
   s.on('action', handleAction);
   s.on('presence', handlePresence);
+  s.on('session-status', handleSessionStatus);
   s.on('disconnect', handleDisconnect);
 
   if (s.connected) handleConnect();
@@ -111,6 +192,7 @@ export function joinCollabRoom(
     s.off('sync-init', handleSyncInit);
     s.off('action', handleAction);
     s.off('presence', handlePresence);
+    s.off('session-status', handleSessionStatus);
     s.off('disconnect', handleDisconnect);
     s.emit('leave');
     s.disconnect();
@@ -123,49 +205,19 @@ export function sendCollabAction(type: string, payload: unknown): void {
   socket?.emit('action', { type, payload });
 }
 
-// Builds a link a participant on another PC (or the same PC, another tab) can
-// open directly, e.g. http://192.168.1.23:5173/?session=<id>&role=edit —
-// reuses whatever port/path this client is currently on.
-export async function fetchCollabLink(sessionId: string, role: SessionRole): Promise<string> {
-  const res = await fetch(`${getSocketOrigin()}/api/network-info`);
-  const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; addresses?: string[]; error?: string };
-  if (!res.ok || !data.ok || !data.addresses) throw new Error(data.error ?? 'ネットワーク情報の取得に失敗しました');
-  const lanIp = data.addresses[0] ?? window.location.hostname;
-  return `${window.location.protocol}//${lanIp}:${window.location.port}${window.location.pathname}?session=${sessionId}&role=${role}`;
+export function sendCollabLock(): void {
+  socket?.emit('lock');
 }
 
-export async function fetchSessionName(sessionId: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${getSocketOrigin()}/api/collab/sessions/${sessionId}/name`);
-    const data = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; name?: string };
-    if (!res.ok || !data.ok || !data.name) return null;
-    return data.name;
-  } catch {
-    return null;
-  }
+export function sendCollabUnlock(): void {
+  socket?.emit('unlock');
 }
 
-// Derives the API/socket origin from a full join link. Keeps the link's host
-// but ALWAYS forces port 3010 — the link's own port is the frontend port
-// (5173 in dev, 3010 in prod) and the socket/API server only ever listens on
-// 3010. Returns null for a bare session id (no host to extract).
-export function parseSessionOrigin(input: string): string | null {
-  const trimmed = input.trim();
-  try {
-    const url = new URL(trimmed);
-    return `${url.protocol}//${url.hostname}:3010`;
-  } catch {
-    return null;
-  }
-}
-
-// Accepts either a bare session id or a full link (as produced by
-// fetchCollabLink above) pasted into the "Join Session" dialog.
+// Accepts a bare session id or a full link (?session=<id>) pasted anywhere.
 export function parseSessionId(input: string): string {
   const trimmed = input.trim();
   try {
-    const url = new URL(trimmed);
-    return url.searchParams.get('session') ?? trimmed;
+    return new URL(trimmed).searchParams.get('session') ?? trimmed;
   } catch {
     return trimmed;
   }

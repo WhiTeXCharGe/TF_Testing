@@ -81,10 +81,24 @@ export interface WorkerDateCellFilter {
 export type SessionRole = 'edit' | 'view';
 export type SessionConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 
+// Server-side lifecycle status of a session (ACA1/ACA2). 'lock' = live but
+// read-only for everyone; 'close' = not running (re-open reactivates it).
+export type SessionStatus = 'open' | 'lock' | 'close';
+
 export interface SessionParticipant {
   id: string;
   name: string;
   role: SessionRole;
+}
+
+/** One row of the online-session list from ACA1's GET /api/sessions. */
+export interface SessionSummary {
+  id: string;
+  name: string;
+  status: SessionStatus;
+  createdAt: number;
+  lastActivityAt: number;
+  participantCount: number | null;
 }
 
 export interface SessionBaseline {
@@ -99,6 +113,11 @@ export interface SessionState {
   role: SessionRole;
   connectionStatus: SessionConnectionStatus;
   participants: SessionParticipant[];
+  // Live server-side status pushed via sync-init / session-status.
+  status: SessionStatus;
+  // Present only for the participant who created the session — gates the
+  // lock/unlock and delete controls. Never sent to other participants.
+  ownerToken?: string;
 }
 
 export interface AppState {
@@ -139,7 +158,7 @@ export interface AppState {
   // in a session — solo editing/viewing is unaffected either way.
   session: SessionState | null;
   isSessionDialogOpen: boolean;
-  sessionDialogTab: 'start' | 'join';
+  sessionDialogTab: 'list' | 'create';
 }
 
 export type ActionType =
@@ -198,7 +217,8 @@ export type ActionType =
   | { type: 'SET_SESSION'; payload: SessionState | null }
   | { type: 'SET_SESSION_BASELINE'; payload: SessionBaseline }
   | { type: 'SET_SESSION_CONNECTION_STATUS'; payload: SessionConnectionStatus }
+  | { type: 'SET_SESSION_STATUS'; payload: SessionStatus }
   | { type: 'SET_SESSION_PARTICIPANTS'; payload: SessionParticipant[] }
-  | { type: 'OPEN_SESSION_DIALOG'; payload: 'start' | 'join' }
+  | { type: 'OPEN_SESSION_DIALOG'; payload: 'list' | 'create' }
   | { type: 'CLOSE_SESSION_DIALOG' }
   | { type: 'SET_SESSION_NAME'; payload: string };

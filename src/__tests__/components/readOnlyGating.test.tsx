@@ -15,7 +15,7 @@ import { SidePanel } from '../../components/SidePanel/SidePanel';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
 import { UI } from '../../config/uiText';
-import { SessionRole } from '../../types/appState';
+import { SessionRole, SessionStatus } from '../../types/appState';
 
 const ENV_CONFIG: EnvConfig = {
   workflowList: [],
@@ -65,14 +65,14 @@ const SCHEDULE: ScheduleData = {
 // SET_SESSION_BASELINE) doesn't clear the undo stack, so the prior edit
 // survives — letting the undo/redo test assert on role alone, not on
 // whether there's anything to undo.
-function Harness({ role, children }: { role?: SessionRole; children: React.ReactNode }) {
+function Harness({ role, status = 'open', children }: { role?: SessionRole; status?: SessionStatus; children: React.ReactNode }) {
   const { state, dispatch } = useAppContext();
   useEffect(() => {
     dispatch({ type: 'LOAD_FILES', payload: { schedule: SCHEDULE, envConfig: ENV_CONFIG, envPath: 'e.yaml', schedulePath: 's.yaml' } });
     dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: 0, updates: { description: 'edited' } } });
     dispatch({ type: 'SELECT_ASSIGNMENT', payload: 0 });
     if (role) {
-      dispatch({ type: 'SET_SESSION', payload: { id: 's1', name: 'Test Session', role, connectionStatus: 'connected', participants: [] } });
+      dispatch({ type: 'SET_SESSION', payload: { id: 's1', name: 'Test Session', role, connectionStatus: 'connected', participants: [], status } });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -80,10 +80,10 @@ function Harness({ role, children }: { role?: SessionRole; children: React.React
   return <>{children}</>;
 }
 
-function renderWithRole(role: SessionRole | undefined, ui: React.ReactNode) {
+function renderWithRole(role: SessionRole | undefined, ui: React.ReactNode, status?: SessionStatus) {
   return render(
     <AppProvider>
-      <Harness role={role}>{ui}</Harness>
+      <Harness role={role} status={status}>{ui}</Harness>
     </AppProvider>,
   );
 }
@@ -103,6 +103,11 @@ describe('Toolbar read-only gating', () => {
     renderWithRole(undefined, <Toolbar />);
     expect(screen.getByRole('button', { name: UI.addBarBtn })).toBeEnabled();
   });
+
+  it('disables the add-bar button for an edit-role session that is locked', () => {
+    renderWithRole('edit', <Toolbar />, 'lock');
+    expect(screen.getByRole('button', { name: UI.addBarBtn })).toBeDisabled();
+  });
 });
 
 describe('UndoRedoButtons read-only gating', () => {
@@ -120,6 +125,11 @@ describe('UndoRedoButtons read-only gating', () => {
   it('keeps undo enabled in solo mode with a non-empty undo stack', () => {
     renderWithRole(undefined, <UndoRedoButtons />);
     expect(screen.getByRole('button', { name: UI.undo })).toBeEnabled();
+  });
+
+  it('disables undo for an edit-role session that is locked', () => {
+    renderWithRole('edit', <UndoRedoButtons />, 'lock');
+    expect(screen.getByRole('button', { name: UI.undo })).toBeDisabled();
   });
 });
 

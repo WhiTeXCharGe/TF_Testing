@@ -2,7 +2,9 @@
  * @jest-environment jsdom
  */
 import { io } from 'socket.io-client';
-import { joinCollabRoom, fetchSessionName } from '../../services/collabService';
+import {
+  joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
+} from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
 jest.mock('socket.io-client', () => ({ io: jest.fn() }));
@@ -15,8 +17,6 @@ const BASELINE: SessionBaseline = {
   currentView: 'worker',
 };
 
-// Minimal stand-in for the socket.io client: just enough to capture the
-// handlers joinCollabRoom registers so a test can fire 'sync-init' by hand.
 function makeFakeSocket() {
   const handlers: Record<string, Handler[]> = {};
   return {
@@ -30,10 +30,6 @@ function makeFakeSocket() {
 }
 
 let fakeSocket: ReturnType<typeof makeFakeSocket>;
-// collabService keeps ONE module-level socket, cleared only by the disconnect
-// its join returns. Tearing every join down here (rather than at the end of
-// each test) keeps a failing assertion from leaving that singleton pointing at
-// a stale fake and cascading into the next test.
 const openJoins: (() => void)[] = [];
 
 beforeEach(() => {
@@ -47,72 +43,114 @@ afterEach(() => {
 });
 
 function join(isCreator: boolean) {
-  const onSyncInit = jest.fn();
-  const onStatusChange = jest.fn();
-  const disconnect = joinCollabRoom(
-    's1', 'Alice', 'edit', isCreator,
-    onSyncInit,
-    jest.fn(), jest.fn(), onStatusChange,
-  );
+  const cb = {
+    onSyncInit: jest.fn(),
+    onAction: jest.fn(),
+    onPresence: jest.fn(),
+    onStatusChange: jest.fn(),
+    onSessionStatus: jest.fn(),
+  };
+  const disconnect = joinCollabRoom('s1', 'Alice', 'edit', isCreator, 'http://relay:4010', undefined, cb);
   openJoins.push(disconnect);
-  return { onSyncInit, onStatusChange };
+  return cb;
 }
 
-const SYNC_INIT_OK = { ok: true, name: 'Test Session', baseline: BASELINE, actions: [], participants: [] };
+const SYNC_INIT_OK = { ok: true, name: 'Test Session', baseline: BASELINE, actions: [], participants: [], status: 'open' as const };
 
-it('skips the baseline replay for the creator on their first sync-init', () => {
-  const { onSyncInit } = join(true);
-
-  fakeSocket.fire('sync-init', SYNC_INIT_OK);
-
-  expect(onSyncInit).not.toHaveBeenCalled(); // their local state already IS the baseline
+it('connects the socket to the given relay URL', () => {
+  join(false);
+  expect(io).toHaveBeenCalledWith('http://relay:4010', expect.objectContaining({ path: '/collab/socket.io' }));
 });
 
-// socket.io-client reconnects on its own and every reconnect re-emits 'join',
-// producing another sync-init. If the creator kept skipping those they would
-// permanently miss everything that happened while they were disconnected,
-// while still reporting 'connected'.
-it('replays the baseline for the creator on a later (reconnect) sync-init', () => {
-  const { onSyncInit } = join(true);
+it('skips the baseline replay for the creator on their first sync-init', () => {
+  const cb = join(true);
+  fakeSocket.fire('sync-init', SYNC_INIT_OK);
+  expect(cb.onSyncInit).not.toHaveBeenCalled();
+  expect(cb.onSessionStatus).toHaveBeenCalledWith('open');
+});
 
-  fakeSocket.fire('sync-init', SYNC_INIT_OK);      // initial
-  fakeSocket.fire('sync-init', {                   // after a reconnect
+it('replays the baseline for the creator on a later (reconnect) sync-init', () => {
+  const cb = join(true);
+  fakeSocket.fire('sync-init', SYNC_INIT_OK);
+  fakeSocket.fire('sync-init', {
     ...SYNC_INIT_OK,
     actions: [{ seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-05-01', endDate: '2026-05-31' } }],
   });
-
-  expect(onSyncInit).toHaveBeenCalledTimes(1);
-  expect(onSyncInit).toHaveBeenCalledWith('Test Session', BASELINE, [
+  expect(cb.onSyncInit).toHaveBeenCalledTimes(1);
+  expect(cb.onSyncInit).toHaveBeenCalledWith('Test Session', BASELINE, [
     { seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-05-01', endDate: '2026-05-31' } },
   ]);
 });
 
 it('replays the baseline for a non-creator on every sync-init', () => {
-  const { onSyncInit } = join(false);
-
+  const cb = join(false);
   fakeSocket.fire('sync-init', SYNC_INIT_OK);
   fakeSocket.fire('sync-init', SYNC_INIT_OK);
-
-  expect(onSyncInit).toHaveBeenCalledTimes(2);
+  expect(cb.onSyncInit).toHaveBeenCalledTimes(2);
 });
 
 it('reports disconnected and replays nothing when sync-init comes back not-ok', () => {
-  const { onSyncInit, onStatusChange } = join(false);
-
+  const cb = join(false);
   fakeSocket.fire('sync-init', { ok: false });
+  expect(cb.onSyncInit).not.toHaveBeenCalled();
+  expect(cb.onStatusChange).toHaveBeenLastCalledWith('disconnected');
+});
 
-  expect(onSyncInit).not.toHaveBeenCalled();
-  expect(onStatusChange).toHaveBeenLastCalledWith('disconnected');
+it('forwards a session-status event to onSessionStatus', () => {
+  const cb = join(false);
+  fakeSocket.fire('session-status', { status: 'lock' });
+  expect(cb.onSessionStatus).toHaveBeenCalledWith('lock');
+});
+
+it('emits ownerToken in the join payload when given', () => {
+  const cb = {
+    onSyncInit: jest.fn(), onAction: jest.fn(), onPresence: jest.fn(),
+    onStatusChange: jest.fn(), onSessionStatus: jest.fn(),
+  };
+  const d = joinCollabRoom('s1', 'Alice', 'edit', true, 'http://relay:4010', 'secret-token', cb);
+  openJoins.push(d);
+  fakeSocket.fire('connect', undefined);
+  expect(fakeSocket.emit).toHaveBeenCalledWith('join', { sessionId: 's1', name: 'Alice', role: 'edit', ownerToken: 'secret-token' });
+});
+
+it('openSession rewrites a loopback relay host to the current page host', async () => {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true, json: async () => ({ ok: true, relayUrl: 'http://localhost:4010', status: 'open' }),
+  }) as never;
+  const res = await openSession('abc');
+  expect(res.status).toBe('open');
+  expect(res.relayUrl).toBe(`${window.location.protocol}//${window.location.hostname}:4010`);
+});
+
+it('listSessions returns the sessions array', async () => {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true, json: async () => ({ ok: true, sessions: [{ id: 's1', name: 'A', status: 'open', participantCount: 2 }] }),
+  }) as never;
+  const list = await listSessions();
+  expect(list).toEqual([{ id: 's1', name: 'A', status: 'open', participantCount: 2 }]);
+});
+
+it('createSessionFromYaml posts a multipart form with both files', async () => {
+  const captured: { body?: unknown } = {};
+  global.fetch = jest.fn().mockImplementation((_url: string, init: RequestInit) => {
+    captured.body = init.body;
+    return Promise.resolve({ ok: true, json: async () => ({ ok: true, sessionId: 'new', ownerToken: 'tok' }) });
+  }) as never;
+  const res = await createSessionFromYaml('S', new File(['a: 1'], 'Schedule.yaml'), new File(['b: 2'], 'EnvConfig.yaml'));
+  expect(res).toEqual({ sessionId: 'new', ownerToken: 'tok' });
+  expect(captured.body).toBeInstanceOf(FormData);
+  const form = captured.body as FormData;
+  expect(form.get('name')).toBe('S');
+  expect((form.get('schedule') as File).name).toBe('Schedule.yaml');
+  expect((form.get('envConfig') as File).name).toBe('EnvConfig.yaml');
 });
 
 it('fetchSessionName resolves the name for a real session', async () => {
-  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, name: 'Weekly Plan' }) }) as any;
-  const name = await fetchSessionName('abc123');
-  expect(name).toBe('Weekly Plan');
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, session: { name: 'Weekly Plan' } }) }) as never;
+  expect(await fetchSessionName('abc123')).toBe('Weekly Plan');
 });
 
 it('fetchSessionName resolves null for an unknown session', async () => {
-  global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) }) as any;
-  const name = await fetchSessionName('nope');
-  expect(name).toBeNull();
+  global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) }) as never;
+  expect(await fetchSessionName('nope')).toBeNull();
 });

@@ -1,4 +1,5 @@
 import { useAppContext } from '../../context/AppContext';
+import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { ViewButtons } from './ViewButtons';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { PlanFlexBulkSettings } from './PlanFlexBulkSettings';
@@ -14,7 +15,7 @@ export function Toolbar() {
   const { state, dispatch } = useAppContext();
   const { schedule, currentView, showFlightStints } = state;
   const has = !!schedule;
-  const isReadOnly = state.session?.role === 'view';
+  const isReadOnly = isSessionReadOnly(state);
   const canEdit = has && !isReadOnly;
   const { runCheck, isChecking } = useBackendConstraintCheck();
 
