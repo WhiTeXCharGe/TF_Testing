@@ -10,7 +10,7 @@
 
 **Tech Stack:** Node 20 + TypeScript (ESM, NodeNext), Express, Socket.IO 4, `js-yaml`, `zod`, `multer`, Vitest + `supertest` + `socket.io-client` (tests), Docker + Docker Compose, Postman (manual API checks). Azure (phase 7 only): Container Apps, Container Registry, Blob Storage, Key Vault, Static Web Apps, `az` CLI, GitHub Actions.
 
-> **Status (2026-09-08):** Phase 1 (Tasks 1–13, the local mock backend) is **implemented** on branch `online-collab-aca` — 12 commits, 105 server tests + 161 client tests green, `tsc` + `npm run build` clean, `local` Electron/LAN mode verified unchanged, `npm run dev:mock` verified (ACA1 :4000 + ACA2 :4010 + web :5173). Not verified: `docker compose` path (Docker not installed on the dev machine). Next: Phase 2 (web client, Appendix A).
+> **Status (2026-09-08):** Phases 1–2 **implemented** on branch `online-collab-aca` (16 commits). Server: **111 vitest** green incl. the full local integration flow + an Azure Blob `StorageClient` verified against the fs contract via Azurite. Client (`GanttChartEditor_OnlineCollabAzure_ACA_ClientPlan20260908.md`): **174 jest** green, `vite build` clean, session list / create-by-YAML / open / owner lock wired. Verified end-to-end against `npm run dev:mock`: two browser tabs join one session via ACA1→ACA2, both render the replayed baseline, presence shows "2人が参加中", no console errors. Also ready but not run: `infra/deploy.sh` + `.github/workflows/deploy-collab.yml` (Phase 4 — needs Azure access). Not verified: `docker compose` (Docker not installable on the dev machine — virtualization/App-Control locked). `local` Electron/LAN mode unchanged. Remaining: Phase 3 security limits (Appendix B), Phase 4 Azure deploy (Appendix C), Phase 5 docs (Appendix D).
 
 ## Global Constraints
 
