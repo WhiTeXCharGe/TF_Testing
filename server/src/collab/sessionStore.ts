@@ -1,21 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import type { SessionBaseline, LoggedAction } from './types.js';
 
 // Pure, in-memory session/action-log store — no I/O, no Socket.IO here, so
 // this can be unit-tested directly. Deliberately dumb: it stores and orders
 // actions, it never interprets them — the reducer (shared, already tested,
 // on every client) is the single source of truth for what an action does.
 
-export interface SessionBaseline {
-  schedule: unknown;
-  envConfig: unknown;
-  currentView: 'worker' | 'device';
-}
-
-export interface LoggedAction {
-  seq: number;
-  type: string;
-  payload: unknown;
-}
+// SessionBaseline / LoggedAction now live in ./types.ts so ROLE=aca1 can share
+// them without pulling in this stateful module. Re-exported for existing
+// importers (routes/collab.ts, collabSocket.ts).
+export type { SessionBaseline, LoggedAction } from './types.js';
 
 export interface SessionParticipant {
   id: string;
