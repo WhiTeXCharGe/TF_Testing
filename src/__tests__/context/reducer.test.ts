@@ -406,4 +406,22 @@ describe('Assignment _id backfill', () => {
     const merged = next.schedule?.assignmentList.find(a => a.worker === 'w002');
     expect(merged?._id).toEqual(expect.any(String));
   });
+
+  it('LOAD_FILES keeps schedule and savedScheduleRef pointing at the same object (dirty-check invariant)', () => {
+    const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+    const next = reducer(BASE_STATE, {
+      type: 'LOAD_FILES',
+      payload: { schedule, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' },
+    });
+    expect(next.schedule).toBe(next.savedScheduleRef);
+  });
+
+  it('SET_SESSION_BASELINE keeps schedule and savedScheduleRef pointing at the same object (dirty-check invariant)', () => {
+    const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+    const next = reducer(BASE_STATE, {
+      type: 'SET_SESSION_BASELINE',
+      payload: { schedule, envConfig: EMPTY_ENV, currentView: 'worker' },
+    });
+    expect(next.schedule).toBe(next.savedScheduleRef);
+  });
 });

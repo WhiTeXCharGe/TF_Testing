@@ -52,14 +52,15 @@ function removeWeekdayFromWorker<T extends { unavailableDates: Array<{ weekly?: 
 export function reducer(state: AppState, action: ActionType): AppState {
   switch (action.type) {
 
-    case 'LOAD_FILES':
+    case 'LOAD_FILES': {
+      const schedule = { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) };
       return {
         ...state,
         envConfig: action.payload.envConfig,
-        schedule: { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) },
+        schedule,
         currentEnvPath: action.payload.envPath,
         currentSchedulePath: action.payload.schedulePath,
-        savedScheduleRef: action.payload.schedule,
+        savedScheduleRef: schedule,
         savedEnvConfigRef: action.payload.envConfig,
         undoStack: [],
         redoStack: [],
@@ -70,6 +71,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         workerColumnFilter: { ...DEFAULT_WORKER_COLUMN_FILTER },
         workerDateCellFilter: { date: '', tasks: [] },
       };
+    }
 
     case 'SET_SCHEDULE':
       return {
@@ -565,23 +567,25 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'SET_SESSION':
       return { ...state, session: action.payload };
 
-    case 'SET_SESSION_BASELINE':
+    case 'SET_SESSION_BASELINE': {
       // Applied when this client just joined a session (or is catching up):
       // replaces the working data with the session's current state. Undo/redo
       // and selection reset because they'd otherwise reference data from
       // before this client had any relationship to the session.
+      const schedule = { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) };
       return {
         ...state,
-        schedule: { ...action.payload.schedule, assignmentList: withAssignmentIds(action.payload.schedule.assignmentList) },
+        schedule,
         envConfig: action.payload.envConfig,
         currentView: action.payload.currentView,
         undoStack: [],
         redoStack: [],
         selectedAssignmentIndex: null,
         selectedUnavailableInfo: null,
-        savedScheduleRef: action.payload.schedule,
+        savedScheduleRef: schedule,
         savedEnvConfigRef: action.payload.envConfig,
       };
+    }
 
     case 'SET_SESSION_CONNECTION_STATUS':
       return state.session ? { ...state, session: { ...state.session, connectionStatus: action.payload } } : state;
