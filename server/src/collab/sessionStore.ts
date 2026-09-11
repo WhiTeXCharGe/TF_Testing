@@ -60,6 +60,8 @@ export interface SessionStore {
   markActivated(id: string, relay: { relayInstance: string; relayUrl: string }): Promise<SessionStatus>;
   /** Set the at-rest status back to 'close' with no relay pointer. */
   markClosed(id: string): Promise<void>;
+  /** Stamp status.json with the time a participant just joined (drives the list sort). */
+  markJoined(id: string): Promise<void>;
   /** Drop in-memory sessions that have had no participants past the idle window. */
   sweepIdleSessions(maxIdleMs: number, now?: number): number;
 }
@@ -194,6 +196,10 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     await writeStatus(storage, id, { status: 'close', relayInstance: null, relayUrl: null });
   };
 
+  const markJoined = async (id: string): Promise<void> => {
+    await writeStatus(storage, id, { lastJoinAt: Date.now() });
+  };
+
   const sweepIdleSessions = (maxIdleMs: number, now = Date.now()): number => {
     let removed = 0;
     for (const [id, s] of sessions) {
@@ -209,6 +215,6 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     isLoaded, activateFromStorage, getSession, appendAction,
     addParticipant, removeParticipant, participantCount, setLocked,
     ownerTokenHash, getLive, flush, flushAll, evict,
-    markActivated, markClosed, sweepIdleSessions,
+    markActivated, markClosed, markJoined, sweepIdleSessions,
   };
 }

@@ -113,6 +113,16 @@ describe('evict / markClosed', () => {
   });
 });
 
+describe('markJoined', () => {
+  it('stamps status.lastJoinAt (null before, a timestamp after)', async () => {
+    expect((await loadSessionRecord(storage, id))?.status.lastJoinAt).toBeNull();
+    const before = Date.now();
+    await store.markJoined(id);
+    const after = (await loadSessionRecord(storage, id))!.status.lastJoinAt!;
+    expect(after).toBeGreaterThanOrEqual(before);
+  });
+});
+
 describe('markActivated', () => {
   it('records the replica and sets status open', async () => {
     await store.activateFromStorage(id);

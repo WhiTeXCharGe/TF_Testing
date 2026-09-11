@@ -42,7 +42,7 @@ export async function createSessionRecord(
   const now = Date.now();
   const meta: SessionMeta = { id, name: args.name, createdAt: now, ownerTokenHash: args.ownerTokenHash };
   const status: SessionStatusRecord = {
-    status: 'close', relayInstance: null, relayUrl: null, lastActivityAt: now,
+    status: 'close', relayInstance: null, relayUrl: null, lastActivityAt: now, lastJoinAt: null,
   };
   await Promise.all([
     s.putJson(metaKey(id), meta),
@@ -66,7 +66,7 @@ export async function loadSessionRecord(s: StorageClient, id: string): Promise<S
     meta,
     baseline,
     log: log ?? [],
-    status: status ?? { status: 'close', relayInstance: null, relayUrl: null, lastActivityAt: meta.createdAt },
+    status: status ?? { status: 'close', relayInstance: null, relayUrl: null, lastActivityAt: meta.createdAt, lastJoinAt: null },
   };
 }
 
@@ -74,7 +74,7 @@ export async function writeStatus(
   s: StorageClient, id: string, patch: Partial<SessionStatusRecord>,
 ): Promise<SessionStatusRecord> {
   const current = (await s.getJson<SessionStatusRecord>(statusKey(id)))
-    ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: Date.now() };
+    ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: Date.now(), lastJoinAt: null };
   const next: SessionStatusRecord = {
     ...current,
     ...patch,

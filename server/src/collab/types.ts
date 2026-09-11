@@ -37,6 +37,8 @@ export interface SessionStatusRecord {
   /** URL clients should open their socket to while the session is live, or null. */
   relayUrl: string | null;
   lastActivityAt: number;
+  /** When a participant last joined this session; null if nobody has yet. */
+  lastJoinAt: number | null;
 }
 
 /** One row in `GET /api/sessions`. */
@@ -46,6 +48,8 @@ export interface SessionSummary {
   status: SessionStatus;
   createdAt: number;
   lastActivityAt: number;
+  /** When a participant last joined; the session list sorts on this (desc). */
+  lastJoinAt: number | null;
   /** Live participant count from ACA2; null when ACA2 is asleep or unreachable. */
   participantCount: number | null;
 }

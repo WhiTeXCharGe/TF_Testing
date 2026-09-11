@@ -134,16 +134,16 @@ describe('lock / unlock', () => {
     other.disconnect();
   });
 
-  it('a non-owner emitting "lock" is ignored', async () => {
-    const notOwner = connect();
-    await joinAndWaitForSync(notOwner, { sessionId, name: 'NotOwner', role: 'edit', ownerToken: 'wrong' });
-    let gotStatus = false;
-    notOwner.on('session-status', () => { gotStatus = true; });
-    notOwner.emit('lock');
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(gotStatus).toBe(false);
+  it('any joined participant (no owner token) can lock and unlock', async () => {
+    const anyone = connect();
+    await joinAndWaitForSync(anyone, { sessionId, name: 'Anyone', role: 'edit' });
+
+    await new Promise<void>((resolve) => { anyone.on('session-status', (p: any) => { if (p.status === 'lock') resolve(); }); anyone.emit('lock'); });
+    expect(store.getSession(sessionId)?.status).toBe('lock');
+
+    await new Promise<void>((resolve) => { anyone.on('session-status', (p: any) => { if (p.status === 'open') resolve(); }); anyone.emit('unlock'); });
     expect(store.getSession(sessionId)?.status).toBe('open');
-    notOwner.disconnect();
+    anyone.disconnect();
   });
 
   it('while locked no action is broadcast; after unlock it flows again', async () => {

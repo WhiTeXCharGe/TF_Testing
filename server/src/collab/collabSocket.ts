@@ -56,6 +56,7 @@ export function createCollabSocketServer(
       joinedRole = role;
       void socket.join(sessionId);
       const participants = store.addParticipant(sessionId, participantId, name, role) ?? [];
+      void store.markJoined(sessionId); // stamp status.json for the session-list sort
       const s = store.getSession(sessionId)!;
       socket.emit('sync-init', {
         ok: true,
@@ -70,15 +71,17 @@ export function createCollabSocketServer(
 
     socket.on('action', ({ type, payload }: ActionPayload) => {
       if (!joinedSessionId || joinedRole !== 'edit') return;
-      // A locked session is read-only for everyone, the owner included.
+      // A locked session is read-only for everyone.
       if (store.getSession(joinedSessionId)?.status === 'lock') return;
       const logged = store.appendAction(joinedSessionId, type, payload);
       if (!logged) return;
       socket.to(joinedSessionId).emit('action', { type: logged.type, payload: logged.payload });
     });
 
+    // Lock / unlock is open to any participant in the session — it's a shared
+    // "freeze editing" toggle, not an ownership control.
     const setLock = async (locked: boolean): Promise<void> => {
-      if (!joinedSessionId || !isOwner) return;
+      if (!joinedSessionId) return;
       const status = store.setLocked(joinedSessionId, locked);
       if (!status) return;
       await store.flush(joinedSessionId);

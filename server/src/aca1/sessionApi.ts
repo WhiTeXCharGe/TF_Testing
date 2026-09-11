@@ -42,7 +42,7 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
       storage.getJson<SessionStatusRecord>(statusKey(id)),
     ]);
     if (!meta) return null;
-    const st = status ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: meta.createdAt };
+    const st = status ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: meta.createdAt, lastJoinAt: null };
     let participantCount: number | null = null;
     if (st.status !== 'close') {
       const live = await aca2.live(id);
@@ -54,6 +54,7 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
       status: st.status,
       createdAt: meta.createdAt,
       lastActivityAt: st.lastActivityAt,
+      lastJoinAt: st.lastJoinAt ?? null,
       participantCount,
     };
   }
@@ -102,7 +103,8 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
   router.get('/sessions', async (_req, res) => {
     const ids = await listSessionIds(storage);
     const summaries = (await Promise.all(ids.map(buildSummary))).filter((s): s is SessionSummary => s !== null);
-    summaries.sort((a, b) => b.createdAt - a.createdAt);
+    // Most recently joined first; never-joined (null) fall back to createdAt.
+    summaries.sort((a, b) => (b.lastJoinAt ?? b.createdAt) - (a.lastJoinAt ?? a.createdAt));
     res.json({ ok: true, sessions: summaries });
   });
 
