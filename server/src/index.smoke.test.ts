@@ -64,4 +64,11 @@ describe('ROLE switch', () => {
       .then((r) => r.json());
     expect(opened).toMatchObject({ ok: true, status: 'open' });
   });
+
+  it('local exposes /api/lan-hosts (empty, not an error, when discovery has nothing yet)', async () => {
+    const srv = await start({ ROLE: 'local' });
+    const res = await fetch(`http://localhost:${srv.port}/api/lan-hosts`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, hosts: [] });
+  });
 });

@@ -1,20 +1,10 @@
 import { Router } from 'express';
-import os from 'node:os';
+import { getLanAddresses } from '../lan/lanAddresses.js';
 
 export const networkInfoRouter = Router();
 
-// Lets the client build a LAN-reachable share link
-// (e.g. http://192.168.x.x:5173/?session=<id>&role=edit|view) — a browser has no
-// way to discover its own machine's LAN-facing address on its own.
+// Lets the client discover its own machine's LAN-facing address(es) — a
+// browser/renderer has no way to do this on its own.
 networkInfoRouter.get('/network-info', (_req, res) => {
-  const interfaces = os.networkInterfaces();
-  const addresses: string[] = [];
-  for (const ifaceList of Object.values(interfaces)) {
-    for (const iface of ifaceList ?? []) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        addresses.push(iface.address);
-      }
-    }
-  }
-  res.json({ ok: true, addresses });
+  res.json({ ok: true, addresses: getLanAddresses() });
 });

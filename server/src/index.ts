@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
+import os from 'node:os';
 import { createServer, Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { writeFile } from 'node:fs/promises';
@@ -20,6 +21,8 @@ import { createAca2Client } from './aca1/aca2Client.js';
 import { createSessionApiRouter } from './aca1/sessionApi.js';
 import { createInProcessAca2Client } from './aca1/inProcessAca2.js';
 import { startSweep } from './aca1/sweep.js';
+import { getLanAddresses } from './lan/lanAddresses.js';
+import { startDiscoveryBeacon, type DiscoveryBeacon } from './lan/discoveryBeacon.js';
 
 export interface RunningServer {
   port: number;
@@ -35,6 +38,7 @@ function buildLocalApp(
   storage: ReturnType<typeof makeStorage>,
   store: SessionStore,
   config: AppConfig,
+  beacon: DiscoveryBeacon | undefined,
 ): express.Express {
   const app = express();
   app.use(cors({
@@ -56,6 +60,14 @@ function buildLocalApp(
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, role: 'local', server: 'gantt-editor-api', time: new Date().toISOString() });
+  });
+
+  // Other GanttChartEditor instances this one has heard on the LAN (zero-config
+  // discovery, see lan/discoveryBeacon.ts) — lets a joiner pick a host by name
+  // instead of typing its address. Empty (not an error) when nothing has
+  // broadcast yet, or discovery is off (no LAN address to advertise from).
+  app.get('/api/lan-hosts', (_req, res) => {
+    res.json({ ok: true, hosts: beacon?.getKnownHosts() ?? [] });
   });
 
   app.post('/api/save-files', async (req, res) => {
@@ -114,8 +126,16 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
     app = buildAca2App(store, config);
     withSockets = true;
   } else {
-    app = buildLocalApp(storage, store, config);
-    stopSweep = startSweep({ storage, aca2: createInProcessAca2Client(store, config), config });
+    // Advertise ourselves for LAN discovery only when there's an actual LAN
+    // address to advertise and a real (non-ephemeral) port — skips cleanly
+    // under tests that bind PORT=0.
+    const lanIp = getLanAddresses()[0];
+    const beacon = lanIp && config.port !== 0
+      ? startDiscoveryBeacon(`http://${lanIp}:${config.port}`, os.hostname())
+      : undefined;
+    app = buildLocalApp(storage, store, config, beacon);
+    const stopLocalSweep = startSweep({ storage, aca2: createInProcessAca2Client(store, config), config });
+    stopSweep = () => { stopLocalSweep(); beacon?.stop(); };
     withSockets = true;
   }
 
