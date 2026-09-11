@@ -11,9 +11,9 @@
 
 - The app's bundled server hosts the session API, the live relay, and the built UI, all on `:3010`.
 - The Electron window loads `http://localhost:3010` — so it talks to its **own** server.
-- Another machine points its app at the host with the **接続先サーバー** field in the 参加 / 作成 dialog.
+- **No one needs to type an address.** Every app on `ROLE=local` quietly UDP-broadcasts itself on the LAN and listens for others doing the same. The 参加 dialog lists other machines it's heard by name as clickable chips, and auto-selects one if there's only one — the **接続先サーバー** field is a manual fallback (different subnet, firewalled), not the normal path.
 
-Session state is in memory — a meeting ends when the host closes the app. (On Azure it will survive; that's the difference that motivated the cloud move.)
+Session state is in memory — a meeting ends when the host closes the app. (On Azure it will survive; that's the difference that motivated the cloud move. On Azure the address is also automatic, baked into the build — discovery is specifically a LAN-testing convenience.)
 
 ---
 
@@ -31,14 +31,11 @@ Output: `release/GanttChartEditor Setup <version>.exe` (Windows NSIS). Install i
 
 ---
 
-## 2. Find the host's LAN address
+## 2. Firewall (only thing to check up front)
 
-On the machine that will host:
+Discovery and joining both need the host reachable on the LAN. The first time, Windows will prompt for **Node.js** — allow it on the **Private** network (or open UDP `41237` + TCP `3010` manually) on every machine that will host.
 
-- Start the app, load a schedule (ファイル → 開く), then **ファイル → オンラインセッションを作成** — the dialog shows **他の参加者は次のアドレスを…** with lines like `http://192.168.1.5:3010`. That's what teammates type.
-- Or run `ipconfig` and take the IPv4 address; the port is always `3010`.
-
-If teammates can't reach it: allow **Node.js** through Windows Defender Firewall on the **Private** network on the host (or open TCP `3010`).
+If you ever need the host's address by hand (discovery didn't find it, different subnet): ファイル → オンラインセッションを作成 shows **他の参加者は次のアドレスを…**, e.g. `http://192.168.1.5:3010` — or `ipconfig` for the IPv4 address (port is always `3010`).
 
 ---
 
@@ -53,7 +50,7 @@ If teammates can't reach it: allow **Node.js** through Windows Defender Firewall
 **Each participant**
 
 1. ファイル → **オンラインセッションに参加**.
-2. **接続先サーバー** = `http://<host-ip>:3010` → the list fills with the host's sessions.
+2. If only the host is on the LAN, **接続先サーバー auto-fills** and the list shows the host's sessions immediately. With more than one machine around, click its name under 「同じネットワークで見つかったPC」 instead — no typing either way. (Manual entry is still there as a fallback.)
 3. Enter 表示名 (remembered next time), pick 編集 / 閲覧のみ, select the session row, click **参加**.
 4. Edit together — changes propagate in ~1 s.
 
@@ -66,8 +63,8 @@ If teammates can't reach it: allow **Node.js** through Windows Defender Firewall
 ## 4. What to verify
 
 - [ ] Installer builds and installs on 2+ machines
-- [ ] Host creates a session; the create dialog shows its `http://<ip>:3010` address
-- [ ] A participant enters that address, sees the session listed, joins
+- [ ] Host creates a session; the create dialog shows its `http://<ip>:3010` address (fallback path)
+- [ ] A participant's join dialog discovers the host by name and lists its session, with no address typed
 - [ ] Bar drags / date edits / undo-redo sync both ways within ~1 s
 - [ ] 表示名 is pre-filled on the participant's second join
 - [ ] Lock from a non-creator freezes editing for everyone; unlock restores it
