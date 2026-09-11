@@ -471,7 +471,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         };
       }
       if (newEnvConfig) {
-        const remove = (list: { id: string }[], ids: string[] | undefined) =>
+        const remove = <T extends { id: string }>(list: T[], ids: string[] | undefined): T[] =>
           ids && ids.length > 0 ? list.filter(x => !ids.includes(x.id)) : list;
         newEnvConfig = {
           workflowList: remove(newEnvConfig.workflowList, envConfigIds.workflowList),
