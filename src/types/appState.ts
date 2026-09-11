@@ -250,6 +250,11 @@ export type ActionType =
   | { type: 'RECORD_UNDO_ENTRY'; payload: UndoEntry }
   | { type: 'CONSUME_UNDO_ENTRY' }
   | { type: 'CONSUME_REDO_ENTRY' }
+  // Dispatched by UndoRedoButtons.tsx / useKeyboardShortcuts.ts. Handled
+  // entirely inside AppContext.tsx's dispatch wrapper (Task 5) — never
+  // reach the reducer.
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
   | { type: 'RESTORE_ASSIGNMENT_FIELDS'; payload: { assignmentId: string; updates: Partial<ScheduleData['assignmentList'][0]> }[] }
   | { type: 'REMOVE_WORKFLOW_TASKS_BY_ID'; payload: string[] }
   | { type: 'RESTORE_WORKER_UNAVAILABLE_DATES'; payload: { workerId: string; unavailableDates: unknown[] } }

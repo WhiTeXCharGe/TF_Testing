@@ -4,11 +4,13 @@ import {
   DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER,
 } from '../types/appState';
 import { reducer } from './reducer';
+import { captureUndoEntry, hasConflict, buildRevertAction } from './undoEntries';
 import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
   sendCollabLock, sendCollabUnlock, openSession, parseSessionId,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
+import { generateId } from '../utils/id';
 
 const initialState: AppState = {
   envConfig: null,
@@ -75,10 +77,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Outgoing: apply locally as normal, and if we're an editor in an active
   // session, also forward data-mutating actions to the server. UNDO/REDO are
-  // client-local snapshot-stack operations (see reducer.ts) — a late joiner's
-  // stack only has what happened since they joined, so we forward the
-  // resulting schedule instead of the bare token, and everyone converges on
-  // the same content regardless of their own undo history.
+  // own-action, conflict-aware: each records a per-entry UndoEntry (see
+  // undoEntries.ts) describing exactly what changed, so undoing/redoing it
+  // later can check whether anyone else has touched the same object since
+  // and forward the specific reverted action instead of a whole-schedule
+  // snapshot.
   const dispatch: Dispatch<ActionType> = useCallback((action: ActionType) => {
     // Loading a file mid-session would silently swap this client's document
     // while everyone else keeps editing the old one — real corruption.
@@ -104,20 +107,79 @@ export function AppProvider({ children }: { children: ReactNode }) {
       rawDispatch({ type: 'SET_ERROR', payload: UI.collabDisconnectedEditBlockedError });
       return;
     }
+
     if (action.type === 'UNDO' || action.type === 'REDO') {
-      const before = stateRef.current;
-      rawDispatch(action);
-      if (before.session?.role === 'edit') {
-        const resulting = action.type === 'UNDO'
-          ? before.undoStack[before.undoStack.length - 1]
-          : before.redoStack[before.redoStack.length - 1];
-        if (resulting) sendCollabAction('SET_SCHEDULE', resulting);
+      const direction = action.type === 'UNDO' ? 'undo' : 'redo';
+      const pending = direction === 'undo' ? stateRef.current.myPendingUndo : stateRef.current.myPendingRedo;
+      const entry = pending[pending.length - 1];
+      if (!entry) return;
+
+      // Solo mode: nobody else could have touched anything, so revert
+      // unconditionally — no conflict check, no error message, no server
+      // round-trip. Same behavior solo mode already has today, just
+      // implemented via captured entries instead of a snapshot stack.
+      if (!stateRef.current.session) {
+        const revertAction = buildRevertAction(entry, stateRef.current, direction);
+        if (!revertAction) return;
+        rawDispatch(revertAction);
+        rawDispatch({ type: direction === 'undo' ? 'CONSUME_UNDO_ENTRY' : 'CONSUME_REDO_ENTRY' });
+        return;
+      }
+
+      if (hasConflict(entry, stateRef.current, direction)) {
+        rawDispatch({ type: 'SET_ERROR', payload: direction === 'undo' ? UI.undoBlockedError : UI.redoBlockedError });
+        return;
+      }
+      const revertAction = buildRevertAction(entry, stateRef.current, direction);
+      if (!revertAction) {
+        rawDispatch({ type: 'SET_ERROR', payload: direction === 'undo' ? UI.undoBlockedError : UI.redoBlockedError });
+        return;
+      }
+      rawDispatch(revertAction);
+      rawDispatch({ type: direction === 'undo' ? 'CONSUME_UNDO_ENTRY' : 'CONSUME_REDO_ENTRY' });
+      if (isSyncingEdit) {
+        sendCollabAction(revertAction.type, (revertAction as { payload?: unknown }).payload);
       }
       return;
     }
-    rawDispatch(action);
-    if (stateRef.current.session?.role === 'edit' && SYNCABLE_ACTION_TYPES.has(action.type)) {
-      sendCollabAction(action.type, (action as { payload?: unknown }).payload);
+
+    // ADD_ASSIGNMENT and MERGE_DATA can create brand-new assignments —
+    // assign their stable _id here, once, before either capture or the real
+    // dispatch see them, so both agree on the same id.
+    let effectiveAction = action;
+    if (action.type === 'ADD_ASSIGNMENT' && !action.payload._id) {
+      effectiveAction = { ...action, payload: { ...action.payload, _id: generateId() } };
+    } else if (action.type === 'MERGE_DATA' && action.payload.schedule) {
+      effectiveAction = {
+        ...action,
+        payload: {
+          ...action.payload,
+          schedule: {
+            ...action.payload.schedule,
+            assignmentList: action.payload.schedule.assignmentList.map(a => (a._id ? a : { ...a, _id: generateId() })),
+          },
+        },
+      };
+    }
+
+    // Undo/redo tracking: solo mode captures unconditionally (nothing else
+    // could have touched anything); an active session only captures for an
+    // edit-role participant. A view-role participant never reaches here with
+    // a mutating action type in the first place — every control that could
+    // dispatch one is already gated by isReadOnly — so `!isSyncingEdit` here
+    // can only mean solo mode, matching the `!stateRef.current.session` check.
+    const shouldCapture = SYNCABLE_ACTION_TYPES.has(effectiveAction.type) && (!stateRef.current.session || isSyncingEdit);
+    const capturedEntry = shouldCapture
+      ? captureUndoEntry(effectiveAction.type, (effectiveAction as { payload?: unknown }).payload, stateRef.current)
+      : null;
+
+    rawDispatch(effectiveAction);
+
+    if (capturedEntry) {
+      rawDispatch({ type: 'RECORD_UNDO_ENTRY', payload: capturedEntry });
+    }
+    if (isSyncingEdit && SYNCABLE_ACTION_TYPES.has(effectiveAction.type)) {
+      sendCollabAction(effectiveAction.type, (effectiveAction as { payload?: unknown }).payload);
     }
   }, []);
 

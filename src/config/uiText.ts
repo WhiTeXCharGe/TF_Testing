@@ -288,6 +288,8 @@ export const UI = {
   collabActiveLoadBlockedError: 'セッション中はファイルを読み込めません。先にセッションを終了してください。',
   collabDisconnectedEditBlockedError: 'サーバーに接続されていないため変更を反映できません。',
   collabLockedEditBlockedError: 'このセッションはロックされているため編集できません。',
+  undoBlockedError: '他の参加者がこの対象を変更したため、元に戻せません。',
+  redoBlockedError: '他の参加者がこの対象を変更したため、やり直せません。',
   savedMessage: '保存しました',
   saveFailedMessage: (msg: string) => `保存失敗: ${msg}`,
   excelExportedMessage: 'Excelエクスポートしました',

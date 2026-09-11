@@ -118,46 +118,6 @@ it('skips re-applying the baseline for the session creator', async () => {
   expect(screen.getByTestId('session-role')).toHaveTextContent('edit');
 });
 
-it('forwards undo as the resulting SET_SCHEDULE snapshot, not the bare UNDO token', async () => {
-  mockJoin((_isCreator, cb) => {
-    cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
-    cb.onStatusChange('connected');
-  });
-
-  renderApp();
-  await act(async () => { await userEvent.click(screen.getByText('join')); });
-  await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
-
-  await userEvent.click(screen.getByRole('button', { name: 'edit' }));
-  mockedCollab.sendCollabAction.mockClear();
-
-  await userEvent.click(screen.getByText('undo'));
-
-  expect(mockedCollab.sendCollabAction).toHaveBeenCalledWith('SET_SCHEDULE', SCHEDULE);
-  expect(mockedCollab.sendCollabAction).not.toHaveBeenCalledWith('UNDO', undefined);
-});
-
-it('forwards redo as the resulting SET_SCHEDULE snapshot, not the bare REDO token', async () => {
-  mockJoin((_isCreator, cb) => {
-    cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
-    cb.onStatusChange('connected');
-  });
-
-  renderApp();
-  await act(async () => { await userEvent.click(screen.getByText('join')); });
-  await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
-
-  await userEvent.click(screen.getByRole('button', { name: 'edit' }));
-  await userEvent.click(screen.getByText('undo'));
-  mockedCollab.sendCollabAction.mockClear();
-
-  await userEvent.click(screen.getByText('redo'));
-
-  const editedSchedule: ScheduleData = { ...SCHEDULE, planRange: { startDate: '2026-02-01', endDate: '2026-02-28' } };
-  expect(mockedCollab.sendCollabAction).toHaveBeenCalledWith('SET_SCHEDULE', editedSchedule);
-  expect(mockedCollab.sendCollabAction).not.toHaveBeenCalledWith('REDO', undefined);
-});
-
 it('does not forward actions when joined as a view-only participant', async () => {
   mockJoin((_isCreator, cb) => cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []));
 
@@ -279,4 +239,92 @@ it('flips to read-only and blocks edits when a session-status lock arrives', asy
   await userEvent.click(screen.getByRole('button', { name: 'edit' }));
   expect(mockedCollab.sendCollabAction).not.toHaveBeenCalled();
   expect(screen.getByTestId('error-message')).toHaveTextContent(UI.collabLockedEditBlockedError);
+});
+
+describe('own-action, conflict-aware undo/redo', () => {
+  const RICH_SCHEDULE: ScheduleData = {
+    planRange: { startDate: '2026-01-01', endDate: '2026-01-31' },
+    workflowTaskList: [
+      {
+        id: 'wt1', workflow: 'wf1',
+        phaseTaskList: [
+          {
+            id: 'pt1', phase: 'p1', startDate: '2026-01-01', endDate: '2026-01-15',
+            operationTaskList: [{ id: 'ot1', operation: 'op1', workloadHours: 10, colorCode: 'red' }],
+          },
+        ],
+      },
+    ],
+    assignmentList: [
+      { worker: 'w1', operationTask: 'ot1', startDate: '2026-01-01', endDate: '2026-01-05', planFlexibility: 'Flexible', workDateList: [] },
+    ],
+  };
+
+  it('undoes my own later edits freely, but blocks on an edit whose object someone else touched since — reproduces the design doc scenario', async () => {
+    let capturedOnAction: ((a: { type: string; payload: unknown }) => void) | null = null;
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: RICH_SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      capturedOnAction = cb.onAction;
+      cb.onStatusChange('connected');
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+    // "userA": P1 move O1, P2 move O1 again, P3 color O4 (a different object), P4 add O5 (a brand-new assignment)
+    act(() => capturedApi!.dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: 0, updates: { startDate: '2026-01-02' } } })); // P1
+    act(() => capturedApi!.dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: 0, updates: { startDate: '2026-01-03' } } })); // P2
+    act(() => capturedApi!.dispatch({ type: 'UPDATE_OPERATION_TASK_COLOR', payload: { operationTaskId: 'ot1', colorCode: 'green' } })); // P3
+    act(() => capturedApi!.dispatch({ type: 'ADD_ASSIGNMENT', payload: { worker: 'w1', operationTask: 'ot1', startDate: '2026-01-10', endDate: '2026-01-11', planFlexibility: 'Flexible', workDateList: [] } })); // P4
+
+    // "userB": a remote edit to the SAME object as P2 (O1), arriving over the wire via the real applyRemoteAction path.
+    act(() => capturedOnAction!({ type: 'UPDATE_ASSIGNMENT', payload: { index: 0, updates: { startDate: '2026-01-20' } } }));
+
+    // Undo P4 (add O5) — untouched, must succeed: assignment count back to 1.
+    act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+    expect(capturedApi!.state.schedule!.assignmentList).toHaveLength(1);
+
+    // Undo P3 (O4 color) — untouched, must succeed.
+    act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+    expect(capturedApi!.state.schedule!.workflowTaskList[0].phaseTaskList[0].operationTaskList[0].colorCode).toBe('red');
+
+    // Undo P2 (O1) — but "userB" touched O1 since — must be BLOCKED, nothing changes.
+    const startDateNow = capturedApi!.state.schedule!.assignmentList[0].startDate;
+    act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+    expect(capturedApi!.state.schedule!.assignmentList[0].startDate).toBe(startDateNow);
+    expect(screen.getByTestId('error-message')).toHaveTextContent(UI.undoBlockedError);
+
+    // Clicking Undo again re-checks the SAME entry — blocked again, no silent cascade to P1.
+    act(() => capturedApi!.dispatch({ type: 'SET_ERROR', payload: null }));
+    act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+    expect(capturedApi!.state.schedule!.assignmentList[0].startDate).toBe(startDateNow);
+    expect(screen.getByTestId('error-message')).toHaveTextContent(UI.undoBlockedError);
+  });
+
+  it('a safe undo forwards the revert action to the server, same as any normal edit', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: RICH_SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onStatusChange('connected');
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+    act(() => capturedApi!.dispatch({ type: 'UPDATE_OPERATION_TASK_COLOR', payload: { operationTaskId: 'ot1', colorCode: 'blue' } }));
+    mockedCollab.sendCollabAction.mockClear();
+    act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+    expect(mockedCollab.sendCollabAction).toHaveBeenCalledWith('UPDATE_OPERATION_TASK_COLOR', { operationTaskId: 'ot1', colorCode: 'red' });
+  });
+
+  it('solo mode (no session) keeps working: undo/redo apply and revert locally with no server involvement', async () => {
+    renderApp();
+    await userEvent.click(screen.getByText('load')); // LOAD_FILES with the shared empty SCHEDULE/ENV_CONFIG fixtures — solo mode doesn't need RICH_SCHEDULE
+    await userEvent.click(screen.getByRole('button', { name: 'edit' })); // UPDATE_PLAN_RANGE, from the existing button
+    expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-02-01');
+    await userEvent.click(screen.getByText('undo'));
+    expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01');
+    await userEvent.click(screen.getByText('redo'));
+    expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-02-01');
+    expect(mockedCollab.sendCollabAction).not.toHaveBeenCalled();
+  });
 });
