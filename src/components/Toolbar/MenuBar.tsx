@@ -81,12 +81,22 @@ export function MenuBar() {
     }
   };
 
+  const openSessionDialog = (kind: 'join' | 'create' | 'info') => {
+    dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
+    setOpenMenu(null);
+  };
+
   const menus: MenuDef[] = [
     {
       id: 'file',
       label: UI.fileMenu,
       items: [
         { label: UI.open, shortcut: 'Ctrl+O', action: openFileDialog, disabled: !!state.session },
+        { separator: true },
+        // Online session entry lives here now — 参加 / 作成 are separate dialogs;
+        // the 共同編集 menu only appears once you're actually in a session.
+        { label: UI.fileMenuJoinSession, action: () => openSessionDialog('join'), disabled: !!state.session },
+        { label: UI.fileMenuCreateSession, action: () => openSessionDialog('create'), disabled: !!state.session },
         { separator: true },
         { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave },
         { label: UI.saveAs, shortcut: 'Ctrl+Shift+S', action: saveFileAs, disabled: !canSave },
@@ -96,19 +106,16 @@ export function MenuBar() {
     },
     { id: 'edit', label: UI.editMenu, items: [] },
     { id: 'view', label: UI.viewMenu, items: [] },
-    {
-      id: 'collab',
-      label: UI.collabMenu,
-      items: state.session
-        ? [
-            { label: UI.sessionInfoItem, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'list' }); setOpenMenu(null); } },
+    ...(state.session
+      ? [{
+          id: 'collab',
+          label: UI.collabMenu,
+          items: [
+            { label: UI.sessionInfoItem, action: () => openSessionDialog('info') },
             { label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } },
-          ]
-        : [
-            { label: UI.sessionListTab, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'list' }); setOpenMenu(null); } },
-            { label: UI.sessionCreateTab, action: () => { dispatch({ type: 'OPEN_SESSION_DIALOG', payload: 'create' }); setOpenMenu(null); } },
           ],
-    },
+        }]
+      : []),
     { id: 'help', label: UI.helpMenu, items: [] },
   ];
 

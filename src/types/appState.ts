@@ -98,8 +98,13 @@ export interface SessionSummary {
   status: SessionStatus;
   createdAt: number;
   lastActivityAt: number;
+  /** When someone last joined; the list is sorted on this (most recent first). */
+  lastJoinAt: number | null;
   participantCount: number | null;
 }
+
+/** Which online-session dialog is open (all mutually exclusive). */
+export type SessionDialogKind = 'join' | 'create' | 'info';
 
 export interface SessionBaseline {
   schedule: ScheduleData;
@@ -157,8 +162,8 @@ export interface AppState {
   // Live collaboration session (see services/collabService.ts). null when not
   // in a session — solo editing/viewing is unaffected either way.
   session: SessionState | null;
-  isSessionDialogOpen: boolean;
-  sessionDialogTab: 'list' | 'create';
+  // Which online-session dialog is open (join / create / info), or null.
+  sessionDialog: SessionDialogKind | null;
 }
 
 export type ActionType =
@@ -219,6 +224,6 @@ export type ActionType =
   | { type: 'SET_SESSION_CONNECTION_STATUS'; payload: SessionConnectionStatus }
   | { type: 'SET_SESSION_STATUS'; payload: SessionStatus }
   | { type: 'SET_SESSION_PARTICIPANTS'; payload: SessionParticipant[] }
-  | { type: 'OPEN_SESSION_DIALOG'; payload: 'list' | 'create' }
+  | { type: 'OPEN_SESSION_DIALOG'; payload: SessionDialogKind }
   | { type: 'CLOSE_SESSION_DIALOG' }
   | { type: 'SET_SESSION_NAME'; payload: string };

@@ -40,8 +40,7 @@ const initialState: AppState = {
   showFlightStints: false,
   scrollToSelectedAssignment: false,
   session: null,
-  isSessionDialogOpen: false,
-  sessionDialogTab: 'list',
+  sessionDialog: null,
 };
 
 // Reducer actions that mutate schedule/envConfig content and must reach every

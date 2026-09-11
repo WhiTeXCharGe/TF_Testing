@@ -588,10 +588,10 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return state.session ? { ...state, session: { ...state.session, participants: action.payload } } : state;
 
     case 'OPEN_SESSION_DIALOG':
-      return { ...state, isSessionDialogOpen: true, sessionDialogTab: action.payload };
+      return { ...state, sessionDialog: action.payload };
 
     case 'CLOSE_SESSION_DIALOG':
-      return { ...state, isSessionDialogOpen: false };
+      return { ...state, sessionDialog: null };
 
     case 'SET_SESSION_NAME':
       return state.session ? { ...state, session: { ...state.session, name: action.payload } } : state;

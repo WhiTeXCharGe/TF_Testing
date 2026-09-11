@@ -69,8 +69,7 @@ const BASE_STATE: AppState = {
   showFlightStints: false,
   scrollToSelectedAssignment: false,
   session: null,
-  isSessionDialogOpen: false,
-  sessionDialogTab: 'start' as const,
+  sessionDialog: null,
 };
 
 // ── SWITCH_VIEW ───────────────────────────────────────────────────────────────
@@ -341,17 +340,18 @@ describe('SET_SESSION_PARTICIPANTS', () => {
 });
 
 describe('OPEN_SESSION_DIALOG / CLOSE_SESSION_DIALOG', () => {
-  it('opens on the start tab and closes', () => {
-    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'start' });
-    expect(opened.isSessionDialogOpen).toBe(true);
-    expect(opened.sessionDialogTab).toBe('start');
+  it('opens the requested dialog and closes to null', () => {
+    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'join' });
+    expect(opened.sessionDialog).toBe('join');
     const closed = reducer(opened, { type: 'CLOSE_SESSION_DIALOG' });
-    expect(closed.isSessionDialogOpen).toBe(false);
+    expect(closed.sessionDialog).toBeNull();
   });
 
-  it('opens on the join tab when asked', () => {
-    const opened = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'join' });
-    expect(opened.sessionDialogTab).toBe('join');
+  it('switches straight between kinds', () => {
+    const create = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'create' });
+    expect(create.sessionDialog).toBe('create');
+    const info = reducer(create, { type: 'OPEN_SESSION_DIALOG', payload: 'info' });
+    expect(info.sessionDialog).toBe('info');
   });
 });
 

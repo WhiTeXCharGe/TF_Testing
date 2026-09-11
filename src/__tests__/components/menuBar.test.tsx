@@ -16,28 +16,31 @@ import { MenuBar } from '../../components/Toolbar/MenuBar';
 // at all, since export behavior isn't what this file tests.
 jest.mock('../../services/excelExportService', () => ({ exportScheduleToExcel: jest.fn() }));
 
-function Harness() {
+function Harness({ withSession = true }: { withSession?: boolean }) {
   const { dispatch } = useAppContext();
   useEffect(() => {
-    dispatch({
-      type: 'SET_SESSION',
-      payload: {
-        id: 's1',
-        name: 'My Session',
-        role: 'edit',
-        connectionStatus: 'connected',
-        participants: [{ id: 'p1', name: 'Alice', role: 'edit' }],
-      },
-    });
+    if (withSession) {
+      dispatch({
+        type: 'SET_SESSION',
+        payload: {
+          id: 's1',
+          name: 'My Session',
+          role: 'edit',
+          connectionStatus: 'connected',
+          status: 'open',
+          participants: [{ id: 'p1', name: 'Alice', role: 'edit' }],
+        },
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return null;
 }
 
-function renderMenuBar() {
+function renderMenuBar(withSession = true) {
   return render(
     <AppProvider>
-      <Harness />
+      <Harness withSession={withSession} />
       <MenuBar />
     </AppProvider>,
   );
@@ -70,4 +73,23 @@ it('still shows the participant list on click (existing behavior preserved)', as
   renderMenuBar();
   await user.click(screen.getByText(/人が参加中/));
   expect(screen.getByText('Alice')).toBeInTheDocument();
+});
+
+describe('online-session menu placement', () => {
+  it('with no session: ファイル menu offers join + create, and 共同編集 is not shown', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(false);
+    expect(screen.queryByText('共同編集')).not.toBeInTheDocument();
+    await user.click(screen.getByText('ファイル'));
+    expect(screen.getByText('オンラインセッションに参加')).toBeInTheDocument();
+    expect(screen.getByText('オンラインセッションを作成')).toBeInTheDocument();
+  });
+
+  it('in a session: the 共同編集 menu appears with セッション情報 + セッションを終了', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true);
+    await user.click(screen.getByText('共同編集'));
+    expect(screen.getByText('セッション情報')).toBeInTheDocument();
+    expect(screen.getByText('セッションを終了')).toBeInTheDocument();
+  });
 });
