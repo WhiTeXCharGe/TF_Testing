@@ -181,11 +181,11 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
     case 'MERGE_DATA': {
       const p = payload as { schedule?: ScheduleData; envConfig?: EnvConfig };
       const after = computeAfter(before, { type, payload } as ActionType);
-      const addedWorkflowTaskIds = p.schedule
-        ? after.schedule!.workflowTaskList.map(wt => wt.id).filter(id => !before.schedule?.workflowTaskList.some(wt => wt.id === id))
+      const addedWorkflowTaskIds = p.schedule && after.schedule && before.schedule
+        ? after.schedule.workflowTaskList.map(wt => wt.id).filter(id => !before.schedule!.workflowTaskList.some(wt => wt.id === id))
         : [];
-      const addedAssignmentIds = p.schedule
-        ? after.schedule!.assignmentList.map(a => a._id).filter((id): id is string => !!id && !before.schedule?.assignmentList.some(a => a._id === id))
+      const addedAssignmentIds = p.schedule && after.schedule && before.schedule
+        ? after.schedule.assignmentList.map(a => a._id).filter((id): id is string => !!id && !before.schedule!.assignmentList.some(a => a._id === id))
         : [];
       const listNames = ['workflowList', 'fabList', 'regionList', 'customerCompanyList', 'workerCompanyList', 'workerList'] as const;
       const addedEnvConfigIds: Record<string, string[]> = {};

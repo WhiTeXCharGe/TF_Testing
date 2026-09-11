@@ -249,4 +249,11 @@ describe('MERGE_DATA', () => {
       expect(entry.addedEnvConfigIds.workerList).toEqual(['w2']);
     }
   });
+
+  it('does not crash when merging a schedule into a state with no schedule loaded yet', () => {
+    const stateWithNoSchedule: AppState = { ...STATE, schedule: null };
+    const payload = { schedule: { ...SCHEDULE, workflowTaskList: [{ id: 'wt2', workflow: 'wf2', phaseTaskList: [] }] } };
+    expect(() => captureUndoEntry('MERGE_DATA', payload, stateWithNoSchedule)).not.toThrow();
+    expect(captureUndoEntry('MERGE_DATA', payload, stateWithNoSchedule)).toBeNull();
+  });
 });
