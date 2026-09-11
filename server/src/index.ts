@@ -8,16 +8,17 @@ import { pathToFileURL } from 'node:url';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
-import { createLocalCollabRouter } from './routes/collab.js';
 import { createCollabSocketServer } from './collab/collabSocket.js';
 import { createInternalRouter } from './routes/internal.js';
 import { internalAuth } from './internalAuth.js';
 import { isLocalOrLanOrigin } from './lanOrigin.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { makeStorage } from './collab/storage/index.js';
-import { createSessionStore } from './collab/sessionStore.js';
+import { createSessionStore, type SessionStore } from './collab/sessionStore.js';
 import { createAca1App } from './aca1/app.js';
 import { createAca2Client } from './aca1/aca2Client.js';
+import { createSessionApiRouter } from './aca1/sessionApi.js';
+import { createInProcessAca2Client } from './aca1/inProcessAca2.js';
 import { startSweep } from './aca1/sweep.js';
 
 export interface RunningServer {
@@ -25,9 +26,16 @@ export interface RunningServer {
   close: () => Promise<void>;
 }
 
-// ROLE=local — today's Electron/LAN relay: every route, sockets, static
-// hosting. Session state is in-memory (config defaults STORAGE=memory here).
-function buildLocalApp(storage: ReturnType<typeof makeStorage>): express.Express {
+// ROLE=local — the desktop app / LAN host: every local-file route, static
+// hosting, AND a self-contained ACA1 session API + ACA2 relay on the one
+// port. Session state is in-memory by default (a meeting ends when the host
+// closes the app). Other machines on the LAN point their app at
+// http://<host-ip>:<port>.
+function buildLocalApp(
+  storage: ReturnType<typeof makeStorage>,
+  store: SessionStore,
+  config: AppConfig,
+): express.Express {
   const app = express();
   app.use(cors({
     // No Origin (packaged Electron / curl) or a LAN origin only. Reflecting
@@ -40,7 +48,11 @@ function buildLocalApp(storage: ReturnType<typeof makeStorage>): express.Express
   app.use('/api', constraintsRouter);
   app.use('/api', handoffRouter);
   app.use('/api', networkInfoRouter);
-  app.use('/api', createLocalCollabRouter({ storage }));
+
+  // Online-collaboration session API, backed by an in-process ACA2 (same
+  // store the socket relay below uses).
+  const aca2 = createInProcessAca2Client(store, config);
+  app.use('/api', createSessionApiRouter({ storage, aca2, config }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, role: 'local', server: 'gantt-editor-api', time: new Date().toISOString() });
@@ -102,7 +114,8 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
     app = buildAca2App(store, config);
     withSockets = true;
   } else {
-    app = buildLocalApp(storage);
+    app = buildLocalApp(storage, store, config);
+    stopSweep = startSweep({ storage, aca2: createInProcessAca2Client(store, config), config });
     withSockets = true;
   }
 

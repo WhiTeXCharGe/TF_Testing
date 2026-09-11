@@ -4,6 +4,7 @@
 import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
+  getServerUrl, setServerUrl,
 } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
@@ -128,6 +129,38 @@ it('listSessions returns the sessions array', async () => {
   }) as never;
   const list = await listSessions();
   expect(list).toEqual([{ id: 's1', name: 'A', status: 'open', participantCount: 2 }]);
+});
+
+describe('server URL override (desktop / LAN host)', () => {
+  afterEach(() => setServerUrl(''));
+
+  it('get/set round-trips through localStorage; blank clears it', () => {
+    expect(getServerUrl()).toBe('');
+    setServerUrl('http://192.168.1.9:3010/');
+    expect(getServerUrl()).toBe('http://192.168.1.9:3010'); // trailing slash trimmed
+    setServerUrl('');
+    expect(getServerUrl()).toBe('');
+  });
+
+  it('directs API calls to the override host', async () => {
+    setServerUrl('http://10.0.0.4:3010');
+    const seen: string[] = [];
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      seen.push(url);
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, sessions: [] }) });
+    }) as never;
+    await listSessions();
+    expect(seen[0]).toBe('http://10.0.0.4:3010/api/sessions');
+  });
+
+  it('rewrites a loopback relayUrl to the override host, keeping the relay port', async () => {
+    setServerUrl('http://10.0.0.4:3010');
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, json: async () => ({ ok: true, relayUrl: 'http://localhost:3010', status: 'open' }),
+    }) as never;
+    const res = await openSession('abc');
+    expect(res.relayUrl).toBe('http://10.0.0.4:3010');
+  });
 });
 
 it('createSessionFromYaml parses the files client-side and posts a JSON baseline', async () => {

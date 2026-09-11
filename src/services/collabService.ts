@@ -28,23 +28,52 @@ export interface JoinCallbacks {
 // time, absent under jest (guarded by `typeof`). Empty string in dev/LAN.
 declare const __ACA1_URL__: string | undefined;
 
-// ACA1 (session API) base URL. In dev/LAN it defaults to the current host on
-// the mock's ACA1 port; a build sets VITE_ACA1_URL to the deployed ACA1.
-function aca1Base(): string {
-  const configured = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
-  if (configured) return configured.replace(/\/+$/, '');
-  return `${window.location.protocol}//${window.location.hostname}:4000`;
+// Runtime override: the desktop app / LAN host address a participant types in
+// the join dialog. Blank = talk to this app's own bundled server (the
+// packaged Electron window loads it from the same origin).
+const SERVER_URL_KEY = 'gantt.collab.serverUrl';
+
+export function getServerUrl(): string {
+  try {
+    return localStorage.getItem(SERVER_URL_KEY) ?? '';
+  } catch {
+    return '';
+  }
 }
 
-// ACA1 records its own reachable URL as PUBLIC_RELAY_URL. Locally that is
-// http://localhost:4010, which is wrong for a LAN participant — rewrite the
-// loopback host to whatever host actually loaded this page. A real Azure FQDN
-// has no loopback host and is left untouched.
+export function setServerUrl(url: string): void {
+  try {
+    const trimmed = url.trim().replace(/\/+$/, '');
+    if (trimmed) localStorage.setItem(SERVER_URL_KEY, trimmed);
+    else localStorage.removeItem(SERVER_URL_KEY);
+  } catch {
+    /* storage disabled — ignore */
+  }
+}
+
+// ACA1 (session API) base URL, most-specific first:
+//   1. runtime override (join-dialog "接続先サーバー")
+//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1)
+//   3. this app's own origin (packaged Electron / a LAN browser on the host)
+function aca1Base(): string {
+  const runtime = getServerUrl();
+  if (runtime) return runtime;
+  const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
+  if (built) return built.replace(/\/+$/, '');
+  return window.location.origin;
+}
+
+// ACA1 records its reachable URL as PUBLIC_RELAY_URL; in local/LAN mode that
+// is a loopback address. Swap the loopback host for the host we actually
+// reached ACA1 on, keeping the relay's own port. A real Azure FQDN has no
+// loopback host and is left untouched.
 function rewriteLoopback(url: string): string {
   try {
     const u = new URL(url);
     if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
-      u.hostname = window.location.hostname;
+      const target = new URL(aca1Base());
+      u.protocol = target.protocol;
+      u.hostname = target.hostname;
     }
     return u.toString().replace(/\/+$/, '');
   } catch {
@@ -126,6 +155,24 @@ export async function fetchSessionName(sessionId: string): Promise<string | null
   } catch {
     return null;
   }
+}
+
+// LAN IPs of the machine running this app's server (local/desktop mode only —
+// 404s and returns [] on Azure). Shown to a host so they can tell teammates
+// which address to enter as 接続先サーバー.
+export async function fetchLanAddresses(): Promise<string[]> {
+  try {
+    const res = await fetch(`${aca1Base()}/api/network-info`);
+    const data = await readJson(res);
+    return Array.isArray(data.addresses) ? (data.addresses as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The base URL the app is currently pointed at (own origin, or the override). */
+export function currentServerBase(): string {
+  return aca1Base();
 }
 
 // ---- live relay (Socket.IO to ACA2) -------------------------------------

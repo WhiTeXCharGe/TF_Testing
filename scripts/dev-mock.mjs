@@ -16,7 +16,9 @@ const SHARED = {
 const targets = [
   ['aca1', 'npm', ['--prefix', 'server', 'run', 'dev'], { ...SHARED, ROLE: 'aca1', PORT: '4000', ACA2_URL: 'http://localhost:4010' }],
   ['aca2', 'npm', ['--prefix', 'server', 'run', 'dev'], { ...SHARED, ROLE: 'aca2', PORT: '4010', PUBLIC_RELAY_URL: 'http://localhost:4010' }],
-  ['web', 'npm', ['run', 'dev'], {}],
+  // The mock runs ACA1 on :4000; bake that in so the dev client talks to it
+  // instead of falling back to its own origin.
+  ['web', 'npm', ['run', 'dev'], { VITE_ACA1_URL: 'http://localhost:4000' }],
 ];
 
 let shuttingDown = false;

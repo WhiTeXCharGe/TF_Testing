@@ -57,6 +57,8 @@ beforeEach(() => {
   ]);
   mockedCollab.openSession.mockResolvedValue({ relayUrl: 'http://relay:4010', status: 'open' });
   mockedCollab.joinCollabRoom.mockImplementation(() => () => {});
+  mockedCollab.getServerUrl.mockReturnValue('');
+  mockedCollab.fetchLanAddresses.mockResolvedValue([]);
 });
 
 describe('join dialog', () => {
@@ -96,6 +98,21 @@ describe('join dialog', () => {
     localStorage.setItem('gantt.collab.displayName', 'Dave');
     renderDialog({ kind: 'join' });
     expect(await screen.findByDisplayValue('Dave')).toBeInTheDocument();
+  });
+
+  it('shows a 接続先サーバー field pre-filled from the stored server URL', async () => {
+    mockedCollab.getServerUrl.mockReturnValue('http://192.168.1.9:3010');
+    renderDialog({ kind: 'join' });
+    expect(await screen.findByDisplayValue('http://192.168.1.9:3010')).toBeInTheDocument();
+  });
+
+  it('applying a new server URL persists it and refetches', async () => {
+    renderDialog({ kind: 'join' });
+    const field = await screen.findByPlaceholderText(/空欄 = このPC/);
+    await userEvent.type(field, 'http://10.0.0.4:3010');
+    await userEvent.tab(); // blur → apply
+    expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://10.0.0.4:3010');
+    await waitFor(() => expect(mockedCollab.listSessions).toHaveBeenCalledTimes(2));
   });
 });
 

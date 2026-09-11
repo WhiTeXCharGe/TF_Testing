@@ -43,10 +43,25 @@ describe('ROLE switch', () => {
     expect((await fetch(`http://localhost:${srv.port}/api/network-info`)).status).toBe(404);
   });
 
-  it('local serves the collab + network-info routes and role local', async () => {
+  it('local serves the local-file routes AND a self-contained session API', async () => {
     const srv = await start({ ROLE: 'local' });
     const health = await fetch(`http://localhost:${srv.port}/api/health`).then((r) => r.json());
     expect(health).toMatchObject({ ok: true, role: 'local' });
     expect((await fetch(`http://localhost:${srv.port}/api/network-info`)).status).toBe(200);
+
+    // ACA1 session API is mounted here too (no separate ACA1/ACA2 processes).
+    const listed = await fetch(`http://localhost:${srv.port}/api/sessions`).then((r) => r.json());
+    expect(listed).toEqual({ ok: true, sessions: [] });
+
+    const created = await fetch(`http://localhost:${srv.port}/api/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Local', schedule: { a: 1 }, envConfig: { b: 2 }, currentView: 'worker' }),
+    }).then((r) => r.json());
+    expect(created).toMatchObject({ ok: true });
+
+    const opened = await fetch(`http://localhost:${srv.port}/api/sessions/${created.sessionId}/open`, { method: 'POST' })
+      .then((r) => r.json());
+    expect(opened).toMatchObject({ ok: true, status: 'open' });
   });
 });

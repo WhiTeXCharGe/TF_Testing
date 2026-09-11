@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { listSessions } from '../../services/collabService';
+import { listSessions, getServerUrl, setServerUrl, fetchLanAddresses } from '../../services/collabService';
 import { loadDisplayName, saveDisplayName } from '../../lib/collabPrefs';
 import { SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
 import { UI } from '../../config/uiText';
@@ -50,6 +50,28 @@ function formatJoinTime(ts: number | null): string {
   return new Date(ts).toLocaleString('ja-JP', {
     month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+}
+
+// Which server (desktop-app host) to talk to. Blank = this app's own server.
+function ServerUrlField({ onApply }: { onApply?: () => void }) {
+  const [value, setValue] = useState(() => getServerUrl());
+  const apply = () => {
+    setServerUrl(value);
+    onApply?.();
+  };
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionServerUrlLabel}</div>
+      <input
+        placeholder={UI.sessionServerUrlPlaceholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
+        style={inputStyle}
+      />
+    </div>
+  );
 }
 
 // ---- 参加 (session list + join) -------------------------------------------
@@ -108,6 +130,8 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
   return (
     <div>
       <div style={titleStyle}>{UI.sessionJoinDialogTitle}</div>
+
+      <ServerUrlField onApply={() => { setSessions(null); setSelectedId(null); setPage(0); refresh(); }} />
 
       <input
         placeholder={UI.sessionNamePlaceholder}
@@ -219,6 +243,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     <div>
       <div style={titleStyle}>{UI.sessionCreateDialogTitle}</div>
 
+      <ServerUrlField />
       <input placeholder={UI.sessionNamePlaceholder} value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
       <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
 
@@ -253,6 +278,14 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
 function SessionInfoDialog({ onClose }: { onClose: () => void }) {
   const { state, lockSession, unlockSession, leaveCollabSession } = useAppContext();
   const session = state.session;
+  const [lanAddrs, setLanAddrs] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLanAddresses().then((a) => { if (!cancelled) setLanAddrs(a); });
+    return () => { cancelled = true; };
+  }, []);
+
   if (!session) return null;
 
   return (
@@ -262,6 +295,15 @@ function SessionInfoDialog({ onClose }: { onClose: () => void }) {
         <span>{UI.sessionNameLabel}: {session.name}</span>
         <StatusChip status={session.status} />
       </div>
+
+      {lanAddrs.length > 0 && (
+        <div style={{ fontSize: 11, color: '#555', backgroundColor: '#f1f8e9', border: '1px solid #c5e1a5', borderRadius: 4, padding: '6px 10px', marginBottom: 12 }}>
+          <div style={{ marginBottom: 2 }}>{UI.sessionJoinAddressHint}</div>
+          {lanAddrs.map((ip) => (
+            <div key={ip} style={{ fontFamily: 'monospace' }}>{`http://${ip}:${window.location.port || '3010'}`}</div>
+          ))}
+        </div>
+      )}
 
       {session.status === 'lock' && (
         <div style={{ fontSize: 12, color: '#e65100', backgroundColor: '#fff3e0', border: '1px solid #ffcc80', borderRadius: 4, padding: '6px 10px', marginBottom: 12 }}>

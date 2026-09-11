@@ -383,6 +383,9 @@ export const UI = {
   // Online session — File-menu entries + separate join/create dialogs (ACA1)
   fileMenuJoinSession: 'オンラインセッションに参加',
   fileMenuCreateSession: 'オンラインセッションを作成',
+  sessionServerUrlLabel: '接続先サーバー',
+  sessionServerUrlPlaceholder: '空欄 = このPC（例: http://192.168.1.5:3010）',
+  sessionJoinAddressHint: '他の参加者は次のアドレスを「接続先サーバー」に入力します:',
   sessionJoinDialogTitle: 'オンラインセッションに参加',
   sessionCreateDialogTitle: 'オンラインセッションを作成',
   sessionListTab: 'セッション一覧',
