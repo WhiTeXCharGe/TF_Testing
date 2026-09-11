@@ -15,7 +15,7 @@ import { SidePanel } from '../../components/SidePanel/SidePanel';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
 import { UI } from '../../config/uiText';
-import { SessionRole, SessionStatus } from '../../types/appState';
+import { SessionRole, SessionStatus, UndoEntry } from '../../types/appState';
 
 const ENV_CONFIG: EnvConfig = {
   workflowList: [],
@@ -59,17 +59,28 @@ const SCHEDULE: ScheduleData = {
   ],
 };
 
-// Loads a schedule (making one edit first, so the undo stack is non-empty),
-// selects the sole assignment (so SidePanel's WorkTaskPanel renders), then
-// optionally attaches a session with the given role. SET_SESSION (unlike
-// SET_SESSION_BASELINE) doesn't clear the undo stack, so the prior edit
-// survives — letting the undo/redo test assert on role alone, not on
-// whether there's anything to undo.
+const DUMMY_UNDO_ENTRY: UndoEntry = {
+  kind: 'assignmentPatch',
+  id: 'a1',
+  fieldsBefore: { description: '' },
+  fieldsAfter: { description: 'edited' },
+};
+
+// Loads a schedule, makes one edit, then records an undo entry for it
+// directly (RECORD_UNDO_ENTRY — the reducer no longer records entries as a
+// side effect of mutating dispatches; that bookkeeping now lives in
+// AppContext.tsx's dispatch wrapper, see Task 5) so myPendingUndo is
+// non-empty, then selects the sole assignment (so SidePanel's WorkTaskPanel
+// renders), then optionally attaches a session with the given role.
+// SET_SESSION (unlike SET_SESSION_BASELINE) doesn't clear the undo stack, so
+// the prior edit survives — letting the undo/redo test assert on role
+// alone, not on whether there's anything to undo.
 function Harness({ role, status = 'open', children }: { role?: SessionRole; status?: SessionStatus; children: React.ReactNode }) {
   const { state, dispatch } = useAppContext();
   useEffect(() => {
     dispatch({ type: 'LOAD_FILES', payload: { schedule: SCHEDULE, envConfig: ENV_CONFIG, envPath: 'e.yaml', schedulePath: 's.yaml' } });
     dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: 0, updates: { description: 'edited' } } });
+    dispatch({ type: 'RECORD_UNDO_ENTRY', payload: DUMMY_UNDO_ENTRY });
     dispatch({ type: 'SELECT_ASSIGNMENT', payload: 0 });
     if (role) {
       dispatch({ type: 'SET_SESSION', payload: { id: 's1', name: 'Test Session', role, connectionStatus: 'connected', participants: [], status } });

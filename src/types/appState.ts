@@ -3,6 +3,23 @@ import { EnvConfig } from './envConfig';
 
 export type ViewMode = 'device' | 'worker';
 
+// One recorded entry per edit YOU made (never someone else's — inbound
+// remote actions never produce one; see AppContext.tsx's dispatch wrapper
+// and GanttChartEditor_LiveCollabEdit_UndoConflictDesign20260904.md §2-3).
+// A discriminated union because each action type's "what changed" shape is
+// different; src/context/undoEntries.ts is the only place that interprets
+// these.
+export type UndoEntry =
+  | { kind: 'fieldPatch'; type: ActionType['type']; idPayload: Record<string, unknown>; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown> }
+  | { kind: 'assignmentPatch'; id: string; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown> }
+  | { kind: 'assignmentAdd'; id: string; added: ScheduleData['assignmentList'][0] }
+  | { kind: 'assignmentDelete'; id: string; deleted: ScheduleData['assignmentList'][0] }
+  | { kind: 'planRange'; before: { startDate: string; endDate: string }; after: { startDate: string; endDate: string } }
+  | { kind: 'workerUnavailable'; workerId: string; before: unknown[]; after: unknown[] }
+  | { kind: 'bulkFlex'; changes: { assignmentId: string; before: string; after: string }[] }
+  | { kind: 'addWorkflowTasks'; addedIds: string[] }
+  | { kind: 'mergeData'; addedWorkflowTaskIds: string[]; addedAssignmentIds: string[]; addedEnvConfigIds: Record<string, string[]> };
+
 export interface Violation {
   type:
     | 'WORKER_UNAVAILABLE'
@@ -130,8 +147,8 @@ export interface AppState {
   schedule: ScheduleData | null;
   currentView: ViewMode;
   violations: Violation[];
-  undoStack: ScheduleData[];
-  redoStack: ScheduleData[];
+  myPendingUndo: UndoEntry[];
+  myPendingRedo: UndoEntry[];
   selectedAssignmentIndex: number | null;
   selectedUnavailableInfo: { workerId: string; startDate: string; endDate: string } | null;
   expandedDeviceIds: Set<string>;
@@ -172,8 +189,6 @@ export type ActionType =
   | { type: 'UPDATE_PLAN_RANGE'; payload: { startDate: string; endDate: string } }
   | { type: 'SWITCH_VIEW'; payload: ViewMode }
   | { type: 'SET_VIOLATIONS'; payload: Violation[] }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
   | { type: 'SELECT_ASSIGNMENT'; payload: number | null }
   | { type: 'TOGGLE_DEVICE'; payload: string }
   | { type: 'SET_WORKER_VIEW_FILTER'; payload: Partial<WorkerViewFilter> }
@@ -226,4 +241,16 @@ export type ActionType =
   | { type: 'SET_SESSION_PARTICIPANTS'; payload: SessionParticipant[] }
   | { type: 'OPEN_SESSION_DIALOG'; payload: SessionDialogKind }
   | { type: 'CLOSE_SESSION_DIALOG' }
-  | { type: 'SET_SESSION_NAME'; payload: string };
+  | { type: 'SET_SESSION_NAME'; payload: string }
+  // Internal to the undo/redo mechanism (src/context/undoEntries.ts,
+  // AppContext.tsx's dispatch wrapper) — never dispatched directly by UI
+  // code. UNDO/REDO tokens (dispatched by UndoRedoButtons.tsx and
+  // useKeyboardShortcuts.ts) are intercepted by the wrapper before they
+  // reach the reducer at all; see Task 5.
+  | { type: 'RECORD_UNDO_ENTRY'; payload: UndoEntry }
+  | { type: 'CONSUME_UNDO_ENTRY' }
+  | { type: 'CONSUME_REDO_ENTRY' }
+  | { type: 'RESTORE_ASSIGNMENT_FIELDS'; payload: { assignmentId: string; updates: Partial<ScheduleData['assignmentList'][0]> }[] }
+  | { type: 'REMOVE_WORKFLOW_TASKS_BY_ID'; payload: string[] }
+  | { type: 'RESTORE_WORKER_UNAVAILABLE_DATES'; payload: { workerId: string; unavailableDates: unknown[] } }
+  | { type: 'REVERT_MERGE'; payload: { workflowTaskIds: string[]; assignmentIds: string[]; envConfigIds: Record<string, string[]> } };

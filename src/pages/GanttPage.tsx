@@ -39,7 +39,7 @@ function getScheduleExtent(schedule: ScheduleData): { startDate: string; endDate
 
 export function GanttPage() {
   const { state, dispatch } = useAppContext();
-  const { schedule, currentView, undoStack, redoStack, selectedAssignmentIndex, selectedUnavailableInfo } = state;
+  const { schedule, currentView, myPendingUndo, myPendingRedo, selectedAssignmentIndex, selectedUnavailableInfo } = state;
   const showStickySidePanel = !!schedule && currentView === 'worker' &&
     (selectedAssignmentIndex !== null || selectedUnavailableInfo !== null);
 
@@ -114,8 +114,8 @@ export function GanttPage() {
         <span style={{ color: schedule ? '#6bbf8a' : '#7a9bb5' }}>
           {schedule ? `✓ ${UI.fileLoaded}` : UI.noFile}
         </span>
-        <span>{UI.undoCount(undoStack.length)}</span>
-        <span>{UI.redoCount(redoStack.length)}</span>
+        <span>{UI.undoCount(myPendingUndo.length)}</span>
+        <span>{UI.redoCount(myPendingRedo.length)}</span>
         <span style={{ marginLeft: 'auto', color: '#4a6a85' }}>{UI.shortcutHint}</span>
       </div>
 

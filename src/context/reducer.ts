@@ -14,11 +14,6 @@ function withAssignmentIds(assignmentList: ScheduleData['assignmentList']): Sche
   return assignmentList.map(a => (a._id ? a : { ...a, _id: generateId() }));
 }
 
-function pushUndo(state: AppState): ScheduleData[] {
-  if (!state.schedule) return state.undoStack;
-  return [...state.undoStack, state.schedule].slice(-MAX_UNDO_STACK);
-}
-
 const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function getWeekdayName(dateStr: string): string {
@@ -62,8 +57,8 @@ export function reducer(state: AppState, action: ActionType): AppState {
         currentSchedulePath: action.payload.schedulePath,
         savedScheduleRef: schedule,
         savedEnvConfigRef: action.payload.envConfig,
-        undoStack: [],
-        redoStack: [],
+        myPendingUndo: [],
+        myPendingRedo: [],
         violations: [],
         selectedAssignmentIndex: null,
         workerViewFilter: { ...DEFAULT_WORKER_VIEW_FILTER },
@@ -77,14 +72,12 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return {
         ...state,
         schedule: action.payload,
-        undoStack: pushUndo(state),
-        redoStack: [],
       };
 
     case 'UPDATE_PLAN_RANGE': {
       if (!state.schedule) return state;
       const newSchedule: ScheduleData = { ...state.schedule, planRange: action.payload };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'SWITCH_VIEW':
@@ -93,25 +86,30 @@ export function reducer(state: AppState, action: ActionType): AppState {
     case 'SET_VIOLATIONS':
       return { ...state, violations: action.payload };
 
-    case 'UNDO': {
-      if (state.undoStack.length === 0 || !state.schedule) return state;
-      const prev = state.undoStack[state.undoStack.length - 1];
+    case 'RECORD_UNDO_ENTRY':
       return {
         ...state,
-        schedule: prev,
-        undoStack: state.undoStack.slice(0, -1),
-        redoStack: [...state.redoStack, state.schedule].slice(-MAX_UNDO_STACK),
+        myPendingUndo: [...state.myPendingUndo, action.payload].slice(-MAX_UNDO_STACK),
+        myPendingRedo: [],
+      };
+
+    case 'CONSUME_UNDO_ENTRY': {
+      if (state.myPendingUndo.length === 0) return state;
+      const entry = state.myPendingUndo[state.myPendingUndo.length - 1];
+      return {
+        ...state,
+        myPendingUndo: state.myPendingUndo.slice(0, -1),
+        myPendingRedo: [...state.myPendingRedo, entry].slice(-MAX_UNDO_STACK),
       };
     }
 
-    case 'REDO': {
-      if (state.redoStack.length === 0) return state;
-      const next = state.redoStack[state.redoStack.length - 1];
+    case 'CONSUME_REDO_ENTRY': {
+      if (state.myPendingRedo.length === 0) return state;
+      const entry = state.myPendingRedo[state.myPendingRedo.length - 1];
       return {
         ...state,
-        schedule: next,
-        undoStack: state.schedule ? [...state.undoStack, state.schedule].slice(-MAX_UNDO_STACK) : state.undoStack,
-        redoStack: state.redoStack.slice(0, -1),
+        myPendingRedo: state.myPendingRedo.slice(0, -1),
+        myPendingUndo: [...state.myPendingUndo, entry].slice(-MAX_UNDO_STACK),
       };
     }
 
@@ -242,7 +240,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         wt.id === workflowTaskId ? { ...wt, colorCode } : wt,
       );
       const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'UPDATE_OPERATION_TASK_COLOR': {
@@ -258,7 +256,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         })),
       }));
       const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'TOGGLE_DEVICE': {
@@ -295,7 +293,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         ...state.schedule,
         assignmentList: [...state.schedule.assignmentList, action.payload],
       };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'UPDATE_ASSIGNMENT': {
@@ -305,7 +303,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
       const newList = [...state.schedule.assignmentList];
       newList[index] = { ...newList[index], ...updates };
       const newSchedule: ScheduleData = { ...state.schedule, assignmentList: newList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'UPDATE_OPERATION_TASK': {
@@ -327,7 +325,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         };
       });
       const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'UPDATE_PHASE_TASK': {
@@ -343,7 +341,7 @@ export function reducer(state: AppState, action: ActionType): AppState {
         };
       });
       const newSchedule: ScheduleData = { ...state.schedule, workflowTaskList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
     }
 
     case 'DELETE_ASSIGNMENT': {
@@ -353,8 +351,6 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return {
         ...state,
         schedule: newSchedule,
-        undoStack: pushUndo(state),
-        redoStack: [],
         selectedAssignmentIndex: null,
       };
     }
@@ -369,7 +365,16 @@ export function reducer(state: AppState, action: ActionType): AppState {
         return { ...a, planFlexibility: flex };
       });
       const newSchedule: ScheduleData = { ...state.schedule, assignmentList: newList };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
+    }
+
+    case 'RESTORE_ASSIGNMENT_FIELDS': {
+      if (!state.schedule) return state;
+      const byId = new Map(action.payload.map(c => [c.assignmentId, c.updates]));
+      const assignmentList = state.schedule.assignmentList.map(a =>
+        a._id && byId.has(a._id) ? { ...a, ...byId.get(a._id) } : a,
+      );
+      return { ...state, schedule: { ...state.schedule, assignmentList } };
     }
 
     case 'SET_ERROR':
@@ -408,7 +413,14 @@ export function reducer(state: AppState, action: ActionType): AppState {
         ...state.schedule,
         workflowTaskList: [...state.schedule.workflowTaskList, ...toAdd],
       };
-      return { ...state, schedule: newSchedule, undoStack: pushUndo(state), redoStack: [] };
+      return { ...state, schedule: newSchedule };
+    }
+
+    case 'REMOVE_WORKFLOW_TASKS_BY_ID': {
+      if (!state.schedule) return state;
+      const idsToRemove = new Set(action.payload);
+      const workflowTaskList = state.schedule.workflowTaskList.filter(wt => !idsToRemove.has(wt.id));
+      return { ...state, schedule: { ...state.schedule, workflowTaskList } };
     }
 
     case 'MERGE_DATA': {
@@ -438,14 +450,40 @@ export function reducer(state: AppState, action: ActionType): AppState {
         };
       }
 
-      const scheduleChanged = newSchedule !== state.schedule;
       return {
         ...state,
         schedule: newSchedule,
         envConfig: newEnvConfig,
-        undoStack: scheduleChanged ? pushUndo(state) : state.undoStack,
-        redoStack: scheduleChanged ? [] : state.redoStack,
       };
+    }
+
+    case 'REVERT_MERGE': {
+      const { workflowTaskIds, assignmentIds, envConfigIds } = action.payload;
+      let newSchedule = state.schedule;
+      let newEnvConfig = state.envConfig;
+      if (newSchedule && (workflowTaskIds.length > 0 || assignmentIds.length > 0)) {
+        const wtSet = new Set(workflowTaskIds);
+        const asSet = new Set(assignmentIds);
+        newSchedule = {
+          ...newSchedule,
+          workflowTaskList: newSchedule.workflowTaskList.filter(wt => !wtSet.has(wt.id)),
+          assignmentList: newSchedule.assignmentList.filter(a => !a._id || !asSet.has(a._id)),
+        };
+      }
+      if (newEnvConfig) {
+        const remove = (list: { id: string }[], ids: string[] | undefined) =>
+          ids && ids.length > 0 ? list.filter(x => !ids.includes(x.id)) : list;
+        newEnvConfig = {
+          workflowList: remove(newEnvConfig.workflowList, envConfigIds.workflowList),
+          fabList: remove(newEnvConfig.fabList, envConfigIds.fabList),
+          regionList: remove(newEnvConfig.regionList, envConfigIds.regionList),
+          customerCompanyList: remove(newEnvConfig.customerCompanyList, envConfigIds.customerCompanyList),
+          workerCompanyList: remove(newEnvConfig.workerCompanyList, envConfigIds.workerCompanyList),
+          workerList: remove(newEnvConfig.workerList, envConfigIds.workerList),
+          transiteDayMap: newEnvConfig.transiteDayMap,
+        };
+      }
+      return { ...state, schedule: newSchedule, envConfig: newEnvConfig };
     }
 
     case 'SAVE_PATHS':
@@ -537,6 +575,15 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, envConfig: { ...state.envConfig, workerList } };
     }
 
+    case 'RESTORE_WORKER_UNAVAILABLE_DATES': {
+      if (!state.envConfig) return state;
+      const { workerId, unavailableDates } = action.payload;
+      const workerList = state.envConfig.workerList.map(w =>
+        w.id === workerId ? { ...w, unavailableDates: unavailableDates as typeof w.unavailableDates } : w,
+      );
+      return { ...state, envConfig: { ...state.envConfig, workerList } };
+    }
+
     case 'OPEN_CONSTRAINT_DIALOG':
       return { ...state, isConstraintDialogOpen: true };
 
@@ -578,8 +625,8 @@ export function reducer(state: AppState, action: ActionType): AppState {
         schedule,
         envConfig: action.payload.envConfig,
         currentView: action.payload.currentView,
-        undoStack: [],
-        redoStack: [],
+        myPendingUndo: [],
+        myPendingRedo: [],
         selectedAssignmentIndex: null,
         selectedUnavailableInfo: null,
         savedScheduleRef: schedule,

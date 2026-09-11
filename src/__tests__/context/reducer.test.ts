@@ -1,5 +1,5 @@
 import { reducer } from '../../context/reducer';
-import { AppState, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../../types/appState';
+import { AppState, UndoEntry, DEFAULT_WORKER_VIEW_FILTER, DEFAULT_MODULE_VIEW_FILTER, DEFAULT_WORKER_COLUMN_FILTER } from '../../types/appState';
 import { ScheduleData } from '../../types/schedule';
 import { EnvConfig } from '../../types/envConfig';
 import { generateId } from '../../utils/id';
@@ -45,8 +45,8 @@ const BASE_STATE: AppState = {
   schedule: EMPTY_SCHEDULE,
   currentView: 'worker',
   violations: [],
-  undoStack: [],
-  redoStack: [],
+  myPendingUndo: [],
+  myPendingRedo: [],
   selectedAssignmentIndex: null,
   selectedUnavailableInfo: null,
   expandedDeviceIds: new Set(),
@@ -116,21 +116,6 @@ describe('UPDATE_ASSIGNMENT', () => {
     });
     expect(next.schedule!.assignmentList[0].endDate).toBe('2025-09-10');
   });
-  it('pushes to undoStack', () => {
-    const next = reducer(BASE_STATE, {
-      type: 'UPDATE_ASSIGNMENT',
-      payload: { index: 0, updates: { endDate: '2025-09-10' } },
-    });
-    expect(next.undoStack).toHaveLength(1);
-  });
-  it('clears redoStack', () => {
-    const state = { ...BASE_STATE, redoStack: [EMPTY_SCHEDULE] };
-    const next = reducer(state, {
-      type: 'UPDATE_ASSIGNMENT',
-      payload: { index: 0, updates: { worker: 'w002' } },
-    });
-    expect(next.redoStack).toHaveLength(0);
-  });
   it('does nothing for out-of-bounds index', () => {
     const next = reducer(BASE_STATE, {
       type: 'UPDATE_ASSIGNMENT',
@@ -152,40 +137,45 @@ describe('DELETE_ASSIGNMENT', () => {
     const next = reducer(state, { type: 'DELETE_ASSIGNMENT', payload: 0 });
     expect(next.selectedAssignmentIndex).toBeNull();
   });
-  it('pushes to undoStack', () => {
-    const next = reducer(BASE_STATE, { type: 'DELETE_ASSIGNMENT', payload: 0 });
-    expect(next.undoStack).toHaveLength(1);
-  });
 });
 
-// ── UNDO / REDO ───────────────────────────────────────────────────────────────
+// ── Undo/redo bookkeeping (RECORD/CONSUME) ──────────────────────────────────
 
-describe('UNDO / REDO', () => {
-  it('UNDO restores previous schedule', () => {
-    const state = {
-      ...BASE_STATE,
-      undoStack: [{ ...EMPTY_SCHEDULE, planRange: { startDate: '2024-01-01', endDate: '2024-12-31' } }],
-    };
-    const next = reducer(state, { type: 'UNDO' });
-    expect(next.schedule!.planRange.startDate).toBe('2024-01-01');
+describe('RECORD_UNDO_ENTRY / CONSUME_UNDO_ENTRY / CONSUME_REDO_ENTRY', () => {
+  const ENTRY: UndoEntry = { kind: 'planRange', before: { startDate: '2025-01-01', endDate: '2025-01-31' }, after: { startDate: '2025-02-01', endDate: '2025-02-28' } };
+
+  it('RECORD_UNDO_ENTRY appends to myPendingUndo and clears myPendingRedo', () => {
+    const state = { ...BASE_STATE, myPendingRedo: [ENTRY] };
+    const next = reducer(state, { type: 'RECORD_UNDO_ENTRY', payload: ENTRY });
+    expect(next.myPendingUndo).toEqual([ENTRY]);
+    expect(next.myPendingRedo).toEqual([]);
   });
-  it('UNDO does nothing when undoStack is empty', () => {
-    const next = reducer(BASE_STATE, { type: 'UNDO' });
+
+  it('RECORD_UNDO_ENTRY caps at MAX_UNDO_STACK', () => {
+    const many = Array.from({ length: 100 }, () => ENTRY);
+    const state = { ...BASE_STATE, myPendingUndo: many };
+    const next = reducer(state, { type: 'RECORD_UNDO_ENTRY', payload: ENTRY });
+    expect(next.myPendingUndo).toHaveLength(100);
+  });
+
+  it('CONSUME_UNDO_ENTRY moves the most recent entry from myPendingUndo to myPendingRedo', () => {
+    const other: UndoEntry = { ...ENTRY, before: { startDate: '2025-03-01', endDate: '2025-03-31' } };
+    const state = { ...BASE_STATE, myPendingUndo: [ENTRY, other] };
+    const next = reducer(state, { type: 'CONSUME_UNDO_ENTRY' });
+    expect(next.myPendingUndo).toEqual([ENTRY]);
+    expect(next.myPendingRedo).toEqual([other]);
+  });
+
+  it('CONSUME_UNDO_ENTRY does nothing when myPendingUndo is empty', () => {
+    const next = reducer(BASE_STATE, { type: 'CONSUME_UNDO_ENTRY' });
     expect(next).toBe(BASE_STATE);
   });
-  it('REDO does nothing when redoStack is empty', () => {
-    const next = reducer(BASE_STATE, { type: 'REDO' });
-    expect(next).toBe(BASE_STATE);
-  });
-  it('UNDO / REDO round-trip preserves schedule', () => {
-    const afterUpdate = reducer(BASE_STATE, {
-      type: 'UPDATE_ASSIGNMENT',
-      payload: { index: 0, updates: { endDate: '2025-09-20' } },
-    });
-    const afterUndo = reducer(afterUpdate, { type: 'UNDO' });
-    expect(afterUndo.schedule!.assignmentList[0].endDate).toBe('2025-09-05');
-    const afterRedo = reducer(afterUndo, { type: 'REDO' });
-    expect(afterRedo.schedule!.assignmentList[0].endDate).toBe('2025-09-20');
+
+  it('CONSUME_REDO_ENTRY moves the most recent entry from myPendingRedo to myPendingUndo', () => {
+    const state = { ...BASE_STATE, myPendingRedo: [ENTRY] };
+    const next = reducer(state, { type: 'CONSUME_REDO_ENTRY' });
+    expect(next.myPendingRedo).toEqual([]);
+    expect(next.myPendingUndo).toEqual([ENTRY]);
   });
 });
 
@@ -300,10 +290,11 @@ describe('SET_SESSION', () => {
 
 describe('SET_SESSION_BASELINE', () => {
   it('replaces schedule/envConfig/currentView, resets undo/redo and selection', () => {
+    const ENTRY: UndoEntry = { kind: 'planRange', before: { startDate: '2025-01-01', endDate: '2025-01-31' }, after: { startDate: '2025-02-01', endDate: '2025-02-28' } };
     const state = {
       ...BASE_STATE,
-      undoStack: [EMPTY_SCHEDULE],
-      redoStack: [EMPTY_SCHEDULE],
+      myPendingUndo: [ENTRY],
+      myPendingRedo: [ENTRY],
       selectedAssignmentIndex: 0,
       selectedUnavailableInfo: { workerId: 'w001', startDate: '2025-09-01', endDate: '2025-09-02' },
     };
@@ -311,8 +302,8 @@ describe('SET_SESSION_BASELINE', () => {
     const next = reducer(state, { type: 'SET_SESSION_BASELINE', payload: { schedule: newSchedule, envConfig: EMPTY_ENV, currentView: 'device' } });
     expect(next.schedule?.planRange).toEqual(newSchedule.planRange);
     expect(next.currentView).toBe('device');
-    expect(next.undoStack).toEqual([]);
-    expect(next.redoStack).toEqual([]);
+    expect(next.myPendingUndo).toEqual([]);
+    expect(next.myPendingRedo).toEqual([]);
     expect(next.selectedAssignmentIndex).toBeNull();
     expect(next.selectedUnavailableInfo).toBeNull();
   });
