@@ -175,6 +175,28 @@ export function currentServerBase(): string {
   return aca1Base();
 }
 
+export interface LanHost {
+  name: string;
+  url: string;
+  lastSeenAt: number;
+}
+
+// Other GanttChartEditor desktop apps this machine's own server has heard on
+// the LAN (zero-config discovery — server/src/lan/discoveryBeacon.ts). Always
+// asks THIS app's own origin, independent of any 接続先サーバー override, since
+// discovery is about "what does my machine's neighbourhood look like" — not
+// about whichever remote server the user is currently browsing. Lets the join
+// dialog offer a clickable list instead of asking the user to type an address.
+export async function fetchLanHosts(): Promise<LanHost[]> {
+  try {
+    const res = await fetch(`${window.location.origin}/api/lan-hosts`);
+    const data = await readJson(res);
+    return Array.isArray(data.hosts) ? (data.hosts as LanHost[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 // ---- live relay (Socket.IO to ACA2) -------------------------------------
 
 let socket: Socket | null = null;

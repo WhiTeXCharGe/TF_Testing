@@ -59,6 +59,7 @@ beforeEach(() => {
   mockedCollab.joinCollabRoom.mockImplementation(() => () => {});
   mockedCollab.getServerUrl.mockReturnValue('');
   mockedCollab.fetchLanAddresses.mockResolvedValue([]);
+  mockedCollab.fetchLanHosts.mockResolvedValue([]);
 });
 
 describe('join dialog', () => {
@@ -113,6 +114,34 @@ describe('join dialog', () => {
     await userEvent.tab(); // blur → apply
     expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://10.0.0.4:3010');
     await waitFor(() => expect(mockedCollab.listSessions).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows discovered LAN hosts as clickable chips; clicking one applies it without typing', async () => {
+    mockedCollab.fetchLanHosts.mockResolvedValue([
+      { name: 'DESKTOP-HOST', url: 'http://192.168.1.9:3010', lastSeenAt: 1 },
+    ]);
+    renderDialog({ kind: 'join' });
+    const chip = await screen.findByRole('button', { name: 'DESKTOP-HOST' });
+    await userEvent.click(chip);
+    expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://192.168.1.9:3010');
+  });
+
+  it('auto-selects the server URL when exactly one host is discovered and the field is untouched', async () => {
+    mockedCollab.fetchLanHosts.mockResolvedValue([
+      { name: 'ONLY-ONE', url: 'http://192.168.1.9:3010', lastSeenAt: 1 },
+    ]);
+    renderDialog({ kind: 'join' });
+    await waitFor(() => expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://192.168.1.9:3010'));
+  });
+
+  it('does NOT auto-select in the create dialog (a host should stay on 空欄 = このPC)', async () => {
+    mockedCollab.fetchLanHosts.mockResolvedValue([
+      { name: 'ONLY-ONE', url: 'http://192.168.1.9:3010', lastSeenAt: 1 },
+    ]);
+    renderDialog({ kind: 'create' });
+    await screen.findByText('EnvConfig YAML');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockedCollab.setServerUrl).not.toHaveBeenCalled();
   });
 });
 

@@ -386,6 +386,7 @@ export const UI = {
   sessionServerUrlLabel: '接続先サーバー',
   sessionServerUrlPlaceholder: '空欄 = このPC（例: http://192.168.1.5:3010）',
   sessionJoinAddressHint: '他の参加者は次のアドレスを「接続先サーバー」に入力します:',
+  sessionDiscoveredLabel: '同じネットワークで見つかったPC:',
   sessionJoinDialogTitle: 'オンラインセッションに参加',
   sessionCreateDialogTitle: 'オンラインセッションを作成',
   sessionListTab: 'セッション一覧',

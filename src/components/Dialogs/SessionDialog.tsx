@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { listSessions, getServerUrl, setServerUrl, fetchLanAddresses } from '../../services/collabService';
+import {
+  listSessions, getServerUrl, setServerUrl, fetchLanAddresses, fetchLanHosts, LanHost,
+} from '../../services/collabService';
 import { loadDisplayName, saveDisplayName } from '../../lib/collabPrefs';
 import { SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
 import { UI } from '../../config/uiText';
@@ -53,12 +55,40 @@ function formatJoinTime(ts: number | null): string {
 }
 
 // Which server (desktop-app host) to talk to. Blank = this app's own server.
-function ServerUrlField({ onApply }: { onApply?: () => void }) {
+// Discovered LAN hosts (see lan/discoveryBeacon.ts on the server) render as
+// clickable chips so a joiner never has to type an address by hand; typing
+// stays available as a manual fallback (different subnet, firewalled, ...).
+function ServerUrlField({ onApply, autoSelectSingle = false }: { onApply?: () => void; autoSelectSingle?: boolean }) {
   const [value, setValue] = useState(() => getServerUrl());
-  const apply = () => {
-    setServerUrl(value);
+  const [hosts, setHosts] = useState<LanHost[]>([]);
+  const autoAppliedRef = useRef(false);
+
+  const apply = useCallback((url: string) => {
+    setValue(url);
+    setServerUrl(url);
     onApply?.();
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => void fetchLanHosts().then((found) => { if (!cancelled) setHosts(found); });
+    poll();
+    const timer = setInterval(poll, 4000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
+
+  // Zero-click case: exactly one other app found on the LAN and the field is
+  // still untouched (blank) — go straight there instead of making the user
+  // click. Only fires once, and only where join semantics want it.
+  useEffect(() => {
+    if (!autoSelectSingle || autoAppliedRef.current) return;
+    if (value === '' && hosts.length === 1) {
+      autoAppliedRef.current = true;
+      apply(hosts[0].url);
+    }
+  }, [autoSelectSingle, value, hosts, apply]);
+
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionServerUrlLabel}</div>
@@ -66,10 +96,28 @@ function ServerUrlField({ onApply }: { onApply?: () => void }) {
         placeholder={UI.sessionServerUrlPlaceholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onBlur={apply}
-        onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
+        onBlur={() => apply(value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') apply(value); }}
         style={inputStyle}
       />
+      {hosts.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: '#666' }}>{UI.sessionDiscoveredLabel}</span>
+          {hosts.map((h) => (
+            <button
+              key={h.url}
+              onClick={() => apply(h.url)}
+              style={{
+                fontSize: 11, padding: '2px 10px', borderRadius: 10, border: '1px solid #90caf9', cursor: 'pointer',
+                backgroundColor: h.url === value ? '#1976d2' : '#e3f2fd',
+                color: h.url === value ? '#fff' : '#1565c0',
+              }}
+            >
+              {h.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -131,7 +179,10 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
     <div>
       <div style={titleStyle}>{UI.sessionJoinDialogTitle}</div>
 
-      <ServerUrlField onApply={() => { setSessions(null); setSelectedId(null); setPage(0); refresh(); }} />
+      <ServerUrlField
+        autoSelectSingle
+        onApply={() => { setSessions(null); setSelectedId(null); setPage(0); refresh(); }}
+      />
 
       <input
         placeholder={UI.sessionNamePlaceholder}
