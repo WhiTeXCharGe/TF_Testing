@@ -153,3 +153,100 @@ describe('UPDATE_PLAN_RANGE', () => {
     expect(buildRevertAction(entry, after, 'undo')).toEqual({ type: 'UPDATE_PLAN_RANGE', payload: SCHEDULE.planRange });
   });
 });
+
+describe('unavailable-date actions (whole-field snapshot per worker)', () => {
+  it('MOVE_UNAVAILABLE_DATE captures the worker’s full unavailableDates before/after', () => {
+    const payload = { workerId: 'w1', oldDate: '2025-09-01', newDate: '2025-09-02' };
+    const withDate: AppState = { ...STATE, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], unavailableDates: [{ single: { days: ['2025-09-01'] } }] }] } };
+    const entry = captureUndoEntry('MOVE_UNAVAILABLE_DATE', payload, withDate)!;
+    expect(entry.kind).toBe('workerUnavailable');
+    if (entry.kind === 'workerUnavailable') {
+      expect(entry.workerId).toBe('w1');
+      expect(entry.before).toEqual([{ single: { days: ['2025-09-01'] } }]);
+      expect(entry.after).toEqual([{ single: { days: ['2025-09-02'] } }]);
+    }
+  });
+
+  it('blocks undo if someone else touched the same worker’s unavailable dates since', () => {
+    const payload = { workerId: 'w1', oldDate: '2025-09-01', newDate: '2025-09-02' };
+    const withDate: AppState = { ...STATE, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], unavailableDates: [{ single: { days: ['2025-09-01'] } }] }] } };
+    const entry = captureUndoEntry('MOVE_UNAVAILABLE_DATE', payload, withDate)!;
+    const after: AppState = { ...withDate, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], unavailableDates: [{ single: { days: ['2025-09-02'] } }] }] } };
+    expect(hasConflict(entry, after, 'undo')).toBe(false);
+    const touchedByOther: AppState = { ...withDate, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], unavailableDates: [{ single: { days: ['2025-09-03'] } }] }] } };
+    expect(hasConflict(entry, touchedByOther, 'undo')).toBe(true);
+    const revert = buildRevertAction(entry, after, 'undo');
+    expect(revert).toEqual({ type: 'RESTORE_WORKER_UNAVAILABLE_DATES', payload: { workerId: 'w1', unavailableDates: [{ single: { days: ['2025-09-01'] } }] } });
+  });
+});
+
+describe('BULK_UPDATE_FLEXIBILITY', () => {
+  it('captures old flexibility per affected assignment and reverts them together', () => {
+    const twoAssignments: ScheduleData = { ...SCHEDULE, assignmentList: [
+      { ...SCHEDULE.assignmentList[0] },
+      { _id: 'a2', worker: 'w1', operationTask: 'ot1', startDate: '2025-09-06', endDate: '2025-09-07', planFlexibility: 'Fixed', workDateList: [] },
+    ] };
+    const state: AppState = { ...STATE, schedule: twoAssignments };
+    const payload = { flexibility: 'Reluctant', target: 'all' as const };
+    const entry = captureUndoEntry('BULK_UPDATE_FLEXIBILITY', payload, state)!;
+    expect(entry).toEqual({ kind: 'bulkFlex', changes: [
+      { assignmentId: 'a1', before: 'Flexible', after: 'Reluctant' },
+      { assignmentId: 'a2', before: 'Fixed', after: 'Reluctant' },
+    ] });
+    const after: AppState = { ...state, schedule: { ...twoAssignments, assignmentList: twoAssignments.assignmentList.map(a => ({ ...a, planFlexibility: 'Reluctant' })) } };
+    expect(hasConflict(entry, after, 'undo')).toBe(false);
+    expect(buildRevertAction(entry, after, 'undo')).toEqual({
+      type: 'RESTORE_ASSIGNMENT_FIELDS',
+      payload: [
+        { assignmentId: 'a1', updates: { planFlexibility: 'Flexible' } },
+        { assignmentId: 'a2', updates: { planFlexibility: 'Fixed' } },
+      ],
+    });
+  });
+
+  it('blocks the whole undo if any one of the affected assignments was touched by someone else', () => {
+    const twoAssignments: ScheduleData = { ...SCHEDULE, assignmentList: [
+      { ...SCHEDULE.assignmentList[0] },
+      { _id: 'a2', worker: 'w1', operationTask: 'ot1', startDate: '2025-09-06', endDate: '2025-09-07', planFlexibility: 'Fixed', workDateList: [] },
+    ] };
+    const state: AppState = { ...STATE, schedule: twoAssignments };
+    const entry = captureUndoEntry('BULK_UPDATE_FLEXIBILITY', { flexibility: 'Reluctant', target: 'all' as const }, state)!;
+    const partiallyTouched: AppState = { ...state, schedule: { ...twoAssignments, assignmentList: [
+      { ...twoAssignments.assignmentList[0], planFlexibility: 'Reluctant' },
+      { ...twoAssignments.assignmentList[1], planFlexibility: 'Fixed' }, // someone reverted this one already / never got the bulk update
+    ] } };
+    expect(hasConflict(entry, partiallyTouched, 'undo')).toBe(true);
+  });
+});
+
+describe('ADD_WORKFLOW_TASKS', () => {
+  it('captures exactly the newly-added ids (dedup already applied by the reducer)', () => {
+    const payload = [{ id: 'wt2', workflow: 'wf2', phaseTaskList: [] }, { id: 'wt1', workflow: 'wf', phaseTaskList: [] }]; // wt1 already exists -> deduped
+    const entry = captureUndoEntry('ADD_WORKFLOW_TASKS', payload, STATE)!;
+    expect(entry).toEqual({ kind: 'addWorkflowTasks', addedIds: ['wt2'] });
+  });
+
+  it('reverts by removing exactly those ids', () => {
+    const payload = [{ id: 'wt2', workflow: 'wf2', phaseTaskList: [] }];
+    const entry = captureUndoEntry('ADD_WORKFLOW_TASKS', payload, STATE)!;
+    const after: AppState = { ...STATE, schedule: { ...SCHEDULE, workflowTaskList: [...SCHEDULE.workflowTaskList, payload[0]] } };
+    expect(hasConflict(entry, after, 'undo')).toBe(false);
+    expect(buildRevertAction(entry, after, 'undo')).toEqual({ type: 'REMOVE_WORKFLOW_TASKS_BY_ID', payload: ['wt2'] });
+  });
+});
+
+describe('MERGE_DATA', () => {
+  it('captures newly-added ids across schedule and envConfig', () => {
+    const payload = {
+      schedule: { ...SCHEDULE, workflowTaskList: [{ id: 'wt2', workflow: 'wf2', phaseTaskList: [] }], assignmentList: [{ _id: 'a2', worker: 'w2', operationTask: 'ot1', startDate: '2025-09-06', endDate: '2025-09-07', planFlexibility: 'Flexible' as const, workDateList: [] }] },
+      envConfig: { ...ENV, workerList: [{ id: 'w2', name: 'Worker Two', unavailableDates: [] }] },
+    };
+    const entry = captureUndoEntry('MERGE_DATA', payload, STATE)!;
+    expect(entry.kind).toBe('mergeData');
+    if (entry.kind === 'mergeData') {
+      expect(entry.addedWorkflowTaskIds).toEqual(['wt2']);
+      expect(entry.addedAssignmentIds).toEqual(['a2']);
+      expect(entry.addedEnvConfigIds.workerList).toEqual(['w2']);
+    }
+  });
+});
