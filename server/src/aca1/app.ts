@@ -24,6 +24,14 @@ export function createAca1App(deps: Aca1AppDeps): express.Express {
     res.json({ ok: true, role: 'aca1', time: new Date().toISOString() });
   });
 
+  // LAN auto-discovery (see server/src/lan/discoveryBeacon.ts) only exists
+  // for ROLE=local — ACA1 has a well-known URL already, so there's nothing to
+  // discover. Answering with an always-empty list (not 404) keeps the client
+  // able to call this route unconditionally without a role check of its own.
+  app.get('/api/lan-hosts', (_req, res) => {
+    res.json({ ok: true, hosts: [] });
+  });
+
   // Abuse guard on session creation only (reads/opens are cheap).
   const createLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,

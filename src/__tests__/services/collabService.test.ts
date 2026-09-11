@@ -4,7 +4,7 @@
 import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
-  getServerUrl, setServerUrl,
+  getServerUrl, setServerUrl, fetchLanHosts,
 } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
@@ -160,6 +160,23 @@ describe('server URL override (desktop / LAN host)', () => {
     }) as never;
     const res = await openSession('abc');
     expect(res.relayUrl).toBe('http://10.0.0.4:3010');
+  });
+
+  it('fetchLanHosts asks the resolved target, not always window.location.origin', async () => {
+    setServerUrl('http://10.0.0.4:3010');
+    const seen: string[] = [];
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      seen.push(url);
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, hosts: [{ name: 'X', url: 'http://10.0.0.5:3010', lastSeenAt: 1 }] }) });
+    }) as never;
+    const hosts = await fetchLanHosts();
+    expect(seen[0]).toBe('http://10.0.0.4:3010/api/lan-hosts');
+    expect(hosts).toEqual([{ name: 'X', url: 'http://10.0.0.5:3010', lastSeenAt: 1 }]);
+  });
+
+  it('fetchLanHosts resolves to [] rather than throwing when the target is unreachable', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED')) as never;
+    await expect(fetchLanHosts()).resolves.toEqual([]);
   });
 });
 

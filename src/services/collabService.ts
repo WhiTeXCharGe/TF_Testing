@@ -181,15 +181,18 @@ export interface LanHost {
   lastSeenAt: number;
 }
 
-// Other GanttChartEditor desktop apps this machine's own server has heard on
-// the LAN (zero-config discovery — server/src/lan/discoveryBeacon.ts). Always
-// asks THIS app's own origin, independent of any 接続先サーバー override, since
-// discovery is about "what does my machine's neighbourhood look like" — not
-// about whichever remote server the user is currently browsing. Lets the join
-// dialog offer a clickable list instead of asking the user to type an address.
+// Other GanttChartEditor desktop apps the server at aca1Base() has heard on
+// the LAN (zero-config discovery — server/src/lan/discoveryBeacon.ts). Uses
+// the same target resolution as every other call (override → build URL →
+// own origin) rather than always window.location.origin — that origin has no
+// server behind it at all in dev/Azure (Vite's dev proxy would blindly
+// forward to a fixed local port nothing is listening on, surfacing as a noisy
+// ECONNREFUSED). ACA1/ACA2 answer this route with an always-empty list (LAN
+// discovery isn't meaningful once there's a well-known server URL), so this
+// never errors — it's just an empty result off the LAN/local role.
 export async function fetchLanHosts(): Promise<LanHost[]> {
   try {
-    const res = await fetch(`${window.location.origin}/api/lan-hosts`);
+    const res = await fetch(`${aca1Base()}/api/lan-hosts`);
     const data = await readJson(res);
     return Array.isArray(data.hosts) ? (data.hosts as LanHost[]) : [];
   } catch {

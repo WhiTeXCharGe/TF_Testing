@@ -134,3 +134,10 @@ describe('GET /api/health', () => {
     expect(res.body).toMatchObject({ ok: true, role: 'aca1' });
   });
 });
+
+describe('GET /api/lan-hosts', () => {
+  it('is always an empty list on ACA1 (LAN discovery is local-role only), never a 404', async () => {
+    const res = await request(app).get('/api/lan-hosts').expect(200);
+    expect(res.body).toEqual({ ok: true, hosts: [] });
+  });
+});
