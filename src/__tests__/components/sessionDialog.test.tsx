@@ -78,7 +78,7 @@ describe('join dialog', () => {
     const joinBtn = screen.getByRole('button', { name: '参加' });
     expect(joinBtn).toBeDisabled();
 
-    await userEvent.type(screen.getByPlaceholderText('表示名を入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
     expect(joinBtn).toBeDisabled(); // still no selection
 
     await userEvent.click(screen.getByText('Weekly Plan'));
@@ -88,7 +88,7 @@ describe('join dialog', () => {
   it('joins the selected session and remembers the display name', async () => {
     renderDialog({ kind: 'join' });
     await screen.findByText('Weekly Plan');
-    await userEvent.type(screen.getByPlaceholderText('表示名を入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
     await userEvent.click(screen.getByText('Weekly Plan'));
     await userEvent.click(screen.getByRole('button', { name: '参加' }));
     await waitFor(() => expect(mockedCollab.openSession).toHaveBeenCalledWith('s1'));

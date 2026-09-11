@@ -15,7 +15,7 @@ describe('06 – Viewer Parity', () => {
     cy.contains('共同編集').click();
     cy.contains('セッションを開始').click();
     cy.get('input[placeholder="セッション名を入力"]').type('Viewer Parity Test');
-    cy.get('input[placeholder="表示名を入力"]').type('Editor');
+    cy.get('input[placeholder="Nicknameを入力"]').type('Editor');
     cy.contains('button', '開始する').click();
     cy.contains('セッション情報', { timeout: 8000 }).should('exist');
 
