@@ -1,5 +1,5 @@
-import { ScheduleData, PhaseTask } from './schedule';
-import { EnvConfig } from './envConfig';
+import { ScheduleData, PhaseTask, PlanFlexibility } from './schedule';
+import { EnvConfig, UnavailableDateEntry } from './envConfig';
 
 export type ViewMode = 'device' | 'worker';
 
@@ -15,8 +15,8 @@ export type UndoEntry =
   | { kind: 'assignmentAdd'; id: string; added: ScheduleData['assignmentList'][0] }
   | { kind: 'assignmentDelete'; id: string; deleted: ScheduleData['assignmentList'][0] }
   | { kind: 'planRange'; before: { startDate: string; endDate: string }; after: { startDate: string; endDate: string } }
-  | { kind: 'workerUnavailable'; workerId: string; before: unknown[]; after: unknown[] }
-  | { kind: 'bulkFlex'; changes: { assignmentId: string; before: string; after: string }[] }
+  | { kind: 'workerUnavailable'; workerId: string; before: UnavailableDateEntry[]; after: UnavailableDateEntry[] }
+  | { kind: 'bulkFlex'; changes: { assignmentId: string; before: PlanFlexibility; after: PlanFlexibility }[] }
   | { kind: 'addWorkflowTasks'; addedIds: string[] }
   | { kind: 'mergeData'; addedWorkflowTaskIds: string[]; addedAssignmentIds: string[]; addedEnvConfigIds: Record<string, string[]> };
 

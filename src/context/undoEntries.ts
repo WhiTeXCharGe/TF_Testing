@@ -8,8 +8,8 @@
 // calls these three functions.
 import { reducer } from './reducer';
 import { AppState, ActionType, UndoEntry } from '../types/appState';
-import { Assignment, ScheduleData } from '../types/schedule';
-import { EnvConfig } from '../types/envConfig';
+import { Assignment, ScheduleData, PlanFlexibility } from '../types/schedule';
+import { EnvConfig, UnavailableDateEntry } from '../types/envConfig';
 
 function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -153,7 +153,7 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
           const afterDates = after.envConfig?.workerList.find(w => w.id === workerId)?.unavailableDates;
           return beforeDates && afterDates && !deepEqual(beforeDates, afterDates) ? { workerId, before: beforeDates, after: afterDates } : null;
         })
-        .filter((x): x is { workerId: string; before: unknown[]; after: unknown[] } => x !== null);
+        .filter((x): x is { workerId: string; before: UnavailableDateEntry[]; after: UnavailableDateEntry[] } => x !== null);
       // Only ever one worker in practice for this UI's callers, but modeled
       // as "first changed worker" to keep the entry shape uniform with the
       // rest of this group rather than introducing a second multi-worker
@@ -169,7 +169,7 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
           if (!a._id || afterFlex === undefined || afterFlex === a.planFlexibility) return null;
           return { assignmentId: a._id, before: a.planFlexibility, after: afterFlex };
         })
-        .filter((x): x is { assignmentId: string; before: string; after: string } => x !== null);
+        .filter((x): x is { assignmentId: string; before: PlanFlexibility; after: PlanFlexibility } => x !== null);
       return changes.length > 0 ? { kind: 'bulkFlex', changes } : null;
     }
     case 'ADD_WORKFLOW_TASKS': {
