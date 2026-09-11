@@ -10,3 +10,5 @@ release/
 .worktrees/
 .superpowers/
 mock-blob/
+cypress/screenshots/
+cypress/videos/
