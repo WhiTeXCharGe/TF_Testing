@@ -70,18 +70,34 @@ export async function loadSessionRecord(s: StorageClient, id: string): Promise<S
   };
 }
 
+// writeStatus is read-modify-write, so concurrent callers for the same
+// session (e.g. markActivated from open racing markJoined from a socket join
+// landing moments later) must not overlap — besides a lost-update race, two
+// simultaneous renames onto the same status.json throw EPERM on Windows.
+// A per-id promise chain serializes them without blocking other sessions.
+const statusLocks = new Map<string, Promise<unknown>>();
+
+function withStatusLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const prior = statusLocks.get(id) ?? Promise.resolve();
+  const run = prior.then(fn, fn);
+  statusLocks.set(id, run.then(() => undefined, () => undefined));
+  return run;
+}
+
 export async function writeStatus(
   s: StorageClient, id: string, patch: Partial<SessionStatusRecord>,
 ): Promise<SessionStatusRecord> {
-  const current = (await s.getJson<SessionStatusRecord>(statusKey(id)))
-    ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: Date.now(), lastJoinAt: null };
-  const next: SessionStatusRecord = {
-    ...current,
-    ...patch,
-    lastActivityAt: patch.lastActivityAt ?? Date.now(),
-  };
-  await s.putJson(statusKey(id), next);
-  return next;
+  return withStatusLock(id, async () => {
+    const current = (await s.getJson<SessionStatusRecord>(statusKey(id)))
+      ?? { status: 'close' as const, relayInstance: null, relayUrl: null, lastActivityAt: Date.now(), lastJoinAt: null };
+    const next: SessionStatusRecord = {
+      ...current,
+      ...patch,
+      lastActivityAt: patch.lastActivityAt ?? Date.now(),
+    };
+    await s.putJson(statusKey(id), next);
+    return next;
+  });
 }
 
 export async function writeLog(s: StorageClient, id: string, log: LoggedAction[]): Promise<void> {

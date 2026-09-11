@@ -380,13 +380,16 @@ export const UI = {
   sessionCloseBtn: '閉じる',
   copyLinkBtn: 'コピー',
   copyLinkCopied: 'コピーしました',
-  // Online session — File-menu entries + separate join/create dialogs (ACA1)
+  // Online session — File-menu entries + separate join/create dialogs (ACA1).
+  // Finding the host is fully automatic (LAN discovery) — no address field
+  // anywhere in these dialogs; sessionPickHostLabel only appears when there's
+  // real ambiguity (more than one app found) and just needs a name clicked.
   fileMenuJoinSession: 'オンラインセッションに参加',
   fileMenuCreateSession: 'オンラインセッションを作成',
-  sessionServerUrlLabel: '接続先サーバー',
-  sessionServerUrlPlaceholder: '空欄 = このPC（例: http://192.168.1.5:3010）',
-  sessionJoinAddressHint: '他の参加者は次のアドレスを「接続先サーバー」に入力します:',
-  sessionDiscoveredLabel: '同じネットワークで見つかったPC:',
+  sessionPickHostLabel: '参加先を選んでください:',
+  sessionSearchingMessage: '検索中...',
+  sessionNoneFoundMessage: 'オンラインセッションが見つかりません。主催者のPCでアプリが起動しているか確認してください。',
+  sessionListUnreachableMessage: '接続できません。ネットワークを確認してください。',
   sessionJoinDialogTitle: 'オンラインセッションに参加',
   sessionCreateDialogTitle: 'オンラインセッションを作成',
   sessionListTab: 'セッション一覧',

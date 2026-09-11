@@ -101,24 +101,20 @@ describe('join dialog', () => {
     expect(await screen.findByDisplayValue('Dave')).toBeInTheDocument();
   });
 
-  it('shows a 接続先サーバー field pre-filled from the stored server URL', async () => {
+  it('has no visible or enterable server-address field anywhere in the dialog', async () => {
     mockedCollab.getServerUrl.mockReturnValue('http://192.168.1.9:3010');
     renderDialog({ kind: 'join' });
-    expect(await screen.findByDisplayValue('http://192.168.1.9:3010')).toBeInTheDocument();
+    await screen.findByText('Weekly Plan');
+    expect(screen.queryByDisplayValue('http://192.168.1.9:3010')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/空欄 = このPC/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/接続先サーバー/)).not.toBeInTheDocument();
   });
 
-  it('applying a new server URL persists it and refetches', async () => {
-    renderDialog({ kind: 'join' });
-    const field = await screen.findByPlaceholderText(/空欄 = このPC/);
-    await userEvent.type(field, 'http://10.0.0.4:3010');
-    await userEvent.tab(); // blur → apply
-    expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://10.0.0.4:3010');
-    await waitFor(() => expect(mockedCollab.listSessions).toHaveBeenCalledTimes(2));
-  });
-
-  it('shows discovered LAN hosts as clickable chips; clicking one applies it without typing', async () => {
+  it('shows discovered LAN hosts as plain-name buttons when this PC has nothing and several others are found; picking one switches silently', async () => {
+    mockedCollab.listSessions.mockResolvedValue([]);
     mockedCollab.fetchLanHosts.mockResolvedValue([
       { name: 'DESKTOP-HOST', url: 'http://192.168.1.9:3010', lastSeenAt: 1 },
+      { name: 'OTHER-HOST', url: 'http://192.168.1.10:3010', lastSeenAt: 1 },
     ]);
     renderDialog({ kind: 'join' });
     const chip = await screen.findByRole('button', { name: 'DESKTOP-HOST' });
@@ -126,7 +122,8 @@ describe('join dialog', () => {
     expect(mockedCollab.setServerUrl).toHaveBeenCalledWith('http://192.168.1.9:3010');
   });
 
-  it('auto-selects the server URL when exactly one host is discovered and the field is untouched', async () => {
+  it('auto-selects the only discovered host when this PC has no sessions of its own', async () => {
+    mockedCollab.listSessions.mockResolvedValue([]);
     mockedCollab.fetchLanHosts.mockResolvedValue([
       { name: 'ONLY-ONE', url: 'http://192.168.1.9:3010', lastSeenAt: 1 },
     ]);
