@@ -275,6 +275,11 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
 
 // ---- 作成 (create) -------------------------------------------------------
 // No server/network field here at all — creating always happens on this PC.
+// Two mutually-exclusive sources, picked with radio buttons acting as tabs:
+// keep editing the Gantt that's already open, or import a fresh pair of
+// YAML files. Only one is shown at a time so it's clear which one will run.
+
+type CreateSource = 'current' | 'import';
 
 function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const { state, startCollabSession, createUploadSession } = useAppContext();
@@ -285,6 +290,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canUseCurrent = !!state.schedule && !!state.envConfig;
+  const [source, setSource] = useState<CreateSource>(() => (canUseCurrent ? 'current' : 'import'));
 
   const run = async (fn: () => Promise<unknown>) => {
     if (!displayName.trim()) { setError(UI.sessionJoinNeedName); return; }
@@ -302,6 +308,15 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleSubmit = () => {
+    if (source === 'current') {
+      void run(() => startCollabSession(displayName.trim(), sessionName.trim()));
+    } else {
+      void run(() => createUploadSession(displayName.trim(), sessionName.trim(), scheduleFile!, envFile!));
+    }
+  };
+  const canSubmit = source === 'current' ? canUseCurrent : !!envFile && !!scheduleFile;
+
   return (
     <div>
       <div style={titleStyle}>{UI.sessionCreateDialogTitle}</div>
@@ -309,27 +324,36 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
       <input placeholder={UI.sessionNamePlaceholder} value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
       <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
 
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateEnvFileLabel}</div>
-      <input type="file" accept=".yaml,.yml" onChange={(e) => setEnvFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateScheduleFileLabel}</div>
-      <input type="file" accept=".yaml,.yml" onChange={(e) => setScheduleFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 12, fontSize: 12 }} />
+      <div style={{ display: 'flex', gap: 16, marginBottom: 4, fontSize: 12 }}>
+        <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
+          <input type="radio" checked={source === 'current'} disabled={!canUseCurrent} onChange={() => setSource('current')} /> {UI.sessionCreateSourceCurrentLabel}
+        </label>
+        <label style={{ cursor: 'pointer' }}>
+          <input type="radio" checked={source === 'import'} onChange={() => setSource('import')} /> {UI.sessionCreateSourceImportLabel}
+        </label>
+      </div>
+      {!canUseCurrent && (
+        <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>{UI.sessionCreateSourceCurrentUnavailable}</div>
+      )}
+
+      {source === 'current' ? (
+        <div style={{ fontSize: 12, color: '#555', backgroundColor: '#f5f5f5', borderRadius: 4, padding: '8px 10px', marginTop: 8, marginBottom: 12 }}>
+          {UI.sessionCreateSourceCurrentDesc}
+        </div>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateEnvFileLabel}</div>
+          <input type="file" accept=".yaml,.yml" onChange={(e) => setEnvFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
+          <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateScheduleFileLabel}</div>
+          <input type="file" accept=".yaml,.yml" onChange={(e) => setScheduleFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 12, fontSize: 12 }} />
+        </div>
+      )}
 
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        {canUseCurrent
-          ? <button disabled={busy} onClick={() => void run(() => startCollabSession(displayName.trim(), sessionName.trim()))} style={neutralBtnStyle}>{UI.sessionCreateFromCurrentBtn}</button>
-          : <span />}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            disabled={busy || !envFile || !scheduleFile}
-            onClick={() => void run(() => createUploadSession(displayName.trim(), sessionName.trim(), scheduleFile!, envFile!))}
-            style={primaryBtnStyle}
-          >
-            {UI.sessionCreateSubmitBtn}
-          </button>
-          <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button disabled={busy || !canSubmit} onClick={handleSubmit} style={primaryBtnStyle}>{UI.sessionCreateSubmitBtn}</button>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>
   );

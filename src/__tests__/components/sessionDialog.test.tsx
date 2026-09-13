@@ -28,17 +28,30 @@ function activeSession(over: Partial<SessionState> = {}): SessionState {
   };
 }
 
-function Harness({ session, kind }: { session?: SessionState; kind: SessionDialogKind }) {
+const FIXTURE_SCHEDULE = { planRange: { startDate: '2026-01-01', endDate: '2026-01-31' }, workflowTaskList: [], assignmentList: [] };
+const FIXTURE_ENV_CONFIG = {
+  workflowList: [], fabList: [], regionList: [], customerCompanyList: [], workerCompanyList: [], workerList: [], transiteDayMap: [],
+};
+
+function Harness({ session, kind, loadedGantt }: { session?: SessionState; kind: SessionDialogKind; loadedGantt?: boolean }) {
   const { dispatch } = useAppContext();
   useEffect(() => {
     if (session) dispatch({ type: 'SET_SESSION', payload: session });
+    if (loadedGantt) {
+      dispatch({
+        type: 'LOAD_FILES',
+        payload: {
+          schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, envPath: 'Env.yaml', schedulePath: 'Sched.yaml',
+        },
+      });
+    }
     dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return null;
 }
 
-function renderDialog(props: { session?: SessionState; kind: SessionDialogKind }) {
+function renderDialog(props: { session?: SessionState; kind: SessionDialogKind; loadedGantt?: boolean }) {
   return render(
     <AppProvider>
       <Harness {...props} />
@@ -148,6 +161,38 @@ describe('create dialog', () => {
     const box = screen.getByText('オンラインセッションを作成').parentElement as HTMLElement;
     const labels = within(box).getAllByText(/EnvConfig YAML|スケジュール YAML/).map((el) => el.textContent);
     expect(labels).toEqual(['EnvConfig YAML', 'スケジュール YAML']);
+  });
+
+  it('with no Gantt open: 現在のガントで開く is disabled, and 新しいガントをインポート is selected with file fields visible', () => {
+    renderDialog({ kind: 'create' });
+    expect(screen.getByLabelText('現在のガントで開く')).toBeDisabled();
+    expect(screen.getByLabelText('新しいガントをインポート')).toBeChecked();
+    expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+  });
+
+  it('with a Gantt already open: 現在のガントで開く is selected by default and the file fields are hidden', () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    expect(screen.getByLabelText('現在のガントで開く')).toBeEnabled();
+    expect(screen.getByLabelText('現在のガントで開く')).toBeChecked();
+    expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
+  });
+
+  it('switching to 新しいガントをインポート reveals the file fields', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('新しいガントをインポート'));
+    expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+  });
+
+  it('creates from the current Gantt (no files) when that tab is submitted', async () => {
+    mockedCollab.createSessionFromState.mockResolvedValue({ sessionId: 's9', ownerToken: 'tok' });
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+    await waitFor(() => expect(mockedCollab.createSessionFromState).toHaveBeenCalledWith(
+      'Weekly Plan', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
+    ));
+    expect(mockedCollab.createSessionFromYaml).not.toHaveBeenCalled();
   });
 });
 
