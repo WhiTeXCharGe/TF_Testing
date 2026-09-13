@@ -416,3 +416,117 @@ describe('Assignment _id backfill', () => {
     expect(next.schedule).toBe(next.savedScheduleRef);
   });
 });
+
+// ── Undo/redo revert-vehicle actions (RESTORE_ASSIGNMENT_FIELDS,
+// REMOVE_WORKFLOW_TASKS_BY_ID, RESTORE_WORKER_UNAVAILABLE_DATES, REVERT_MERGE) ──
+// These are dispatched only by undoEntries.ts's buildRevertAction, but the
+// reducer cases themselves had no direct coverage — only indirect coverage
+// via undoEntries.test.ts asserting buildRevertAction *constructs* them.
+
+describe('RESTORE_ASSIGNMENT_FIELDS', () => {
+  it('restores multiple assignments to different field values, leaving other assignments and other fields untouched', () => {
+    const schedule: ScheduleData = {
+      ...EMPTY_SCHEDULE,
+      assignmentList: [
+        { _id: 'a1', worker: 'w001', operationTask: 'wt001_p0_o0', startDate: '2025-09-01', endDate: '2025-09-05', planFlexibility: 'Reluctant', workDateList: [] },
+        { _id: 'a2', worker: 'w001', operationTask: 'wt001_p0_o0', startDate: '2025-09-06', endDate: '2025-09-07', planFlexibility: 'Reluctant', workDateList: [] },
+        { _id: 'a3', worker: 'w001', operationTask: 'wt001_p0_o0', startDate: '2025-09-08', endDate: '2025-09-09', planFlexibility: 'Reluctant', workDateList: [] },
+      ],
+    };
+    const state = { ...BASE_STATE, schedule };
+    const next = reducer(state, {
+      type: 'RESTORE_ASSIGNMENT_FIELDS',
+      payload: [
+        { assignmentId: 'a1', updates: { planFlexibility: 'Flexible' } },
+        { assignmentId: 'a2', updates: { planFlexibility: 'Fixed' } },
+      ],
+    });
+    expect(next.schedule!.assignmentList.find(a => a._id === 'a1')?.planFlexibility).toBe('Flexible');
+    expect(next.schedule!.assignmentList.find(a => a._id === 'a2')?.planFlexibility).toBe('Fixed');
+    // Untouched assignment keeps its original value
+    expect(next.schedule!.assignmentList.find(a => a._id === 'a3')?.planFlexibility).toBe('Reluctant');
+    // Other fields on the touched assignments are untouched
+    expect(next.schedule!.assignmentList.find(a => a._id === 'a1')?.startDate).toBe('2025-09-01');
+    expect(next.schedule!.assignmentList.find(a => a._id === 'a2')?.startDate).toBe('2025-09-06');
+  });
+});
+
+describe('REMOVE_WORKFLOW_TASKS_BY_ID', () => {
+  it('removes only the targeted workflow task by id', () => {
+    const schedule: ScheduleData = {
+      ...EMPTY_SCHEDULE,
+      workflowTaskList: [
+        ...EMPTY_SCHEDULE.workflowTaskList,
+        { id: 'wt002', name: 'Module B', workflow: 'wf_std', phaseTaskList: [] },
+      ],
+    };
+    const state = { ...BASE_STATE, schedule };
+    const next = reducer(state, { type: 'REMOVE_WORKFLOW_TASKS_BY_ID', payload: ['wt002'] });
+    expect(next.schedule!.workflowTaskList).toHaveLength(1);
+    expect(next.schedule!.workflowTaskList[0].id).toBe('wt001');
+  });
+});
+
+describe('RESTORE_WORKER_UNAVAILABLE_DATES', () => {
+  it('restores one worker\'s unavailableDates, leaving other workers untouched', () => {
+    const envConfig: EnvConfig = {
+      ...EMPTY_ENV,
+      workerList: [
+        { id: 'w001', name: 'Worker One', unavailableDates: [{ single: { days: ['2025-09-01'] } }] },
+        { id: 'w002', name: 'Worker Two', unavailableDates: [{ single: { days: ['2025-09-05'] } }] },
+      ],
+    };
+    const state = { ...BASE_STATE, envConfig };
+    const next = reducer(state, {
+      type: 'RESTORE_WORKER_UNAVAILABLE_DATES',
+      payload: { workerId: 'w001', unavailableDates: [{ single: { days: ['2025-09-10'] } }] },
+    });
+    expect(next.envConfig!.workerList.find(w => w.id === 'w001')?.unavailableDates).toEqual([{ single: { days: ['2025-09-10'] } }]);
+    expect(next.envConfig!.workerList.find(w => w.id === 'w002')?.unavailableDates).toEqual([{ single: { days: ['2025-09-05'] } }]);
+  });
+});
+
+describe('REVERT_MERGE', () => {
+  it('removes exactly the targeted workflow tasks, assignments, and envConfig ids across multiple lists', () => {
+    const schedule: ScheduleData = {
+      ...EMPTY_SCHEDULE,
+      workflowTaskList: [
+        ...EMPTY_SCHEDULE.workflowTaskList,
+        { id: 'wt002', name: 'Module B', workflow: 'wf_std', phaseTaskList: [] },
+        { id: 'wt003', name: 'Module C', workflow: 'wf_std', phaseTaskList: [] },
+      ],
+      assignmentList: [
+        { _id: 'a1', worker: 'w001', operationTask: 'wt001_p0_o0', startDate: '2025-09-01', endDate: '2025-09-05', planFlexibility: 'Flexible', workDateList: [] },
+        { _id: 'a2', worker: 'w002', operationTask: 'wt001_p0_o0', startDate: '2025-09-06', endDate: '2025-09-07', planFlexibility: 'Flexible', workDateList: [] },
+      ],
+    };
+    const envConfig: EnvConfig = {
+      ...EMPTY_ENV,
+      fabList: [...EMPTY_ENV.fabList, { id: 'fab2', name: 'Fab 2', unavailableDates: [] }],
+      workerList: [
+        ...EMPTY_ENV.workerList,
+        { id: 'w002', name: 'Worker Two', unavailableDates: [] },
+      ],
+    };
+    const state = { ...BASE_STATE, schedule, envConfig };
+    const next = reducer(state, {
+      type: 'REVERT_MERGE',
+      payload: {
+        workflowTaskIds: ['wt002'],
+        assignmentIds: ['a2'],
+        envConfigIds: { fabList: ['fab2'], workerList: ['w002'] },
+      },
+    });
+    // Targeted items removed
+    expect(next.schedule!.workflowTaskList.some(wt => wt.id === 'wt002')).toBe(false);
+    expect(next.schedule!.assignmentList.some(a => a._id === 'a2')).toBe(false);
+    expect(next.envConfig!.fabList.some(f => f.id === 'fab2')).toBe(false);
+    expect(next.envConfig!.workerList.some(w => w.id === 'w002')).toBe(false);
+    // Untargeted items in the same lists survive
+    expect(next.schedule!.workflowTaskList.some(wt => wt.id === 'wt001')).toBe(true);
+    expect(next.schedule!.workflowTaskList.some(wt => wt.id === 'wt003')).toBe(true);
+    expect(next.schedule!.assignmentList.some(a => a._id === 'a1')).toBe(true);
+    expect(next.envConfig!.fabList.some(f => f.id === 'fab1')).toBe(true);
+    expect(next.envConfig!.workerList.some(w => w.id === 'w001')).toBe(true);
+  });
+});

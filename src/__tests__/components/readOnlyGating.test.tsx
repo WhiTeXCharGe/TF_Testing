@@ -64,6 +64,8 @@ const DUMMY_UNDO_ENTRY: UndoEntry = {
   id: 'a1',
   fieldsBefore: { description: '' },
   fieldsAfter: { description: 'edited' },
+  fullBefore: { description: '' },
+  fullAfter: { description: 'edited' },
 };
 
 // Loads a schedule, makes one edit, then records an undo entry for it

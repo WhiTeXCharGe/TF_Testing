@@ -54,6 +54,16 @@ const SYNCABLE_ACTION_TYPES = new Set<ActionType['type']>([
   'MERGE_DATA', 'DELETE_UNAVAILABLE_DATE', 'DELETE_UNAVAILABLE_RANGE', 'MOVE_UNAVAILABLE_DATE',
   'ADD_UNAVAILABLE_DATES', 'RESIZE_UNAVAILABLE_RANGE', 'UPDATE_OPERATION_TASK_COLOR',
   'UPDATE_WORKFLOW_TASK_COLOR', 'UPDATE_WORKER_DEFINITION', 'UPDATE_WORKER_DESC_FIELD',
+  // Revert vehicles for undo/redo (see undoEntries.ts's buildRevertAction).
+  // These two key on real shared ids (workflowTask.id / worker.id), so
+  // forwarding them to other participants is safe.
+  'REMOVE_WORKFLOW_TASKS_BY_ID', 'RESTORE_WORKER_UNAVAILABLE_DATES',
+  // NOTE: RESTORE_ASSIGNMENT_FIELDS and REVERT_MERGE are deliberately NOT
+  // included here — they key on Assignment._id, which each client mints
+  // independently for baseline-loaded assignments and isn't guaranteed to
+  // match across participants. They're blocked outright while in a session
+  // (see the dispatch wrapper's UNDO handling below) rather than being
+  // silently forwarded and diverging everyone else's copy.
 ]);
 
 interface ContextType {
@@ -120,9 +130,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // implemented via captured entries instead of a snapshot stack.
       if (!stateRef.current.session) {
         const revertAction = buildRevertAction(entry, stateRef.current, direction);
-        if (!revertAction) return;
+        if (!revertAction) {
+          rawDispatch({ type: 'SET_ERROR', payload: direction === 'undo' ? UI.undoUnsupportedError : UI.redoUnsupportedError });
+          rawDispatch({ type: direction === 'undo' ? 'CONSUME_UNDO_ENTRY' : 'CONSUME_REDO_ENTRY' });
+          return;
+        }
         rawDispatch(revertAction);
         rawDispatch({ type: direction === 'undo' ? 'CONSUME_UNDO_ENTRY' : 'CONSUME_REDO_ENTRY' });
+        return;
+      }
+
+      // Undoing a bulk-flexibility or merge-data edit reverts via an action
+      // keyed on Assignment._id — an id each client mints independently for
+      // baseline-loaded assignments, so it isn't guaranteed to match across
+      // participants. Reverting locally and forwarding it would silently
+      // diverge everyone else's copy with no error. Block it outright while
+      // in a session (solo mode above is unaffected) until _id is made
+      // session-consistent.
+      if (direction === 'undo' && (entry.kind === 'bulkFlex' || entry.kind === 'mergeData')) {
+        rawDispatch({ type: 'SET_ERROR', payload: UI.bulkUndoUnsupportedInSessionError });
         return;
       }
 
@@ -132,7 +158,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const revertAction = buildRevertAction(entry, stateRef.current, direction);
       if (!revertAction) {
-        rawDispatch({ type: 'SET_ERROR', payload: direction === 'undo' ? UI.undoBlockedError : UI.redoBlockedError });
+        rawDispatch({ type: 'SET_ERROR', payload: direction === 'undo' ? UI.undoUnsupportedError : UI.redoUnsupportedError });
+        rawDispatch({ type: direction === 'undo' ? 'CONSUME_UNDO_ENTRY' : 'CONSUME_REDO_ENTRY' });
         return;
       }
       rawDispatch(revertAction);

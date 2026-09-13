@@ -10,8 +10,8 @@ export type ViewMode = 'device' | 'worker';
 // different; src/context/undoEntries.ts is the only place that interprets
 // these.
 export type UndoEntry =
-  | { kind: 'fieldPatch'; type: ActionType['type']; idPayload: Record<string, unknown>; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown> }
-  | { kind: 'assignmentPatch'; id: string; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown> }
+  | { kind: 'fieldPatch'; type: ActionType['type']; idPayload: Record<string, unknown>; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown>; fullBefore: Record<string, unknown>; fullAfter: Record<string, unknown> }
+  | { kind: 'assignmentPatch'; id: string; fieldsBefore: Record<string, unknown>; fieldsAfter: Record<string, unknown>; fullBefore: Record<string, unknown>; fullAfter: Record<string, unknown> }
   | { kind: 'assignmentAdd'; id: string; added: ScheduleData['assignmentList'][0] }
   | { kind: 'assignmentDelete'; id: string; deleted: ScheduleData['assignmentList'][0] }
   | { kind: 'planRange'; before: { startDate: string; endDate: string }; after: { startDate: string; endDate: string } }

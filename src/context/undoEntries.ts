@@ -67,13 +67,19 @@ const FIELD_PATCH_DEFS: Partial<Record<ActionType['type'], FieldPatchDef>> = {
   },
   UPDATE_WORKER_DEFINITION: {
     idPayload: p => ({ workerId: p.workerId }),
-    find: (s, id) => s.envConfig?.workerList.find(w => w.id === id.workerId)?.description as Record<string, unknown> | undefined,
+    find: (s, id) => {
+      const worker = s.envConfig?.workerList.find(w => w.id === id.workerId);
+      return worker ? ((worker.description ?? {}) as Record<string, unknown>) : undefined;
+    },
     toUpdates: p => ({ '備考': p.definition }),
     toActionPayload: (id, updates) => ({ ...id, definition: updates['備考'] }),
   },
   UPDATE_WORKER_DESC_FIELD: {
     idPayload: p => ({ workerId: p.workerId, field: p.field }),
-    find: (s, id) => s.envConfig?.workerList.find(w => w.id === id.workerId)?.description as Record<string, unknown> | undefined,
+    find: (s, id) => {
+      const worker = s.envConfig?.workerList.find(w => w.id === id.workerId);
+      return worker ? ((worker.description ?? {}) as Record<string, unknown>) : undefined;
+    },
     toUpdates: p => ({ [p.field]: p.value }),
     toActionPayload: (id, updates) => ({ workerId: id.workerId, field: id.field, value: updates[id.field as string] }),
   },
@@ -101,7 +107,12 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
     const updates = fieldPatchDef.toUpdates(payload);
     const fieldsBefore: Record<string, unknown> = {};
     for (const key of Object.keys(updates)) fieldsBefore[key] = target[key];
-    return { kind: 'fieldPatch', type, idPayload, fieldsBefore, fieldsAfter: { ...updates } };
+    const after = computeAfter(before, { type, payload } as ActionType);
+    const afterTarget = fieldPatchDef.find(after, idPayload) ?? target;
+    return {
+      kind: 'fieldPatch', type, idPayload, fieldsBefore, fieldsAfter: { ...updates },
+      fullBefore: { ...target }, fullAfter: { ...afterTarget },
+    };
   }
 
   switch (type) {
@@ -111,7 +122,10 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
       if (!a?._id) return null;
       const fieldsBefore: Record<string, unknown> = {};
       for (const key of Object.keys(p.updates)) fieldsBefore[key] = (a as unknown as Record<string, unknown>)[key];
-      return { kind: 'assignmentPatch', id: a._id, fieldsBefore, fieldsAfter: { ...p.updates } };
+      return {
+        kind: 'assignmentPatch', id: a._id, fieldsBefore, fieldsAfter: { ...p.updates },
+        fullBefore: { ...a } as Record<string, unknown>, fullAfter: { ...a, ...p.updates } as Record<string, unknown>,
+      };
     }
     case 'DELETE_ASSIGNMENT': {
       const index = payload as number;
@@ -210,14 +224,14 @@ export function hasConflict(entry: UndoEntry, current: AppState, direction: 'und
       if (!def) return true;
       const target = def.find(current, entry.idPayload);
       if (!target) return true;
-      const expected = direction === 'undo' ? entry.fieldsAfter : entry.fieldsBefore;
-      return Object.keys(expected).some(key => !deepEqual(target[key], expected[key]));
+      const expected = direction === 'undo' ? entry.fullAfter : entry.fullBefore;
+      return !deepEqual(target, expected);
     }
     case 'assignmentPatch': {
       const found = findAssignment(current, entry.id);
       if (!found) return true;
-      const expected = direction === 'undo' ? entry.fieldsAfter : entry.fieldsBefore;
-      return Object.keys(expected).some(key => !deepEqual((found.assignment as unknown as Record<string, unknown>)[key], expected[key]));
+      const expected = direction === 'undo' ? entry.fullAfter : entry.fullBefore;
+      return !deepEqual(found.assignment, expected);
     }
     case 'assignmentAdd': {
       const found = findAssignment(current, entry.id);

@@ -49,6 +49,8 @@ describe('UPDATE_OPERATION_TASK_COLOR', () => {
       kind: 'fieldPatch', type: 'UPDATE_OPERATION_TASK_COLOR',
       idPayload: { operationTaskId: 'ot1' },
       fieldsBefore: { colorCode: 'red' }, fieldsAfter: { colorCode: 'green' },
+      fullBefore: { id: 'ot1', operation: 'op1', workloadHours: 10, colorCode: 'red' },
+      fullAfter: { id: 'ot1', operation: 'op1', workloadHours: 10, colorCode: 'green' },
     });
   });
 
@@ -65,6 +67,17 @@ describe('UPDATE_OPERATION_TASK_COLOR', () => {
     const touchedByOther = { ...STATE, schedule: { ...SCHEDULE, workflowTaskList: [{ ...SCHEDULE.workflowTaskList[0], phaseTaskList: [{ ...SCHEDULE.workflowTaskList[0].phaseTaskList[0], operationTaskList: [{ ...SCHEDULE.workflowTaskList[0].phaseTaskList[0].operationTaskList[0], colorCode: 'purple' }] }] }] } };
     expect(hasConflict(entry, touchedByOther, 'undo')).toBe(true);
   });
+
+  it('blocks undo when someone else changed a DIFFERENT field on the same object (whole-object granularity)', () => {
+    const entry = captureUndoEntry('UPDATE_OPERATION_TASK_COLOR', payload, STATE)!;
+    // Our own color change landed (colorCode: 'green', matching entry.fullAfter), but
+    // someone else also changed workloadHours on the same operation task in the
+    // meantime — a field this edit never touched. Previously (field-specific
+    // comparison) this would NOT have been flagged; now (whole-object comparison,
+    // matching every other UndoEntry kind) it must be.
+    const touchedOtherField = { ...STATE, schedule: { ...SCHEDULE, workflowTaskList: [{ ...SCHEDULE.workflowTaskList[0], phaseTaskList: [{ ...SCHEDULE.workflowTaskList[0].phaseTaskList[0], operationTaskList: [{ ...SCHEDULE.workflowTaskList[0].phaseTaskList[0].operationTaskList[0], colorCode: 'green', workloadHours: 20 }] }] }] } };
+    expect(hasConflict(entry, touchedOtherField, 'undo')).toBe(true);
+  });
 });
 
 describe('UPDATE_WORKER_DESC_FIELD', () => {
@@ -75,6 +88,7 @@ describe('UPDATE_WORKER_DESC_FIELD', () => {
       kind: 'fieldPatch', type: 'UPDATE_WORKER_DESC_FIELD',
       idPayload: { workerId: 'w1', field: '業務形態' },
       fieldsBefore: { '業務形態': undefined }, fieldsAfter: { '業務形態': 'A' },
+      fullBefore: { '備考': 'old note' }, fullAfter: { '備考': 'old note', '業務形態': 'A' },
     });
     // Apply it (STATE itself is left untouched — this is what "after" looks like).
     const after: AppState = { ...STATE, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], description: { ...ENV.workerList[0].description, '業務形態': 'A' } }] } };
@@ -85,6 +99,43 @@ describe('UPDATE_WORKER_DESC_FIELD', () => {
     const touchedByOther: AppState = { ...STATE, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], description: { ...ENV.workerList[0].description, '業務形態': 'B' } }] } };
     expect(hasConflict(entry, touchedByOther, 'undo')).toBe(true);
   });
+
+  it('blocks undo when someone else changed a DIFFERENT description field on the same worker (whole-object granularity)', () => {
+    const payload = { workerId: 'w1', field: '業務形態' as const, value: 'A' };
+    const entry = captureUndoEntry('UPDATE_WORKER_DESC_FIELD', payload, STATE)!;
+    // Our own edit landed ('業務形態': 'A'), but someone else also touched
+    // '備考' on the same worker's description object in the meantime.
+    const touchedOtherField: AppState = { ...STATE, envConfig: { ...ENV, workerList: [{ ...ENV.workerList[0], description: { '備考': 'someone else changed this', '業務形態': 'A' } }] } };
+    expect(hasConflict(entry, touchedOtherField, 'undo')).toBe(true);
+  });
+});
+
+describe('UPDATE_WORKER_DEFINITION on a worker with no description object yet (Fix 3)', () => {
+  // A completely normal, common case: a worker who has never had any
+  // description fields set has no `description` object at all (not even
+  // `{}`). captureUndoEntry must still track this edit instead of silently
+  // returning null.
+  const stateNoDescription: AppState = {
+    ...STATE,
+    envConfig: { ...ENV, workerList: [{ id: 'w2', name: 'Worker Two', unavailableDates: [] }] },
+  };
+
+  it('captures a real entry instead of returning null', () => {
+    const payload = { workerId: 'w2', definition: 'New note' };
+    const entry = captureUndoEntry('UPDATE_WORKER_DEFINITION', payload, stateNoDescription);
+    expect(entry).not.toBeNull();
+    expect(entry).toEqual({
+      kind: 'fieldPatch', type: 'UPDATE_WORKER_DEFINITION',
+      idPayload: { workerId: 'w2' },
+      fieldsBefore: { '備考': undefined }, fieldsAfter: { '備考': 'New note' },
+      fullBefore: {}, fullAfter: { '備考': 'New note' },
+    });
+  });
+
+  it('still returns null when the worker itself does not exist', () => {
+    const payload = { workerId: 'no-such-worker', definition: 'New note' };
+    expect(captureUndoEntry('UPDATE_WORKER_DEFINITION', payload, stateNoDescription)).toBeNull();
+  });
 });
 
 describe('UPDATE_ASSIGNMENT (index-based, keyed by _id)', () => {
@@ -92,7 +143,11 @@ describe('UPDATE_ASSIGNMENT (index-based, keyed by _id)', () => {
 
   it('captures using the assignment _id, not the index', () => {
     const entry = captureUndoEntry('UPDATE_ASSIGNMENT', payload, STATE);
-    expect(entry).toEqual({ kind: 'assignmentPatch', id: 'a1', fieldsBefore: { startDate: '2025-09-01' }, fieldsAfter: { startDate: '2025-09-10' } });
+    expect(entry).toEqual({
+      kind: 'assignmentPatch', id: 'a1', fieldsBefore: { startDate: '2025-09-01' }, fieldsAfter: { startDate: '2025-09-10' },
+      fullBefore: SCHEDULE.assignmentList[0],
+      fullAfter: { ...SCHEDULE.assignmentList[0], startDate: '2025-09-10' },
+    });
   });
 
   it('resolves the CURRENT index at revert time, even if it moved', () => {
@@ -117,6 +172,16 @@ describe('UPDATE_ASSIGNMENT (index-based, keyed by _id)', () => {
     const entry = captureUndoEntry('UPDATE_ASSIGNMENT', payload, STATE)!;
     const touched: AppState = { ...STATE, schedule: { ...SCHEDULE, assignmentList: [{ ...SCHEDULE.assignmentList[0], startDate: '2025-09-20' }] } };
     expect(hasConflict(entry, touched, 'undo')).toBe(true);
+  });
+
+  it('blocks when someone else changed a DIFFERENT field on the same assignment (whole-object granularity)', () => {
+    const entry = captureUndoEntry('UPDATE_ASSIGNMENT', payload, STATE)!;
+    // Our own edit landed (startDate matches entry.fullAfter), but someone
+    // else also changed `worker` on the same assignment in the meantime — a
+    // field this edit never touched. Previously (field-specific comparison)
+    // this would NOT have been flagged; now (whole-object comparison) it must be.
+    const touchedOtherField: AppState = { ...STATE, schedule: { ...SCHEDULE, assignmentList: [{ ...SCHEDULE.assignmentList[0], startDate: '2025-09-10', worker: 'w2' }] } };
+    expect(hasConflict(entry, touchedOtherField, 'undo')).toBe(true);
   });
 });
 
