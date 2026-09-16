@@ -1,6 +1,9 @@
 import type { Aca2Client } from './aca2Client.js';
 import type { SessionStore } from '../collab/sessionStore.js';
 import type { AppConfig } from '../config.js';
+import { broadcastResync, type IoRef } from '../collab/collabSocket.js';
+
+export type { IoRef } from '../collab/collabSocket.js';
 
 // ROLE=local runs ACA1 and ACA2 in one process (the desktop app / LAN host),
 // so the session API calls the store directly instead of doing HTTP to
@@ -8,6 +11,7 @@ import type { AppConfig } from '../config.js';
 export function createInProcessAca2Client(
   store: SessionStore,
   config: Pick<AppConfig, 'instanceId' | 'publicRelayUrl'>,
+  ioRef: IoRef = { current: null },
 ): Aca2Client {
   return {
     async activate(id) {
@@ -25,6 +29,12 @@ export function createInProcessAca2Client(
     async evict(id) {
       await store.evict(id);
       await store.markClosed(id);
+    },
+    async replaceBaseline(id, baseline) {
+      const ok = await store.replaceBaseline(id, baseline);
+      if (!ok) return { notFound: true };
+      if (ioRef.current) broadcastResync(ioRef.current, store, id);
+      return { ok: true };
     },
   };
 }

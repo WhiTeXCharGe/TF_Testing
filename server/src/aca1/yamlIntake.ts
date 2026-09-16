@@ -45,12 +45,9 @@ function parseYaml(label: string, raw: unknown): unknown {
   }
 }
 
-export function intake(input: IntakeInput): IntakeResult {
-  const name = typeof input.name === 'string' ? input.name.trim() : '';
-  if (name.length < 1 || name.length > 120) {
-    throw new IntakeError('name is required and must be 1-120 characters');
-  }
-
+// Shared by intake() (create — name required) and intakeBaseline() (replace
+// an existing session's data — no name involved).
+function intakeBaselineFields(input: IntakeInput): SessionBaseline {
   const hasYamlPair = input.scheduleYaml !== undefined || input.envConfigYaml !== undefined;
   const hasJsonPair = input.schedule !== undefined || input.envConfig !== undefined;
 
@@ -81,5 +78,18 @@ export function intake(input: IntakeInput): IntakeResult {
     throw new IntakeError("currentView must be 'worker' or 'device'");
   }
 
-  return { name, baseline: { schedule, envConfig, currentView } };
+  return { schedule, envConfig, currentView };
+}
+
+export function intake(input: IntakeInput): IntakeResult {
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (name.length < 1 || name.length > 120) {
+    throw new IntakeError('name is required and must be 1-120 characters');
+  }
+  return { name, baseline: intakeBaselineFields(input) };
+}
+
+/** Same schedule/envConfig/currentView validation as intake(), no name. */
+export function intakeBaseline(input: IntakeInput): SessionBaseline {
+  return intakeBaselineFields(input);
 }

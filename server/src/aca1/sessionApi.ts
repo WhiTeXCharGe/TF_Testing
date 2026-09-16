@@ -8,7 +8,7 @@ import {
   createSessionRecord, deleteSessionRecord, hashOwnerToken, listSessionIds,
   metaKey, ownerTokenMatches, statusKey,
 } from '../collab/persistence.js';
-import { intake, IntakeError } from './yamlIntake.js';
+import { intake, intakeBaseline, IntakeError } from './yamlIntake.js';
 import type { Aca2Client } from './aca2Client.js';
 
 export interface SessionApiDeps {
@@ -127,6 +127,33 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
       return;
     }
     res.json({ ok: true, sessionId: id, relayUrl: activated.relayUrl, status: activated.status });
+  });
+
+  // Overwrite an EXISTING session's whole data — used by the client when
+  // creating with a name that already matches one (after the user confirms
+  // the overwrite warning). Same id, no owner-token gate (consistent with
+  // lock/unlock and the in-session update feature — this app doesn't gate
+  // collab actions on ownership). Broadcasts a resync to anyone currently
+  // connected to the target session.
+  router.post('/sessions/:id/replace', async (req, res) => {
+    const { id } = req.params;
+    try {
+      const baseline = intakeBaseline({
+        schedule: req.body?.schedule, envConfig: req.body?.envConfig, currentView: req.body?.currentView,
+      });
+      const result = await aca2.replaceBaseline(id, baseline);
+      if ('notFound' in result) {
+        res.status(404).json({ ok: false, error: 'no such session' });
+        return;
+      }
+      res.json({ ok: true, sessionId: id });
+    } catch (err) {
+      if (err instanceof IntakeError) {
+        res.status(400).json({ ok: false, error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   router.delete('/sessions/:id', async (req, res) => {

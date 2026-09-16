@@ -130,6 +130,21 @@ export async function createSessionFromYaml(
   return createSessionFromState(name, baseline);
 }
 
+// Overwrite an EXISTING session's whole data (same id) — used when the user
+// confirms overwriting a duplicate-named session instead of creating a new
+// one. Anyone currently connected to that session gets a live resync; no
+// owner token needed (consistent with lock/unlock and the in-session update
+// feature — this app doesn't gate collab actions on ownership).
+export async function overwriteSessionState(sessionId: string, baseline: SessionBaseline): Promise<void> {
+  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/replace`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(baseline),
+  });
+  const data = await readJson(res);
+  if (!res.ok || !data.ok) throw new Error((data.error as string) ?? 'セッションの上書きに失敗しました');
+}
+
 export async function openSession(sessionId: string): Promise<{ relayUrl: string; status: SessionStatus }> {
   const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST' });
   const data = await readJson(res);

@@ -8,8 +8,9 @@ import { captureUndoEntry, hasConflict, buildRevertAction } from './undoEntries'
 import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
   sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, sendCollabSessionUpdate,
-  parseYamlBaseline, openSession, parseSessionId,
+  parseYamlBaseline, openSession, overwriteSessionState, parseSessionId,
 } from '../services/collabService';
+import type { SessionBaseline } from '../types/appState';
 import { UI } from '../config/uiText';
 import { generateId } from '../utils/id';
 
@@ -72,6 +73,7 @@ interface ContextType {
   dispatch: Dispatch<ActionType>;
   startCollabSession: (displayName: string, sessionName: string) => Promise<{ sessionId: string }>;
   createUploadSession: (displayName: string, sessionName: string, scheduleFile: File, envConfigFile: File) => Promise<{ sessionId: string }>;
+  overwriteAndJoinSession: (displayName: string, existingSessionId: string, sessionName: string, baseline: SessionBaseline) => Promise<{ sessionId: string }>;
   joinCollabSession: (sessionId: string, name: string, role: SessionRole) => Promise<void>;
   lockSession: () => void;
   unlockSession: () => void;
@@ -262,6 +264,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { sessionId };
   }, [joinInternal]);
 
+  // Overwriting a duplicate-named session (create dialog, after the user
+  // confirms the warning) reuses the existing session's id rather than
+  // minting a new one — same tail as startCollabSession/createUploadSession,
+  // just skipping the create step.
+  const overwriteAndJoinSession = useCallback(async (
+    displayName: string, existingSessionId: string, sessionName: string, baseline: SessionBaseline,
+  ) => {
+    await overwriteSessionState(existingSessionId, baseline);
+    const { relayUrl, status } = await openSession(existingSessionId);
+    rawDispatch({ type: 'SET_SESSION', payload: { id: existingSessionId, name: sessionName, role: 'edit', connectionStatus: 'connecting', participants: [], status } });
+    joinInternal(existingSessionId, displayName, 'edit', false, relayUrl, undefined);
+    return { sessionId: existingSessionId };
+  }, [joinInternal]);
+
   const joinCollabSession = useCallback(async (idOrLink: string, name: string, role: SessionRole) => {
     const sessionId = parseSessionId(idOrLink);
     const { relayUrl, status } = await openSession(sessionId);
@@ -307,7 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      state, dispatch, startCollabSession, createUploadSession, joinCollabSession,
+      state, dispatch, startCollabSession, createUploadSession, overwriteAndJoinSession, joinCollabSession,
       lockSession, unlockSession, updateSessionFromCurrent, updateSessionFromYaml, leaveCollabSession,
     }}>
       {children}

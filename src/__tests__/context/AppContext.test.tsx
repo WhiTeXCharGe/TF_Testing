@@ -274,6 +274,22 @@ describe('updateSessionFromCurrent / updateSessionFromYaml (locked-session data 
   });
 });
 
+it('overwriteAndJoinSession overwrites the existing session, then opens and joins it (same id)', async () => {
+  mockJoin((_isCreator, cb) => cb.onStatusChange('connected'));
+  mockedCollab.overwriteSessionState.mockResolvedValue(undefined);
+  renderApp();
+
+  const baseline = { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' as const };
+  const result = await capturedApi!.overwriteAndJoinSession('Dave', 'existing-id', 'Weekly Plan', baseline);
+
+  expect(result).toEqual({ sessionId: 'existing-id' });
+  expect(mockedCollab.overwriteSessionState).toHaveBeenCalledWith('existing-id', baseline);
+  expect(mockedCollab.openSession).toHaveBeenCalledWith('existing-id');
+  expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
+  expect(mockedCollab.createSessionFromYaml).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByTestId('session-name')).toHaveTextContent('Weekly Plan'));
+});
+
 it('blocks LOAD_FILES while a session is active, regardless of role, and surfaces an error', async () => {
   mockJoin((_isCreator, cb) => cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []));
 

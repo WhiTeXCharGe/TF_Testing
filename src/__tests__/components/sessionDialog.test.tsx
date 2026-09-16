@@ -190,11 +190,47 @@ describe('create dialog', () => {
     mockedCollab.createSessionFromState.mockResolvedValue({ sessionId: 's9', ownerToken: 'tok' });
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
-    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    // Deliberately not one of the beforeEach's listed session names (Weekly
+    // Plan / Locked One) — a collision would trigger the overwrite-confirm
+    // flow instead of a plain create (see 'duplicate name' describe below).
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Brand New Session');
     await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
     await waitFor(() => expect(mockedCollab.createSessionFromState).toHaveBeenCalledWith(
-      'Weekly Plan', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
+      'Brand New Session', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
     ));
+    expect(mockedCollab.createSessionFromYaml).not.toHaveBeenCalled();
+  });
+});
+
+describe('create dialog — duplicate name overwrite', () => {
+  it('warns instead of creating when the name matches an existing session, and cancel returns to the form', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+
+    expect(await screen.findByText(/「Weekly Plan」という名前のセッションは既に存在します/)).toBeInTheDocument();
+    expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(await screen.findByPlaceholderText('セッション名を入力')).toHaveValue('Weekly Plan');
+  });
+
+  it('confirming overwrites the existing session (same id) and joins it, without creating a new one', async () => {
+    mockedCollab.overwriteSessionState.mockResolvedValue(undefined);
+    mockedCollab.openSession.mockResolvedValue({ relayUrl: 'http://relay:4010', status: 'open' });
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+    await screen.findByText(/既に存在します/);
+
+    await userEvent.click(screen.getByRole('button', { name: '上書きする' }));
+
+    await waitFor(() => expect(mockedCollab.overwriteSessionState).toHaveBeenCalledWith(
+      's1', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
+    ));
+    expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
     expect(mockedCollab.createSessionFromYaml).not.toHaveBeenCalled();
   });
 });

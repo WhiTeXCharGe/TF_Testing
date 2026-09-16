@@ -17,6 +17,7 @@ let aca2: {
   activate: ReturnType<typeof vi.fn>;
   live: ReturnType<typeof vi.fn>;
   evict: ReturnType<typeof vi.fn>;
+  replaceBaseline: ReturnType<typeof vi.fn>;
 };
 let app: ReturnType<typeof createAca1App>;
 
@@ -26,6 +27,7 @@ beforeEach(() => {
     activate: vi.fn(async () => ({ relayUrl: 'http://relay:4010', status: 'open' as const })),
     live: vi.fn(async () => ({ unreachable: true as const })),
     evict: vi.fn(async () => {}),
+    replaceBaseline: vi.fn(async () => ({ ok: true as const })),
   };
   app = createAca1App({ storage, aca2: aca2 as unknown as Aca2Client, config });
 });
@@ -107,6 +109,34 @@ describe('POST /api/sessions/:id/open', () => {
   it('maps aca2 notFound to 404', async () => {
     aca2.activate.mockResolvedValueOnce({ notFound: true });
     await request(app).post('/api/sessions/ghost/open').expect(404);
+  });
+});
+
+describe('POST /api/sessions/:id/replace', () => {
+  it('validates and forwards the baseline to aca2.replaceBaseline, no owner token needed', async () => {
+    const { sessionId } = await createJsonSession();
+    const res = await request(app)
+      .post(`/api/sessions/${sessionId}/replace`)
+      .send({ schedule: { a: 9 }, envConfig: { b: 9 }, currentView: 'device' })
+      .expect(200);
+    expect(res.body).toEqual({ ok: true, sessionId });
+    expect(aca2.replaceBaseline).toHaveBeenCalledWith(sessionId, {
+      schedule: { a: 9 }, envConfig: { b: 9 }, currentView: 'device',
+    });
+  });
+
+  it('rejects a malformed body with 400', async () => {
+    const { sessionId } = await createJsonSession();
+    await request(app).post(`/api/sessions/${sessionId}/replace`).send({ schedule: { a: 1 } }).expect(400);
+    expect(aca2.replaceBaseline).not.toHaveBeenCalled();
+  });
+
+  it('maps aca2 notFound to 404', async () => {
+    aca2.replaceBaseline.mockResolvedValueOnce({ notFound: true });
+    await request(app)
+      .post('/api/sessions/ghost/replace')
+      .send({ schedule: { a: 1 }, envConfig: { b: 1 } })
+      .expect(404);
   });
 });
 

@@ -22,6 +22,29 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+// The collab socket server (and its `io`) is created after the ACA1/ACA2
+// routes that need it are built (see index.ts), so `io` can't be passed to
+// them directly at construction time — a mutable ref, populated once it
+// exists and read lazily on each call, sidesteps reordering startServer().
+// `current` stays null (broadcasts are just skipped) for any caller — tests
+// included — that has no socket server at all.
+export interface IoRef { current: Server | null }
+
+/**
+ * Broadcast a full resync to everyone currently in a session's room — used
+ * whenever a session's baseline was just replaced (locked-session update, or
+ * a create-time overwrite of an existing session), so connected clients
+ * apply the new data instead of trying to replay old actions against it. A
+ * no-op if the session isn't loaded (nobody could be connected to it then).
+ */
+export function broadcastResync(io: Server, store: SessionStore, id: string): void {
+  const s = store.getSession(id);
+  if (!s) return;
+  io.to(id).emit('sync-init', {
+    ok: true, name: s.name, baseline: s.baseline, actions: s.actions, participants: s.participants, status: s.status,
+  });
+}
+
 export function createCollabSocketServer(
   httpServer: HttpServer,
   store: SessionStore,
@@ -120,10 +143,7 @@ export function createCollabSocketServer(
       if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) return;
       const ok = await store.replaceBaseline(joinedSessionId, payload);
       if (!ok) return;
-      const s = store.getSession(joinedSessionId)!;
-      io.to(joinedSessionId).emit('sync-init', {
-        ok: true, name: s.name, baseline: s.baseline, actions: s.actions, participants: s.participants, status: s.status,
-      });
+      broadcastResync(io, store, joinedSessionId);
     });
 
     const handleLeave = async (): Promise<void> => {

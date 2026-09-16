@@ -1,5 +1,5 @@
 import type { AppConfig } from '../config.js';
-import type { SessionStatus } from '../collab/types.js';
+import type { SessionBaseline, SessionStatus } from '../collab/types.js';
 
 // Thin typed wrapper over ACA2's /internal/* control plane. ACA2 scales to
 // zero, so `live` treats any transport failure or non-2xx as "not live"
@@ -11,6 +11,13 @@ export interface Aca2Client {
     | { unreachable: true }
   >;
   evict(id: string): Promise<void>;
+  /**
+   * Replace an existing session's whole baseline (clears its action log) and
+   * broadcast a resync to anyone currently connected to it. Used for a
+   * create-time overwrite of a session with a duplicate name. Loads the
+   * session from storage first if it isn't already active.
+   */
+  replaceBaseline(id: string, baseline: SessionBaseline): Promise<{ ok: true } | { notFound: true }>;
 }
 
 export function createAca2Client(
@@ -48,6 +55,12 @@ export function createAca2Client(
       } catch {
         // ACA2 already asleep / gone — the storage record is deleted by ACA1 anyway.
       }
+    },
+
+    async replaceBaseline(id, baseline) {
+      const res = await fetchImpl(url(id, 'replace'), { method: 'POST', headers, body: JSON.stringify(baseline) });
+      if (res.status === 404) return { notFound: true };
+      return { ok: true };
     },
   };
 }

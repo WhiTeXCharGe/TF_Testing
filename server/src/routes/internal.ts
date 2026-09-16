@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import type { SessionStore } from '../collab/sessionStore.js';
 import type { AppConfig } from '../config.js';
+import { broadcastResync, type IoRef } from '../collab/collabSocket.js';
 
 // ACA1 -> ACA2 control plane. All routes assume internalAuth ran first.
-export function createInternalRouter(store: SessionStore, config: AppConfig): Router {
+// `ioRef` is populated with the socket server's `io` after startServer()
+// creates it (see index.ts) — the router is built before that exists.
+export function createInternalRouter(store: SessionStore, config: AppConfig, ioRef: IoRef = { current: null }): Router {
   const router = Router();
 
   // Load a session into memory on this replica and mark it live. Idempotent.
@@ -33,6 +36,21 @@ export function createInternalRouter(store: SessionStore, config: AppConfig): Ro
     const { id } = req.params;
     await store.evict(id);
     await store.markClosed(id);
+    res.json({ ok: true });
+  });
+
+  // Replace an existing session's whole baseline (clears its action log) and
+  // broadcast a resync to anyone currently connected to it. Used for a
+  // create-time overwrite of a session with a duplicate name. ACA1 already
+  // validated the baseline shape before calling this.
+  router.post('/internal/sessions/:id/replace', async (req, res) => {
+    const { id } = req.params;
+    const ok = await store.replaceBaseline(id, req.body);
+    if (!ok) {
+      res.status(404).json({ ok: false, error: 'no such session' });
+      return;
+    }
+    if (ioRef.current) broadcastResync(ioRef.current, store, id);
     res.json({ ok: true });
   });
 

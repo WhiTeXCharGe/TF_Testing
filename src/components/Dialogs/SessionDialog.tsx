@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import {
-  listSessions, getServerUrl, setServerUrl, fetchLanHosts, LanHost,
+  listSessions, getServerUrl, setServerUrl, fetchLanHosts, parseYamlBaseline, LanHost,
 } from '../../services/collabService';
 import { loadDisplayName, saveDisplayName } from '../../lib/collabPrefs';
-import { SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
+import { SessionBaseline, SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
 import { UI } from '../../config/uiText';
 
 const overlayStyle: React.CSSProperties = {
@@ -279,25 +279,50 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
 
 type CreateSource = 'current' | 'import';
 
+// A name that matches an existing session (checked on submit, against the
+// full list) warns before overwriting rather than silently creating a
+// second same-named session or silently failing — see the confirm view below.
+interface PendingOverwrite { existingId: string; baseline: SessionBaseline }
+
 function SessionCreateDialog({ onClose }: { onClose: () => void }) {
-  const { state, startCollabSession, createUploadSession } = useAppContext();
+  const { state, startCollabSession, createUploadSession, overwriteAndJoinSession } = useAppContext();
   const [displayName, setDisplayName] = useState(() => loadDisplayName());
   const [sessionName, setSessionName] = useState('');
   const [envFile, setEnvFile] = useState<File | null>(null);
   const [scheduleFile, setScheduleFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const canUseCurrent = !!state.schedule && !!state.envConfig;
   const [source, setSource] = useState<CreateSource>(() => (canUseCurrent ? 'current' : 'import'));
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const buildBaseline = async (): Promise<SessionBaseline> => {
+    if (source === 'current') {
+      if (!state.schedule || !state.envConfig) throw new Error(UI.collabNoScheduleError);
+      return { schedule: state.schedule, envConfig: state.envConfig, currentView: state.currentView };
+    }
+    return parseYamlBaseline(scheduleFile!, envFile!);
+  };
+
+  const handleSubmit = async () => {
     if (!displayName.trim()) { setError(UI.sessionJoinNeedName); return; }
     if (!sessionName.trim()) { setError(UI.sessionNameFieldPlaceholder); return; }
     setBusy(true);
     setError(null);
     try {
+      const existing = (await listSessions()).find((s) => s.name === sessionName.trim());
+      if (existing) {
+        // Build the baseline now (parses the YAML / reads current state up
+        // front) so confirming is instant and can't fail on stale file inputs.
+        setPendingOverwrite({ existingId: existing.id, baseline: await buildBaseline() });
+        return;
+      }
       saveDisplayName(displayName);
-      await fn();
+      if (source === 'current') {
+        await startCollabSession(displayName.trim(), sessionName.trim());
+      } else {
+        await createUploadSession(displayName.trim(), sessionName.trim(), scheduleFile!, envFile!);
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -306,14 +331,39 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleSubmit = () => {
-    if (source === 'current') {
-      void run(() => startCollabSession(displayName.trim(), sessionName.trim()));
-    } else {
-      void run(() => createUploadSession(displayName.trim(), sessionName.trim(), scheduleFile!, envFile!));
+  const confirmOverwrite = async () => {
+    if (!pendingOverwrite) return;
+    setBusy(true);
+    setError(null);
+    try {
+      saveDisplayName(displayName);
+      await overwriteAndJoinSession(displayName.trim(), pendingOverwrite.existingId, sessionName.trim(), pendingOverwrite.baseline);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   };
+
   const canSubmit = source === 'current' ? canUseCurrent : !!envFile && !!scheduleFile;
+
+  if (pendingOverwrite) {
+    return (
+      <div>
+        <div style={titleStyle}>{UI.sessionCreateDialogTitle}</div>
+        <div style={{ fontSize: 13, color: '#222', marginBottom: 8 }}>
+          {UI.sessionDuplicateNameWarning(sessionName.trim())}
+        </div>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>{UI.sessionDuplicateNameHint}</div>
+        {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button disabled={busy} onClick={() => void confirmOverwrite()} style={{ ...primaryBtnStyle, backgroundColor: '#c62828' }}>{UI.sessionOverwriteBtn}</button>
+          <button disabled={busy} onClick={() => setPendingOverwrite(null)} style={neutralBtnStyle}>{UI.sessionOverwriteCancelBtn}</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -351,7 +401,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button disabled={busy || !canSubmit} onClick={handleSubmit} style={primaryBtnStyle}>{UI.sessionCreateSubmitBtn}</button>
+        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{UI.sessionCreateSubmitBtn}</button>
         <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>

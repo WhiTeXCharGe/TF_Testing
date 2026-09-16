@@ -423,6 +423,13 @@ export const UI = {
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
+  // Duplicate-name overwrite confirm (create dialog) — same underlying
+  // mechanism as the locked-session data update, just triggered at create
+  // time instead of from 共同編集.
+  sessionDuplicateNameWarning: (name: string) => `「${name}」という名前のセッションは既に存在します。上書きしますか？`,
+  sessionDuplicateNameHint: '上書きすると、既存のセッションのデータが置き換わります。',
+  sessionOverwriteBtn: '上書きする',
+  sessionOverwriteCancelBtn: 'キャンセル',
   sessionLockBtn: 'ロックする',
   sessionUnlockBtn: 'ロック解除',
   sessionLockedBannerText: 'このセッションはロックされています（閲覧のみ）',

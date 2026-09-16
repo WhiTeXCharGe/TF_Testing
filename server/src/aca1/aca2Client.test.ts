@@ -36,6 +36,25 @@ describe('aca2Client', () => {
     await expect(c.evict('s1')).resolves.toBeUndefined();
   });
 
+  it('replaceBaseline posts the baseline and returns ok', async () => {
+    let seenUrl = '';
+    let seenBody = '';
+    const baseline = { schedule: { a: 1 }, envConfig: { b: 2 }, currentView: 'worker' as const };
+    const c = createAca2Client(cfg, (async (url: string | URL | Request, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenBody = init?.body as string;
+      return jsonResponse({ ok: true });
+    }) as typeof fetch);
+    expect(await c.replaceBaseline('s1', baseline)).toEqual({ ok: true });
+    expect(seenUrl).toBe('http://aca2:4010/internal/sessions/s1/replace');
+    expect(JSON.parse(seenBody)).toEqual(baseline);
+  });
+
+  it('replaceBaseline maps 404 to notFound', async () => {
+    const c = createAca2Client(cfg, (async () => jsonResponse({ ok: false }, 404)) as typeof fetch);
+    expect(await c.replaceBaseline('s1', { schedule: {}, envConfig: {}, currentView: 'worker' })).toEqual({ notFound: true });
+  });
+
   it('sends the internal key header and hits the right URL', async () => {
     let seenUrl = '';
     let seenInit: RequestInit | undefined;

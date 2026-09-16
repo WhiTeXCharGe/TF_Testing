@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
   getServerUrl, setServerUrl, fetchLanHosts, sendCollabSessionUpdate, sendCollabCheckpoint,
+  overwriteSessionState,
 } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
@@ -209,6 +210,25 @@ it('fetchSessionName resolves the name for a real session', async () => {
 it('fetchSessionName resolves null for an unknown session', async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) }) as never;
   expect(await fetchSessionName('nope')).toBeNull();
+});
+
+it('overwriteSessionState posts the baseline to /replace', async () => {
+  const captured: { url?: string; body?: unknown } = {};
+  global.fetch = jest.fn().mockImplementation((url: string, init: RequestInit) => {
+    captured.url = url;
+    captured.body = init.body;
+    return Promise.resolve({ ok: true, json: async () => ({ ok: true, sessionId: 'abc' }) });
+  }) as never;
+  await overwriteSessionState('abc', BASELINE);
+  expect(captured.url).toMatch(/\/api\/sessions\/abc\/replace$/);
+  expect(JSON.parse(captured.body as string)).toEqual(BASELINE);
+});
+
+it('overwriteSessionState throws with the server error message on failure', async () => {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: false, json: async () => ({ ok: false, error: 'boom' }),
+  }) as never;
+  await expect(overwriteSessionState('abc', BASELINE)).rejects.toThrow('boom');
 });
 
 it('sendCollabSessionUpdate emits session-update on the live socket', () => {

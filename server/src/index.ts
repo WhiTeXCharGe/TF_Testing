@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
-import { createCollabSocketServer } from './collab/collabSocket.js';
+import { createCollabSocketServer, type IoRef } from './collab/collabSocket.js';
 import { createInternalRouter } from './routes/internal.js';
 import { internalAuth } from './internalAuth.js';
 import { isLocalOrLanOrigin } from './lanOrigin.js';
@@ -39,6 +39,7 @@ function buildLocalApp(
   store: SessionStore,
   config: AppConfig,
   beacon: DiscoveryBeacon | undefined,
+  ioRef: IoRef,
 ): express.Express {
   const app = express();
   app.use(cors({
@@ -54,8 +55,9 @@ function buildLocalApp(
   app.use('/api', networkInfoRouter);
 
   // Online-collaboration session API, backed by an in-process ACA2 (same
-  // store the socket relay below uses).
-  const aca2 = createInProcessAca2Client(store, config);
+  // store the socket relay below uses). ioRef is empty at this point (the
+  // socket server doesn't exist yet) — populated once it does, read lazily.
+  const aca2 = createInProcessAca2Client(store, config, ioRef);
   app.use('/api', createSessionApiRouter({ storage, aca2, config }));
 
   app.get('/api/health', (_req, res) => {
@@ -96,7 +98,7 @@ function buildLocalApp(
 
 // ROLE=aca2 — the public Socket.IO relay + the ACA1-only /internal/* control
 // plane. No local-file routes, no static hosting.
-function buildAca2App(store: ReturnType<typeof createSessionStore>, config: AppConfig): express.Express {
+function buildAca2App(store: ReturnType<typeof createSessionStore>, config: AppConfig, ioRef: IoRef): express.Express {
   const app = express();
   app.use(cors({ origin: config.webOrigin ?? true }));
   app.use(express.json({ limit: '10mb' }));
@@ -106,7 +108,7 @@ function buildAca2App(store: ReturnType<typeof createSessionStore>, config: AppC
   // Auth only gates the /internal/* prefix; the router itself is mounted at
   // root because its route paths already start with /internal.
   app.use('/internal', internalAuth(config.internalKey));
-  app.use(createInternalRouter(store, config));
+  app.use(createInternalRouter(store, config, ioRef));
   return app;
 }
 
@@ -114,6 +116,12 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
   const storage = makeStorage(config.storage);
   const store = createSessionStore({ storage });
   let stopSweep: (() => void) | undefined;
+
+  // The socket server (and its `io`) is created after the app/routes below,
+  // but a couple of those routes need to broadcast through it once it
+  // exists (a session-data overwrite reaching anyone currently connected) —
+  // this ref is populated further down, read lazily by those routes.
+  const ioRef: IoRef = { current: null };
 
   let app: express.Express;
   let withSockets = false;
@@ -123,7 +131,7 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
     app = createAca1App({ storage, aca2, config });
     stopSweep = startSweep({ storage, aca2, config });
   } else if (config.role === 'aca2') {
-    app = buildAca2App(store, config);
+    app = buildAca2App(store, config, ioRef);
     withSockets = true;
   } else {
     // Advertise ourselves for LAN discovery only when there's an actual LAN
@@ -133,14 +141,14 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
     const beacon = lanIp && config.port !== 0
       ? startDiscoveryBeacon(`http://${lanIp}:${config.port}`, os.hostname())
       : undefined;
-    app = buildLocalApp(storage, store, config, beacon);
-    const stopLocalSweep = startSweep({ storage, aca2: createInProcessAca2Client(store, config), config });
+    app = buildLocalApp(storage, store, config, beacon, ioRef);
+    const stopLocalSweep = startSweep({ storage, aca2: createInProcessAca2Client(store, config, ioRef), config });
     stopSweep = () => { stopLocalSweep(); beacon?.stop(); };
     withSockets = true;
   }
 
   const httpServer: HttpServer = createServer(app);
-  if (withSockets) createCollabSocketServer(httpServer, store, config);
+  if (withSockets) ioRef.current = createCollabSocketServer(httpServer, store, config);
 
   await new Promise<void>((resolve) => httpServer.listen(config.port, resolve));
   const port = (httpServer.address() as AddressInfo).port;
