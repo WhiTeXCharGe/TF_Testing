@@ -27,7 +27,7 @@ interface MenuDef {
 }
 
 export function MenuBar() {
-  const { state, dispatch, leaveCollabSession } = useAppContext();
+  const { state, dispatch, leaveCollabSession, lockSession, unlockSession } = useAppContext();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -97,6 +97,9 @@ export function MenuBar() {
         // the 共同編集 menu only appears once you're actually in a session.
         { label: UI.fileMenuJoinSession, action: () => openSessionDialog('join'), disabled: !!state.session },
         { label: UI.fileMenuCreateSession, action: () => openSessionDialog('create'), disabled: !!state.session },
+        // 退出 sits next to 参加/作成 with the inverse enablement — only
+        // clickable while actually in a session.
+        { label: UI.fileMenuLeaveSession, action: () => { leaveCollabSession(); setOpenMenu(null); }, disabled: !state.session },
         { separator: true },
         { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave },
         { label: UI.saveAs, shortcut: 'Ctrl+Shift+S', action: saveFileAs, disabled: !canSave },
@@ -112,7 +115,11 @@ export function MenuBar() {
           label: UI.collabMenu,
           items: [
             { label: UI.sessionInfoItem, action: () => openSessionDialog('info') },
-            { label: UI.leaveSessionItem, action: () => { leaveCollabSession(); setOpenMenu(null); } },
+            // Lock/unlock is a direct menu action, not a dialog — any
+            // participant may toggle it, it's just a shared "freeze editing" flag.
+            state.session.status === 'lock'
+              ? { label: UI.sessionUnlockBtn, action: () => { unlockSession(); setOpenMenu(null); } }
+              : { label: UI.sessionLockBtn, action: () => { lockSession(); setOpenMenu(null); } },
           ],
         }]
       : []),

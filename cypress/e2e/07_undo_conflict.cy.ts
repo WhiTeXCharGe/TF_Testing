@@ -67,7 +67,7 @@ describe('07 – Undo Conflict', () => {
     cy.contains('ファイル').click();
     cy.contains('オンラインセッションを作成').click();
     cy.contains('オンラインセッションを作成').should('be.visible');
-    cy.get('input[placeholder="Nicknameを入力"]').type('Editor B');
+    cy.get('input[placeholder="ニックネームを入力"]').type('Editor B');
     cy.get('input[placeholder="セッション名を入力"]').type('Undo Conflict Test');
     cy.contains('button', '現在のスケジュールから作成').click();
 

@@ -21,9 +21,6 @@ const inputStyle: React.CSSProperties = {
 const primaryBtnStyle: React.CSSProperties = {
   padding: '6px 16px', backgroundColor: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
 };
-const dangerBtnStyle: React.CSSProperties = {
-  padding: '6px 16px', backgroundColor: '#c62828', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
-};
 const neutralBtnStyle: React.CSSProperties = {
   padding: '6px 16px', backgroundColor: '#78909c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13,
 };
@@ -171,6 +168,7 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
     <div>
       <div style={titleStyle}>{UI.sessionJoinDialogTitle}</div>
 
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionNicknameLabel}</div>
       <input
         placeholder={UI.sessionNamePlaceholder}
         value={displayName}
@@ -321,6 +319,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     <div>
       <div style={titleStyle}>{UI.sessionCreateDialogTitle}</div>
 
+      <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionNicknameLabel}</div>
       <input placeholder={UI.sessionNamePlaceholder} value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
       <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
 
@@ -359,10 +358,14 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ---- セッション情報 (info + shared lock) --------------------------------
+// ---- セッション情報 (read-only: name + status) ---------------------------
+// Participants are already visible on hover over "n人が参加中" in the menu
+// bar, and lock/unlock is now a direct 共同編集 menu action (see MenuBar.tsx)
+// — neither needs to live in a dialog anymore, so this is just a name+status
+// readout plus the locked explanation.
 
 function SessionInfoDialog({ onClose }: { onClose: () => void }) {
-  const { state, lockSession, unlockSession, leaveCollabSession } = useAppContext();
+  const { state } = useAppContext();
   const session = state.session;
 
   if (!session) return null;
@@ -381,27 +384,8 @@ function SessionInfoDialog({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
-        {UI.sessionParticipantsLabel(session.participants.length)}
-      </div>
-      <div style={{ marginBottom: 16, border: '1px solid #e0e0e0', borderRadius: 2 }}>
-        {session.participants.map((p) => (
-          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 10px', fontSize: 12, color: '#222' }}>
-            <span>{p.name}</span>
-            <span style={{ color: '#666', marginLeft: 12 }}>{p.role === 'edit' ? UI.sessionParticipantRoleEdit : UI.sessionParticipantRoleView}</span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        {/* Lock/unlock is a shared toggle — any participant may use it. */}
-        {session.status === 'lock'
-          ? <button onClick={() => unlockSession()} style={primaryBtnStyle}>{UI.sessionUnlockBtn}</button>
-          : <button onClick={() => lockSession()} style={{ ...neutralBtnStyle, backgroundColor: '#e65100' }}>{UI.sessionLockBtn}</button>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => { leaveCollabSession(); onClose(); }} style={dangerBtnStyle}>{UI.sessionLeaveBtn}</button>
-          <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>
   );

@@ -359,7 +359,6 @@ export const UI = {
   startSessionItem: 'セッションを開始',
   joinSessionItem: 'セッションに参加',
   sessionInfoItem: 'セッション情報',
-  leaveSessionItem: 'セッションを終了',
   sessionNameLabel: 'セッション名',
   sessionParticipantsLabel: (n: number) => `🟢 ${n}人が参加中`,
   sessionParticipantRoleEdit: '編集者',
@@ -369,7 +368,8 @@ export const UI = {
   sessionDialogStartDesc: '現在のスケジュールを元にセッションを開始します。他の人は編集用または閲覧用のリンクから参加できます。',
   sessionDialogJoinTitle: 'セッションに参加',
   sessionDialogJoinDesc: '受け取ったリンク、またはセッションIDを貼り付けてください。',
-  sessionNamePlaceholder: 'Nicknameを入力',
+  sessionNicknameLabel: 'ニックネーム',
+  sessionNamePlaceholder: 'ニックネームを入力',
   sessionNameFieldPlaceholder: 'セッション名を入力',
   sessionStartBtn: '開始する',
   sessionJoinLinkPlaceholder: 'リンクまたはセッションID',
@@ -381,7 +381,6 @@ export const UI = {
   sessionActiveTitle: 'セッション情報',
   sessionEditLinkLabel: '編集用リンク',
   sessionViewLinkLabel: '閲覧用リンク',
-  sessionLeaveBtn: 'セッションを終了',
   sessionCloseBtn: '閉じる',
   copyLinkBtn: 'コピー',
   copyLinkCopied: 'コピーしました',
@@ -391,6 +390,9 @@ export const UI = {
   // real ambiguity (more than one app found) and just needs a name clicked.
   fileMenuJoinSession: 'オンラインセッションに参加',
   fileMenuCreateSession: 'オンラインセッションを作成',
+  // 退出 lives in ファイル next to 参加/作成 — the inverse enablement (only
+  // clickable while actually in a session) instead of a separate 共同編集 item.
+  fileMenuLeaveSession: 'オンラインセッションを退出',
   sessionPickHostLabel: '参加先を選んでください:',
   sessionSearchingMessage: '検索中...',
   sessionNoneFoundMessage: 'オンラインセッションが見つかりません。主催者のPCでアプリが起動しているか確認してください。',
@@ -408,7 +410,7 @@ export const UI = {
   sessionListPageLabel: (from: number, to: number, total: number) => `${from}–${to} / ${total}`,
   sessionListPrevBtn: '前へ',
   sessionListNextBtn: '次へ',
-  sessionJoinNeedName: 'Nicknameを入力してください',
+  sessionJoinNeedName: 'ニックネームを入力してください',
   sessionJoinNeedSelection: '参加するセッションを選択してください',
   sessionStatusOpen: '開催中',
   sessionStatusLock: 'ロック中',
@@ -427,7 +429,7 @@ export const UI = {
   lockedIndicatorLabel: 'ロック中',
   joinSessionPromptTitle: 'このセッションに参加',
   joinSessionPromptTitleNamed: (name: string) => `「${name}」の参加`,
-  joinSessionNamePlaceholder: 'Nicknameを入力',
+  joinSessionNamePlaceholder: 'ニックネームを入力',
   joinSessionSubmitBtn: '参加する',
   joinSessionErrorFallback: 'セッションへの参加に失敗しました',
 } as const;

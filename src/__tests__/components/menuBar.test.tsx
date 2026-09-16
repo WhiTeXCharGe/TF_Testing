@@ -9,14 +9,21 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppProvider, useAppContext } from '../../context/AppContext';
 import { MenuBar } from '../../components/Toolbar/MenuBar';
+import * as collabService from '../../services/collabService';
+import { SessionStatus } from '../../types/appState';
 
 // excelExportService pulls in exceljs, an ESM-only package Jest's CJS
 // transform can't parse even to auto-mock (auto-mocking still loads the
 // real module to introspect its shape) — a factory mock avoids loading it
 // at all, since export behavior isn't what this file tests.
 jest.mock('../../services/excelExportService', () => ({ exportScheduleToExcel: jest.fn() }));
+// lockSession/unlockSession go straight through collabService's socket
+// wrapper — mock it so lock/unlock clicks are observable without a real
+// connection.
+jest.mock('../../services/collabService');
+const mockedCollab = collabService as jest.Mocked<typeof collabService>;
 
-function Harness({ withSession = true }: { withSession?: boolean }) {
+function Harness({ withSession = true, status = 'open' }: { withSession?: boolean; status?: SessionStatus }) {
   const { dispatch } = useAppContext();
   useEffect(() => {
     if (withSession) {
@@ -27,7 +34,7 @@ function Harness({ withSession = true }: { withSession?: boolean }) {
           name: 'My Session',
           role: 'edit',
           connectionStatus: 'connected',
-          status: 'open',
+          status,
           participants: [{ id: 'p1', name: 'Alice', role: 'edit' }],
         },
       });
@@ -37,10 +44,10 @@ function Harness({ withSession = true }: { withSession?: boolean }) {
   return null;
 }
 
-function renderMenuBar(withSession = true) {
+function renderMenuBar(withSession = true, status: SessionStatus = 'open') {
   return render(
     <AppProvider>
-      <Harness withSession={withSession} />
+      <Harness withSession={withSession} status={status} />
       <MenuBar />
     </AppProvider>,
   );
@@ -76,20 +83,52 @@ it('still shows the participant list on click (existing behavior preserved)', as
 });
 
 describe('online-session menu placement', () => {
-  it('with no session: ファイル menu offers join + create, and 共同編集 is not shown', async () => {
+  it('with no session: ファイル menu offers join + create, 退出 is present but disabled, and 共同編集 is not shown', async () => {
     const user = userEvent.setup();
     renderMenuBar(false);
     expect(screen.queryByText('共同編集')).not.toBeInTheDocument();
     await user.click(screen.getByText('ファイル'));
     expect(screen.getByText('オンラインセッションに参加')).toBeInTheDocument();
     expect(screen.getByText('オンラインセッションを作成')).toBeInTheDocument();
+
+    const leaveItem = screen.getByText('オンラインセッションを退出');
+    await user.click(leaveItem);
+    // Disabled — clicking it does nothing observable, no session appears.
+    expect(screen.queryByText('共同編集')).not.toBeInTheDocument();
   });
 
-  it('in a session: the 共同編集 menu appears with セッション情報 + セッションを終了', async () => {
+  it('in a session: ファイル menu offers 退出 (join/create disabled), and clicking it leaves the session', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true);
+    await user.click(screen.getByText('ファイル'));
+    expect(screen.getByText('オンラインセッションを退出')).toBeInTheDocument();
+    await user.click(screen.getByText('オンラインセッションを退出'));
+    expect(screen.queryByText('共同編集')).not.toBeInTheDocument();
+  });
+
+  it('in a session: the 共同編集 menu appears with セッション情報 + ロックする (no 終了 item here anymore)', async () => {
     const user = userEvent.setup();
     renderMenuBar(true);
     await user.click(screen.getByText('共同編集'));
     expect(screen.getByText('セッション情報')).toBeInTheDocument();
-    expect(screen.getByText('セッションを終了')).toBeInTheDocument();
+    expect(screen.getByText('ロックする')).toBeInTheDocument();
+    expect(screen.queryByText('セッションを終了')).not.toBeInTheDocument();
+  });
+
+  it('clicking ロックする in 共同編集 sends the lock action directly, no dialog', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true, 'open');
+    await user.click(screen.getByText('共同編集'));
+    await user.click(screen.getByText('ロックする'));
+    expect(mockedCollab.sendCollabLock).toHaveBeenCalled();
+  });
+
+  it('when locked, 共同編集 shows ロック解除 instead, and clicking it sends the unlock action', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true, 'lock');
+    await user.click(screen.getByText('共同編集'));
+    expect(screen.getByText('ロック解除')).toBeInTheDocument();
+    await user.click(screen.getByText('ロック解除'));
+    expect(mockedCollab.sendCollabUnlock).toHaveBeenCalled();
   });
 });

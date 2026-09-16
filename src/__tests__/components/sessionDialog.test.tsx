@@ -91,7 +91,7 @@ describe('join dialog', () => {
     const joinBtn = screen.getByRole('button', { name: '参加' });
     expect(joinBtn).toBeDisabled();
 
-    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
     expect(joinBtn).toBeDisabled(); // still no selection
 
     await userEvent.click(screen.getByText('Weekly Plan'));
@@ -101,7 +101,7 @@ describe('join dialog', () => {
   it('joins the selected session and remembers the display name', async () => {
     renderDialog({ kind: 'join' });
     await screen.findByText('Weekly Plan');
-    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
     await userEvent.click(screen.getByText('Weekly Plan'));
     await userEvent.click(screen.getByRole('button', { name: '参加' }));
     await waitFor(() => expect(mockedCollab.openSession).toHaveBeenCalledWith('s1'));
@@ -186,7 +186,7 @@ describe('create dialog', () => {
   it('creates from the current Gantt (no files) when that tab is submitted', async () => {
     mockedCollab.createSessionFromState.mockResolvedValue({ sessionId: 's9', ownerToken: 'tok' });
     renderDialog({ kind: 'create', loadedGantt: true });
-    await userEvent.type(screen.getByPlaceholderText('Nicknameを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
     await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
     await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
     await waitFor(() => expect(mockedCollab.createSessionFromState).toHaveBeenCalledWith(
@@ -197,21 +197,21 @@ describe('create dialog', () => {
 });
 
 describe('info dialog', () => {
-  it('lists participants with their localized role', async () => {
+  // Participants are shown on hover over "n人が参加中" in the menu bar
+  // (see menuBar.test.tsx), and lock/unlock is now a direct 共同編集 menu
+  // action (also menuBar.test.tsx) — this dialog is just a read-only
+  // name + status readout now.
+  it('shows the session name and status, with no participant list or lock/unlock buttons', async () => {
     renderDialog({ session: activeSession(), kind: 'info' });
-    expect(await screen.findByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('編集者')).toBeInTheDocument();
-    expect(screen.getByText('閲覧者')).toBeInTheDocument();
+    expect(await screen.findByText(/My Session/)).toBeInTheDocument();
+    expect(screen.getByText('開催中')).toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(screen.queryByText('ロックする')).not.toBeInTheDocument();
+    expect(screen.queryByText('ロック解除')).not.toBeInTheDocument();
   });
 
-  it('shows the lock button to any participant (no owner token needed)', async () => {
-    renderDialog({ session: activeSession({ ownerToken: undefined }), kind: 'info' });
-    expect(await screen.findByText('ロックする')).toBeInTheDocument();
-  });
-
-  it('unlocking a locked session calls unlockSession', async () => {
+  it('shows the locked explanation banner when the session is locked', async () => {
     renderDialog({ session: activeSession({ status: 'lock' }), kind: 'info' });
-    await userEvent.click(await screen.findByText('ロック解除'));
-    expect(mockedCollab.sendCollabUnlock).toHaveBeenCalled();
+    expect(await screen.findByText('このセッションはロックされています（閲覧のみ）')).toBeInTheDocument();
   });
 });
