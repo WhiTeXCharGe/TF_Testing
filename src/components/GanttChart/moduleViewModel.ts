@@ -65,6 +65,25 @@ export interface ModuleViewModel {
 function minStr(a: string, b: string): string { return a < b ? a : b; }
 function maxStr(a: string, b: string): string { return a > b ? a : b; }
 
+/**
+ * A module's collapsed row draws one bar per phase — a phase with nobody
+ * assigned yet has no real (worker-driven) date range to show, so drawing it
+ * at its own planStartDate/planEndDate risks silently overlapping (and
+ * visually "overwriting") a phase that IS assigned. Instead, every
+ * unassigned phase in a module collapses into a single combined range here,
+ * rendered once as one "未計画" placeholder bar spanning all of them —
+ * assigned phases are untouched and keep their own bars. Returns null when
+ * every phase already has at least one worker (nothing to show).
+ */
+export function unassignedRange(phases: ModulePhase[]): { start: string; end: string } | null {
+  const unassigned = phases.filter(p => p.workerCount === 0);
+  if (unassigned.length === 0) return null;
+  return unassigned.reduce(
+    (acc, p) => ({ start: minStr(acc.start, p.planStartDate), end: maxStr(acc.end, p.planEndDate) }),
+    { start: unassigned[0].planStartDate, end: unassigned[0].planEndDate },
+  );
+}
+
 function buildMonthGroups(dates: string[]): HeaderMonthGroup[] {
   const groups: HeaderMonthGroup[] = [];
   let i = 0;

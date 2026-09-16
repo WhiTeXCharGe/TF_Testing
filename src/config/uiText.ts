@@ -162,6 +162,11 @@ export const UI = {
   // Device view (製番) side panel
   planStartDateLabel: '作業開始可能日',
   phaseEndDateLabel: '終了希望日',
+  // 未計画 bar — a module's koutei row, when one or more of its 工程 have no
+  // worker assigned yet, shows one merged placeholder bar (spanning all of
+  // them) instead of drawing each unassigned 工程 at its own planned dates,
+  // which used to risk overlapping (and visually hiding) an assigned one.
+  unplannedBarLabel: '未計画',
   actualPeriodLabel: '実績期間',
   assignedWorkerCountLabel: '割り当て作業者',
   peopleUnit: (n: number) => `${n}名`,

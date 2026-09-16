@@ -3,7 +3,7 @@ import { useAppContext } from '../../context/AppContext';
 import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { UI } from '../../config/uiText';
 import { diffDays, getRangeOverlayGeom } from '../../utils/dateUtils';
-import { buildModuleViewModel, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
+import { buildModuleViewModel, unassignedRange, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
 import { SearchableSelect } from '../common/SearchableSelect';
 
 const PLAN_RANGE_BG = 'rgba(66, 165, 245, 0.14)';
@@ -35,6 +35,29 @@ function barGeom(start: string | null, end: string | null, viewStart: string, vi
   const e = end > viewEnd ? viewEnd : end;
   if (e < s) return null;
   return { left: diffDays(viewStart, s) * CELL_W, width: (diffDays(s, e) + 1) * CELL_W };
+}
+
+// One merged placeholder per module for however many 工程 have nobody
+// assigned yet (see unassignedRange) — hatched grey so it reads as "nothing
+// planned" rather than a real committed phase, and deliberately not
+// selectable (it doesn't correspond to any single 工程 to show in the panel).
+function UnplannedBar({ geom, range }: { geom: { left: number; width: number }; range: { start: string; end: string } }) {
+  return (
+    <div
+      title={`${UI.unplannedBarLabel}\n${range.start} 〜 ${range.end}`}
+      style={{
+        position: 'absolute', left: geom.left + 1, top: 5,
+        width: Math.max(CELL_W - 2, geom.width - 2), height: ROW_H - 10,
+        borderRadius: 4, border: '1px dashed #9aa8b8',
+        background: 'repeating-linear-gradient(45deg, #e4e9ef, #e4e9ef 6px, #d3dae2 6px, #d3dae2 12px)',
+        display: 'flex', alignItems: 'center', paddingLeft: 6, paddingRight: 6,
+        fontSize: 11, color: '#5a6b7d', fontWeight: 700,
+        overflow: 'hidden', whiteSpace: 'nowrap', boxSizing: 'border-box',
+      }}
+    >
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{UI.unplannedBarLabel}</span>
+    </div>
+  );
 }
 
 export function DeviceViewGantt({ dates }: Props) {
@@ -312,18 +335,27 @@ export function DeviceViewGantt({ dates }: Props) {
                 })}
 
                 {row.type === 'koutei'
-                  ? row.module.phases.map(ph => {
-                      const geom = barGeom(ph.barStartDate ?? ph.planStartDate, ph.barEndDate ?? ph.planEndDate, viewStart, viewEnd);
-                      if (!geom) return null;
-                      const isSel = selection?.kind === 'koutei' && selection.moduleId === row.module.moduleId && selection.phaseId === ph.phaseId;
-                      return (
-                        <span key={`kb_${ph.phaseId}`}>
-                          {renderBar(geom, ph.phaseName, ph.color, isSel, true,
-                            () => setSelection({ kind: 'koutei', moduleId: row.module.moduleId, phaseId: ph.phaseId }),
-                            `${ph.phaseName}\n${ph.barStartDate ?? ph.planStartDate} 〜 ${ph.barEndDate ?? ph.planEndDate}`)}
-                        </span>
-                      );
-                    })
+                  ? <>
+                      {row.module.phases.filter(ph => ph.workerCount > 0).map(ph => {
+                        const geom = barGeom(ph.barStartDate ?? ph.planStartDate, ph.barEndDate ?? ph.planEndDate, viewStart, viewEnd);
+                        if (!geom) return null;
+                        const isSel = selection?.kind === 'koutei' && selection.moduleId === row.module.moduleId && selection.phaseId === ph.phaseId;
+                        return (
+                          <span key={`kb_${ph.phaseId}`}>
+                            {renderBar(geom, ph.phaseName, ph.color, isSel, true,
+                              () => setSelection({ kind: 'koutei', moduleId: row.module.moduleId, phaseId: ph.phaseId }),
+                              `${ph.phaseName}\n${ph.barStartDate ?? ph.planStartDate} 〜 ${ph.barEndDate ?? ph.planEndDate}`)}
+                          </span>
+                        );
+                      })}
+                      {(() => {
+                        const range = unassignedRange(row.module.phases);
+                        if (!range) return null;
+                        const geom = barGeom(range.start, range.end, viewStart, viewEnd);
+                        if (!geom) return null;
+                        return <UnplannedBar key={`ub_${row.module.moduleId}`} geom={geom} range={range} />;
+                      })()}
+                    </>
                   : row.module.phases.map(ph => {
                       const t = ph.tasks[row.taskIndex];
                       if (!t) return null;
