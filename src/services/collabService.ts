@@ -293,6 +293,16 @@ export function sendCollabUnlock(): void {
   socket?.emit('unlock');
 }
 
+// Best-effort final snapshot sent by the last connected editor right before
+// they leave (see AppContext.leaveCollabSession) — replaces the session's
+// baseline and clears its action log server-side, so a session's storage
+// footprint doesn't grow forever across many open/close cycles. Silently a
+// no-op if the socket is already gone; nothing here is worth surfacing an
+// error for on the way out the door.
+export function sendCollabCheckpoint(baseline: SessionBaseline): void {
+  socket?.emit('checkpoint', baseline);
+}
+
 // Accepts a bare session id or a full link (?session=<id>) pasted anywhere.
 export function parseSessionId(input: string): string {
   const trimmed = input.trim();

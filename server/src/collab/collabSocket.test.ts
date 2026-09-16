@@ -171,6 +171,44 @@ describe('lock / unlock', () => {
   });
 });
 
+describe('checkpoint', () => {
+  const NEW_BASELINE = { schedule: { checked: true }, envConfig: { checked: true }, currentView: 'device' as const };
+
+  it('replaces the baseline and clears the log for an edit-role sender', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    alice.emit('action', { type: 'SET_SCHEDULE', payload: { v: 1 } });
+    for (let i = 0; i < 40 && (store.getSession(sessionId)?.actions.length ?? 0) === 0; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+
+    alice.emit('checkpoint', NEW_BASELINE);
+    for (let i = 0; i < 40 && store.getSession(sessionId)?.baseline.currentView !== 'device'; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(store.getSession(sessionId)).toMatchObject({ baseline: NEW_BASELINE, actions: [] });
+    alice.disconnect();
+  });
+
+  it('is ignored from a view-role participant', async () => {
+    const viewer = connect();
+    await joinAndWaitForSync(viewer, { sessionId, name: 'Viewer', role: 'view' });
+    viewer.emit('checkpoint', NEW_BASELINE);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.getSession(sessionId)?.baseline).toEqual(BASELINE);
+    viewer.disconnect();
+  });
+
+  it('is ignored when the payload is missing schedule/envConfig', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    alice.emit('checkpoint', { currentView: 'worker' });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.getSession(sessionId)?.baseline).toEqual(BASELINE);
+    alice.disconnect();
+  });
+});
+
 describe('participant cap', () => {
   it('rejects a non-owner join past maxParticipants but lets the owner in', async () => {
     const capServer = createServer();

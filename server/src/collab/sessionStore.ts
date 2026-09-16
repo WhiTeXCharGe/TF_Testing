@@ -1,7 +1,7 @@
 import type { StorageClient } from './storage/storageClient.js';
 import type { SessionBaseline, LoggedAction, SessionStatus, SessionStatusRecord } from './types.js';
 import {
-  loadSessionRecord, writeLog, writeStatus, statusKey,
+  loadSessionRecord, writeLog, writeStatus, writeBaseline, statusKey,
 } from './persistence.js';
 
 // The relay's working set: sessions currently held in memory on this replica.
@@ -62,6 +62,18 @@ export interface SessionStore {
   markClosed(id: string): Promise<void>;
   /** Stamp status.json with the time a participant just joined (drives the list sort). */
   markJoined(id: string): Promise<void>;
+  /**
+   * Replace the baseline in place and clear the action log — a fresh full
+   * snapshot supersedes everything replayed so far, so the old log no longer
+   * applies. Used by: the last participant's leave-time checkpoint (keeps a
+   * session's storage footprint from growing forever), an explicit
+   * "update this session's data" push while locked, and a create-time
+   * overwrite of an existing session with the same name. Persists
+   * immediately (not lazily via flush/dirty) since this is a rare,
+   * significant event. Loads from storage first if not already in memory —
+   * false only if no such session exists at all.
+   */
+  replaceBaseline(id: string, baseline: SessionBaseline): Promise<boolean>;
   /** Drop in-memory sessions that have had no participants past the idle window. */
   sweepIdleSessions(maxIdleMs: number, now?: number): number;
 }
@@ -205,6 +217,21 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     await writeStatus(storage, id, { lastJoinAt: Date.now() });
   };
 
+  const replaceBaseline = async (id: string, baseline: SessionBaseline): Promise<boolean> => {
+    if (!sessions.has(id) && !(await activateFromStorage(id))) return false;
+    const s = sessions.get(id)!;
+    s.baseline = baseline;
+    s.actions = [];
+    s.nextSeq = 0;
+    s.dirty = false; // just persisted below, not lazily via flush
+    s.lastActivityAt = Date.now();
+    await Promise.all([
+      writeBaseline(storage, id, baseline),
+      writeLog(storage, id, []),
+    ]);
+    return true;
+  };
+
   const sweepIdleSessions = (maxIdleMs: number, now = Date.now()): number => {
     let removed = 0;
     for (const [id, s] of sessions) {
@@ -220,6 +247,6 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     isLoaded, activateFromStorage, getSession, appendAction,
     addParticipant, removeParticipant, participantCount, setLocked,
     ownerTokenHash, getLive, flush, flushAll, evict,
-    markActivated, markClosed, markJoined, sweepIdleSessions,
+    markActivated, markClosed, markJoined, replaceBaseline, sweepIdleSessions,
   };
 }

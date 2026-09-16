@@ -132,6 +132,42 @@ describe('markJoined', () => {
   });
 });
 
+describe('replaceBaseline', () => {
+  const NEW_BASELINE = { schedule: { new: true }, envConfig: { new: true }, currentView: 'device' as const };
+
+  it('replaces baseline and clears the log for a session already loaded in memory', async () => {
+    await store.activateFromStorage(id);
+    store.appendAction(id, 'SET_SCHEDULE', { a: 1 });
+    expect(await store.replaceBaseline(id, NEW_BASELINE)).toBe(true);
+    expect(store.getSession(id)).toMatchObject({ baseline: NEW_BASELINE, actions: [] });
+
+    const rec = await loadSessionRecord(storage, id);
+    expect(rec?.baseline).toEqual(NEW_BASELINE);
+    expect(rec?.log).toEqual([]);
+  });
+
+  it('loads an idle (not-in-memory) session from storage first, then replaces it', async () => {
+    expect(store.isLoaded(id)).toBe(false);
+    expect(await store.replaceBaseline(id, NEW_BASELINE)).toBe(true);
+    expect(store.isLoaded(id)).toBe(true);
+    const rec = await loadSessionRecord(storage, id);
+    expect(rec?.baseline).toEqual(NEW_BASELINE);
+  });
+
+  it('a new action appended after replacement starts the sequence over from 0', async () => {
+    await store.activateFromStorage(id);
+    store.appendAction(id, 'SET_SCHEDULE', { a: 1 });
+    store.appendAction(id, 'SET_SCHEDULE', { a: 2 });
+    await store.replaceBaseline(id, NEW_BASELINE);
+    const action = store.appendAction(id, 'SET_SCHEDULE', { a: 3 });
+    expect(action?.seq).toBe(0);
+  });
+
+  it('returns false for an unknown session id', async () => {
+    expect(await store.replaceBaseline('does-not-exist', NEW_BASELINE)).toBe(false);
+  });
+});
+
 describe('markActivated', () => {
   it('records the replica and sets status open', async () => {
     await store.activateFromStorage(id);

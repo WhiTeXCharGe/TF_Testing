@@ -104,6 +104,10 @@ export async function writeLog(s: StorageClient, id: string, log: LoggedAction[]
   await s.putJson(logKey(id), log);
 }
 
+export async function writeBaseline(s: StorageClient, id: string, baseline: SessionBaseline): Promise<void> {
+  await s.putJson(baselineKey(id), baseline);
+}
+
 export async function listSessionIds(s: StorageClient): Promise<string[]> {
   const keys = await s.listPrefix('sessions/');
   const ids = new Set<string>();

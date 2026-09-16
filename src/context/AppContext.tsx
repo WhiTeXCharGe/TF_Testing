@@ -7,7 +7,7 @@ import { reducer } from './reducer';
 import { captureUndoEntry, hasConflict, buildRevertAction } from './undoEntries';
 import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
-  sendCollabLock, sendCollabUnlock, openSession, parseSessionId,
+  sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, openSession, parseSessionId,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 import { generateId } from '../utils/id';
@@ -270,6 +270,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const unlockSession = useCallback(() => sendCollabUnlock(), []);
 
   const leaveCollabSession = useCallback(() => {
+    // Best-effort: if I'm the last one here (an editor, with data to give),
+    // hand the server a final snapshot before disconnecting so the session's
+    // storage footprint resets instead of growing forever. Nothing worse
+    // than today's behavior if this can't fire (abrupt disconnect, or a
+    // view-only participant is the one left) — the baseline+log just persist
+    // as they already do.
+    const { session, schedule, envConfig, currentView } = stateRef.current;
+    if (session?.role === 'edit' && session.participants.length <= 1 && schedule && envConfig) {
+      sendCollabCheckpoint({ schedule, envConfig, currentView });
+    }
     disconnectRef.current?.();
     disconnectRef.current = null;
     rawDispatch({ type: 'SET_SESSION', payload: null });

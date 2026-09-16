@@ -196,6 +196,52 @@ it('lets a participant leave a session, clearing session state', async () => {
   expect(screen.getByTestId('session-role')).toHaveTextContent('none');
 });
 
+describe('leave-time checkpoint (last participant hands the server a final snapshot)', () => {
+  it('sends one when an editor leaves as the last (only) participant', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onPresence([{ id: 'me', name: 'Bob', role: 'edit' }]);
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    await userEvent.click(screen.getByText('leave'));
+
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledWith({
+      schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker',
+    });
+  });
+
+  it('does not send one when other participants remain', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onPresence([{ id: 'me', name: 'Bob', role: 'edit' }, { id: 'other', name: 'Alice', role: 'edit' }]);
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    await userEvent.click(screen.getByText('leave'));
+
+    expect(mockedCollab.sendCollabCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('does not send one for a view-only participant leaving last', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onPresence([{ id: 'me', name: 'Carol', role: 'view' }]);
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join-view')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('view'));
+
+    await userEvent.click(screen.getByText('leave'));
+
+    expect(mockedCollab.sendCollabCheckpoint).not.toHaveBeenCalled();
+  });
+});
+
 it('blocks LOAD_FILES while a session is active, regardless of role, and surfaces an error', async () => {
   mockJoin((_isCreator, cb) => cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []));
 

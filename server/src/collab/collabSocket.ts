@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import type { SessionStore } from './sessionStore.js';
+import type { SessionBaseline } from './types.js';
 import type { AppConfig } from '../config.js';
 import { ownerTokenMatches } from './persistence.js';
 
@@ -15,6 +16,10 @@ interface JoinPayload {
 interface ActionPayload {
   type: string;
   payload: unknown;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 export function createCollabSocketServer(
@@ -76,6 +81,17 @@ export function createCollabSocketServer(
       const logged = store.appendAction(joinedSessionId, type, payload);
       if (!logged) return;
       socket.to(joinedSessionId).emit('action', { type: logged.type, payload: logged.payload });
+    });
+
+    // A best-effort final snapshot from the last connected editor before they
+    // leave (see AppContext.leaveCollabSession) — replaces the baseline and
+    // clears the action log so an idle session's storage footprint doesn't
+    // grow forever across many open/close cycles. Edit-role only, same as
+    // 'action'; a malformed payload is dropped rather than persisted.
+    socket.on('checkpoint', (payload: SessionBaseline) => {
+      if (!joinedSessionId || joinedRole !== 'edit') return;
+      if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) return;
+      void store.replaceBaseline(joinedSessionId, payload);
     });
 
     // Lock / unlock is open to any participant in the session — it's a shared
