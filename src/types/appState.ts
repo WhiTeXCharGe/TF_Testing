@@ -121,7 +121,7 @@ export interface SessionSummary {
 }
 
 /** Which online-session dialog is open (all mutually exclusive). */
-export type SessionDialogKind = 'join' | 'create' | 'info';
+export type SessionDialogKind = 'join' | 'create' | 'info' | 'update';
 
 export interface SessionBaseline {
   schedule: ScheduleData;

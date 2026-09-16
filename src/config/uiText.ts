@@ -427,6 +427,15 @@ export const UI = {
   sessionUnlockBtn: 'ロック解除',
   sessionLockedBannerText: 'このセッションはロックされています（閲覧のみ）',
   lockedIndicatorLabel: 'ロック中',
+  // Locked-session data replace — 共同編集 menu item, only enabled while
+  // locked; reuses the same current/import radio-tab picker as session
+  // creation. Any participant can use it, same as lock/unlock.
+  sessionUpdateItem: 'セッションデータを更新',
+  sessionUpdateDialogTitle: 'セッションデータを更新',
+  sessionUpdateUnavailableHint: '更新するにはまずロックしてください。',
+  sessionUpdateSourceCurrentDesc: '今開いているスケジュールとEnvConfigで、このセッションのデータを置き換えます。',
+  sessionUpdateSubmitBtn: '更新する',
+  sessionUpdateSuccessMessage: 'セッションデータを更新しました',
   joinSessionPromptTitle: 'このセッションに参加',
   joinSessionPromptTitleNamed: (name: string) => `「${name}」の参加`,
   joinSessionNamePlaceholder: 'ニックネームを入力',

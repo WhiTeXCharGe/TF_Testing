@@ -36,7 +36,9 @@ const FIXTURE_ENV_CONFIG = {
 function Harness({ session, kind, loadedGantt }: { session?: SessionState; kind: SessionDialogKind; loadedGantt?: boolean }) {
   const { dispatch } = useAppContext();
   useEffect(() => {
-    if (session) dispatch({ type: 'SET_SESSION', payload: session });
+    // LOAD_FILES first — the wrapped dispatch blocks it once a session is
+    // active (stateRef reflects the SET_SESSION below only after a render),
+    // so this order matters when a test combines both.
     if (loadedGantt) {
       dispatch({
         type: 'LOAD_FILES',
@@ -45,6 +47,7 @@ function Harness({ session, kind, loadedGantt }: { session?: SessionState; kind:
         },
       });
     }
+    if (session) dispatch({ type: 'SET_SESSION', payload: session });
     dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -213,5 +216,35 @@ describe('info dialog', () => {
   it('shows the locked explanation banner when the session is locked', async () => {
     renderDialog({ session: activeSession({ status: 'lock' }), kind: 'info' });
     expect(await screen.findByText('このセッションはロックされています（閲覧のみ）')).toBeInTheDocument();
+  });
+});
+
+describe('update dialog (locked-session data replace)', () => {
+  it('defaults to 現在のガントで開く and submitting sends the current schedule/envConfig', async () => {
+    renderDialog({ session: activeSession({ status: 'lock' }), kind: 'update', loadedGantt: true });
+    expect(await screen.findByLabelText('現在のガントで開く')).toBeChecked();
+
+    await userEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith({
+      schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, currentView: 'worker',
+    }));
+  });
+
+  it('switching to 新しいガントをインポート shows the file fields, and submitting sends the parsed baseline', async () => {
+    const parsed = { schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, currentView: 'worker' as const };
+    mockedCollab.parseYamlBaseline.mockResolvedValue(parsed);
+    renderDialog({ session: activeSession({ status: 'lock' }), kind: 'update', loadedGantt: true });
+
+    await userEvent.click(await screen.findByLabelText('新しいガントをインポート'));
+    expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+
+    const fileInputs = document.querySelectorAll('input[type=file]');
+    await userEvent.upload(fileInputs[0] as HTMLInputElement, new File(['b: 2'], 'EnvConfig.yaml'));
+    await userEvent.upload(fileInputs[1] as HTMLInputElement, new File(['a: 1'], 'Schedule.yaml'));
+
+    await userEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith(parsed));
   });
 });

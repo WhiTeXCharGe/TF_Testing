@@ -106,6 +106,26 @@ export function createCollabSocketServer(
     socket.on('lock', () => void setLock(true));
     socket.on('unlock', () => void setLock(false));
 
+    // Explicit "replace this session's whole data" push, gated to locked
+    // sessions only (so nobody's mid-edit when it happens) — open to any
+    // participant, same as lock/unlock, since it's a session-wide admin
+    // action rather than an incremental edit. Broadcasts a fresh sync-init to
+    // the whole room (including the sender) so everyone's local editor
+    // re-syncs from the new baseline instead of trying to replay old actions
+    // against unrelated data. Stays locked afterward — someone still has to
+    // explicitly unlock.
+    socket.on('session-update', async (payload: SessionBaseline) => {
+      if (!joinedSessionId) return;
+      if (store.getSession(joinedSessionId)?.status !== 'lock') return;
+      if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) return;
+      const ok = await store.replaceBaseline(joinedSessionId, payload);
+      if (!ok) return;
+      const s = store.getSession(joinedSessionId)!;
+      io.to(joinedSessionId).emit('sync-init', {
+        ok: true, name: s.name, baseline: s.baseline, actions: s.actions, participants: s.participants, status: s.status,
+      });
+    });
+
     const handleLeave = async (): Promise<void> => {
       if (!joinedSessionId) return;
       const sid = joinedSessionId;

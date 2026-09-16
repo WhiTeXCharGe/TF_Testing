@@ -391,6 +391,77 @@ function SessionInfoDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ---- セッションデータを更新 (locked-session data replace) ------------------
+// Only reachable while locked (the 共同編集 menu item is disabled otherwise).
+// Same current/import radio-tab picker as session creation, minus the
+// nickname/session-name fields — you're already in the session.
+
+function SessionUpdateDialog({ onClose }: { onClose: () => void }) {
+  const { state, updateSessionFromCurrent, updateSessionFromYaml } = useAppContext();
+  const [envFile, setEnvFile] = useState<File | null>(null);
+  const [scheduleFile, setScheduleFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canUseCurrent = !!state.schedule && !!state.envConfig;
+  const [source, setSource] = useState<CreateSource>(() => (canUseCurrent ? 'current' : 'import'));
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (source === 'current') {
+        updateSessionFromCurrent();
+      } else {
+        await updateSessionFromYaml(scheduleFile!, envFile!);
+      }
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const canSubmit = source === 'current' ? canUseCurrent : !!envFile && !!scheduleFile;
+
+  return (
+    <div>
+      <div style={titleStyle}>{UI.sessionUpdateDialogTitle}</div>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 4, fontSize: 12 }}>
+        <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
+          <input type="radio" checked={source === 'current'} disabled={!canUseCurrent} onChange={() => setSource('current')} /> {UI.sessionCreateSourceCurrentLabel}
+        </label>
+        <label style={{ cursor: 'pointer' }}>
+          <input type="radio" checked={source === 'import'} onChange={() => setSource('import')} /> {UI.sessionCreateSourceImportLabel}
+        </label>
+      </div>
+      {!canUseCurrent && (
+        <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>{UI.sessionCreateSourceCurrentUnavailable}</div>
+      )}
+
+      {source === 'current' ? (
+        <div style={{ fontSize: 12, color: '#555', backgroundColor: '#f5f5f5', borderRadius: 4, padding: '8px 10px', marginTop: 8, marginBottom: 12 }}>
+          {UI.sessionUpdateSourceCurrentDesc}
+        </div>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateEnvFileLabel}</div>
+          <input type="file" accept=".yaml,.yml" onChange={(e) => setEnvFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
+          <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateScheduleFileLabel}</div>
+          <input type="file" accept=".yaml,.yml" onChange={(e) => setScheduleFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 12, fontSize: 12 }} />
+        </div>
+      )}
+
+      {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{UI.sessionUpdateSubmitBtn}</button>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
+      </div>
+    </div>
+  );
+}
+
 export function SessionDialog() {
   const { state, dispatch } = useAppContext();
   const kind = state.sessionDialog;
@@ -403,6 +474,7 @@ export function SessionDialog() {
         {kind === 'join' && <SessionJoinDialog onClose={handleClose} />}
         {kind === 'create' && <SessionCreateDialog onClose={handleClose} />}
         {kind === 'info' && <SessionInfoDialog onClose={handleClose} />}
+        {kind === 'update' && <SessionUpdateDialog onClose={handleClose} />}
       </div>
     </div>
   );

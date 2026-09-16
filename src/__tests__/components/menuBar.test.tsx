@@ -131,4 +131,28 @@ describe('online-session menu placement', () => {
     await user.click(screen.getByText('ロック解除'));
     expect(mockedCollab.sendCollabUnlock).toHaveBeenCalled();
   });
+
+  it('セッションデータを更新 is present but disabled while open', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true, 'open');
+    await user.click(screen.getByText('共同編集'));
+    const updateItem = screen.getByText('セッションデータを更新');
+    expect(updateItem).toBeInTheDocument();
+    await user.click(updateItem);
+    // Disabled — clicking it opens no dialog.
+    expect(screen.queryByText('オンラインセッションに参加')).not.toBeInTheDocument();
+  });
+
+  it('セッションデータを更新 is enabled while locked', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true, 'lock');
+    await user.click(screen.getByText('共同編集'));
+    const updateItem = screen.getByText('セッションデータを更新');
+    await user.click(updateItem);
+    // MenuBar itself has no SessionDialog mounted — an enabled item's click
+    // closes the dropdown (see openSessionDialog's setOpenMenu(null)), so the
+    // sibling セッション情報 item disappearing confirms it wasn't swallowed
+    // as disabled.
+    expect(screen.queryByText('セッション情報')).not.toBeInTheDocument();
+  });
 });

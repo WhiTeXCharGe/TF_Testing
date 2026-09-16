@@ -209,6 +209,56 @@ describe('checkpoint', () => {
   });
 });
 
+describe('session-update (explicit locked-session data replace)', () => {
+  const NEW_BASELINE = { schedule: { updated: true }, envConfig: { updated: true }, currentView: 'device' as const };
+
+  it('is ignored while open (must be locked first)', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    alice.emit('session-update', NEW_BASELINE);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.getSession(sessionId)?.baseline).toEqual(BASELINE);
+    alice.disconnect();
+  });
+
+  it('while locked: any participant (including view-role) can push a replacement, broadcast to everyone, and it stays locked', async () => {
+    const alice = connect();
+    const bob = connect();
+    // Both join promises are created back-to-back (listeners attached in the
+    // same tick each socket is made) before awaiting either — attaching a
+    // second client's listeners only after fully awaiting the first is a
+    // race on a fast local connection (see joinAndWaitForSync's own note).
+    const aliceReady = joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    const bobReady = joinAndWaitForSync(bob, { sessionId, name: 'Bob', role: 'view' });
+    await aliceReady;
+    await bobReady;
+
+    await new Promise<void>((resolve) => { alice.on('session-status', () => resolve()); alice.emit('lock'); });
+
+    const aliceResync = new Promise<any>((resolve) => alice.on('sync-init', resolve));
+    const bobResync = new Promise<any>((resolve) => bob.on('sync-init', resolve));
+    bob.emit('session-update', NEW_BASELINE); // the view-role participant pushes it
+    const aliceGot = await aliceResync;
+    const bobGot = await bobResync;
+
+    expect(aliceGot).toMatchObject({ ok: true, baseline: NEW_BASELINE, actions: [], status: 'lock' });
+    expect(bobGot).toMatchObject({ ok: true, baseline: NEW_BASELINE, actions: [], status: 'lock' });
+    expect(store.getSession(sessionId)).toMatchObject({ baseline: NEW_BASELINE, actions: [], status: 'lock' });
+    alice.disconnect();
+    bob.disconnect();
+  });
+
+  it('is ignored when the payload is missing schedule/envConfig', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    await new Promise<void>((resolve) => { alice.on('session-status', () => resolve()); alice.emit('lock'); });
+    alice.emit('session-update', { currentView: 'worker' });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(store.getSession(sessionId)?.baseline).toEqual(BASELINE);
+    alice.disconnect();
+  });
+});
+
 describe('participant cap', () => {
   it('rejects a non-owner join past maxParticipants but lets the owner in', async () => {
     const capServer = createServer();

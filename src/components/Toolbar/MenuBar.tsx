@@ -81,7 +81,7 @@ export function MenuBar() {
     }
   };
 
-  const openSessionDialog = (kind: 'join' | 'create' | 'info') => {
+  const openSessionDialog = (kind: 'join' | 'create' | 'info' | 'update') => {
     dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
     setOpenMenu(null);
   };
@@ -120,6 +120,10 @@ export function MenuBar() {
             state.session.status === 'lock'
               ? { label: UI.sessionUnlockBtn, action: () => { unlockSession(); setOpenMenu(null); } }
               : { label: UI.sessionLockBtn, action: () => { lockSession(); setOpenMenu(null); } },
+            // Replacing the whole session's data only takes effect while
+            // locked (server-enforced too) — disabled otherwise so it's clear
+            // locking comes first, not hidden outright.
+            { label: UI.sessionUpdateItem, action: () => openSessionDialog('update'), disabled: state.session.status !== 'lock' },
           ],
         }]
       : []),

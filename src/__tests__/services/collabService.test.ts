@@ -4,7 +4,7 @@
 import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
-  getServerUrl, setServerUrl, fetchLanHosts,
+  getServerUrl, setServerUrl, fetchLanHosts, sendCollabSessionUpdate, sendCollabCheckpoint,
 } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
@@ -209,4 +209,16 @@ it('fetchSessionName resolves the name for a real session', async () => {
 it('fetchSessionName resolves null for an unknown session', async () => {
   global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false }) }) as never;
   expect(await fetchSessionName('nope')).toBeNull();
+});
+
+it('sendCollabSessionUpdate emits session-update on the live socket', () => {
+  join(false);
+  sendCollabSessionUpdate(BASELINE);
+  expect(fakeSocket.emit).toHaveBeenCalledWith('session-update', BASELINE);
+});
+
+it('sendCollabCheckpoint emits checkpoint on the live socket', () => {
+  join(false);
+  sendCollabCheckpoint(BASELINE);
+  expect(fakeSocket.emit).toHaveBeenCalledWith('checkpoint', BASELINE);
 });

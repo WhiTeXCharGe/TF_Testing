@@ -107,16 +107,13 @@ export async function createSessionFromState(name: string, baseline: SessionBase
   return { sessionId: data.sessionId as string, ownerToken: data.ownerToken as string };
 }
 
-// The two uploaded YAML files are parsed and normalised *here*, with the same
-// yamlService the app uses for File > Open, then sent to ACA1 as JSON — so the
-// relay only ever stores a baseline the reducer/UI can consume directly.
-export async function createSessionFromYaml(
-  name: string, scheduleFile: File, envConfigFile: File,
-): Promise<CreateResult> {
+// Parses two uploaded YAML files with the same yamlService the app uses for
+// File > Open — the relay only ever stores/carries a baseline the reducer/UI
+// can consume directly, never raw YAML text.
+export async function parseYamlBaseline(scheduleFile: File, envConfigFile: File): Promise<SessionBaseline> {
   const [scheduleText, envText] = await Promise.all([scheduleFile.text(), envConfigFile.text()]);
-  let baseline: SessionBaseline;
   try {
-    baseline = {
+    return {
       schedule: parseScheduleYaml(scheduleText),
       envConfig: parseEnvConfigYaml(envText),
       currentView: 'worker',
@@ -124,6 +121,12 @@ export async function createSessionFromYaml(
   } catch (err) {
     throw new Error(`YAML の解析に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+export async function createSessionFromYaml(
+  name: string, scheduleFile: File, envConfigFile: File,
+): Promise<CreateResult> {
+  const baseline = await parseYamlBaseline(scheduleFile, envConfigFile);
   return createSessionFromState(name, baseline);
 }
 
@@ -301,6 +304,15 @@ export function sendCollabUnlock(): void {
 // error for on the way out the door.
 export function sendCollabCheckpoint(baseline: SessionBaseline): void {
   socket?.emit('checkpoint', baseline);
+}
+
+// Explicit "replace this session's whole data" push — only takes effect
+// while locked (server-enforced), open to any participant same as
+// lock/unlock. The server broadcasts a fresh sync-init back to everyone
+// (including the sender) once applied, which the existing onSyncInit
+// handler already knows how to apply — no separate client-side event needed.
+export function sendCollabSessionUpdate(baseline: SessionBaseline): void {
+  socket?.emit('session-update', baseline);
 }
 
 // Accepts a bare session id or a full link (?session=<id>) pasted anywhere.

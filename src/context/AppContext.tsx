@@ -7,7 +7,8 @@ import { reducer } from './reducer';
 import { captureUndoEntry, hasConflict, buildRevertAction } from './undoEntries';
 import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
-  sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, openSession, parseSessionId,
+  sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, sendCollabSessionUpdate,
+  parseYamlBaseline, openSession, parseSessionId,
 } from '../services/collabService';
 import { UI } from '../config/uiText';
 import { generateId } from '../utils/id';
@@ -74,6 +75,8 @@ interface ContextType {
   joinCollabSession: (sessionId: string, name: string, role: SessionRole) => Promise<void>;
   lockSession: () => void;
   unlockSession: () => void;
+  updateSessionFromCurrent: () => void;
+  updateSessionFromYaml: (scheduleFile: File, envConfigFile: File) => Promise<void>;
   leaveCollabSession: () => void;
 }
 
@@ -269,6 +272,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const lockSession = useCallback(() => sendCollabLock(), []);
   const unlockSession = useCallback(() => sendCollabUnlock(), []);
 
+  // Explicit "replace this session's whole data" push (only takes effect
+  // while locked — the server enforces that). The server broadcasts a fresh
+  // sync-init back to everyone including us, which the existing onSyncInit
+  // handler in joinInternal already applies — no local state update here.
+  const updateSessionFromCurrent = useCallback(() => {
+    const { schedule, envConfig, currentView } = stateRef.current;
+    if (!schedule || !envConfig) throw new Error(UI.collabNoScheduleError);
+    sendCollabSessionUpdate({ schedule, envConfig, currentView });
+  }, []);
+
+  const updateSessionFromYaml = useCallback(async (scheduleFile: File, envConfigFile: File) => {
+    const baseline = await parseYamlBaseline(scheduleFile, envConfigFile);
+    sendCollabSessionUpdate(baseline);
+  }, []);
+
   const leaveCollabSession = useCallback(() => {
     // Best-effort: if I'm the last one here (an editor, with data to give),
     // hand the server a final snapshot before disconnecting so the session's
@@ -290,7 +308,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       state, dispatch, startCollabSession, createUploadSession, joinCollabSession,
-      lockSession, unlockSession, leaveCollabSession,
+      lockSession, unlockSession, updateSessionFromCurrent, updateSessionFromYaml, leaveCollabSession,
     }}>
       {children}
     </AppContext.Provider>
