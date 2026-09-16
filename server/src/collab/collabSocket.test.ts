@@ -239,4 +239,24 @@ describe('presence + last-leave persistence', () => {
     expect(rec?.status.status).toBe('close');
     expect(rec?.log).toEqual([{ seq: 0, type: 'SET_SCHEDULE', payload: { v: 1 } }]);
   });
+
+  it('a locked session stays locked at rest when everyone leaves, and resumes locked on the next join', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    await new Promise<void>((resolve) => { alice.on('session-status', () => resolve()); alice.emit('lock'); });
+    alice.disconnect();
+
+    for (let i = 0; i < 80 && store.isLoaded(sessionId); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(store.isLoaded(sessionId)).toBe(false);
+
+    const rec = await loadSessionRecord(storage, sessionId);
+    expect(rec?.status).toMatchObject({ status: 'lock', relayInstance: null, relayUrl: null });
+
+    const bob = connect();
+    const bobSync = await joinAndWaitForSync(bob, { sessionId, name: 'Bob', role: 'edit' });
+    expect(bobSync.status).toBe('lock');
+    bob.disconnect();
+  });
 });

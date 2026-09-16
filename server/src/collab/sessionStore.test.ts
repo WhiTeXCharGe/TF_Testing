@@ -111,6 +111,15 @@ describe('evict / markClosed', () => {
     const rec = await loadSessionRecord(storage, id);
     expect(rec?.status).toMatchObject({ status: 'close', relayInstance: null, relayUrl: null });
   });
+
+  it('markClosed keeps a locked session locked at rest — everyone leaving must not unlock it', async () => {
+    await store.activateFromStorage(id);
+    store.setLocked(id, true);
+    await store.evict(id); // flushes status: 'lock', then drops from memory
+    await store.markClosed(id);
+    const rec = await loadSessionRecord(storage, id);
+    expect(rec?.status).toMatchObject({ status: 'lock', relayInstance: null, relayUrl: null });
+  });
 });
 
 describe('markJoined', () => {

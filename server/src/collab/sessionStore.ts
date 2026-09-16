@@ -193,7 +193,12 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
   };
 
   const markClosed = async (id: string): Promise<void> => {
-    await writeStatus(storage, id, { status: 'close', relayInstance: null, relayUrl: null });
+    // A locked session must stay locked at rest — the next opener should find
+    // it read-only, not reset to 'open', just because nobody was connected
+    // for a while. Only an 'open' session actually goes idle/'close'.
+    const current = await storage.getJson<SessionStatusRecord>(statusKey(id));
+    const status: SessionStatus = current?.status === 'lock' ? 'lock' : 'close';
+    await writeStatus(storage, id, { status, relayInstance: null, relayUrl: null });
   };
 
   const markJoined = async (id: string): Promise<void> => {

@@ -53,7 +53,19 @@ export function createFsStorage(rootDir: string): StorageClient {
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.${randomUUID()}.tmp`;
     await writeFile(tmp, JSON.stringify(value, null, 2), 'utf-8');
-    await rename(tmp, path);
+    // Windows can transiently refuse a rename onto a just-written destination
+    // (antivirus/indexer holding a brief handle) even when nothing in this
+    // process is racing it — retry a few times before giving up.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await rename(tmp, path);
+        return;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (attempt >= 5 || (code !== 'EPERM' && code !== 'EBUSY')) throw err;
+        await new Promise((r) => setTimeout(r, 20 * attempt));
+      }
+    }
   };
 
   const listPrefix = async (prefix: string): Promise<string[]> => {
