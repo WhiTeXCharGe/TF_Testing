@@ -420,16 +420,19 @@ export const UI = {
   sessionParticipantCount: (n: number | null) => (n == null ? '' : `${n}人`),
   sessionCreateSourceCurrentLabel: '現在のガントで開く',
   sessionCreateSourceImportLabel: '新しいガントをインポート',
-  // Third create-dialog source: push the current Gantt into an existing
-  // session (picked from a list) instead of creating a new one — an explicit,
-  // discoverable path to the same overwrite the duplicate-name check below
-  // falls into by surprise.
+  // Third create-dialog source: push data into an existing session (picked
+  // from a list) instead of creating a new one — an explicit, discoverable
+  // path to the same overwrite the duplicate-name check below falls into by
+  // surprise. Its own nested current/import choice (below) decides what data
+  // gets pushed once a target is picked, defaulting to current.
   sessionCreateSourceOverwriteLabel: '既存のセッションを上書き',
   sessionCreateSourceCurrentUnavailable: '（現在開いているガントがありません）',
   sessionCreateSourceCurrentDesc: '今開いているスケジュールとEnvConfigのまま、セッションを作成します。',
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
+  sessionOverwriteSourceCurrentLabel: '現在のガントで上書き',
+  sessionOverwriteSourceImportLabel: '新しいガントをインポートして上書き',
   // Only a locked session can be overwritten — same rule as the in-session
   // update feature (共同編集 → セッションデータを更新), so nobody's mid-edit
   // when the data under them gets replaced. The list still shows every

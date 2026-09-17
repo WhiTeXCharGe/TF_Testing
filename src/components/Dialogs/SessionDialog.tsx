@@ -280,6 +280,10 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
 // will run.
 
 type CreateSource = 'current' | 'import' | 'overwrite';
+// Once 既存のセッションを上書き is picked, a second choice decides what data
+// gets pushed into the selected session — the Gantt already open, or a fresh
+// pair of YAML files, same two options as the top-level radios.
+type OverwriteDataSource = 'current' | 'import';
 
 // Also reached the "duplicate name" way: typing a name that already matches
 // an existing session (checked on submit) warns before overwriting rather
@@ -300,6 +304,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const [source, setSource] = useState<CreateSource>(() => (canUseCurrent ? 'current' : 'import'));
   const [overwriteSessions, setOverwriteSessions] = useState<SessionSummary[] | null>(null);
   const [selectedOverwriteId, setSelectedOverwriteId] = useState<string | null>(null);
+  const [overwriteDataSource, setOverwriteDataSource] = useState<OverwriteDataSource>(() => (canUseCurrent ? 'current' : 'import'));
 
   useEffect(() => {
     if (source !== 'overwrite') return;
@@ -309,8 +314,10 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   }, [source]);
 
   const buildBaseline = async (): Promise<SessionBaseline> => {
-    if (source === 'import') return parseYamlBaseline(scheduleFile!, envFile!);
-    // 'current' and 'overwrite' both push whatever Gantt is already open.
+    const wantsImport = source === 'import' || (source === 'overwrite' && overwriteDataSource === 'import');
+    if (wantsImport) return parseYamlBaseline(scheduleFile!, envFile!);
+    // 'current', and 'overwrite' with its own source left on 'current', both
+    // push whatever Gantt is already open.
     if (!state.schedule || !state.envConfig) throw new Error(UI.collabNoScheduleError);
     return { schedule: state.schedule, envConfig: state.envConfig, currentView: state.currentView };
   };
@@ -381,7 +388,8 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   };
 
   const canSubmit = source === 'current' ? canUseCurrent
-    : source === 'overwrite' ? canUseCurrent && !!selectedOverwriteId
+    : source === 'overwrite'
+      ? !!selectedOverwriteId && (overwriteDataSource === 'current' ? canUseCurrent : !!envFile && !!scheduleFile)
       : !!envFile && !!scheduleFile;
 
   if (pendingOverwrite) {
@@ -418,11 +426,11 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
         <label style={{ cursor: 'pointer' }}>
           <input type="radio" checked={source === 'import'} onChange={() => setSource('import')} /> {UI.sessionCreateSourceImportLabel}
         </label>
-        <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
-          <input type="radio" checked={source === 'overwrite'} disabled={!canUseCurrent} onChange={() => setSource('overwrite')} /> {UI.sessionCreateSourceOverwriteLabel}
+        <label style={{ cursor: 'pointer' }}>
+          <input type="radio" checked={source === 'overwrite'} onChange={() => setSource('overwrite')} /> {UI.sessionCreateSourceOverwriteLabel}
         </label>
       </div>
-      {!canUseCurrent && (
+      {!canUseCurrent && source !== 'overwrite' && (
         <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>{UI.sessionCreateSourceCurrentUnavailable}</div>
       )}
 
@@ -441,6 +449,25 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
       )}
       {source === 'overwrite' && (
         <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 4, fontSize: 12 }}>
+            <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
+              <input type="radio" checked={overwriteDataSource === 'current'} disabled={!canUseCurrent} onChange={() => setOverwriteDataSource('current')} /> {UI.sessionOverwriteSourceCurrentLabel}
+            </label>
+            <label style={{ cursor: 'pointer' }}>
+              <input type="radio" checked={overwriteDataSource === 'import'} onChange={() => setOverwriteDataSource('import')} /> {UI.sessionOverwriteSourceImportLabel}
+            </label>
+          </div>
+          {!canUseCurrent && (
+            <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>{UI.sessionCreateSourceCurrentUnavailable}</div>
+          )}
+          {overwriteDataSource === 'import' && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateEnvFileLabel}</div>
+              <input type="file" accept=".yaml,.yml" onChange={(e) => setEnvFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
+              <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateScheduleFileLabel}</div>
+              <input type="file" accept=".yaml,.yml" onChange={(e) => setScheduleFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
+            </div>
+          )}
           <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{UI.sessionOverwriteListLabel}</div>
           <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, maxHeight: 160, overflowY: 'auto', marginBottom: 12 }}>
             {overwriteSessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>...</div>}

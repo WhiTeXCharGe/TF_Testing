@@ -250,19 +250,66 @@ describe('create dialog — duplicate name overwrite', () => {
 });
 
 describe('create dialog — overwrite an existing session (explicit radio + list)', () => {
-  it('is disabled with no Gantt open, same as 現在のガントで開く', () => {
+  // Unlike 現在のガントで開く, this option isn't gated on a Gantt already
+  // being open — it has its own nested current/import choice (below), so it
+  // stays usable via import even with nothing loaded.
+  it('stays enabled with no Gantt open (unlike 現在のガントで開く), defaulting its nested source to import', async () => {
     renderDialog({ kind: 'create' });
-    expect(screen.getByLabelText('既存のセッションを上書き')).toBeDisabled();
+    expect(screen.getByLabelText('既存のセッションを上書き')).toBeEnabled();
+
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    expect(screen.getByLabelText('現在のガントで上書き')).toBeDisabled();
+    expect(screen.getByLabelText('新しいガントをインポートして上書き')).toBeChecked();
+    expect(await screen.findByText('EnvConfig YAML')).toBeInTheDocument();
   });
 
-  it('selecting it shows the session list instead of the name field or file inputs', async () => {
+  it('selecting it shows the session list instead of the name field, defaulting to 現在のガントで上書き (no file fields) when a Gantt is open', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
 
+    expect(screen.getByLabelText('現在のガントで上書き')).toBeChecked();
     expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
     expect(screen.getByText('Locked One')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('セッション名を入力')).not.toBeInTheDocument();
     expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
+  });
+
+  it('switching the nested source to 新しいガントをインポートして上書き reveals the file fields, still alongside the session list', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+
+    expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+    expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
+  });
+
+  it('with the nested source on import, submit stays disabled until both files are chosen even with a session picked', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await userEvent.click(await screen.findByText('Locked One'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+
+    const submitBtn = screen.getByRole('button', { name: '作成して開始' });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it('picking a session and overwriting via imported YAML sends the parsed baseline, not the current Gantt', async () => {
+    const parsed = { schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, currentView: 'worker' as const };
+    mockedCollab.parseYamlBaseline.mockResolvedValue(parsed);
+    mockedCollab.overwriteSessionState.mockResolvedValue(undefined);
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await userEvent.click(await screen.findByText('Locked One'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+
+    const fileInputs = document.querySelectorAll('input[type=file]');
+    await userEvent.upload(fileInputs[0] as HTMLInputElement, new File(['b: 2'], 'EnvConfig.yaml'));
+    await userEvent.upload(fileInputs[1] as HTMLInputElement, new File(['a: 1'], 'Schedule.yaml'));
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+    await userEvent.click(await screen.findByRole('button', { name: '上書きする' }));
+
+    await waitFor(() => expect(mockedCollab.overwriteSessionState).toHaveBeenCalledWith('s2', parsed));
   });
 
   it('the submit button stays disabled until a LOCKED session is picked from the list', async () => {
