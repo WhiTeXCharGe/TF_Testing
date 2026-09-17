@@ -2,9 +2,20 @@
 # sharing ./mock-blob as "Blob storage".
 #   docker compose -f docker-compose.mock.yml up --build
 # Then the session API is on http://localhost:4000 and the relay on :4010.
+#
+# The Dockerfile lives in the sibling gantt-collab-container repo (not here —
+# see GanttChartEditor_ACA_ContainerBuildAndPush.md for why), so `build:`
+# below points there while keeping the build CONTEXT as this folder (`.`) —
+# .dockerignore only works from the context root, which must stay `server/`.
+# If you don't have that sibling repo checked out, copy its Dockerfile
+# locally and change `dockerfile:` back to a plain relative path.
+x-build: &build
+  context: .
+  dockerfile: ../../gantt-collab-container/Dockerfile
+
 services:
   aca1:
-    build: .
+    build: *build
     environment:
       ROLE: aca1
       PORT: "4000"
@@ -18,7 +29,7 @@ services:
     depends_on: [aca2]
 
   aca2:
-    build: .
+    build: *build
     environment:
       ROLE: aca2
       PORT: "4010"

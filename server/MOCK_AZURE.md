@@ -35,6 +35,13 @@ docker compose -f docker-compose.mock.yml up --build
 
 Then run the web client separately with `npm run dev` if you need it.
 
+Needs the sibling **`gantt-collab-container`** repo checked out (`web/gantt-collab-container/`,
+next to `GanttChartEditor/`) — that's where the Dockerfile actually lives now
+(`docker-compose.mock.yml` points `dockerfile:` there while keeping this
+folder as the build context). See `../../gantt-collab-container/README.md`
+and `documents/GanttChartEditor/GanttChartEditor_ACA_ContainerBuildAndPush.md`
+for why it's a separate repo from the app.
+
 ## Poke at it
 
 - **Postman:** import `server/postman/OnlineCollabAzure.postman_collection.json`
