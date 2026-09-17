@@ -342,8 +342,8 @@ describe('OPEN_SESSION_DIALOG / CLOSE_SESSION_DIALOG', () => {
   it('switches straight between kinds', () => {
     const create = reducer(BASE_STATE, { type: 'OPEN_SESSION_DIALOG', payload: 'create' });
     expect(create.sessionDialog).toBe('create');
-    const info = reducer(create, { type: 'OPEN_SESSION_DIALOG', payload: 'info' });
-    expect(info.sessionDialog).toBe('info');
+    const update = reducer(create, { type: 'OPEN_SESSION_DIALOG', payload: 'update' });
+    expect(update.sessionDialog).toBe('update');
   });
 });
 

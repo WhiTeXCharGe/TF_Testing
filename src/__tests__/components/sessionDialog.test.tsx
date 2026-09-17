@@ -235,23 +235,53 @@ describe('create dialog — duplicate name overwrite', () => {
   });
 });
 
-describe('info dialog', () => {
-  // Participants are shown on hover over "n人が参加中" in the menu bar
-  // (see menuBar.test.tsx), and lock/unlock is now a direct 共同編集 menu
-  // action (also menuBar.test.tsx) — this dialog is just a read-only
-  // name + status readout now.
-  it('shows the session name and status, with no participant list or lock/unlock buttons', async () => {
-    renderDialog({ session: activeSession(), kind: 'info' });
-    expect(await screen.findByText(/My Session/)).toBeInTheDocument();
-    expect(screen.getByText('開催中')).toBeInTheDocument();
-    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
-    expect(screen.queryByText('ロックする')).not.toBeInTheDocument();
-    expect(screen.queryByText('ロック解除')).not.toBeInTheDocument();
+describe('create dialog — overwrite an existing session (explicit radio + list)', () => {
+  it('is disabled with no Gantt open, same as 現在のガントで開く', () => {
+    renderDialog({ kind: 'create' });
+    expect(screen.getByLabelText('既存のセッションを上書き')).toBeDisabled();
   });
 
-  it('shows the locked explanation banner when the session is locked', async () => {
-    renderDialog({ session: activeSession({ status: 'lock' }), kind: 'info' });
-    expect(await screen.findByText('このセッションはロックされています（閲覧のみ）')).toBeInTheDocument();
+  it('selecting it shows the session list instead of the name field or file inputs', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+
+    expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
+    expect(screen.getByText('Locked One')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('セッション名を入力')).not.toBeInTheDocument();
+    expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
+  });
+
+  it('the submit button stays disabled until a session is picked from the list', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await screen.findByText('Weekly Plan');
+
+    const submitBtn = screen.getByRole('button', { name: '作成して開始' });
+    expect(submitBtn).toBeDisabled();
+    await userEvent.click(screen.getByText('Weekly Plan'));
+    expect(submitBtn).toBeEnabled();
+  });
+
+  it('picking a session and confirming overwrites it (same id) with the current Gantt, no name typed', async () => {
+    mockedCollab.overwriteSessionState.mockResolvedValue(undefined);
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await userEvent.click(await screen.findByText('Locked One')); // id s2, per beforeEach
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+
+    expect(await screen.findByText(/「Locked One」という名前のセッションは既に存在します/)).toBeInTheDocument();
+    // Cancel is left, 上書きする is right, and it's the same primary blue as
+    // every other confirm button — not a red danger button.
+    const cancelBtn = screen.getByRole('button', { name: 'キャンセル' });
+    const overwriteBtn = screen.getByRole('button', { name: '上書きする' });
+    expect(cancelBtn.compareDocumentPosition(overwriteBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(overwriteBtn).toHaveStyle({ backgroundColor: '#1976d2' });
+
+    await userEvent.click(overwriteBtn);
+    await waitFor(() => expect(mockedCollab.overwriteSessionState).toHaveBeenCalledWith(
+      's2', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
+    ));
   });
 });
 

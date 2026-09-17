@@ -363,8 +363,6 @@ export const UI = {
   collabMenu: '共同編集',
   startSessionItem: 'セッションを開始',
   joinSessionItem: 'セッションに参加',
-  sessionInfoItem: 'セッション情報',
-  sessionNameLabel: 'セッション名',
   sessionParticipantsLabel: (n: number) => `🟢 ${n}人が参加中`,
   sessionParticipantRoleEdit: '編集者',
   sessionParticipantRoleView: '閲覧者',
@@ -383,7 +381,6 @@ export const UI = {
   sessionJoinRoleEdit: '編集',
   sessionJoinRoleView: '閲覧のみ',
   sessionJoinBtn: '参加する',
-  sessionActiveTitle: 'セッション情報',
   sessionEditLinkLabel: '編集用リンク',
   sessionViewLinkLabel: '閲覧用リンク',
   sessionCloseBtn: '閉じる',
@@ -423,11 +420,19 @@ export const UI = {
   sessionParticipantCount: (n: number | null) => (n == null ? '' : `${n}人`),
   sessionCreateSourceCurrentLabel: '現在のガントで開く',
   sessionCreateSourceImportLabel: '新しいガントをインポート',
+  // Third create-dialog source: push the current Gantt into an existing
+  // session (picked from a list) instead of creating a new one — an explicit,
+  // discoverable path to the same overwrite the duplicate-name check below
+  // falls into by surprise.
+  sessionCreateSourceOverwriteLabel: '既存のセッションを上書き',
   sessionCreateSourceCurrentUnavailable: '（現在開いているガントがありません）',
   sessionCreateSourceCurrentDesc: '今開いているスケジュールとEnvConfigのまま、セッションを作成します。',
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
+  sessionOverwriteListLabel: '上書きするセッションを選んでください:',
+  sessionOverwriteListEmpty: '上書きできるセッションがありません。',
+  sessionOverwriteNeedSelection: '上書きするセッションを選択してください',
   // Duplicate-name overwrite confirm (create dialog) — same underlying
   // mechanism as the locked-session data update, just triggered at create
   // time instead of from 共同編集.
@@ -437,7 +442,6 @@ export const UI = {
   sessionOverwriteCancelBtn: 'キャンセル',
   sessionLockBtn: 'ロックする',
   sessionUnlockBtn: 'ロック解除',
-  sessionLockedBannerText: 'このセッションはロックされています（閲覧のみ）',
   lockedIndicatorLabel: 'ロック中',
   // Locked-session data replace — 共同編集 menu item, only enabled while
   // locked; reuses the same current/import radio-tab picker as session

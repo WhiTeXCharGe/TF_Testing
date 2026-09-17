@@ -81,7 +81,7 @@ export function MenuBar() {
     }
   };
 
-  const openSessionDialog = (kind: 'join' | 'create' | 'info' | 'update') => {
+  const openSessionDialog = (kind: 'join' | 'create' | 'update') => {
     dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
     setOpenMenu(null);
   };
@@ -114,7 +114,6 @@ export function MenuBar() {
           id: 'collab',
           label: UI.collabMenu,
           items: [
-            { label: UI.sessionInfoItem, action: () => openSessionDialog('info') },
             // Lock/unlock is a direct menu action, not a dialog — any
             // participant may toggle it, it's just a shared "freeze editing" flag.
             state.session.status === 'lock'

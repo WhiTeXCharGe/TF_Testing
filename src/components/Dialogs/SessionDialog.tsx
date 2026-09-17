@@ -273,16 +273,19 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
 
 // ---- 作成 (create) -------------------------------------------------------
 // No server/network field here at all — creating always happens on this PC.
-// Two mutually-exclusive sources, picked with radio buttons acting as tabs:
-// keep editing the Gantt that's already open, or import a fresh pair of
-// YAML files. Only one is shown at a time so it's clear which one will run.
+// Three mutually-exclusive sources, picked with radio buttons acting as tabs:
+// keep editing the Gantt that's already open, import a fresh pair of YAML
+// files, or push the current Gantt into an existing session instead of
+// creating a new one. Only one is shown at a time so it's clear which one
+// will run.
 
-type CreateSource = 'current' | 'import';
+type CreateSource = 'current' | 'import' | 'overwrite';
 
-// A name that matches an existing session (checked on submit, against the
-// full list) warns before overwriting rather than silently creating a
-// second same-named session or silently failing — see the confirm view below.
-interface PendingOverwrite { existingId: string; baseline: SessionBaseline }
+// Also reached the "duplicate name" way: typing a name that already matches
+// an existing session (checked on submit) warns before overwriting rather
+// than silently creating a second same-named session — see the confirm view
+// below. Either path lands here with the same shape.
+interface PendingOverwrite { existingId: string; name: string; baseline: SessionBaseline }
 
 function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const { state, startCollabSession, createUploadSession, overwriteAndJoinSession } = useAppContext();
@@ -295,17 +298,39 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwrite | null>(null);
   const canUseCurrent = !!state.schedule && !!state.envConfig;
   const [source, setSource] = useState<CreateSource>(() => (canUseCurrent ? 'current' : 'import'));
+  const [overwriteSessions, setOverwriteSessions] = useState<SessionSummary[] | null>(null);
+  const [selectedOverwriteId, setSelectedOverwriteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (source !== 'overwrite') return;
+    let cancelled = false;
+    listSessions().then((rows) => { if (!cancelled) setOverwriteSessions(rows); }).catch(() => { if (!cancelled) setOverwriteSessions([]); });
+    return () => { cancelled = true; };
+  }, [source]);
 
   const buildBaseline = async (): Promise<SessionBaseline> => {
-    if (source === 'current') {
-      if (!state.schedule || !state.envConfig) throw new Error(UI.collabNoScheduleError);
-      return { schedule: state.schedule, envConfig: state.envConfig, currentView: state.currentView };
-    }
-    return parseYamlBaseline(scheduleFile!, envFile!);
+    if (source === 'import') return parseYamlBaseline(scheduleFile!, envFile!);
+    // 'current' and 'overwrite' both push whatever Gantt is already open.
+    if (!state.schedule || !state.envConfig) throw new Error(UI.collabNoScheduleError);
+    return { schedule: state.schedule, envConfig: state.envConfig, currentView: state.currentView };
   };
 
   const handleSubmit = async () => {
     if (!displayName.trim()) { setError(UI.sessionJoinNeedName); return; }
+    if (source === 'overwrite') {
+      const target = overwriteSessions?.find((s) => s.id === selectedOverwriteId);
+      if (!target) { setError(UI.sessionOverwriteNeedSelection); return; }
+      setBusy(true);
+      setError(null);
+      try {
+        setPendingOverwrite({ existingId: target.id, name: target.name, baseline: await buildBaseline() });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!sessionName.trim()) { setError(UI.sessionNameFieldPlaceholder); return; }
     setBusy(true);
     setError(null);
@@ -314,7 +339,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
       if (existing) {
         // Build the baseline now (parses the YAML / reads current state up
         // front) so confirming is instant and can't fail on stale file inputs.
-        setPendingOverwrite({ existingId: existing.id, baseline: await buildBaseline() });
+        setPendingOverwrite({ existingId: existing.id, name: existing.name, baseline: await buildBaseline() });
         return;
       }
       saveDisplayName(displayName);
@@ -337,7 +362,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       saveDisplayName(displayName);
-      await overwriteAndJoinSession(displayName.trim(), pendingOverwrite.existingId, sessionName.trim(), pendingOverwrite.baseline);
+      await overwriteAndJoinSession(displayName.trim(), pendingOverwrite.existingId, pendingOverwrite.name, pendingOverwrite.baseline);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -346,20 +371,22 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const canSubmit = source === 'current' ? canUseCurrent : !!envFile && !!scheduleFile;
+  const canSubmit = source === 'current' ? canUseCurrent
+    : source === 'overwrite' ? canUseCurrent && !!selectedOverwriteId
+      : !!envFile && !!scheduleFile;
 
   if (pendingOverwrite) {
     return (
       <div>
         <div style={titleStyle}>{UI.sessionCreateDialogTitle}</div>
         <div style={{ fontSize: 13, color: '#222', marginBottom: 8 }}>
-          {UI.sessionDuplicateNameWarning(sessionName.trim())}
+          {UI.sessionDuplicateNameWarning(pendingOverwrite.name)}
         </div>
         <div style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>{UI.sessionDuplicateNameHint}</div>
         {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button disabled={busy} onClick={() => void confirmOverwrite()} style={{ ...primaryBtnStyle, backgroundColor: '#c62828' }}>{UI.sessionOverwriteBtn}</button>
           <button disabled={busy} onClick={() => setPendingOverwrite(null)} style={neutralBtnStyle}>{UI.sessionOverwriteCancelBtn}</button>
+          <button disabled={busy} onClick={() => void confirmOverwrite()} style={primaryBtnStyle}>{UI.sessionOverwriteBtn}</button>
         </div>
       </div>
     );
@@ -371,25 +398,31 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
 
       <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionNicknameLabel}</div>
       <input placeholder={UI.sessionNamePlaceholder} value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
-      <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+      {source !== 'overwrite' && (
+        <input placeholder={UI.sessionNameFieldPlaceholder} value={sessionName} onChange={(e) => setSessionName(e.target.value)} style={{ ...inputStyle, marginBottom: 12 }} />
+      )}
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 4, fontSize: 12 }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 4, fontSize: 12, flexWrap: 'wrap' }}>
         <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
           <input type="radio" checked={source === 'current'} disabled={!canUseCurrent} onChange={() => setSource('current')} /> {UI.sessionCreateSourceCurrentLabel}
         </label>
         <label style={{ cursor: 'pointer' }}>
           <input type="radio" checked={source === 'import'} onChange={() => setSource('import')} /> {UI.sessionCreateSourceImportLabel}
         </label>
+        <label style={{ opacity: canUseCurrent ? 1 : 0.5, cursor: canUseCurrent ? 'pointer' : 'not-allowed' }}>
+          <input type="radio" checked={source === 'overwrite'} disabled={!canUseCurrent} onChange={() => setSource('overwrite')} /> {UI.sessionCreateSourceOverwriteLabel}
+        </label>
       </div>
       {!canUseCurrent && (
         <div style={{ fontSize: 11, color: '#999', marginBottom: 10 }}>{UI.sessionCreateSourceCurrentUnavailable}</div>
       )}
 
-      {source === 'current' ? (
+      {source === 'current' && (
         <div style={{ fontSize: 12, color: '#555', backgroundColor: '#f5f5f5', borderRadius: 4, padding: '8px 10px', marginTop: 8, marginBottom: 12 }}>
           {UI.sessionCreateSourceCurrentDesc}
         </div>
-      ) : (
+      )}
+      {source === 'import' && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 11, color: '#666', marginBottom: 2 }}>{UI.sessionCreateEnvFileLabel}</div>
           <input type="file" accept=".yaml,.yml" onChange={(e) => setEnvFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 8, fontSize: 12 }} />
@@ -397,44 +430,37 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
           <input type="file" accept=".yaml,.yml" onChange={(e) => setScheduleFile(e.target.files?.[0] ?? null)} style={{ marginBottom: 12, fontSize: 12 }} />
         </div>
       )}
+      {source === 'overwrite' && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{UI.sessionOverwriteListLabel}</div>
+          <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, maxHeight: 160, overflowY: 'auto', marginBottom: 12 }}>
+            {overwriteSessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>...</div>}
+            {overwriteSessions != null && overwriteSessions.length === 0 && (
+              <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionOverwriteListEmpty}</div>
+            )}
+            {overwriteSessions?.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => setSelectedOverwriteId(s.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
+                  borderBottom: '1px solid #f0f0f0', cursor: 'pointer',
+                  backgroundColor: s.id === selectedOverwriteId ? '#e3f2fd' : undefined,
+                }}
+              >
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                <StatusChip status={s.status} />
+                <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{UI.sessionCreateSubmitBtn}</button>
-        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
-      </div>
-    </div>
-  );
-}
-
-// ---- セッション情報 (read-only: name + status) ---------------------------
-// Participants are already visible on hover over "n人が参加中" in the menu
-// bar, and lock/unlock is now a direct 共同編集 menu action (see MenuBar.tsx)
-// — neither needs to live in a dialog anymore, so this is just a name+status
-// readout plus the locked explanation.
-
-function SessionInfoDialog({ onClose }: { onClose: () => void }) {
-  const { state } = useAppContext();
-  const session = state.session;
-
-  if (!session) return null;
-
-  return (
-    <div>
-      <div style={{ ...titleStyle, marginBottom: 4 }}>{UI.sessionActiveTitle}</div>
-      <div style={{ fontSize: 12, color: '#666', marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span>{UI.sessionNameLabel}: {session.name}</span>
-        <StatusChip status={session.status} />
-      </div>
-
-      {session.status === 'lock' && (
-        <div style={{ fontSize: 12, color: '#e65100', backgroundColor: '#fff3e0', border: '1px solid #ffcc80', borderRadius: 4, padding: '6px 10px', marginBottom: 12 }}>
-          {UI.sessionLockedBannerText}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>
@@ -523,7 +549,6 @@ export function SessionDialog() {
       <div style={boxStyle}>
         {kind === 'join' && <SessionJoinDialog onClose={handleClose} />}
         {kind === 'create' && <SessionCreateDialog onClose={handleClose} />}
-        {kind === 'info' && <SessionInfoDialog onClose={handleClose} />}
         {kind === 'update' && <SessionUpdateDialog onClose={handleClose} />}
       </div>
     </div>

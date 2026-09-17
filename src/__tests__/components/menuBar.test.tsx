@@ -106,12 +106,13 @@ describe('online-session menu placement', () => {
     expect(screen.queryByText('共同編集')).not.toBeInTheDocument();
   });
 
-  it('in a session: the 共同編集 menu appears with セッション情報 + ロックする (no 終了 item here anymore)', async () => {
+  it('in a session: the 共同編集 menu appears with ロックする + セッションデータを更新 (no 情報 or 終了 item here anymore)', async () => {
     const user = userEvent.setup();
     renderMenuBar(true);
     await user.click(screen.getByText('共同編集'));
-    expect(screen.getByText('セッション情報')).toBeInTheDocument();
     expect(screen.getByText('ロックする')).toBeInTheDocument();
+    expect(screen.getByText('セッションデータを更新')).toBeInTheDocument();
+    expect(screen.queryByText('セッション情報')).not.toBeInTheDocument();
     expect(screen.queryByText('セッションを終了')).not.toBeInTheDocument();
   });
 
@@ -151,8 +152,8 @@ describe('online-session menu placement', () => {
     await user.click(updateItem);
     // MenuBar itself has no SessionDialog mounted — an enabled item's click
     // closes the dropdown (see openSessionDialog's setOpenMenu(null)), so the
-    // sibling セッション情報 item disappearing confirms it wasn't swallowed
-    // as disabled.
-    expect(screen.queryByText('セッション情報')).not.toBeInTheDocument();
+    // sibling ロック解除 item disappearing confirms it wasn't swallowed as
+    // disabled.
+    expect(screen.queryByText('ロック解除')).not.toBeInTheDocument();
   });
 });
