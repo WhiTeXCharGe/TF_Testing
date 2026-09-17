@@ -203,17 +203,19 @@ describe('create dialog', () => {
 });
 
 describe('create dialog — duplicate name overwrite', () => {
-  it('warns instead of creating when the name matches an existing session, and cancel returns to the form', async () => {
+  // 'Weekly Plan' (s1) is status: 'open' in the beforeEach fixture — only a
+  // locked session ('Locked One' / s2) can actually be overwritten.
+  it('warns instead of creating when the name matches an existing LOCKED session, and cancel returns to the form', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
-    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Locked One');
     await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
 
-    expect(await screen.findByText(/「Weekly Plan」という名前のセッションは既に存在します/)).toBeInTheDocument();
+    expect(await screen.findByText(/「Locked One」という名前のセッションは既に存在します/)).toBeInTheDocument();
     expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
-    expect(await screen.findByPlaceholderText('セッション名を入力')).toHaveValue('Weekly Plan');
+    expect(await screen.findByPlaceholderText('セッション名を入力')).toHaveValue('Locked One');
   });
 
   it('confirming overwrites the existing session (same id) and joins it, without creating a new one', async () => {
@@ -221,17 +223,29 @@ describe('create dialog — duplicate name overwrite', () => {
     mockedCollab.openSession.mockResolvedValue({ relayUrl: 'http://relay:4010', status: 'open' });
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
-    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Locked One');
     await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
     await screen.findByText(/既に存在します/);
 
     await userEvent.click(screen.getByRole('button', { name: '上書きする' }));
 
     await waitFor(() => expect(mockedCollab.overwriteSessionState).toHaveBeenCalledWith(
-      's1', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
+      's2', expect.objectContaining({ schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG }),
     ));
     expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
     expect(mockedCollab.createSessionFromYaml).not.toHaveBeenCalled();
+  });
+
+  it('shows a clear error instead of the overwrite warning when the matching session is NOT locked', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'Weekly Plan');
+    await userEvent.click(screen.getByRole('button', { name: '作成して開始' }));
+
+    expect(await screen.findByText('「Weekly Plan」はロックされていないため上書きできません。まずロックしてください。')).toBeInTheDocument();
+    expect(screen.queryByText(/上書きしますか？/)).not.toBeInTheDocument();
+    expect(mockedCollab.overwriteSessionState).not.toHaveBeenCalled();
+    expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
   });
 });
 
@@ -251,15 +265,24 @@ describe('create dialog — overwrite an existing session (explicit radio + list
     expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
   });
 
-  it('the submit button stays disabled until a session is picked from the list', async () => {
+  it('the submit button stays disabled until a LOCKED session is picked from the list', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
     await screen.findByText('Weekly Plan');
 
     const submitBtn = screen.getByRole('button', { name: '作成して開始' });
     expect(submitBtn).toBeDisabled();
-    await userEvent.click(screen.getByText('Weekly Plan'));
+    await userEvent.click(screen.getByText('Locked One')); // status: 'lock'
     expect(submitBtn).toBeEnabled();
+  });
+
+  it('a non-locked session in the list is shown but not selectable — clicking it does nothing', async () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
+    await screen.findByText('Weekly Plan'); // status: 'open' — still shown
+
+    await userEvent.click(screen.getByText('Weekly Plan'));
+    expect(screen.getByRole('button', { name: '作成して開始' })).toBeDisabled();
   });
 
   it('picking a session and confirming overwrites it (same id) with the current Gantt, no name typed', async () => {

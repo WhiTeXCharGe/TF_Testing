@@ -113,8 +113,9 @@ describe('POST /api/sessions/:id/open', () => {
 });
 
 describe('POST /api/sessions/:id/replace', () => {
-  it('validates and forwards the baseline to aca2.replaceBaseline, no owner token needed', async () => {
+  it('validates and forwards the baseline to aca2.replaceBaseline when the target is locked, no owner token needed', async () => {
     const { sessionId } = await createJsonSession();
+    aca2.live.mockResolvedValue({ active: true, participantCount: 1, status: 'lock' as const });
     const res = await request(app)
       .post(`/api/sessions/${sessionId}/replace`)
       .send({ schedule: { a: 9 }, envConfig: { b: 9 }, currentView: 'device' })
@@ -125,16 +126,37 @@ describe('POST /api/sessions/:id/replace', () => {
     });
   });
 
-  it('rejects a malformed body with 400', async () => {
+  it('rejects a malformed body with 400, regardless of lock state', async () => {
     const { sessionId } = await createJsonSession();
     await request(app).post(`/api/sessions/${sessionId}/replace`).send({ schedule: { a: 1 } }).expect(400);
     expect(aca2.replaceBaseline).not.toHaveBeenCalled();
   });
 
-  it('maps aca2 notFound to 404', async () => {
-    aca2.replaceBaseline.mockResolvedValueOnce({ notFound: true });
+  it('rejects with 409 when the target is not locked (open, close, or unreachable)', async () => {
+    const { sessionId } = await createJsonSession();
+    aca2.live.mockResolvedValue({ active: true, participantCount: 1, status: 'open' as const });
+    await request(app)
+      .post(`/api/sessions/${sessionId}/replace`)
+      .send({ schedule: { a: 1 }, envConfig: { b: 1 } })
+      .expect(409);
+    expect(aca2.replaceBaseline).not.toHaveBeenCalled();
+  });
+
+  it('404s for an id with no session record at all, before ever checking lock state', async () => {
     await request(app)
       .post('/api/sessions/ghost/replace')
+      .send({ schedule: { a: 1 }, envConfig: { b: 1 } })
+      .expect(404);
+    expect(aca2.live).not.toHaveBeenCalled();
+    expect(aca2.replaceBaseline).not.toHaveBeenCalled();
+  });
+
+  it('maps an aca2 notFound (e.g. a race with eviction) to 404 even though a record existed', async () => {
+    const { sessionId } = await createJsonSession();
+    aca2.live.mockResolvedValue({ active: true, participantCount: 1, status: 'lock' as const });
+    aca2.replaceBaseline.mockResolvedValueOnce({ notFound: true });
+    await request(app)
+      .post(`/api/sessions/${sessionId}/replace`)
       .send({ schedule: { a: 1 }, envConfig: { b: 1 } })
       .expect(404);
   });

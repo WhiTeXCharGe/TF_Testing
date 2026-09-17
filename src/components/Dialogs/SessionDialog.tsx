@@ -319,7 +319,10 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     if (!displayName.trim()) { setError(UI.sessionJoinNeedName); return; }
     if (source === 'overwrite') {
       const target = overwriteSessions?.find((s) => s.id === selectedOverwriteId);
-      if (!target) { setError(UI.sessionOverwriteNeedSelection); return; }
+      // Rows for a non-locked session aren't clickable, but the list could
+      // have gone stale (someone unlocked it) between fetch and submit —
+      // re-check rather than trust the stale selection.
+      if (!target || target.status !== 'lock') { setError(UI.sessionOverwriteNeedSelection); return; }
       setBusy(true);
       setError(null);
       try {
@@ -337,6 +340,12 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
     try {
       const existing = (await listSessions()).find((s) => s.name === sessionName.trim());
       if (existing) {
+        // Overwriting only makes sense while the target is locked — same
+        // rule as the explicit list picker above and the server's own check.
+        if (existing.status !== 'lock') {
+          setError(UI.sessionOverwriteNotLockedError(existing.name));
+          return;
+        }
         // Build the baseline now (parses the YAML / reads current state up
         // front) so confirming is instant and can't fail on stale file inputs.
         setPendingOverwrite({ existingId: existing.id, name: existing.name, baseline: await buildBaseline() });
@@ -438,21 +447,25 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
             {overwriteSessions != null && overwriteSessions.length === 0 && (
               <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionOverwriteListEmpty}</div>
             )}
-            {overwriteSessions?.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => setSelectedOverwriteId(s.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
-                  borderBottom: '1px solid #f0f0f0', cursor: 'pointer',
-                  backgroundColor: s.id === selectedOverwriteId ? '#e3f2fd' : undefined,
-                }}
-              >
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                <StatusChip status={s.status} />
-                <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
-              </div>
-            ))}
+            {overwriteSessions?.map((s) => {
+              const selectable = s.status === 'lock';
+              return (
+                <div
+                  key={s.id}
+                  onClick={selectable ? () => setSelectedOverwriteId(s.id) : undefined}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
+                    borderBottom: '1px solid #f0f0f0', cursor: selectable ? 'pointer' : 'not-allowed',
+                    opacity: selectable ? 1 : 0.5,
+                    backgroundColor: s.id === selectedOverwriteId ? '#e3f2fd' : undefined,
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                  <StatusChip status={s.status} />
+                  <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

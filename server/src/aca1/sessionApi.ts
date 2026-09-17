@@ -131,16 +131,30 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
 
   // Overwrite an EXISTING session's whole data — used by the client when
   // creating with a name that already matches one (after the user confirms
-  // the overwrite warning). Same id, no owner-token gate (consistent with
-  // lock/unlock and the in-session update feature — this app doesn't gate
-  // collab actions on ownership). Broadcasts a resync to anyone currently
-  // connected to the target session.
+  // the overwrite warning), or when explicitly picking a session to
+  // overwrite from the create dialog's list. Same id, no owner-token gate
+  // (consistent with lock/unlock and the in-session update feature — this
+  // app doesn't gate collab actions on ownership). Only allowed while the
+  // target is locked — same rule as the in-session update feature, so
+  // nobody's mid-edit when their session's data gets replaced out from
+  // under them. Broadcasts a resync to anyone currently connected to it.
   router.post('/sessions/:id/replace', async (req, res) => {
     const { id } = req.params;
     try {
       const baseline = intakeBaseline({
         schedule: req.body?.schedule, envConfig: req.body?.envConfig, currentView: req.body?.currentView,
       });
+      const meta = await storage.getJson<SessionMeta>(metaKey(id));
+      if (!meta) {
+        res.status(404).json({ ok: false, error: 'no such session' });
+        return;
+      }
+      const live = await aca2.live(id);
+      const status = 'unreachable' in live ? null : live.status;
+      if (status !== 'lock') {
+        res.status(409).json({ ok: false, error: 'ロックされているセッションのみ上書きできます' });
+        return;
+      }
       const result = await aca2.replaceBaseline(id, baseline);
       if ('notFound' in result) {
         res.status(404).json({ ok: false, error: 'no such session' });

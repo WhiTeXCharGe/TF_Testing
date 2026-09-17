@@ -430,9 +430,15 @@ export const UI = {
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
-  sessionOverwriteListLabel: '上書きするセッションを選んでください:',
+  // Only a locked session can be overwritten — same rule as the in-session
+  // update feature (共同編集 → セッションデータを更新), so nobody's mid-edit
+  // when the data under them gets replaced. The list still shows every
+  // session (so it's clear what exists and why something's unselectable),
+  // just only locked rows are clickable.
+  sessionOverwriteListLabel: '上書きするセッションを選んでください（ロック中のみ選択できます）:',
   sessionOverwriteListEmpty: '上書きできるセッションがありません。',
   sessionOverwriteNeedSelection: '上書きするセッションを選択してください',
+  sessionOverwriteNotLockedError: (name: string) => `「${name}」はロックされていないため上書きできません。まずロックしてください。`,
   // Duplicate-name overwrite confirm (create dialog) — same underlying
   // mechanism as the locked-session data update, just triggered at create
   // time instead of from 共同編集.
