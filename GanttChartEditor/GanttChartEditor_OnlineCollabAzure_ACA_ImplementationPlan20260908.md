@@ -4,6 +4,12 @@
 
 **Date:** 2026-09-08 · **Owner:** (you) · **Builds on:** `GanttChartEditor_OnlineCollabAzure_Design20260904.md`, `GanttChartEditor_LiveCollabEdit_Design20260826.md`
 
+> **Update (2026-09-17):** the `infra/` folder (Dockerfile + `deploy.sh`) referenced below (§Appendix C) has since
+> moved out of `GanttChartEditor/` into a separate sibling repo, `gantt-collab-container/` — everything below about
+> "one image, `ROLE` picks aca1/aca2" is still accurate, just built from `-f gantt-collab-container/Dockerfile
+> GanttChartEditor/server` instead of `./server`. See `GanttChartEditor_ACA_ContainerBuildAndPush.md` for the current
+> commands and layout; this doc is left as the historical implementation record.
+
 **Goal:** Move the LAN-only live-collaboration relay to a two-service Azure Container Apps design (an always-on **ACA1** session API + a scale-to-zero **ACA2** live relay + Blob storage), reachable from anywhere through a web session list instead of a share link, and runnable in full as a local mock when Azure is unreachable.
 
 **Architecture:** One `server/` codebase, one container image, `ROLE` env var selects behaviour — `aca1` (HTTP session API, no sockets), `aca2` (Socket.IO relay, today's code + persistence), or `local` (both on one port — today's Electron/LAN mode, unchanged). Session state (`baseline` + ordered `log`) lives in storage behind a `StorageClient` interface with `fs` and `blob` implementations, so the same code runs against a local folder or Azure Blob. ACA1 orchestrates ACA2 over internal HTTP; clients talk Socket.IO straight to ACA2.

@@ -1,9 +1,15 @@
 # GanttChartEditor Online Collaboration — Azure Preparation
 
 > **Date:** 2026-09-08 · **Branch:** `online-collab-aca`
-> What to reuse from the existing Timefold Azure setup, what to create new, and the decisions to make before running `infra/deploy.sh`.
+> **Update (2026-09-17):** the Dockerfile + deploy script moved out of `GanttChartEditor/` into a
+> separate sibling repo, **`gantt-collab-container/`** — see `GanttChartEditor_ACA_ContainerBuildAndPush.md`
+> for the full walkthrough and why. Path references below (`GanttChartEditor/infra/…`, `./server`) are
+> superseded by that doc; the resource-planning content (RBAC, secrets, cost, what to ask the admin) below is
+> still current.
+>
+> What to reuse from the existing Timefold Azure setup, what to create new, and the decisions to make before running `deploy.sh`.
 > Assumes the company Azure account + Timefold resource group from `documents/SchedulerWeb/azure/` already exist.
-> Companion: `GanttChartEditor/infra/deploy.sh` + `infra/README.md` (the raw script), `..._ACA_ImplementationPlan20260908.md` Appendix C.
+> Companion: `gantt-collab-container/deploy.sh` + `README.md` (the raw script), `GanttChartEditor_ACA_ContainerBuildAndPush.md` (full walkthrough), `..._ACA_ImplementationPlan20260908.md` Appendix C.
 
 ---
 
@@ -85,19 +91,19 @@ source ~/azure-ganttcollab-env.sh
 
 | Resource | Command source | Notes |
 |---|---|---|
-| ACR repo `gantt-collab` | `az acr build -r $ACR -t gantt-collab:$TAG ./server` | built from `GanttChartEditor/server/Dockerfile`; **must run on the company network** (ACR is private) |
+| ACR repo `gantt-collab` | `az acr build -r $ACR -t gantt-collab:$TAG -f Dockerfile ../GanttChartEditor/server` (from `gantt-collab-container/`) | Dockerfile lives in the sibling `gantt-collab-container` repo, build context is `GanttChartEditor/server`; **must run on the company network** (ACR is private) |
 | Storage container `gantt-sessions` | `az storage container create` | in whichever account §"who can reach it" settled on |
-| `ca-gantt-aca2` (relay) | `infra/deploy.sh` §ACA2 | `--ingress external`, `--min-replicas 0 --max-replicas 5`, `--affinity sticky` |
-| `ca-gantt-aca1` (session API) | `infra/deploy.sh` §ACA1 | `--ingress external`, `--min-replicas 1 --max-replicas 2` |
+| `ca-gantt-aca2` (relay) | `gantt-collab-container/deploy.sh` §ACA2 | `--ingress external`, `--min-replicas 0 --max-replicas 5`, `--affinity sticky` |
+| `ca-gantt-aca1` (session API) | `gantt-collab-container/deploy.sh` §ACA1 | `--ingress external`, `--min-replicas 1 --max-replicas 2` |
 | Static Web Apps (web client) | `az staticwebapp create` | Free tier; or defer — see §"Web client" |
 
-`infra/deploy.sh` as written *also* creates the RG, ACR, Storage account, Key Vault and ACA environment. For the company setup, **skip those create steps** (they exist) and set the script's variables to the existing names. The two `az containerapp create` blocks and the `az acr build` are the parts you actually run.
+`gantt-collab-container/deploy.sh` as written *also* creates the RG, ACR, Storage account, Key Vault and ACA environment. For the company setup, **skip those create steps** (they exist) and set the script's variables to the existing names. The two `az containerapp create` blocks and the `az acr build` are the parts you actually run.
 
 ---
 
 ## Secrets: two options
 
-### Option A — connection-string secret (what `infra/deploy.sh` does today)
+### Option A — connection-string secret (what `gantt-collab-container/deploy.sh` does today)
 
 `ca-gantt-aca1` / `ca-gantt-aca2` get `--secrets internal-key=<...> blob-conn=<storage connection string>` and reference them as `INTERNAL_KEY=secretref:internal-key`, `BLOB_CONNECTION_STRING=secretref:blob-conn`. Works immediately, no code change. The connection string is stored encrypted in the Container App. Rotate by updating the secret + `BLOB_CONNECTION_STRING`.
 
@@ -120,7 +126,7 @@ and `config.ts` / `makeStorage` pass `BLOB_ACCOUNT_URL` instead of `BLOB_CONNECT
 
 **Recommendation:** ship with **Option A** to get online fast; move to **Option B** as a follow-up (it's ~15 lines + 2 role assignments, and it's the company's established no-secrets pattern).
 
-`INTERNAL_KEY` stays a secret either way (it's the ACA1↔ACA2 shared key, not an Azure credential). Once stable, move it to Key Vault with a `secretref` if the team wants — noted in `infra/README.md`.
+`INTERNAL_KEY` stays a secret either way (it's the ACA1↔ACA2 shared key, not an Azure credential). Once stable, move it to Key Vault with a `secretref` if the team wants — noted in `gantt-collab-container/README.md`.
 
 ---
 
@@ -166,53 +172,14 @@ Take its URL, set `WEB_ORIGIN` to it, and re-run the two `az containerapp update
 
 ## Step-by-step (once the decisions above are settled)
 
-All of this runs **on the company network** (ACR + possibly Storage are private).
+Superseded by **`GanttChartEditor_ACA_ContainerBuildAndPush.md`** — it has the
+exact commands (updated for the `gantt-collab-container` repo split), a full
+directory-structure diagram, and a dedicated section on what a feature
+update requires (rebuild + push + `containerapp update` — nothing auto-syncs).
+Use *this* doc for the resource-planning decisions above (who can reach
+Storage, secrets option, RBAC, cost) and that one to actually run it.
 
-```bash
-source ~/azure-ganttcollab-env.sh
-az account set --subscription "$SUBSCRIPTION_ID"
-
-# 1. session-state container (in the account §"who can reach it" chose)
-ST_CONN=$(az storage account show-connection-string -n "$ST" -g "$RG" --query connectionString -o tsv)
-az storage container create -n "$SESS_CONTAINER" --connection-string "$ST_CONN"
-
-# 2. build + push the one image (from GanttChartEditor/)
-cd /c/Users/PC_USER/OneDrive/Desktop/work/Timefold/web/GanttChartEditor
-az acr build -r "$ACR" -t "${IMAGE}:${TAG}" ./server
-IMG="${ACR_LOGIN}/${IMAGE}:${TAG}"
-
-COMMON=( STORAGE=blob "BLOB_CONTAINER=$SESS_CONTAINER" "WEB_ORIGIN=$WEB_ORIGIN"
-         INTERNAL_KEY=secretref:internal-key BLOB_CONNECTION_STRING=secretref:blob-conn )
-SECRETS=( "internal-key=$INTERNAL_KEY" "blob-conn=$ST_CONN" )
-
-# 3. ACA2 (relay) — public, scale-to-zero, sticky
-az containerapp create -n "$ACA2" -g "$RG" --environment "$ACA_ENV" \
-  --image "$IMG" --registry-server "$ACR_LOGIN" \
-  --target-port 4010 --ingress external --transport auto \
-  --min-replicas 0 --max-replicas 5 --cpu 0.5 --memory 1.0Gi \
-  --secrets "${SECRETS[@]}" --env-vars ROLE=aca2 PORT=4010 "${COMMON[@]}"
-az containerapp ingress sticky-sessions set -n "$ACA2" -g "$RG" --affinity sticky
-ACA2_FQDN=$(az containerapp show -n "$ACA2" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
-az containerapp update -n "$ACA2" -g "$RG" --set-env-vars "PUBLIC_RELAY_URL=https://${ACA2_FQDN}"
-
-# 4. ACA1 (session API) — public, always on
-az containerapp create -n "$ACA1" -g "$RG" --environment "$ACA_ENV" \
-  --image "$IMG" --registry-server "$ACR_LOGIN" \
-  --target-port 4000 --ingress external \
-  --min-replicas 1 --max-replicas 2 --cpu 0.5 --memory 1.0Gi \
-  --secrets "${SECRETS[@]}" --env-vars ROLE=aca1 PORT=4000 "ACA2_URL=https://${ACA2_FQDN}" "${COMMON[@]}"
-ACA1_FQDN=$(az containerapp show -n "$ACA1" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
-
-# 5. smoke test
-curl -s "https://${ACA1_FQDN}/api/health"    # {"ok":true,"role":"aca1",...}
-curl -s "https://${ACA2_FQDN}/api/health"    # {"ok":true,"role":"aca2",...}
-curl -s -X POST "https://${ACA1_FQDN}/api/sessions" -H 'content-type: application/json' \
-  -d '{"name":"smoke","schedule":{"planRange":{"startDate":"2026-01-01","endDate":"2026-01-31"},"workflowTaskList":[],"assignmentList":[]},"envConfig":{"workerList":[]},"currentView":"worker"}'
-```
-
-Then §"Web client" for the front end, and re-run the `WEB_ORIGIN` update once its URL exists.
-
-Redeploys later: `az acr build … -t gantt-collab:<newtag>` then `az containerapp update -n ca-gantt-aca2/aca1 --image …`. `.github/workflows/deploy-collab.yml` automates this once the resources exist and `AZURE_CREDENTIALS` (a service principal) is set as a repo secret.
+All of it runs **on the company network** (ACR + possibly Storage are private).
 
 ---
 
