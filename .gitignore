@@ -12,3 +12,4 @@ release/
 mock-blob/
 cypress/screenshots/
 cypress/videos/
+.claude/
