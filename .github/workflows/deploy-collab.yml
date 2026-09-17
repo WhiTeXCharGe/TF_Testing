@@ -1,0 +1,62 @@
+# Rebuild the collab image (from the GanttChartEditor repo's server/ source)
+# and roll ACA1 + ACA2. Manual for now (workflow_dispatch).
+#
+# Lives in gantt-collab-container (this repo) rather than GanttChartEditor,
+# since it's building THIS repo's Dockerfile — but the source it builds is in
+# a different repo, so it needs a SECOND checkout. Fill in `repository:`
+# below with wherever GanttChartEditor is actually hosted (GitHub org/repo),
+# and give this repo's runner read access to it (same org: usually automatic
+# with GITHUB_TOKEN; a different org/private cross-repo: a PAT or deploy key
+# in `GANTT_EDITOR_REPO_TOKEN`).
+#
+# Flip on the `push` trigger once the Azure resources from ./deploy.sh exist
+# and the AZURE_CREDENTIALS repo secret is set. Until then this only runs
+# when someone clicks "Run workflow".
+name: deploy-collab
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+env:
+  RG: rg-gantt-collab
+  ACR: acrganttcollabREPLACE
+  IMAGE: gantt-collab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gantt-collab-container (this repo — has the Dockerfile)
+        uses: actions/checkout@v4
+        with:
+          path: gantt-collab-container
+
+      - name: Checkout GanttChartEditor (has the server source to build)
+        uses: actions/checkout@v4
+        with:
+          repository: REPLACE-WITH-ORG/GanttChartEditor
+          token: ${{ secrets.GANTT_EDITOR_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          path: GanttChartEditor
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build image (Dockerfile from gantt-collab-container, context GanttChartEditor/server)
+        run: |
+          TAG=$(git -C GanttChartEditor rev-parse --short HEAD)
+          az acr build -r "$ACR" -t "$IMAGE:$TAG" -f gantt-collab-container/Dockerfile GanttChartEditor/server
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Roll ACA2 then ACA1
+        run: |
+          IMG="$ACR.azurecr.io/$IMAGE:$TAG"
+          az containerapp update -n ca-gantt-aca2 -g "$RG" --image "$IMG"
+          az containerapp update -n ca-gantt-aca1 -g "$RG" --image "$IMG"
+
+      - name: Smoke test
+        run: |
+          ACA1=$(az containerapp show -n ca-gantt-aca1 -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          curl -fsS "https://$ACA1/api/health"
