@@ -78,18 +78,35 @@ function aca1Base(): string {
 // result for aca1Base() to use for the rest of the app's lifetime. A no-op
 // if there's a runtime override already (the user/LAN-discovery picked an
 // explicit server, which always wins) or no build-time URL at all.
-export async function probeAzureReachability(): Promise<void> {
-  const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
-  if (!built || getServerUrl()) return;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
-    clearTimeout(timer);
-    azureUnreachable = !res.ok;
-  } catch {
-    azureUnreachable = true;
-  }
+//
+// Memoized to a single in-flight/settled promise (idempotent — a second call
+// just returns the first one) so every network call below can safely await
+// it via ensureProbed() without re-probing. That await is what closes the
+// startup race where a dialog opened in the first ~3s (before the probe
+// resolves) would otherwise hit the unreachable Azure URL directly and show
+// a scary "接続できません" error that only clears on the next 5s poll.
+let probePromise: Promise<void> | null = null;
+
+export function probeAzureReachability(): Promise<void> {
+  if (probePromise) return probePromise;
+  probePromise = (async () => {
+    const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
+    if (!built || getServerUrl()) return;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
+      clearTimeout(timer);
+      azureUnreachable = !res.ok;
+    } catch {
+      azureUnreachable = true;
+    }
+  })();
+  return probePromise;
+}
+
+async function ensureProbed(): Promise<void> {
+  if (probePromise) await probePromise;
 }
 
 // ACA1 records its reachable URL as PUBLIC_RELAY_URL; in local/LAN mode that
@@ -117,6 +134,7 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 // ---- session lifecycle (HTTP to ACA1) -------------------------------------
 
 export async function listSessions(): Promise<SessionSummary[]> {
+  await ensureProbed();
   const res = await fetch(`${aca1Base()}/api/sessions`);
   const data = await readJson(res);
   if (!res.ok || !data.ok || !Array.isArray(data.sessions)) {
@@ -126,6 +144,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 export async function createSessionFromState(name: string, baseline: SessionBaseline): Promise<CreateResult> {
+  await ensureProbed();
   const res = await fetch(`${aca1Base()}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -165,6 +184,7 @@ export async function createSessionFromYaml(
 // owner token needed (consistent with lock/unlock and the in-session update
 // feature — this app doesn't gate collab actions on ownership).
 export async function overwriteSessionState(sessionId: string, baseline: SessionBaseline): Promise<void> {
+  await ensureProbed();
   const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/replace`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -175,6 +195,7 @@ export async function overwriteSessionState(sessionId: string, baseline: Session
 }
 
 export async function openSession(sessionId: string): Promise<{ relayUrl: string; status: SessionStatus }> {
+  await ensureProbed();
   const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST' });
   const data = await readJson(res);
   if (!res.ok || !data.ok || !data.relayUrl) throw new Error((data.error as string) ?? 'セッションを開けませんでした');
@@ -182,6 +203,7 @@ export async function openSession(sessionId: string): Promise<{ relayUrl: string
 }
 
 export async function deleteSession(sessionId: string, ownerToken: string): Promise<void> {
+  await ensureProbed();
   const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
     headers: { 'x-owner-token': ownerToken },
@@ -194,6 +216,7 @@ export async function deleteSession(sessionId: string, ownerToken: string): Prom
 
 export async function fetchSessionName(sessionId: string): Promise<string | null> {
   try {
+    await ensureProbed();
     const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`);
     const data = await readJson(res);
     const session = data.session as { name?: string } | undefined;
@@ -209,6 +232,7 @@ export async function fetchSessionName(sessionId: string): Promise<string | null
 // which address to enter as 接続先サーバー.
 export async function fetchLanAddresses(): Promise<string[]> {
   try {
+    await ensureProbed();
     const res = await fetch(`${aca1Base()}/api/network-info`);
     const data = await readJson(res);
     return Array.isArray(data.addresses) ? (data.addresses as string[]) : [];
@@ -239,6 +263,7 @@ export interface LanHost {
 // never errors — it's just an empty result off the LAN/local role.
 export async function fetchLanHosts(): Promise<LanHost[]> {
   try {
+    await ensureProbed();
     const res = await fetch(`${aca1Base()}/api/lan-hosts`);
     const data = await readJson(res);
     return Array.isArray(data.hosts) ? (data.hosts as LanHost[]) : [];
