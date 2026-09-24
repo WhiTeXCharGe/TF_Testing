@@ -3,7 +3,7 @@ import { useAppContext } from '../../context/AppContext';
 import { isSessionReadOnly } from '../../lib/sessionReadOnly';
 import { UI } from '../../config/uiText';
 import { diffDays, getRangeOverlayGeom } from '../../utils/dateUtils';
-import { buildModuleViewModel, unassignedRange, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
+import { buildModuleViewModel, unassignedSegments, ModuleNode, ModulePhase, ModuleTask } from './moduleViewModel';
 import { SearchableSelect } from '../common/SearchableSelect';
 
 const PLAN_RANGE_BG = 'rgba(66, 165, 245, 0.14)';
@@ -37,10 +37,12 @@ function barGeom(start: string | null, end: string | null, viewStart: string, vi
   return { left: diffDays(viewStart, s) * CELL_W, width: (diffDays(s, e) + 1) * CELL_W };
 }
 
-// One merged placeholder per module for however many 工程 have nobody
-// assigned yet (see unassignedRange) — hatched grey so it reads as "nothing
-// planned" rather than a real committed phase, and deliberately not
-// selectable (it doesn't correspond to any single 工程 to show in the panel).
+// One placeholder per gap of unassigned 工程 (see unassignedSegments) —
+// hatched grey so it reads as "nothing planned" rather than a real committed
+// phase, and deliberately not selectable (it doesn't correspond to any single
+// 工程 to show in the panel). Rendered per-gap rather than one bar spanning
+// every unassigned phase in the module so it never overlaps an already-
+// scheduled phase's own bar.
 function UnplannedBar({ geom, range }: { geom: { left: number; width: number }; range: { start: string; end: string } }) {
   return (
     <div
@@ -348,13 +350,11 @@ export function DeviceViewGantt({ dates }: Props) {
                           </span>
                         );
                       })}
-                      {(() => {
-                        const range = unassignedRange(row.module.phases);
-                        if (!range) return null;
+                      {unassignedSegments(row.module.phases).map((range, segIdx) => {
                         const geom = barGeom(range.start, range.end, viewStart, viewEnd);
                         if (!geom) return null;
-                        return <UnplannedBar key={`ub_${row.module.moduleId}`} geom={geom} range={range} />;
-                      })()}
+                        return <UnplannedBar key={`ub_${row.module.moduleId}_${segIdx}`} geom={geom} range={range} />;
+                      })}
                     </>
                   : row.module.phases.map(ph => {
                       const t = ph.tasks[row.taskIndex];

@@ -1,6 +1,7 @@
 import { EnvConfig, Operation, Worker } from '../../types/envConfig';
 import { ScheduleData } from '../../types/schedule';
 import { getColorForPhaseIndex } from '../../utils/colorUtils';
+import { addDays } from '../../utils/dateUtils';
 import { UI } from '../../config/uiText';
 
 export interface HeaderMonthGroup {
@@ -67,21 +68,43 @@ function maxStr(a: string, b: string): string { return a > b ? a : b; }
 
 /**
  * A module's collapsed row draws one bar per phase — a phase with nobody
- * assigned yet has no real (worker-driven) date range to show, so drawing it
- * at its own planStartDate/planEndDate risks silently overlapping (and
- * visually "overwriting") a phase that IS assigned. Instead, every
- * unassigned phase in a module collapses into a single combined range here,
- * rendered once as one "未計画" placeholder bar spanning all of them —
- * assigned phases are untouched and keep their own bars. Returns null when
- * every phase already has at least one worker (nothing to show).
+ * assigned yet has no real (worker-driven) date range to show. Phases are in
+ * their defined order (1,2,3,4...), so an unassigned phase sitting between
+ * two assigned ones (e.g. 2 between 1 and 3) is a gap, not a phase that needs
+ * its own wide placeholder: showing one merged bar across every unassigned
+ * phase in the module would sit on top of the assigned phases' own bars
+ * whenever their dates fall inside that combined range.
+ *
+ * Instead this returns one segment per contiguous run of unassigned phases,
+ * bounded by the neighboring assigned phases' actual (worker-driven) dates —
+ * so a 未計画 segment only ever fills the space between what's scheduled
+ * around it, never overlapping it. A run with no assigned neighbor on one
+ * side (leading/trailing run, or every phase unassigned) falls back to that
+ * side's plan date from the module's first/last phase.
  */
-export function unassignedRange(phases: ModulePhase[]): { start: string; end: string } | null {
-  const unassigned = phases.filter(p => p.workerCount === 0);
-  if (unassigned.length === 0) return null;
-  return unassigned.reduce(
-    (acc, p) => ({ start: minStr(acc.start, p.planStartDate), end: maxStr(acc.end, p.planEndDate) }),
-    { start: unassigned[0].planStartDate, end: unassigned[0].planEndDate },
-  );
+export function unassignedSegments(phases: ModulePhase[]): { start: string; end: string }[] {
+  if (phases.length === 0) return [];
+  const moduleStart = phases[0].planStartDate;
+  const moduleEnd = phases[phases.length - 1].planEndDate;
+
+  const segments: { start: string; end: string }[] = [];
+  let i = 0;
+  while (i < phases.length) {
+    if (phases[i].workerCount > 0) { i += 1; continue; }
+    let j = i;
+    while (j < phases.length && phases[j].workerCount === 0) j += 1;
+    const prevAssigned = i > 0 ? phases[i - 1] : null;
+    const nextAssigned = j < phases.length ? phases[j] : null;
+    const start = prevAssigned
+      ? addDays(prevAssigned.barEndDate ?? prevAssigned.planEndDate, 1)
+      : moduleStart;
+    const end = nextAssigned
+      ? addDays(nextAssigned.barStartDate ?? nextAssigned.planStartDate, -1)
+      : moduleEnd;
+    if (start <= end) segments.push({ start, end });
+    i = j;
+  }
+  return segments;
 }
 
 function buildMonthGroups(dates: string[]): HeaderMonthGroup[] {
