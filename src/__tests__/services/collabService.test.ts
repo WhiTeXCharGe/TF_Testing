@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
   getServerUrl, setServerUrl, fetchLanHosts, sendCollabSessionUpdate, sendCollabCheckpoint,
-  overwriteSessionState,
+  overwriteSessionState, probeAzureReachability,
 } from '../../services/collabService';
 import { SessionBaseline } from '../../types/appState';
 
@@ -241,4 +241,23 @@ it('sendCollabCheckpoint emits checkpoint on the live socket', () => {
   join(false);
   sendCollabCheckpoint(BASELINE);
   expect(fakeSocket.emit).toHaveBeenCalledWith('checkpoint', BASELINE);
+});
+
+describe('probeAzureReachability', () => {
+  // __ACA1_URL__ isn't defined under jest (no Vite `define`), so there's
+  // nothing to probe here either way — these just lock in the two guard
+  // conditions that skip the fetch entirely (see aca1Base()'s own comment).
+  it('is a no-op with no build-time Azure URL', async () => {
+    global.fetch = jest.fn();
+    await probeAzureReachability();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when a runtime server override already exists', async () => {
+    setServerUrl('http://10.0.0.4:3010');
+    global.fetch = jest.fn();
+    await probeAzureReachability();
+    expect(global.fetch).not.toHaveBeenCalled();
+    setServerUrl('');
+  });
 });

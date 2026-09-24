@@ -9,6 +9,7 @@ import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
   sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, sendCollabSessionUpdate,
   parseYamlBaseline, openSession, overwriteSessionState, parseSessionId,
+  probeAzureReachability,
 } from '../services/collabService';
 import type { SessionBaseline } from '../types/appState';
 import { UI } from '../config/uiText';
@@ -89,6 +90,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const disconnectRef = useRef<(() => void) | null>(null);
+
+  // Resolve once, in the background, whether this app can actually reach the
+  // build-time Azure URL (if any was baked in) — before the user opens a
+  // session dialog, so 参加/作成 already point the right way by the time they
+  // click. A packaged installer with no network/VPN falls back to its own
+  // bundled local server instead of hanging on an unreachable host.
+  useEffect(() => { void probeAzureReachability(); }, []);
 
   // Outgoing: apply locally as normal, and if we're an editor in an active
   // session, also forward data-mutating actions to the server. UNDO/REDO are
@@ -305,11 +313,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const leaveCollabSession = useCallback(() => {
     // Best-effort: if I'm the last one here (an editor, with data to give),
-    // hand the server a final snapshot before disconnecting so the session's
-    // storage footprint resets instead of growing forever. Nothing worse
-    // than today's behavior if this can't fire (abrupt disconnect, or a
-    // view-only participant is the one left) — the baseline+log just persist
-    // as they already do.
+    // hand the server a final snapshot before disconnecting — the server
+    // only ever persists one "current state" file per session, not a growing
+    // action log, so this is what makes this session's edits durable. If it
+    // can't fire (abrupt disconnect, or a view-only participant is the one
+    // left), the persisted state just stays as of the last checkpoint.
     const { session, schedule, envConfig, currentView } = stateRef.current;
     if (session?.role === 'edit' && session.participants.length <= 1 && schedule && envConfig) {
       sendCollabCheckpoint({ schedule, envConfig, currentView });

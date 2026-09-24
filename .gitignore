@@ -5,6 +5,10 @@ dist-sse/
 *.local
 .env
 .env.*
+# Not a secret — the default Azure URL baked into `electron:build` installers
+# (see the file's own header comment). Everything else under .env.* stays
+# ignored (local overrides, etc).
+!.env.production
 electron-dist/
 release/
 .worktrees/

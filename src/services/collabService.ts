@@ -51,16 +51,45 @@ export function setServerUrl(url: string): void {
   }
 }
 
+// Set by probeAzureReachability() below — in-memory only (never persisted),
+// separate from the user's own runtime override in localStorage. Starts
+// false (optimistic: try the baked-in Azure URL) until the startup probe
+// says otherwise.
+let azureUnreachable = false;
+
 // ACA1 (session API) base URL, most-specific first:
 //   1. runtime override (join-dialog "接続先サーバー")
-//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1)
+//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1) — unless the
+//      startup probe found it unreachable, in which case skip straight to (3)
 //   3. this app's own origin (packaged Electron / a LAN browser on the host)
 function aca1Base(): string {
   const runtime = getServerUrl();
   if (runtime) return runtime;
   const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
-  if (built) return built.replace(/\/+$/, '');
+  if (built && !azureUnreachable) return built.replace(/\/+$/, '');
   return window.location.origin;
+}
+
+// Called once at app startup (AppContext) when a build-time Azure URL is
+// baked in — a packaged installer built with .env.production's
+// VITE_ACA1_URL should "just work" against the company's deployed backend,
+// but must not get stuck trying to reach Azure with no network/VPN, so this
+// does a quick, short-timeout reachability check up front and remembers the
+// result for aca1Base() to use for the rest of the app's lifetime. A no-op
+// if there's a runtime override already (the user/LAN-discovery picked an
+// explicit server, which always wins) or no build-time URL at all.
+export async function probeAzureReachability(): Promise<void> {
+  const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
+  if (!built || getServerUrl()) return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    azureUnreachable = !res.ok;
+  } catch {
+    azureUnreachable = true;
+  }
 }
 
 // ACA1 records its reachable URL as PUBLIC_RELAY_URL; in local/LAN mode that
@@ -312,11 +341,11 @@ export function sendCollabUnlock(): void {
 }
 
 // Best-effort final snapshot sent by the last connected editor right before
-// they leave (see AppContext.leaveCollabSession) — replaces the session's
-// baseline and clears its action log server-side, so a session's storage
-// footprint doesn't grow forever across many open/close cycles. Silently a
-// no-op if the socket is already gone; nothing here is worth surfacing an
-// error for on the way out the door.
+// they leave (see AppContext.leaveCollabSession) — the server persists only
+// ever a single "current state" snapshot per session (no action-by-action
+// log), so this is how whatever was edited this session actually makes it to
+// storage. Silently a no-op if the socket is already gone; nothing here is
+// worth surfacing an error for on the way out the door.
 export function sendCollabCheckpoint(baseline: SessionBaseline): void {
   socket?.emit('checkpoint', baseline);
 }
