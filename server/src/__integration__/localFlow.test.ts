@@ -124,8 +124,23 @@ describe('local ACA1 + ACA2 + fs-blob end-to-end', () => {
     a.emit('action', { type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-01-01', endDate: '2026-03-31' } });
     expect(await bGotAfterUnlock).toEqual({ type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-01-01', endDate: '2026-03-31' } });
 
-    // 10. everyone leaves -> ACA2 flushes + closes
+    // 10. A leaves first; B (now the sole remaining editor) sends a final
+    // checkpoint before disconnecting too — mirrors what the real app does
+    // in AppContext.leaveCollabSession. There's no durable action log
+    // (see persistence.ts), so this checkpoint is the only way B's session
+    // worth of edits reach storage at all.
+    const bSeesAlone = new Promise<void>((resolve) => {
+      b.on('presence', (participants: unknown[]) => { if (participants.length === 1) resolve(); });
+    });
     a.disconnect();
+    await bSeesAlone;
+    const finalBaseline = {
+      schedule: { tasks: [{ id: 't1' }, { id: 't2' }], planRange: { startDate: '2026-01-01', endDate: '2026-03-31' } },
+      envConfig: BASELINE_BODY.envConfig,
+      currentView: 'worker' as const,
+    };
+    b.emit('checkpoint', finalBaseline);
+    await wait(200); // let ACA2 apply the checkpoint before B disconnects
     b.disconnect();
     let sess = await api(`/api/sessions/${sessionId}`).then((r) => r.json());
     for (let i = 0; i < 80 && sess.session.status !== 'close'; i++) {
@@ -134,16 +149,17 @@ describe('local ACA1 + ACA2 + fs-blob end-to-end', () => {
     }
     expect(sess.session.status).toBe('close');
 
-    // 11. the log is on disk
+    // 11. the checkpointed snapshot is on disk (as current.json — no action log)
     const rec = await loadSessionRecord(createFsStorage(blobDir), sessionId);
-    expect(rec?.log.map((x) => x.type)).toEqual(['SET_SCHEDULE', 'UPDATE_PLAN_RANGE']);
+    expect(rec?.baseline).toEqual(finalBaseline);
 
-    // 12. re-open replays from storage
+    // 12. re-open hands out that snapshot, with no action backlog to replay
     const reopened = await api(`/api/sessions/${sessionId}/open`, { method: 'POST' }).then((r) => r.json());
     expect(reopened.status).toBe('open');
     const c = socket();
     const cInit = await joinAndSync(c, { sessionId, name: 'C', role: 'edit' });
-    expect(cInit.actions.map((x: any) => x.type)).toEqual(['SET_SCHEDULE', 'UPDATE_PLAN_RANGE']);
+    expect(cInit.baseline).toEqual(finalBaseline);
+    expect(cInit.actions).toEqual([]);
     c.disconnect();
     await wait(300);
 

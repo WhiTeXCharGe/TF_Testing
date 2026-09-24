@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFsStorage } from './storage/fsStorage.js';
 import {
-  createSessionRecord, loadSessionRecord, writeStatus, writeLog,
+  createSessionRecord, loadSessionRecord, writeStatus, writeCurrentState,
   listSessionIds, deleteSessionRecord, hashOwnerToken,
 } from './persistence.js';
 
@@ -20,7 +20,7 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 const baseline = { schedule: { t: 1 }, envConfig: { e: 2 }, currentView: 'worker' as const };
 
 describe('persistence', () => {
-  it('creates then loads a full record with status=close and empty log', async () => {
+  it('creates then loads a full record with status=close', async () => {
     const id = await createSessionRecord(s, { name: 'Plan A', baseline, ownerTokenHash: hashOwnerToken('secret') });
     const rec = await loadSessionRecord(s, id);
     expect(rec?.meta.name).toBe('Plan A');
@@ -29,7 +29,6 @@ describe('persistence', () => {
     expect(rec?.status.status).toBe('close');
     expect(rec?.status.relayInstance).toBeNull();
     expect(rec?.baseline).toEqual(baseline);
-    expect(rec?.log).toEqual([]);
   });
 
   it('loadSessionRecord returns null for unknown id', async () => {
@@ -48,13 +47,11 @@ describe('persistence', () => {
     expect((await loadSessionRecord(s, id))!.status).toEqual(next);
   });
 
-  it('writeLog persists and reloads; nextSeq derivable from it', async () => {
+  it('writeCurrentState overwrites the persisted baseline wholesale', async () => {
     const id = await createSessionRecord(s, { name: 'x', baseline, ownerTokenHash: 'h' });
-    await writeLog(s, id, [
-      { seq: 0, type: 'SET_SCHEDULE', payload: { a: 1 } },
-      { seq: 1, type: 'UPDATE_PLAN_RANGE', payload: { startDate: 'x', endDate: 'y' } },
-    ]);
-    expect((await loadSessionRecord(s, id))!.log).toHaveLength(2);
+    const replacement = { schedule: { t: 99 }, envConfig: { e: 2 }, currentView: 'worker' as const };
+    await writeCurrentState(s, id, replacement);
+    expect((await loadSessionRecord(s, id))!.baseline).toEqual(replacement);
   });
 
   it('listSessionIds returns created ids; deleteSessionRecord removes them', async () => {

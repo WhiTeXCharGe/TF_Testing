@@ -304,7 +304,7 @@ describe('presence + last-leave persistence', () => {
     alice.disconnect();
   });
 
-  it('flushes the log and sets status close when the last participant leaves', async () => {
+  it('sets status close when the last participant leaves, without persisting the in-memory action log', async () => {
     const alice = connect();
     await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
     alice.emit('action', { type: 'SET_SCHEDULE', payload: { v: 1 } });
@@ -314,6 +314,9 @@ describe('presence + last-leave persistence', () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     expect(store.getSession(sessionId)?.actions).toHaveLength(1);
+    // A raw disconnect, not the app's own graceful leave — so no 'checkpoint'
+    // fires first (see AppContext.leaveCollabSession). current.json should
+    // stay exactly as created; only status.json changes.
     alice.disconnect();
 
     // The last-leave handler flushes then evicts, so "no longer loaded here"
@@ -325,7 +328,7 @@ describe('presence + last-leave persistence', () => {
 
     const rec = await loadSessionRecord(storage, sessionId);
     expect(rec?.status.status).toBe('close');
-    expect(rec?.log).toEqual([{ seq: 0, type: 'SET_SCHEDULE', payload: { v: 1 } }]);
+    expect(rec?.baseline).toEqual(BASELINE);
   });
 
   it('a locked session stays locked at rest when everyone leaves, and resumes locked on the next join', async () => {

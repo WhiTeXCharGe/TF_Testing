@@ -1,15 +1,17 @@
 import type { StorageClient } from './storage/storageClient.js';
 import type { SessionBaseline, LoggedAction, SessionStatus, SessionStatusRecord } from './types.js';
 import {
-  loadSessionRecord, writeLog, writeStatus, writeBaseline, statusKey,
+  loadSessionRecord, writeStatus, writeCurrentState, statusKey,
 } from './persistence.js';
 
 // The relay's working set: sessions currently held in memory on this replica.
 // Storage (StorageClient) is the durable record — a session is loaded from it
-// on first join, flushed back periodically and on the last participant
-// leaving, and dropped from memory ("evicted") when empty. The store still
-// never interprets an action: it stores and orders them; the client reducer
-// is the single source of truth.
+// on first join, and dropped from memory ("evicted") when empty. The store
+// still never interprets an action: it stores and orders them in memory only
+// (to replay recent edits to a client that joins mid-session); the client
+// reducer is the single source of truth. Only a full baseline snapshot
+// (current.json) is ever persisted — see replaceBaseline and persistence.ts's
+// header comment for why there's no durable action log.
 //
 // Session creation does NOT live here anymore — ACA1 writes the initial
 // record via persistence.createSessionRecord. This store only ever *loads*
@@ -51,7 +53,7 @@ export interface SessionStore {
   ownerTokenHash(id: string): string | null;
   /** Live view for ACA1's session list — reads storage when the session isn't loaded here. */
   getLive(id: string): Promise<{ active: boolean; participantCount: number; status: SessionStatus }>;
-  /** Persist log + status for a loaded session if it has unsaved changes. */
+  /** Persist status for a loaded session if it has unsaved changes (no action log to persist — see replaceBaseline). */
   flush(id: string): Promise<void>;
   flushAll(): Promise<void>;
   /** Flush, then drop from memory. */
@@ -63,15 +65,15 @@ export interface SessionStore {
   /** Stamp status.json with the time a participant just joined (drives the list sort). */
   markJoined(id: string): Promise<void>;
   /**
-   * Replace the baseline in place and clear the action log — a fresh full
-   * snapshot supersedes everything replayed so far, so the old log no longer
-   * applies. Used by: the last participant's leave-time checkpoint (keeps a
-   * session's storage footprint from growing forever), an explicit
-   * "update this session's data" push while locked, and a create-time
-   * overwrite of an existing session with the same name. Persists
-   * immediately (not lazily via flush/dirty) since this is a rare,
-   * significant event. Loads from storage first if not already in memory —
-   * false only if no such session exists at all.
+   * Replace the baseline in place and clear the in-memory action log — a
+   * fresh full snapshot supersedes everything replayed so far, so the old
+   * log no longer applies. This is the ONLY way current.json in storage ever
+   * gets rewritten (besides session creation): the last participant's
+   * leave-time checkpoint, an explicit "update this session's data" push
+   * while locked, and a create-time overwrite of an existing session with
+   * the same name. Persists immediately (not lazily via flush/dirty) since
+   * this is a rare, significant event. Loads from storage first if not
+   * already in memory — false only if no such session exists at all.
    */
   replaceBaseline(id: string, baseline: SessionBaseline): Promise<boolean>;
   /** Drop in-memory sessions that have had no participants past the idle window. */
@@ -105,9 +107,12 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
       name: rec.meta.name,
       ownerTokenHash: rec.meta.ownerTokenHash,
       baseline: rec.baseline,
-      actions: [...rec.log],
+      // No persisted log to seed from — current.json is already the full
+      // up-to-date state as of the last checkpoint, so there's no backlog to
+      // replay against it.
+      actions: [],
       participants: new Map(),
-      nextSeq: (rec.log.at(-1)?.seq ?? -1) + 1,
+      nextSeq: 0,
       status: rec.status.status === 'lock' ? 'lock' : 'open',
       dirty: false,
       lastActivityAt: Date.now(),
@@ -181,7 +186,9 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
   const flush = async (id: string): Promise<void> => {
     const s = sessions.get(id);
     if (!s || !s.dirty) return;
-    await writeLog(storage, id, s.actions);
+    // Status only — the in-memory action log is never written to storage
+    // (see the file header comment / replaceBaseline). An in-progress
+    // session's edits become durable only via a checkpoint/update, not here.
     await writeStatus(storage, id, { status: s.status, lastActivityAt: s.lastActivityAt });
     s.dirty = false;
   };
@@ -225,10 +232,7 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     s.nextSeq = 0;
     s.dirty = false; // just persisted below, not lazily via flush
     s.lastActivityAt = Date.now();
-    await Promise.all([
-      writeBaseline(storage, id, baseline),
-      writeLog(storage, id, []),
-    ]);
+    await writeCurrentState(storage, id, baseline);
     return true;
   };
 

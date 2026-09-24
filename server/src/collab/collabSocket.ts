@@ -107,10 +107,13 @@ export function createCollabSocketServer(
     });
 
     // A best-effort final snapshot from the last connected editor before they
-    // leave (see AppContext.leaveCollabSession) — replaces the baseline and
-    // clears the action log so an idle session's storage footprint doesn't
-    // grow forever across many open/close cycles. Edit-role only, same as
-    // 'action'; a malformed payload is dropped rather than persisted.
+    // leave (see AppContext.leaveCollabSession) — this is how current.json
+    // in storage picks up whatever was edited during the session, since
+    // in-progress edits are never durably logged (see persistence.ts).
+    // Edit-role only, same as 'action'; a malformed payload is dropped rather
+    // than persisted. If this never fires (abrupt disconnect, or the last
+    // participant left was view-only), current.json simply stays at
+    // whatever it was as of the last checkpoint/creation/update.
     socket.on('checkpoint', (payload: SessionBaseline) => {
       if (!joinedSessionId || joinedRole !== 'edit') return;
       if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) return;
@@ -153,7 +156,7 @@ export function createCollabSocketServer(
       const participants = store.removeParticipant(sid, participantId) ?? [];
       socket.to(sid).emit('presence', participants);
       if (store.participantCount(sid) === 0) {
-        await store.evict(sid);      // flushes baseline+log to storage
+        await store.evict(sid);      // flushes status.json (no durable action log)
         await store.markClosed(sid); // status.json → close, relay pointer cleared
       }
     };

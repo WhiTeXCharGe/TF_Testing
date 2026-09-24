@@ -54,16 +54,20 @@ describe('appendAction', () => {
 });
 
 describe('flush / re-activation', () => {
-  it('flush writes the log so a fresh store re-activates with the actions', async () => {
+  it('flush does not persist the in-memory action log — a fresh store re-activates with none of it', async () => {
     await store.activateFromStorage(id);
     store.appendAction(id, 'SET_SCHEDULE', { a: 1 });
     await store.flush(id);
 
+    // No durable action log by design (see persistence.ts) — only
+    // replaceBaseline ever rewrites current.json, so a session reloaded
+    // from storage after a plain flush comes back at its last checkpointed
+    // state, not with the actions appended since.
     const fresh = createSessionStore({ storage });
     await fresh.activateFromStorage(id);
-    expect(fresh.getSession(id)?.actions).toEqual([{ seq: 0, type: 'SET_SCHEDULE', payload: { a: 1 } }]);
-    // nextSeq continues after the reloaded log
-    expect(fresh.appendAction(id, 'X', {})?.seq).toBe(1);
+    expect(fresh.getSession(id)?.actions).toEqual([]);
+    expect(fresh.getSession(id)?.baseline).toEqual(BASELINE);
+    expect(fresh.appendAction(id, 'X', {})?.seq).toBe(0);
   });
 });
 
@@ -98,12 +102,12 @@ describe('lock', () => {
 });
 
 describe('evict / markClosed', () => {
-  it('evict flushes then unloads', async () => {
+  it('evict flushes status then unloads, but leaves current.json untouched without a checkpoint', async () => {
     await store.activateFromStorage(id);
     store.appendAction(id, 'SET_SCHEDULE', { a: 1 });
     await store.evict(id);
     expect(store.isLoaded(id)).toBe(false);
-    expect((await loadSessionRecord(storage, id))?.log).toHaveLength(1);
+    expect((await loadSessionRecord(storage, id))?.baseline).toEqual(BASELINE);
   });
 
   it('markClosed sets the at-rest status to close with no relay pointer', async () => {
@@ -135,7 +139,7 @@ describe('markJoined', () => {
 describe('replaceBaseline', () => {
   const NEW_BASELINE = { schedule: { new: true }, envConfig: { new: true }, currentView: 'device' as const };
 
-  it('replaces baseline and clears the log for a session already loaded in memory', async () => {
+  it('replaces baseline and clears the in-memory log for a session already loaded in memory', async () => {
     await store.activateFromStorage(id);
     store.appendAction(id, 'SET_SCHEDULE', { a: 1 });
     expect(await store.replaceBaseline(id, NEW_BASELINE)).toBe(true);
@@ -143,7 +147,6 @@ describe('replaceBaseline', () => {
 
     const rec = await loadSessionRecord(storage, id);
     expect(rec?.baseline).toEqual(NEW_BASELINE);
-    expect(rec?.log).toEqual([]);
   });
 
   it('loads an idle (not-in-memory) session from storage first, then replaces it', async () => {

@@ -70,7 +70,7 @@ describe('internal routes', () => {
   describe('replace', () => {
     const NEW_BASELINE = { schedule: { updated: true }, envConfig: { updated: true }, currentView: 'device' as const };
 
-    it('replaces the baseline and clears the log, loading from storage first if idle', async () => {
+    it('replaces the baseline, loading from storage first if idle', async () => {
       const res = await request(app)
         .post(`/internal/sessions/${id}/replace`)
         .set('x-internal-key', 'topsecret')
@@ -79,7 +79,6 @@ describe('internal routes', () => {
       expect(res.body).toEqual({ ok: true });
       const rec = await loadSessionRecord(storage, id);
       expect(rec?.baseline).toEqual(NEW_BASELINE);
-      expect(rec?.log).toEqual([]);
     });
 
     it('404s for an unknown id', async () => {

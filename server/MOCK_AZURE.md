@@ -9,7 +9,7 @@ to Azure Container Apps. No Azure account or network access needed.
 |---|---|---|
 | **ACA1** – session API (list / create / open / delete) | `http://localhost:4000` | Container App, always on |
 | **ACA2** – live relay (Socket.IO) + `/internal/*` control plane | `http://localhost:4010` | Container App, scale-to-zero |
-| **Storage** – `sessions/<id>/{meta,status,baseline,log}.json` | `server/mock-blob/` folder | Azure Blob |
+| **Storage** – `sessions/<id>/{meta,status,current}.json` (one snapshot, no action log) | `server/mock-blob/` folder | Azure Blob |
 | **Web client** | Vite `http://localhost:5173` | Azure Static Web Apps |
 
 One image / one codebase; `ROLE=aca1｜aca2｜local` selects behaviour (`src/config.ts`).

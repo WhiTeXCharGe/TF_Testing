@@ -1,20 +1,26 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { StorageClient } from './storage/storageClient.js';
 import type {
-  SessionBaseline, LoggedAction, SessionMeta, SessionStatusRecord,
+  SessionBaseline, SessionMeta, SessionStatusRecord,
 } from './types.js';
 
-// Reads/writes the four files that make up a persisted session:
+// Reads/writes the three files that make up a persisted session:
 //   sessions/<id>/meta.json      (immutable)
 //   sessions/<id>/status.json    (mutable: open|lock|close + relay pointer)
-//   sessions/<id>/baseline.json
-//   sessions/<id>/log.json       (ordered LoggedAction[])
-// Pure storage plumbing — no in-memory session state, no Socket.IO.
+//   sessions/<id>/current.json   (the latest full SessionBaseline)
+// No per-action log is persisted — a session's storage footprint is one
+// snapshot, not a snapshot plus an ever-growing history, however many edits
+// happen while it's live (the in-memory action log in sessionStore.ts still
+// exists, but only to replay recent edits to a newly-joining client while
+// the session is loaded; it's never written to storage). current.json is
+// only ever refreshed wholesale — session creation, the last participant's
+// leave-time checkpoint, an explicit session-data update, or a create-time
+// overwrite (see sessionStore.replaceBaseline). Pure storage plumbing — no
+// in-memory session state, no Socket.IO.
 
 export const metaKey = (id: string): string => `sessions/${id}/meta.json`;
 export const statusKey = (id: string): string => `sessions/${id}/status.json`;
-export const baselineKey = (id: string): string => `sessions/${id}/baseline.json`;
-export const logKey = (id: string): string => `sessions/${id}/log.json`;
+export const currentKey = (id: string): string => `sessions/${id}/current.json`;
 
 export function hashOwnerToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -30,7 +36,6 @@ export function ownerTokenMatches(presentedToken: string, expectedHash: string):
 export interface SessionRecord {
   meta: SessionMeta;
   baseline: SessionBaseline;
-  log: LoggedAction[];
   status: SessionStatusRecord;
 }
 
@@ -46,8 +51,7 @@ export async function createSessionRecord(
   };
   await Promise.all([
     s.putJson(metaKey(id), meta),
-    s.putJson(baselineKey(id), args.baseline),
-    s.putJson(logKey(id), [] satisfies LoggedAction[]),
+    s.putJson(currentKey(id), args.baseline),
     s.putJson(statusKey(id), status),
   ]);
   return id;
@@ -56,16 +60,14 @@ export async function createSessionRecord(
 export async function loadSessionRecord(s: StorageClient, id: string): Promise<SessionRecord | null> {
   const meta = await s.getJson<SessionMeta>(metaKey(id));
   if (!meta) return null;
-  const [baseline, log, status] = await Promise.all([
-    s.getJson<SessionBaseline>(baselineKey(id)),
-    s.getJson<LoggedAction[]>(logKey(id)),
+  const [baseline, status] = await Promise.all([
+    s.getJson<SessionBaseline>(currentKey(id)),
     s.getJson<SessionStatusRecord>(statusKey(id)),
   ]);
   if (!baseline) return null;
   return {
     meta,
     baseline,
-    log: log ?? [],
     status: status ?? { status: 'close', relayInstance: null, relayUrl: null, lastActivityAt: meta.createdAt, lastJoinAt: null },
   };
 }
@@ -100,12 +102,8 @@ export async function writeStatus(
   });
 }
 
-export async function writeLog(s: StorageClient, id: string, log: LoggedAction[]): Promise<void> {
-  await s.putJson(logKey(id), log);
-}
-
-export async function writeBaseline(s: StorageClient, id: string, baseline: SessionBaseline): Promise<void> {
-  await s.putJson(baselineKey(id), baseline);
+export async function writeCurrentState(s: StorageClient, id: string, baseline: SessionBaseline): Promise<void> {
+  await s.putJson(currentKey(id), baseline);
 }
 
 export async function listSessionIds(s: StorageClient): Promise<string[]> {
