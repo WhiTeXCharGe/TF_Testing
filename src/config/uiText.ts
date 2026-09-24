@@ -418,21 +418,23 @@ export const UI = {
   sessionStatusLock: 'ロック中',
   sessionStatusClose: '停止中',
   sessionParticipantCount: (n: number | null) => (n == null ? '' : `${n}人`),
-  sessionCreateSourceCurrentLabel: '現在のガントで開く',
+  sessionCreateSourceCurrentLabel: '現在のガントを使用',
   sessionCreateSourceImportLabel: '新しいガントをインポート',
-  // Third create-dialog source: push data into an existing session (picked
-  // from a list) instead of creating a new one — an explicit, discoverable
-  // path to the same overwrite the duplicate-name check below falls into by
-  // surprise. Its own nested current/import choice (below) decides what data
-  // gets pushed once a target is picked, defaulting to current.
-  sessionCreateSourceOverwriteLabel: '既存のセッションを上書き',
+  // Create dialog has two independent radio groups: データソース (current vs
+  // import — what data to use) and 作成先 (new vs overwrite — where it goes).
+  // Kept as two orthogonal groups instead of one 3-way radio because "既存の
+  // セッションを上書き" used to reveal its own nested current/import pair,
+  // which read as a hidden fourth option — splitting the axes makes both
+  // choices visible up front.
+  sessionCreateDataSourceGroupLabel: 'データソース:',
+  sessionCreateTargetGroupLabel: '作成先:',
+  sessionCreateTargetNewLabel: '新規セッションとして作成',
+  sessionCreateTargetOverwriteLabel: '既存のセッションを上書き',
   sessionCreateSourceCurrentUnavailable: '（現在開いているガントがありません）',
   sessionCreateSourceCurrentDesc: '今開いているスケジュールとEnvConfigのまま、セッションを作成します。',
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
-  sessionOverwriteSourceCurrentLabel: '現在のガントで上書き',
-  sessionOverwriteSourceImportLabel: '新しいガントをインポートして上書き',
   // Only a locked session can be overwritten — same rule as the in-session
   // update feature (共同編集 → セッションデータを更新), so nobody's mid-edit
   // when the data under them gets replaced. The list still shows every

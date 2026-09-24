@@ -166,17 +166,17 @@ describe('create dialog', () => {
     expect(labels).toEqual(['EnvConfig YAML', 'スケジュール YAML']);
   });
 
-  it('with no Gantt open: 現在のガントで開く is disabled, and 新しいガントをインポート is selected with file fields visible', () => {
+  it('with no Gantt open: 現在のガントを使用 is disabled, and 新しいガントをインポート is selected with file fields visible', () => {
     renderDialog({ kind: 'create' });
-    expect(screen.getByLabelText('現在のガントで開く')).toBeDisabled();
+    expect(screen.getByLabelText('現在のガントを使用')).toBeDisabled();
     expect(screen.getByLabelText('新しいガントをインポート')).toBeChecked();
     expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
   });
 
-  it('with a Gantt already open: 現在のガントで開く is selected by default and the file fields are hidden', () => {
+  it('with a Gantt already open: 現在のガントを使用 is selected by default and the file fields are hidden', () => {
     renderDialog({ kind: 'create', loadedGantt: true });
-    expect(screen.getByLabelText('現在のガントで開く')).toBeEnabled();
-    expect(screen.getByLabelText('現在のガントで開く')).toBeChecked();
+    expect(screen.getByLabelText('現在のガントを使用')).toBeEnabled();
+    expect(screen.getByLabelText('現在のガントを使用')).toBeChecked();
     expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
   });
 
@@ -184,6 +184,13 @@ describe('create dialog', () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('新しいガントをインポート'));
     expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+  });
+
+  it('新規セッションとして作成 is selected by default, independent of データソース', () => {
+    renderDialog({ kind: 'create', loadedGantt: true });
+    expect(screen.getByLabelText('新規セッションとして作成')).toBeChecked();
+    expect(screen.getByLabelText('既存のセッションを上書き')).not.toBeChecked();
+    expect(screen.getByPlaceholderText('セッション名を入力')).toBeInTheDocument();
   });
 
   it('creates from the current Gantt (no files) when that tab is submitted', async () => {
@@ -250,44 +257,39 @@ describe('create dialog — duplicate name overwrite', () => {
 });
 
 describe('create dialog — overwrite an existing session (explicit radio + list)', () => {
-  // Unlike 現在のガントで開く, this option isn't gated on a Gantt already
-  // being open — it has its own nested current/import choice (below), so it
-  // stays usable via import even with nothing loaded.
-  it('stays enabled with no Gantt open (unlike 現在のガントで開く), defaulting its nested source to import', async () => {
+  // 作成先 is independent of データソース — picking 既存のセッションを上書き
+  // never disables or changes the データソース radios (現在のガントを使用 /
+  // 新しいガントをインポート); it just swaps the name field for a session list.
+  it('is always enabled, even with no Gantt open', () => {
     renderDialog({ kind: 'create' });
     expect(screen.getByLabelText('既存のセッションを上書き')).toBeEnabled();
-
-    await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
-    expect(screen.getByLabelText('現在のガントで上書き')).toBeDisabled();
-    expect(screen.getByLabelText('新しいガントをインポートして上書き')).toBeChecked();
-    expect(await screen.findByText('EnvConfig YAML')).toBeInTheDocument();
   });
 
-  it('selecting it shows the session list instead of the name field, defaulting to 現在のガントで上書き (no file fields) when a Gantt is open', async () => {
+  it('selecting it shows the session list instead of the name field, using 現在のガントを使用 (no file fields) when a Gantt is open', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
 
-    expect(screen.getByLabelText('現在のガントで上書き')).toBeChecked();
+    expect(screen.getByLabelText('現在のガントを使用')).toBeChecked();
     expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
     expect(screen.getByText('Locked One')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('セッション名を入力')).not.toBeInTheDocument();
     expect(screen.queryByText('EnvConfig YAML')).not.toBeInTheDocument();
   });
 
-  it('switching the nested source to 新しいガントをインポートして上書き reveals the file fields, still alongside the session list', async () => {
+  it('switching データソース to 新しいガントをインポート reveals the file fields, still alongside the session list', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
-    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポート'));
 
     expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
     expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
   });
 
-  it('with the nested source on import, submit stays disabled until both files are chosen even with a session picked', async () => {
+  it('with データソース on import, submit stays disabled until both files are chosen even with a session picked', async () => {
     renderDialog({ kind: 'create', loadedGantt: true });
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
     await userEvent.click(await screen.findByText('Locked One'));
-    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポート'));
 
     const submitBtn = screen.getByRole('button', { name: '作成して開始' });
     expect(submitBtn).toBeDisabled();
@@ -301,7 +303,7 @@ describe('create dialog — overwrite an existing session (explicit radio + list
     await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
     await userEvent.click(screen.getByLabelText('既存のセッションを上書き'));
     await userEvent.click(await screen.findByText('Locked One'));
-    await userEvent.click(screen.getByLabelText('新しいガントをインポートして上書き'));
+    await userEvent.click(screen.getByLabelText('新しいガントをインポート'));
 
     const fileInputs = document.querySelectorAll('input[type=file]');
     await userEvent.upload(fileInputs[0] as HTMLInputElement, new File(['b: 2'], 'EnvConfig.yaml'));
@@ -356,9 +358,9 @@ describe('create dialog — overwrite an existing session (explicit radio + list
 });
 
 describe('update dialog (locked-session data replace)', () => {
-  it('defaults to 現在のガントで開く and submitting sends the current schedule/envConfig', async () => {
+  it('defaults to 現在のガントを使用 and submitting sends the current schedule/envConfig', async () => {
     renderDialog({ session: activeSession({ status: 'lock' }), kind: 'update', loadedGantt: true });
-    expect(await screen.findByLabelText('現在のガントで開く')).toBeChecked();
+    expect(await screen.findByLabelText('現在のガントを使用')).toBeChecked();
 
     await userEvent.click(screen.getByRole('button', { name: '更新する' }));
 
