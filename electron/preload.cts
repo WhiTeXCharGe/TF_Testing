@@ -18,6 +18,15 @@ export interface ElectronAPI {
    * its one window straight to that URL instead of opening a second window.
    */
   launchScheduler: (transferUrl?: string) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Main intercepts the window's close button and fires this instead of
+   * closing immediately, so the renderer gets a chance to checkpoint an
+   * in-progress collab session before its socket is torn down — see
+   * AppContext's before-close handler and main.cts's 'close' listener.
+   */
+  onBeforeClose: (cb: () => void) => void;
+  /** Tells main it's safe to actually close the window now. */
+  notifyReadyToClose: () => void;
 }
 
 const api: ElectronAPI = {
@@ -26,6 +35,8 @@ const api: ElectronAPI = {
   pickSaveTarget: (defaultName: string) => ipcRenderer.invoke('dialog:pickSaveTarget', defaultName),
   writeTextFile: (path: string, content: string) => ipcRenderer.invoke('fs:writeTextFile', path, content),
   launchScheduler: (transferUrl?: string) => ipcRenderer.invoke('sibling:launchScheduler', transferUrl),
+  onBeforeClose: (cb: () => void) => ipcRenderer.on('app:before-close', () => cb()),
+  notifyReadyToClose: () => ipcRenderer.send('app:ready-to-close'),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

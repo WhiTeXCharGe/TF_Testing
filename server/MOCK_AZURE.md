@@ -64,4 +64,4 @@ for why it's a separate repo from the app.
 | `INTERNAL_KEY` | – | required for `aca1`/`aca2`; shared ACA1↔ACA2 secret |
 | `ACA2_URL` | `http://localhost:4010` | ACA1 → ACA2 base URL |
 | `PUBLIC_RELAY_URL` | `http://localhost:<port>` | URL ACA2 records for clients to connect to |
-| `WEB_ORIGIN` | – | CORS allow-origin for `aca1`/`aca2` (null → LAN allowlist) |
+| `WEB_ORIGIN` | – | CORS allow-origin(s) for `aca1`/`aca2` (null → LAN allowlist); comma-separated for more than one, e.g. the dev server + the packaged app's embedded server |

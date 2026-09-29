@@ -22,6 +22,14 @@ export interface JoinCallbacks {
   onPresence: (participants: SessionParticipant[]) => void;
   onStatusChange: (status: SessionConnectionStatus) => void;
   onSessionStatus: (status: SessionStatus) => void;
+  /**
+   * The server is asking every connected editor in this session to send a
+   * fresh checkpoint (see requestAllCheckpoints server-side — used before a
+   * replica shuts down, e.g. Azure scaling ACA2 to zero) so a session's
+   * durable snapshot doesn't go stale just because nobody happened to be the
+   * "last one out" at that exact moment.
+   */
+  onCheckpointRequest: () => void;
 }
 
 // Injected by Vite's `define` (see vite.config.ts) — a string literal at build
@@ -329,6 +337,7 @@ export function joinCollabRoom(
   const handlePresence = (participants: SessionParticipant[]) => cb.onPresence(participants);
   const handleSessionStatus = (payload: { status: SessionStatus }) => cb.onSessionStatus(payload.status);
   const handleDisconnect = () => cb.onStatusChange('disconnected');
+  const handleCheckpointRequest = () => cb.onCheckpointRequest();
 
   s.on('connect', handleConnect);
   s.on('sync-init', handleSyncInit);
@@ -336,6 +345,7 @@ export function joinCollabRoom(
   s.on('presence', handlePresence);
   s.on('session-status', handleSessionStatus);
   s.on('disconnect', handleDisconnect);
+  s.on('checkpoint-request', handleCheckpointRequest);
 
   if (s.connected) handleConnect();
 
@@ -346,6 +356,7 @@ export function joinCollabRoom(
     s.off('presence', handlePresence);
     s.off('session-status', handleSessionStatus);
     s.off('disconnect', handleDisconnect);
+    s.off('checkpoint-request', handleCheckpointRequest);
     s.emit('leave');
     s.disconnect();
     socket = null;
@@ -365,14 +376,30 @@ export function sendCollabUnlock(): void {
   socket?.emit('unlock');
 }
 
-// Best-effort final snapshot sent by the last connected editor right before
-// they leave (see AppContext.leaveCollabSession) — the server persists only
+// A full-state snapshot the client hands the server: on leaving as the last
+// editor (see AppContext.leaveCollabSession), in response to a server-side
+// checkpoint-request (see onCheckpointRequest above), on a periodic backup
+// timer, or right before an Electron window closes. The server persists only
 // ever a single "current state" snapshot per session (no action-by-action
-// log), so this is how whatever was edited this session actually makes it to
-// storage. Silently a no-op if the socket is already gone; nothing here is
-// worth surfacing an error for on the way out the door.
-export function sendCollabCheckpoint(baseline: SessionBaseline): void {
-  socket?.emit('checkpoint', baseline);
+// log), so this is the only way whatever was edited this session actually
+// makes it to storage. Resolves once the server has actually written it (or
+// false if there's no socket, the server rejected it, or it didn't ack
+// within the timeout) so a caller that needs to know the write landed before
+// proceeding — e.g. an Electron close-intercept — can await it.
+const CHECKPOINT_ACK_TIMEOUT_MS = 5000;
+
+export function sendCollabCheckpoint(baseline: SessionBaseline): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!socket) { resolve(false); return; }
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, CHECKPOINT_ACK_TIMEOUT_MS);
+    socket.emit('checkpoint', baseline, (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(!!ok);
+    });
+  });
 }
 
 // Explicit "replace this session's whole data" push — only takes effect

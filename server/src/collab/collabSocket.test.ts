@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createServer, Server as HttpServer } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
-import { createCollabSocketServer } from './collabSocket.js';
+import { createCollabSocketServer, requestAllCheckpoints } from './collabSocket.js';
+import type { Server } from 'socket.io';
 import { createSessionStore } from './sessionStore.js';
 import { createMemStorage } from './storage/memStorage.js';
 import { createSessionRecord, hashOwnerToken, loadSessionRecord } from './persistence.js';
@@ -17,6 +18,7 @@ let port: number;
 let storage: ReturnType<typeof createMemStorage>;
 let store: ReturnType<typeof createSessionStore>;
 let sessionId: string;
+let io: Server;
 
 beforeEach(async () => {
   storage = createMemStorage();
@@ -25,7 +27,7 @@ beforeEach(async () => {
     name: 'Test Session', baseline: BASELINE, ownerTokenHash: hashOwnerToken(OWNER_TOKEN),
   });
   httpServer = createServer();
-  createCollabSocketServer(httpServer, store, config);
+  io = createCollabSocketServer(httpServer, store, config);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   port = (httpServer.address() as AddressInfo).port;
 });
@@ -206,6 +208,48 @@ describe('checkpoint', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(store.getSession(sessionId)?.baseline).toEqual(BASELINE);
     alice.disconnect();
+  });
+
+  it('acks true once the checkpoint has actually been persisted', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    const ok = await new Promise<boolean>((resolve) => alice.emit('checkpoint', NEW_BASELINE, resolve));
+    expect(ok).toBe(true);
+    expect(store.getSession(sessionId)?.baseline).toEqual(NEW_BASELINE);
+    alice.disconnect();
+  });
+
+  it('acks false for a view-role sender', async () => {
+    const viewer = connect();
+    await joinAndWaitForSync(viewer, { sessionId, name: 'Viewer', role: 'view' });
+    const ok = await new Promise<boolean>((resolve) => viewer.emit('checkpoint', NEW_BASELINE, resolve));
+    expect(ok).toBe(false);
+    viewer.disconnect();
+  });
+
+  it('acks false for a malformed payload', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    const ok = await new Promise<boolean>((resolve) => alice.emit('checkpoint', { currentView: 'worker' }, resolve));
+    expect(ok).toBe(false);
+    alice.disconnect();
+  });
+});
+
+describe('requestAllCheckpoints (server-initiated, e.g. before SIGTERM shutdown)', () => {
+  it('asks every connected client in a loaded session to send a checkpoint', async () => {
+    const alice = connect();
+    await joinAndWaitForSync(alice, { sessionId, name: 'Alice', role: 'edit' });
+    const gotRequest = new Promise<void>((resolve) => alice.on('checkpoint-request', () => resolve()));
+
+    requestAllCheckpoints(io, store);
+
+    await gotRequest;
+    alice.disconnect();
+  });
+
+  it('is a harmless no-op when no session is loaded', () => {
+    expect(() => requestAllCheckpoints(io, store)).not.toThrow();
   });
 });
 

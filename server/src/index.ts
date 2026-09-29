@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
-import { createCollabSocketServer, type IoRef } from './collab/collabSocket.js';
+import { createCollabSocketServer, requestAllCheckpoints, type IoRef } from './collab/collabSocket.js';
 import { createInternalRouter } from './routes/internal.js';
 import { internalAuth } from './internalAuth.js';
 import { isLocalOrLanOrigin } from './lanOrigin.js';
@@ -26,6 +26,8 @@ import { startDiscoveryBeacon, type DiscoveryBeacon } from './lan/discoveryBeaco
 
 export interface RunningServer {
   port: number;
+  /** Ask every loaded session's connected editors to send a final checkpoint (no-op if this replica has no socket server). */
+  requestCheckpoints: () => void;
   close: () => Promise<void>;
 }
 
@@ -155,6 +157,7 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
 
   return {
     port,
+    requestCheckpoints: () => { if (ioRef.current) requestAllCheckpoints(ioRef.current, store); },
     close: () =>
       new Promise<void>((resolve, reject) => {
         stopSweep?.();
@@ -163,6 +166,12 @@ export async function startServer(config: AppConfig = loadConfig()): Promise<Run
   };
 }
 
+// How long to wait, after asking connected editors for a final checkpoint,
+// before actually shutting down — bounded well under Azure Container Apps'
+// default SIGTERM grace period so the process still exits cleanly if a
+// client is slow/unreachable to respond.
+const SHUTDOWN_CHECKPOINT_GRACE_MS = 5000;
+
 // Direct execution (node dist/index.js / tsx src/index.ts) — not when imported by a test.
 const invokedDirectly = process.argv[1]
   ? import.meta.url === pathToFileURL(process.argv[1]).href
@@ -170,7 +179,27 @@ const invokedDirectly = process.argv[1]
 if (invokedDirectly) {
   const config = loadConfig();
   startServer(config)
-    .then(({ port }) => console.log(`[server] role=${config.role} listening on http://localhost:${port}`))
+    .then((running) => {
+      console.log(`[server] role=${config.role} listening on http://localhost:${running.port}`);
+      // SIGTERM: Azure Container Apps sends this when scaling a replica down
+      // (including to zero) or replacing it; SIGINT covers Ctrl-C locally.
+      // Neither role ever durably persists edits except via a client
+      // checkpoint (see collab/persistence.ts), so without this, whichever
+      // session happened to have edits in flight at that moment would lose
+      // them the same way an abrupt disconnect does.
+      let shuttingDown = false;
+      const gracefulShutdown = async (): Promise<void> => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log('[server] shutting down — requesting final checkpoints...');
+        running.requestCheckpoints();
+        await new Promise((r) => setTimeout(r, SHUTDOWN_CHECKPOINT_GRACE_MS));
+        await running.close();
+        process.exit(0);
+      };
+      process.on('SIGTERM', () => void gracefulShutdown());
+      process.on('SIGINT', () => void gracefulShutdown());
+    })
     .catch((err) => {
       console.error('[server] failed to start:', err);
       process.exit(1);

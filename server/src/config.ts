@@ -16,8 +16,8 @@ export interface AppConfig {
   role: Role;
   port: number;
   storage: StorageConfig;
-  /** CORS allow-origin for the aca1/aca2 cloud builds; null → LAN allowlist (local). */
-  webOrigin: string | null;
+  /** CORS allow-origin(s) for the aca1/aca2 cloud builds; null → LAN allowlist (local). */
+  webOrigin: string | string[] | null;
   /** Shared secret guarding ACA2's /internal/* routes. Empty only in local mode. */
   internalKey: string;
   /** aca1 → aca2 base URL, e.g. http://localhost:4010 */
@@ -70,6 +70,15 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return n;
 }
 
+// WEB_ORIGIN accepts a single origin or a comma-separated list — e.g. the dev
+// server (http://localhost:5173) and the packaged desktop app's embedded
+// server (http://localhost:3010) both need to be allowed at once.
+function parseWebOrigin(raw: string | undefined): string | string[] | null {
+  if (raw === undefined || raw === '') return null;
+  const origins = raw.split(',').map(o => o.trim()).filter(Boolean);
+  return origins.length > 1 ? origins : origins[0] ?? null;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const role = (env.ROLE ?? 'local') as Role;
   if (!ROLES.includes(role)) {
@@ -113,7 +122,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     role,
     port,
     storage,
-    webOrigin: env.WEB_ORIGIN ?? null,
+    webOrigin: parseWebOrigin(env.WEB_ORIGIN),
     internalKey,
     aca2Url: env.ACA2_URL ?? 'http://localhost:4010',
     publicRelayUrl: env.PUBLIC_RELAY_URL ?? `http://localhost:${port}`,

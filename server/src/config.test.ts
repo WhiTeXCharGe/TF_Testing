@@ -97,3 +97,18 @@ describe('loadConfig', () => {
     })).not.toThrow();
   });
 });
+
+describe('WEB_ORIGIN parsing', () => {
+  it('is null when unset', () => {
+    expect(loadConfig({ ROLE: 'local' }).webOrigin).toBeNull();
+  });
+
+  it('a single origin stays a plain string', () => {
+    expect(loadConfig({ ROLE: 'local', WEB_ORIGIN: 'http://localhost:5173' }).webOrigin).toBe('http://localhost:5173');
+  });
+
+  it('a comma-separated list becomes an array, trimmed', () => {
+    expect(loadConfig({ ROLE: 'local', WEB_ORIGIN: 'http://localhost:5173, http://localhost:3010' }).webOrigin)
+      .toEqual(['http://localhost:5173', 'http://localhost:3010']);
+  });
+});

@@ -35,6 +35,13 @@ function findSiblingExe(exeName: string): string | null {
 
 let serverProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
+// Set by the current window's close-intercept below (see createWindow);
+// reassigned whenever a window is (re)created, called by the IPC handler
+// registered once at module scope so re-creating the window never stacks
+// duplicate 'app:ready-to-close' listeners.
+let windowReadyToClose: (() => void) | null = null;
+
+ipcMain.on('app:ready-to-close', () => windowReadyToClose?.());
 
 // A cross-app handoff passes the target URL (with its one-time ?incomingTransfer=
 // token) as a plain argv entry when spawning/re-spawning the sibling app.
@@ -144,6 +151,22 @@ async function createWindow(): Promise<void> {
   // Re-read pendingTransferUrl now, not before the wait above — a handoff may
   // have arrived (and already navigated the window) while we were waiting.
   await mainWindow.loadURL(pendingTransferUrl ?? (app.isPackaged ? SERVER_URL : 'http://localhost:5173'));
+
+  // Clicking the window's X (or Alt+F4) would otherwise tear the renderer
+  // down immediately, killing its socket before an in-progress collab
+  // session's last-editor checkpoint (see AppContext.leaveCollabSession) has
+  // a chance to reach the server — silently losing edits since the last
+  // explicit "leave session"/lock-update. Intercept the close, ask the
+  // renderer to checkpoint-and-ack, then actually close. A short timeout
+  // guards against a wedged/crashed renderer never acking.
+  let readyToClose = false;
+  mainWindow.on('close', (event) => {
+    if (readyToClose || !mainWindow) return;
+    event.preventDefault();
+    mainWindow.webContents.send('app:before-close');
+    setTimeout(() => { readyToClose = true; mainWindow?.close(); }, 3000).unref();
+  });
+  windowReadyToClose = () => { readyToClose = true; mainWindow?.close(); };
 }
 
 // ── IPC ───────────────────────────────────────────────────────────────────

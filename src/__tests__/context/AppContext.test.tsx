@@ -274,6 +274,119 @@ describe('updateSessionFromCurrent / updateSessionFromYaml (locked-session data 
   });
 });
 
+describe('periodic backup (self-checkpoint every 50 syncable actions)', () => {
+  it('does not checkpoint before the 50th syncable action, then does on the 50th', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onStatusChange('connected');
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    act(() => {
+      for (let i = 0; i < 49; i++) {
+        capturedApi!.dispatch({ type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-02-01', endDate: '2026-02-28' } });
+      }
+    });
+    expect(mockedCollab.sendCollabCheckpoint).not.toHaveBeenCalled();
+
+    act(() => {
+      capturedApi!.dispatch({ type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-02-01', endDate: '2026-02-28' } });
+    });
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets the counter after checkpointing, so the next backup needs another 50', async () => {
+    mockJoin((_isCreator, cb) => {
+      cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+      cb.onStatusChange('connected');
+    });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    act(() => {
+      for (let i = 0; i < 50; i++) {
+        capturedApi!.dispatch({ type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-02-01', endDate: '2026-02-28' } });
+      }
+    });
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      for (let i = 0; i < 49; i++) {
+        capturedApi!.dispatch({ type: 'UPDATE_PLAN_RANGE', payload: { startDate: '2026-02-01', endDate: '2026-02-28' } });
+      }
+    });
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('checkpoint-request from the server (see collabSocket.requestAllCheckpoints)', () => {
+  it('an editor responds with a fresh checkpoint of the current state', async () => {
+    let cbRef: JoinCallbacks | null = null;
+    mockJoin((_isCreator, cb) => { cbRef = cb; cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []); });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    act(() => cbRef!.onCheckpointRequest());
+
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledWith({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' });
+  });
+
+  it('a view-only participant does not respond', async () => {
+    let cbRef: JoinCallbacks | null = null;
+    mockJoin((_isCreator, cb) => { cbRef = cb; cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []); });
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join-view')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('view'));
+
+    act(() => cbRef!.onCheckpointRequest());
+
+    expect(mockedCollab.sendCollabCheckpoint).not.toHaveBeenCalled();
+  });
+});
+
+describe('Electron window-close intercept', () => {
+  afterEach(() => { delete (window as unknown as { electronAPI?: unknown }).electronAPI; });
+
+  it('checkpoints and waits for it before telling main it is safe to close', async () => {
+    let beforeCloseHandler: (() => void) | null = null;
+    const notifyReadyToClose = jest.fn();
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      onBeforeClose: (cb: () => void) => { beforeCloseHandler = cb; },
+      notifyReadyToClose,
+    };
+    mockJoin((_isCreator, cb) => cb.onSyncInit('Mock Session', { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []));
+    mockedCollab.sendCollabCheckpoint.mockResolvedValue(true);
+
+    renderApp();
+    await act(async () => { await userEvent.click(screen.getByText('join')); });
+    await waitFor(() => expect(screen.getByTestId('session-role')).toHaveTextContent('edit'));
+
+    act(() => beforeCloseHandler!());
+
+    expect(mockedCollab.sendCollabCheckpoint).toHaveBeenCalledWith({ schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' });
+    await waitFor(() => expect(notifyReadyToClose).toHaveBeenCalled());
+  });
+
+  it('tells main it is safe to close immediately when there is no active edit session', async () => {
+    let beforeCloseHandler: (() => void) | null = null;
+    const notifyReadyToClose = jest.fn();
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      onBeforeClose: (cb: () => void) => { beforeCloseHandler = cb; },
+      notifyReadyToClose,
+    };
+    renderApp();
+
+    act(() => beforeCloseHandler!());
+
+    expect(mockedCollab.sendCollabCheckpoint).not.toHaveBeenCalled();
+    expect(notifyReadyToClose).toHaveBeenCalled();
+  });
+});
+
 it('overwriteAndJoinSession overwrites the existing session, then opens and joins it (same id)', async () => {
   mockJoin((_isCreator, cb) => cb.onStatusChange('connected'));
   mockedCollab.overwriteSessionState.mockResolvedValue(undefined);

@@ -201,6 +201,27 @@ describe('ownerTokenHash', () => {
   });
 });
 
+describe('listLoadedIds', () => {
+  it('returns nothing when no session is loaded', () => {
+    expect(store.listLoadedIds()).toEqual([]);
+  });
+
+  it('returns the ids of every session currently held in memory', async () => {
+    const id2 = await createSessionRecord(storage, {
+      name: 'Another Plan', baseline: BASELINE, ownerTokenHash: hashOwnerToken('h2'),
+    });
+    await store.activateFromStorage(id);
+    await store.activateFromStorage(id2);
+    expect(store.listLoadedIds().sort()).toEqual([id, id2].sort());
+  });
+
+  it('drops an id once its session is evicted', async () => {
+    await store.activateFromStorage(id);
+    await store.evict(id);
+    expect(store.listLoadedIds()).toEqual([]);
+  });
+});
+
 describe('sweepIdleSessions', () => {
   it('drops loaded sessions with no participants past the idle window', async () => {
     await store.activateFromStorage(id);

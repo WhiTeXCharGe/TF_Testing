@@ -51,6 +51,7 @@ function join(isCreator: boolean) {
     onPresence: jest.fn(),
     onStatusChange: jest.fn(),
     onSessionStatus: jest.fn(),
+    onCheckpointRequest: jest.fn(),
   };
   const disconnect = joinCollabRoom('s1', 'Alice', 'edit', isCreator, 'http://relay:4010', undefined, cb);
   openJoins.push(disconnect);
@@ -107,7 +108,7 @@ it('forwards a session-status event to onSessionStatus', () => {
 it('emits ownerToken in the join payload when given', () => {
   const cb = {
     onSyncInit: jest.fn(), onAction: jest.fn(), onPresence: jest.fn(),
-    onStatusChange: jest.fn(), onSessionStatus: jest.fn(),
+    onStatusChange: jest.fn(), onSessionStatus: jest.fn(), onCheckpointRequest: jest.fn(),
   };
   const d = joinCollabRoom('s1', 'Alice', 'edit', true, 'http://relay:4010', 'secret-token', cb);
   openJoins.push(d);
@@ -237,10 +238,39 @@ it('sendCollabSessionUpdate emits session-update on the live socket', () => {
   expect(fakeSocket.emit).toHaveBeenCalledWith('session-update', BASELINE);
 });
 
-it('sendCollabCheckpoint emits checkpoint on the live socket', () => {
-  join(false);
-  sendCollabCheckpoint(BASELINE);
-  expect(fakeSocket.emit).toHaveBeenCalledWith('checkpoint', BASELINE);
+describe('sendCollabCheckpoint', () => {
+  it('emits checkpoint with the baseline and resolves true once the server acks it', async () => {
+    join(false);
+    const result = sendCollabCheckpoint(BASELINE);
+    expect(fakeSocket.emit).toHaveBeenCalledWith('checkpoint', BASELINE, expect.any(Function));
+    const ack = (fakeSocket.emit as jest.Mock).mock.calls[0][2] as (ok: boolean) => void;
+    ack(true);
+    expect(await result).toBe(true);
+  });
+
+  it('resolves false when the server acks with rejection', async () => {
+    join(false);
+    const result = sendCollabCheckpoint(BASELINE);
+    const ack = (fakeSocket.emit as jest.Mock).mock.calls[0][2] as (ok: boolean) => void;
+    ack(false);
+    expect(await result).toBe(false);
+  });
+
+  it('resolves false immediately when there is no live socket', async () => {
+    await expect(sendCollabCheckpoint(BASELINE)).resolves.toBe(false);
+  });
+
+  it('resolves false if the server never acks, without hanging forever', async () => {
+    jest.useFakeTimers();
+    try {
+      join(false);
+      const result = sendCollabCheckpoint(BASELINE);
+      jest.advanceTimersByTime(5000);
+      expect(await result).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('probeAzureReachability', () => {

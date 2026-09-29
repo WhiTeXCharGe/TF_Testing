@@ -78,6 +78,8 @@ export interface SessionStore {
   replaceBaseline(id: string, baseline: SessionBaseline): Promise<boolean>;
   /** Drop in-memory sessions that have had no participants past the idle window. */
   sweepIdleSessions(maxIdleMs: number, now?: number): number;
+  /** Ids of sessions currently held in memory on this replica (for a graceful-shutdown checkpoint sweep). */
+  listLoadedIds(): string[];
 }
 
 interface InMemSession {
@@ -247,10 +249,13 @@ export function createSessionStore({ storage }: SessionStoreDeps): SessionStore 
     return removed;
   };
 
+  const listLoadedIds = (): string[] => [...sessions.keys()];
+
   return {
     isLoaded, activateFromStorage, getSession, appendAction,
     addParticipant, removeParticipant, participantCount, setLocked,
     ownerTokenHash, getLive, flush, flushAll, evict,
     markActivated, markClosed, markJoined, replaceBaseline, sweepIdleSessions,
+    listLoadedIds,
   };
 }

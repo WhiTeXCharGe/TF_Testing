@@ -83,6 +83,16 @@ interface ContextType {
   leaveCollabSession: () => void;
 }
 
+// Periodic backup: an active session's durable snapshot (current.json —
+// there's no action-by-action log, see server/src/collab/persistence.ts)
+// otherwise only refreshes on an explicit checkpoint moment (leave, a
+// server-requested checkpoint, a session-data update). A long-running
+// session with nobody triggering one of those could sit far behind what's
+// actually on everyone's screen, so an edit-role participant also checkpoints
+// on its own every N actions or after M minutes, whichever comes first.
+const BACKUP_ACTION_THRESHOLD = 50;
+const BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
 const AppContext = createContext<ContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -90,6 +100,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const disconnectRef = useRef<(() => void) | null>(null);
+  const actionsSinceCheckpointRef = useRef(0);
+  const lastCheckpointAtRef = useRef(Date.now());
+
+  // This session's current schedule/envConfig, ready to hand to
+  // sendCollabCheckpoint — null when there's nothing loaded to send. Doesn't
+  // check role/session state itself; callers decide when a checkpoint makes
+  // sense (e.g. only for an edit-role participant).
+  const currentCheckpointBaseline = useCallback((): SessionBaseline | null => {
+    const { schedule, envConfig, currentView } = stateRef.current;
+    return schedule && envConfig ? { schedule, envConfig, currentView } : null;
+  }, []);
+
+  const markCheckpointed = useCallback(() => {
+    actionsSinceCheckpointRef.current = 0;
+    lastCheckpointAtRef.current = Date.now();
+  }, []);
 
   // Resolve once, in the background, whether this app can actually reach the
   // build-time Azure URL (if any was baked in) — before the user opens a
@@ -220,8 +246,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (isSyncingEdit && SYNCABLE_ACTION_TYPES.has(effectiveAction.type)) {
       sendCollabAction(effectiveAction.type, (effectiveAction as { payload?: unknown }).payload);
+      actionsSinceCheckpointRef.current += 1;
+      const dueByCount = actionsSinceCheckpointRef.current >= BACKUP_ACTION_THRESHOLD;
+      const dueByTime = Date.now() - lastCheckpointAtRef.current >= BACKUP_INTERVAL_MS;
+      if (dueByCount || dueByTime) {
+        const baseline = currentCheckpointBaseline();
+        if (baseline) {
+          markCheckpointed();
+          void sendCollabCheckpoint(baseline);
+        }
+      }
     }
-  }, []);
+  }, [currentCheckpointBaseline, markCheckpointed]);
 
   // Inbound guard. The relay forwards whatever `type` string an edit-role
   // participant emits without validating it, so an inbound action is
@@ -244,13 +280,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         rawDispatch({ type: 'SET_SESSION_NAME', payload: sessionName });
         rawDispatch({ type: 'SET_SESSION_BASELINE', payload: baseline });
         for (const a of actions) applyRemoteAction(a);
+        // Fresh baseline just landed (join, reconnect, or someone else's
+        // update/overwrite) — the periodic-backup clock starts over from here.
+        markCheckpointed();
       },
       onAction: applyRemoteAction,
       onPresence: (participants) => rawDispatch({ type: 'SET_SESSION_PARTICIPANTS', payload: participants }),
       onStatusChange: (status) => rawDispatch({ type: 'SET_SESSION_CONNECTION_STATUS', payload: status }),
       onSessionStatus: (status) => rawDispatch({ type: 'SET_SESSION_STATUS', payload: status }),
+      onCheckpointRequest: () => {
+        const { session } = stateRef.current;
+        const baseline = currentCheckpointBaseline();
+        if (session?.role !== 'edit' || !baseline) return;
+        markCheckpointed();
+        void sendCollabCheckpoint(baseline);
+      },
     });
-  }, [applyRemoteAction]);
+  }, [applyRemoteAction, currentCheckpointBaseline, markCheckpointed]);
 
   const startCollabSession = useCallback(async (displayName: string, sessionName: string) => {
     const { schedule, envConfig, currentView } = stateRef.current;
@@ -311,23 +357,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sendCollabSessionUpdate(baseline);
   }, []);
 
-  const leaveCollabSession = useCallback(() => {
+  const leaveCollabSession = useCallback(async () => {
     // Best-effort: if I'm the last one here (an editor, with data to give),
     // hand the server a final snapshot before disconnecting — the server
     // only ever persists one "current state" file per session, not a growing
     // action log, so this is what makes this session's edits durable. If it
     // can't fire (abrupt disconnect, or a view-only participant is the one
-    // left), the persisted state just stays as of the last checkpoint.
-    const { session, schedule, envConfig, currentView } = stateRef.current;
-    if (session?.role === 'edit' && session.participants.length <= 1 && schedule && envConfig) {
-      sendCollabCheckpoint({ schedule, envConfig, currentView });
+    // left), the persisted state just stays as of the last checkpoint. Waits
+    // for the server's ack (bounded by sendCollabCheckpoint's own timeout)
+    // before disconnecting, so the write has actually landed rather than
+    // racing the socket teardown right behind it.
+    const { session } = stateRef.current;
+    const baseline = currentCheckpointBaseline();
+    if (session?.role === 'edit' && session.participants.length <= 1 && baseline) {
+      await sendCollabCheckpoint(baseline);
     }
     disconnectRef.current?.();
     disconnectRef.current = null;
     rawDispatch({ type: 'SET_SESSION', payload: null });
-  }, []);
+  }, [currentCheckpointBaseline]);
 
   useEffect(() => () => disconnectRef.current?.(), []);
+
+  // Electron only: main.cts intercepts the window's X button / Alt+F4 and
+  // waits for 'app:ready-to-close' instead of closing immediately, so a
+  // click on the close button can't silently tear down an in-progress
+  // session's socket before this checkpoint has a chance to reach the
+  // server (main.cts still force-closes after a few seconds if this never
+  // fires — e.g. a wedged renderer — so this can't hang the app shut).
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    api.onBeforeClose(() => {
+      const { session } = stateRef.current;
+      const baseline = currentCheckpointBaseline();
+      if (session?.role === 'edit' && baseline) {
+        void sendCollabCheckpoint(baseline).finally(() => api.notifyReadyToClose());
+      } else {
+        api.notifyReadyToClose();
+      }
+    });
+  }, [currentCheckpointBaseline]);
 
   return (
     <AppContext.Provider value={{

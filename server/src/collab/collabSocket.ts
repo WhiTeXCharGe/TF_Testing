@@ -45,6 +45,20 @@ export function broadcastResync(io: Server, store: SessionStore, id: string): vo
   });
 }
 
+// Asks every connected client in every loaded session to send a fresh
+// checkpoint (see the 'checkpoint-request' listener client-side) — used
+// before this replica shuts down (SIGTERM, e.g. Azure scaling it to zero) so
+// an in-progress session's edits aren't lost just because nobody happened to
+// be the "last one out" at that exact moment. Harmless if a session has no
+// edit-role client connected (view-only participants ignore the request);
+// current.json simply stays as of the last real checkpoint in that case,
+// same as today.
+export function requestAllCheckpoints(io: Server, store: SessionStore): void {
+  for (const id of store.listLoadedIds()) {
+    io.to(id).emit('checkpoint-request');
+  }
+}
+
 export function createCollabSocketServer(
   httpServer: HttpServer,
   store: SessionStore,
@@ -113,11 +127,13 @@ export function createCollabSocketServer(
     // Edit-role only, same as 'action'; a malformed payload is dropped rather
     // than persisted. If this never fires (abrupt disconnect, or the last
     // participant left was view-only), current.json simply stays at
-    // whatever it was as of the last checkpoint/creation/update.
-    socket.on('checkpoint', (payload: SessionBaseline) => {
-      if (!joinedSessionId || joinedRole !== 'edit') return;
-      if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) return;
-      void store.replaceBaseline(joinedSessionId, payload);
+    // whatever it was as of the last checkpoint/creation/update. Acks so the
+    // caller (e.g. an Electron close-intercept) can wait for the write to
+    // actually land in storage before letting the window/app close.
+    socket.on('checkpoint', (payload: SessionBaseline, ack?: (ok: boolean) => void) => {
+      if (!joinedSessionId || joinedRole !== 'edit') { ack?.(false); return; }
+      if (!isPlainObject(payload) || !payload.schedule || !payload.envConfig) { ack?.(false); return; }
+      void store.replaceBaseline(joinedSessionId, payload).then((ok) => ack?.(ok));
     });
 
     // Lock / unlock is open to any participant in the session — it's a shared
