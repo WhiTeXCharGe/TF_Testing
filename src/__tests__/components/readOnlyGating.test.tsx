@@ -147,7 +147,7 @@ describe('UndoRedoButtons read-only gating', () => {
 });
 
 describe('SidePanel read-only gating (WorkTaskPanel)', () => {
-  it('disables the delete button, flexibility select, color picker, remarks textarea, and work-hour input for a view-role session', () => {
+  it('disables the delete button, flexibility select, color picker, remarks textarea, date inputs, and work-hour input for a view-role session', () => {
     const { container } = renderWithRole('view', <SidePanel />);
 
     expect(screen.getByRole('button', { name: UI.deleteButton })).toBeDisabled();
@@ -161,6 +161,10 @@ describe('SidePanel read-only gating (WorkTaskPanel)', () => {
 
     const hourInput = screen.getByDisplayValue('8') as HTMLInputElement;
     expect(hourInput).toHaveAttribute('readonly');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    expect(dateInputs.length).toBeGreaterThanOrEqual(2);
+    dateInputs.forEach(d => expect(d).toHaveAttribute('readonly'));
   });
 
   it('keeps the same controls enabled/editable for an edit-role session', () => {
@@ -177,6 +181,9 @@ describe('SidePanel read-only gating (WorkTaskPanel)', () => {
 
     const hourInput = screen.getByDisplayValue('8') as HTMLInputElement;
     expect(hourInput).not.toHaveAttribute('readonly');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    dateInputs.forEach(d => expect(d).not.toHaveAttribute('readonly'));
   });
 
   it('keeps the same controls enabled/editable in solo mode (no session)', () => {
@@ -193,5 +200,8 @@ describe('SidePanel read-only gating (WorkTaskPanel)', () => {
 
     const hourInput = screen.getByDisplayValue('8') as HTMLInputElement;
     expect(hourInput).not.toHaveAttribute('readonly');
+
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    dateInputs.forEach(d => expect(d).not.toHaveAttribute('readonly'));
   });
 });

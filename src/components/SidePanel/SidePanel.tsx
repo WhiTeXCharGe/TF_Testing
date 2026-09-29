@@ -135,6 +135,8 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isRe
 
     const [colorDraft, setColorDraft] = useState('');
     const [descDraft, setDescDraft] = useState(assignment?.description ?? '');
+    const [startDraft, setStartDraft] = useState(assignment?.startDate ?? '');
+    const [endDraft, setEndDraft] = useState(assignment?.endDate ?? '');
 
     const taskInfo = useMemo(() => {
       if (!schedule || !assignment) return null;
@@ -162,6 +164,13 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isRe
       setDescDraft(assignment?.description ?? '');
     }, [assignmentIndex]);
 
+    useEffect(() => {
+      if (assignment) {
+        setStartDraft(assignment.startDate);
+        setEndDraft(assignment.endDate);
+      }
+    }, [assignment?.startDate, assignment?.endDate]);
+
     if (!assignment || !schedule) return null;
 
     const worker = envConfig?.workerList.find(w => w.id === assignment.worker);
@@ -172,6 +181,17 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isRe
       if (taskInfo?.ot) {
         dispatch({ type: 'UPDATE_OPERATION_TASK_COLOR', payload: { operationTaskId: taskInfo.ot.id, colorCode: colorDraft } });
       }
+    };
+
+    // The per-day hour breakdown below (WorkHourTable) is unaffected by this
+    // directly — it re-derives its own day range from the (now-updated)
+    // assignment.startDate/endDate on the next render, same as it already
+    // does whenever the assignment changes some other way (e.g. an inbound
+    // remote edit).
+    const commitDates = (start: string, end: string) => {
+      if (!start || !end || start > end) return;
+      if (start === assignment.startDate && end === assignment.endDate) return;
+      dispatch({ type: 'UPDATE_ASSIGNMENT', payload: { index: assignmentIndex, updates: { startDate: start, endDate: end } } });
     };
 
     const handleDelete = () => {
@@ -212,8 +232,26 @@ const WorkTaskPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isRe
         )}
 
         <div style={rowStyle}>
-          <span style={labelStyle}>{UI.periodLabel}</span>
-          <span style={valueStyle}>{assignment.startDate} 〜 {assignment.endDate}</span>
+          <span style={labelStyle}>{UI.startLabel}</span>
+          <input
+            type="date"
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
+            value={startDraft}
+            onChange={e => setStartDraft(e.target.value)}
+            onBlur={() => commitDates(startDraft, endDraft)}
+          />
+        </div>
+        <div style={rowStyle}>
+          <span style={labelStyle}>{UI.endLabel}</span>
+          <input
+            type="date"
+            readOnly={isReadOnly}
+            style={{ ...inputStyle, cursor: isReadOnly ? 'default' : 'text' }}
+            value={endDraft}
+            onChange={e => setEndDraft(e.target.value)}
+            onBlur={() => commitDates(startDraft, endDraft)}
+          />
         </div>
 
         <WorkHourTable assignment={assignment} assignmentIndex={assignmentIndex} isReadOnly={isReadOnly} />
