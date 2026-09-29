@@ -78,7 +78,6 @@ interface ContextType {
   joinCollabSession: (sessionId: string, name: string, role: SessionRole) => Promise<void>;
   lockSession: () => void;
   unlockSession: () => void;
-  updateSessionFromCurrent: () => void;
   updateSessionFromYaml: (scheduleFile: File, envConfigFile: File) => Promise<void>;
   leaveCollabSession: () => void;
 }
@@ -343,15 +342,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const unlockSession = useCallback(() => sendCollabUnlock(), []);
 
   // Explicit "replace this session's whole data" push (only takes effect
-  // while locked — the server enforces that). The server broadcasts a fresh
-  // sync-init back to everyone including us, which the existing onSyncInit
-  // handler in joinInternal already applies — no local state update here.
-  const updateSessionFromCurrent = useCallback(() => {
-    const { schedule, envConfig, currentView } = stateRef.current;
-    if (!schedule || !envConfig) throw new Error(UI.collabNoScheduleError);
-    sendCollabSessionUpdate({ schedule, envConfig, currentView });
-  }, []);
-
+  // while locked — the server enforces that; import-only, see
+  // SessionUpdateDialog's own comment for why there's no "use the current
+  // Gantt" option here). The server broadcasts a fresh sync-init back to
+  // everyone including us, which the existing onSyncInit handler in
+  // joinInternal already applies — no local state update here.
   const updateSessionFromYaml = useCallback(async (scheduleFile: File, envConfigFile: File) => {
     const baseline = await parseYamlBaseline(scheduleFile, envConfigFile);
     sendCollabSessionUpdate(baseline);
@@ -402,7 +397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       state, dispatch, startCollabSession, createUploadSession, overwriteAndJoinSession, joinCollabSession,
-      lockSession, unlockSession, updateSessionFromCurrent, updateSessionFromYaml, leaveCollabSession,
+      lockSession, unlockSession, updateSessionFromYaml, leaveCollabSession,
     }}>
       {children}
     </AppContext.Provider>

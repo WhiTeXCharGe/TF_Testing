@@ -242,25 +242,7 @@ describe('leave-time checkpoint (last participant hands the server a final snaps
   });
 });
 
-describe('updateSessionFromCurrent / updateSessionFromYaml (locked-session data replace)', () => {
-  it('updateSessionFromCurrent sends the currently loaded schedule/envConfig', async () => {
-    renderApp();
-    await userEvent.click(screen.getByText('load'));
-    await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
-
-    capturedApi!.updateSessionFromCurrent();
-
-    expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith({
-      schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker',
-    });
-  });
-
-  it('updateSessionFromCurrent throws when nothing is loaded', () => {
-    renderApp();
-    expect(() => capturedApi!.updateSessionFromCurrent()).toThrow(UI.collabNoScheduleError);
-    expect(mockedCollab.sendCollabSessionUpdate).not.toHaveBeenCalled();
-  });
-
+describe('updateSessionFromYaml (locked-session data replace)', () => {
   it('updateSessionFromYaml parses the files client-side and sends the resulting baseline', async () => {
     const parsed = { schedule: SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' as const };
     mockedCollab.parseYamlBaseline.mockResolvedValue(parsed);

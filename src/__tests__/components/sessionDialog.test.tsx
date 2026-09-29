@@ -358,30 +358,31 @@ describe('create dialog — overwrite an existing session (explicit radio + list
 });
 
 describe('update dialog (locked-session data replace)', () => {
-  it('defaults to 現在のガントを使用 and submitting sends the current schedule/envConfig', async () => {
+  // Import-only — there is deliberately no "use the current Gantt" option:
+  // while in this session, the Gantt open in this window already IS the
+  // session's data, so replacing it with itself isn't meaningful here.
+  it('has no 現在のガントを使用 option, only the import file fields', async () => {
     renderDialog({ session: activeSession({ status: 'lock' }), kind: 'update', loadedGantt: true });
-    expect(await screen.findByLabelText('現在のガントを使用')).toBeChecked();
-
-    await userEvent.click(screen.getByRole('button', { name: '更新する' }));
-
-    await waitFor(() => expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith({
-      schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, currentView: 'worker',
-    }));
+    expect(await screen.findByText('EnvConfig YAML')).toBeInTheDocument();
+    expect(screen.queryByLabelText('現在のガントを使用')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('新しいガントをインポート')).not.toBeInTheDocument();
   });
 
-  it('switching to 新しいガントをインポート shows the file fields, and submitting sends the parsed baseline', async () => {
+  it('submitting sends the parsed baseline from the uploaded files', async () => {
     const parsed = { schedule: FIXTURE_SCHEDULE, envConfig: FIXTURE_ENV_CONFIG, currentView: 'worker' as const };
     mockedCollab.parseYamlBaseline.mockResolvedValue(parsed);
     renderDialog({ session: activeSession({ status: 'lock' }), kind: 'update', loadedGantt: true });
+    await screen.findByText('EnvConfig YAML');
 
-    await userEvent.click(await screen.findByLabelText('新しいガントをインポート'));
-    expect(screen.getByText('EnvConfig YAML')).toBeInTheDocument();
+    const submitBtn = screen.getByRole('button', { name: '更新する' });
+    expect(submitBtn).toBeDisabled();
 
     const fileInputs = document.querySelectorAll('input[type=file]');
     await userEvent.upload(fileInputs[0] as HTMLInputElement, new File(['b: 2'], 'EnvConfig.yaml'));
     await userEvent.upload(fileInputs[1] as HTMLInputElement, new File(['a: 1'], 'Schedule.yaml'));
+    expect(submitBtn).toBeEnabled();
 
-    await userEvent.click(screen.getByRole('button', { name: '更新する' }));
+    await userEvent.click(submitBtn);
 
     await waitFor(() => expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith(parsed));
   });

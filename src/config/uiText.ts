@@ -460,7 +460,6 @@ export const UI = {
   sessionUpdateItem: 'セッションデータを更新',
   sessionUpdateDialogTitle: 'セッションデータを更新',
   sessionUpdateUnavailableHint: '更新するにはまずロックしてください。',
-  sessionUpdateSourceCurrentDesc: '今開いているスケジュールとEnvConfigで、このセッションのデータを置き換えます。',
   sessionUpdateSubmitBtn: '更新する',
   sessionUpdateSuccessMessage: 'セッションデータを更新しました',
   joinSessionPromptTitle: 'このセッションに参加',

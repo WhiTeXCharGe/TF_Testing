@@ -101,7 +101,11 @@ export function MenuBar() {
         // clickable while actually in a session.
         { label: UI.fileMenuLeaveSession, action: () => { leaveCollabSession(); setOpenMenu(null); }, disabled: !state.session },
         { separator: true },
-        { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave },
+        // Disabled during an online session — the session's data is
+        // persisted via the collab checkpoint mechanism, not this local
+        // file path, so overwriting currentEnvPath/currentSchedulePath here
+        // would silently diverge from what's actually shared.
+        { label: UI.save, shortcut: 'Ctrl+S', action: saveFile, disabled: !canSave || !!state.session },
         { label: UI.saveAs, shortcut: 'Ctrl+Shift+S', action: saveFileAs, disabled: !canSave },
         { separator: true },
         { label: UI.exportExcel, action: () => void exportExcel(), disabled: !canSave },

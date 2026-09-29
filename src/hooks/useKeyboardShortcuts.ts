@@ -22,7 +22,9 @@ export function useKeyboardShortcuts() {
             break;
           case 's':
             e.preventDefault();
-            if (!e.shiftKey && state.schedule && state.envConfig && state.currentEnvPath && state.currentSchedulePath) {
+            // Disabled during an online session — same reasoning as the
+            // 上書き保存 menu item being greyed out (see MenuBar.tsx).
+            if (!e.shiftKey && !state.session && state.schedule && state.envConfig && state.currentEnvPath && state.currentSchedulePath) {
               overwriteSaveFiles(state.envConfig, state.schedule, state.currentEnvPath, state.currentSchedulePath)
                 .catch(err => console.error('Save failed:', err));
             }
