@@ -1,35 +1,153 @@
-Good catch — this is exactly the "management plane vs. data plane" split that trips up almost everyone on Azure. Short answer: Contributor is not enough for Storage or ACR, but it is enough for Batch and Container Apps.
+"""
+seiban_diff.py
+--------------------------------------------------------------
+Lists seiban that are NEWLY ADDED in a newer SU_Others version compared
+with an older one (e.g. 20260927 vs 20260726).
 
-Why
-Azure has two separate permission systems layered on the same resource:
+  new version : scanned from --new-since (default 2026/09/01) onward
+  old version : scanned from --old-since (default 2026/08/01) onward
+                (= the scope of the previous seiban_extractor report)
 
-Layer	What it covers	Is it in Contributor?
-Actions (control/management plane)	Create, configure, delete the resource itself — e.g. create a storage account, change its SKU, create/resize a Batch pool, deploy a Container Apps revision	✅ Yes — Contributor grants Actions: "*"
-DataActions (data plane)	Touch the data inside the resource — e.g. read/write an actual blob's bytes, docker push/pull an image	❌ No — Contributor's DataActions list is empty by design
-Blob storage and Container Registry both split their permissions this way specifically so that "can manage the account" and "can touch the data in it" are separate, revocable grants. Batch and Container Apps don't have this split — their task/job/revision operations are ordinary Actions, not DataActions.
+A seiban from the new version is "newly added" if its code does not appear
+ANYWHERE in the old version's scope (run tails included, so an incremented
+code that was covered by a run header last time is not reported as new).
 
-So concretely, with only Contributor:
+Uses the same extraction / run-suppression / 新規・クレーム・改造 rules as
+seiban_extractor.py.
 
-You can do	You cannot do
-Create/delete/configure the storage account, ACR, Batch account, ACA app as resources	Upload/download/list blobs (needs Storage Blob Data Contributor)
-Create/resize Batch pools, create jobs, submit/cancel Batch tasks	docker push/docker pull to ACR (needs AcrPush/AcrPull)
-Deploy ACA revisions, update env vars	Assign roles to anyone, including yourself (Microsoft.Authorization/roleAssignments/write is explicitly excluded from Contributor)
-That last row matters too: if you only have Contributor, you also can't grant yourself Storage Blob Data Contributor or AcrPush — that requires Owner or User Access Administrator, which you probably don't have. So the fix isn't "use Contributor differently," it's asking the admin to add the two missing role assignments specifically:
+Output: New_seiban_report.txt
+  - 新規 / クレーム・改造 / 該当なし / 新規+クレーム・改造 sections (new only)
+  - Detail: code, first date, worker, cell text for each new seiban
+  - Note: "new" codes that DO exist in the old version but before
+    --old-since (were scheduled earlier, just not in last report's scope)
 
-Storage Blob Data Contributor on the storage account
-AcrPush on the ACR (you'll need this in Phase 4 too, before you even get to Batch)
-Everything else in your plan (Batch pool/job/task management, ACA deploys) will work fine on Contributor alone once you get there — it was only Storage and ACR that needed the extra data-plane roles.
+Usage:
+    python seiban_diff.py "20260726 SU_Others.xlsm" "20260927 SU_Others.xlsm"
+    python seiban_diff.py OLD NEW --old-since 2026/08/01 --new-since 2026/09/01 --sheet 予定表_2026
+--------------------------------------------------------------
+"""
+import argparse
+import os
+import shutil
+import tempfile
+from datetime import datetime
 
-I'll add a short callout about this to the RBAC and Storage-verify docs since it's a genuinely common trap and you already hit it once.
+from openpyxl import load_workbook
+
+from seiban_extractor import (
+    build_category_sets,
+    build_runs,
+    find_date_header_row,
+    parse_range_date,
+    scan_workbook,
+    suppress_run_tails,
+)
+
+FAR_FUTURE = datetime(2100, 12, 31)
+FAR_PAST = datetime(1900, 1, 1)
+NAME_COL = 3  # 姓名
 
 
-Read a file, edited a file
-Now let me add a matching troubleshooting entry to the Storage-verify doc, since that's where the symptom actually showed up.
+def readable_copy(path):
+    """Copy to temp so the file can be read even while it is open in Excel."""
+    fd, tmp = tempfile.mkstemp(suffix=os.path.splitext(path)[1])
+    os.close(fd)
+    shutil.copyfile(path, tmp)
+    return tmp
 
 
-Read 2 files, edited 2 files
-Done. Quick recap of the actual answer to your question:
+def scan(path, sheet, since, until=FAR_FUTURE):
+    tmp = readable_copy(path)
+    try:
+        occ, _ = scan_workbook(tmp, sheet, since, until)
+        wb = load_workbook(tmp, data_only=True, read_only=True)
+        ws = wb[sheet]
+        _, date_cols = find_date_header_row(ws)
+        names = {r: (row[0] if row else None)
+                 for r, row in enumerate(ws.iter_rows(min_col=NAME_COL, max_col=NAME_COL,
+                                                      values_only=True), 1)}
+        wb.close()
+    finally:
+        os.remove(tmp)
+    for o in occ:
+        o["date"] = date_cols.get(o["col"])
+        o["name"] = names.get(o["row"]) or ""
+    return occ
 
-Contributor alone will get you through Batch and Container Apps steps fine (Phases 5, 6), but it will keep failing on Storage (Phase 3) and ACR push (Phase 4) — those two specifically split "manage the resource" from "touch the data inside it" as a deliberate extra layer, and Contributor only covers the former. You'll need the admin to add Storage Blob Data Contributor and AcrPush explicitly — there's no way to make Contributor cover them, and since Contributor also can't grant roles to itself, you can't self-serve this either.
 
-I added callouts in Azure-Company-02-RBAC.md, Azure-Company-03-Storage-Verify.md, and Azure-Company-04-Register-Timefold-Image.md so if you or anyone else hits this again tomorrow, the docs point straight at "ask for the specific role, not more Contributor."
+def report_block(title, occs):
+    """Category sections + detail (first appearance in NEW) for one group."""
+    first = {}
+    for o in sorted(occs, key=lambda o: (o["date"] or FAR_FUTURE, o["row"])):
+        first.setdefault(o["code"], o)
+    shinki, claim, none_cat, combined = build_category_sets(occs, set())
+
+    lines = ["#" * 60, f"{title}: {len(first)}", "#" * 60, ""]
+    for name, codes in (
+        ("新規", shinki),
+        ("クレーム/改造", claim),
+        ("該当なし (新規/クレーム/改造を含まない)", none_cat),
+        ("新規 + クレーム/改造", combined),
+    ):
+        lines.append(f"{name}: {len(codes)}")
+        lines.append("=" * 40)
+        lines.extend(sorted(codes))
+        lines.append("")
+
+    lines.append(f"Detail (first appearance in NEW): {len(first)}")
+    lines.append("=" * 40)
+    for code in sorted(first):
+        o = first[code]
+        d = f"{o['date']:%Y/%m/%d}" if o["date"] else "?"
+        lines.append(f"{code}	{d}	{o['name']}	{o['raw_text'].strip()}")
+    return lines
+
+
+def main():
+    ap = argparse.ArgumentParser(description="List seiban newly added in NEW version vs OLD version.")
+    ap.add_argument("old_path")
+    ap.add_argument("new_path")
+    ap.add_argument("--sheet", default="予定表_2026")
+    ap.add_argument("--old-since", default="2026/09/01")
+    ap.add_argument("--new-since", default="2026/09/01")
+    ap.add_argument("--out", default="New_seiban_report.txt")
+    ap.add_argument("--max-col-gap", type=int, default=1)
+    args = ap.parse_args()
+
+    old_since = parse_range_date(args.old_since)
+    new_since = parse_range_date(args.new_since)
+
+    print(f"OLD: {args.old_path}  ({old_since:%Y/%m/%d} -)")
+    old_occ = scan(args.old_path, args.sheet, old_since)
+    print(f"NEW: {args.new_path}  ({new_since:%Y/%m/%d} -)")
+    new_occ = scan(args.new_path, args.sheet, new_since)
+    # old version before its scope -> reported separately as group [2]
+    old_early = {o["code"] for o in scan(args.old_path, args.sheet, FAR_PAST, old_since)
+                 if o["date"] and o["date"] < old_since}
+
+    old_codes = {o["code"] for o in old_occ}
+
+    runs = build_runs(new_occ, max_col_gap=args.max_col_gap)
+    suppressed = suppress_run_tails(runs)
+    listed = [o for o in new_occ if id(o) not in suppressed and o["code"] not in old_codes]
+    brand_new = [o for o in listed if o["code"] not in old_early]
+    moved = [o for o in listed if o["code"] in old_early]
+
+    lines = [
+        f"OLD: {os.path.basename(args.old_path)} (whole sheet checked; {old_since:%Y/%m/%d}- excluded)",
+        f"NEW: {os.path.basename(args.new_path)} ({new_since:%Y/%m/%d}-)",
+        f"Sheet: {args.sheet}",
+        "",
+    ]
+    lines += report_block(f"[1] Newly added - not in OLD at all", brand_new)
+    lines.append("")
+    lines += report_block(f"[2] In OLD but only BEFORE {old_since:%Y/%m/%d}", moved)
+
+    with open(args.out, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    print(f"\nWritten: {args.out}")
+
+
+if __name__ == "__main__":
+    main()
