@@ -34,14 +34,27 @@ function findSiblingExe(exeName: string): string | null {
 }
 
 let serverProcess: ChildProcess | null = null;
-let mainWindow: BrowserWindow | null = null;
-// Set by the current window's close-intercept below (see createWindow);
-// reassigned whenever a window is (re)created, called by the IPC handler
-// registered once at module scope so re-creating the window never stacks
-// duplicate 'app:ready-to-close' listeners.
-let windowReadyToClose: (() => void) | null = null;
+// Multiple windows are allowed — e.g. comparing two Gantt files, or one
+// local file next to an online session — all sharing the one embedded
+// server process (a second server on the same port would just fail to
+// bind, so "multi-window" here means multiple BrowserWindows in this one
+// process, not multiple app processes; the single-instance lock below is
+// unrelated and unchanged). Every IPC handler below resolves the calling
+// window from the event itself rather than assuming a single fixed window.
+const windows: BrowserWindow[] = [];
+// Per-window close-intercept ack callback (see createWindow's 'close'
+// listener), keyed by BrowserWindow.id so each window's checkpoint-then-
+// close handshake resolves independently of any other open window.
+const windowReadyToClose = new Map<number, () => void>();
 
-ipcMain.on('app:ready-to-close', () => windowReadyToClose?.());
+ipcMain.on('app:ready-to-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) windowReadyToClose.get(win.id)?.();
+});
+
+function focusedOrFirstWindow(): BrowserWindow | null {
+  return BrowserWindow.getFocusedWindow() ?? windows[0] ?? null;
+}
 
 // A cross-app handoff passes the target URL (with its one-time ?incomingTransfer=
 // token) as a plain argv entry when spawning/re-spawning the sibling app.
@@ -132,8 +145,13 @@ function stopEmbeddedServer(): void {
 
 // ── Window ────────────────────────────────────────────────────────────────
 
-async function createWindow(): Promise<void> {
-  mainWindow = new BrowserWindow({
+// urlOverride: used for the cold-start handoff case only (see
+// pendingTransferUrl) — every other caller (the initial launch, and the
+// in-app "new window" action) just loads the app's own root and lets that
+// window's own File > Open pick whatever it should show, independently of
+// any other window.
+async function createWindow(opts: { isInitial?: boolean } = {}): Promise<BrowserWindow> {
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     webPreferences: {
@@ -142,15 +160,24 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
     },
   });
+  windows.push(win);
 
   if (app.isPackaged) {
-    // Give the embedded server a moment to bind before loading it.
+    // Give the embedded server a moment to bind before loading it — a no-op
+    // wait for the second/third window onward, since it's already up by then.
     await waitUntilUp(`${SERVER_URL}/api/health`, 15000);
   }
 
   // Re-read pendingTransferUrl now, not before the wait above — a handoff may
-  // have arrived (and already navigated the window) while we were waiting.
-  await mainWindow.loadURL(pendingTransferUrl ?? (app.isPackaged ? SERVER_URL : 'http://localhost:5173'));
+  // have arrived while we were waiting. Only the very first window created at
+  // launch ever consumes a pending handoff; a window opened later via the
+  // in-app "new window" action always starts at the app root, regardless of
+  // whether some earlier handoff URL is still sitting in this variable.
+  const url = opts.isInitial && pendingTransferUrl
+    ? pendingTransferUrl
+    : (app.isPackaged ? SERVER_URL : 'http://localhost:5173');
+  await win.loadURL(url);
+  if (opts.isInitial) pendingTransferUrl = null;
 
   // Clicking the window's X (or Alt+F4) would otherwise tear the renderer
   // down immediately, killing its socket before an in-progress collab
@@ -158,22 +185,31 @@ async function createWindow(): Promise<void> {
   // a chance to reach the server — silently losing edits since the last
   // explicit "leave session"/lock-update. Intercept the close, ask the
   // renderer to checkpoint-and-ack, then actually close. A short timeout
-  // guards against a wedged/crashed renderer never acking.
+  // guards against a wedged/crashed renderer never acking. Scoped to this
+  // window alone — another open window's session is unaffected.
   let readyToClose = false;
-  mainWindow.on('close', (event) => {
-    if (readyToClose || !mainWindow) return;
+  win.on('close', (event) => {
+    if (readyToClose) return;
     event.preventDefault();
-    mainWindow.webContents.send('app:before-close');
-    setTimeout(() => { readyToClose = true; mainWindow?.close(); }, 3000).unref();
+    win.webContents.send('app:before-close');
+    setTimeout(() => { readyToClose = true; win.close(); }, 3000).unref();
   });
-  windowReadyToClose = () => { readyToClose = true; mainWindow?.close(); };
+  windowReadyToClose.set(win.id, () => { readyToClose = true; win.close(); });
+  win.on('closed', () => {
+    windowReadyToClose.delete(win.id);
+    const idx = windows.indexOf(win);
+    if (idx !== -1) windows.splice(idx, 1);
+  });
+
+  return win;
 }
 
 // ── IPC ───────────────────────────────────────────────────────────────────
 
-ipcMain.handle('dialog:pickOpenFile', async () => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('dialog:pickOpenFile', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const res = await dialog.showOpenDialog(win, {
     title: 'YAML ファイルを選択',
     filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
     properties: ['openFile'],
@@ -184,9 +220,10 @@ ipcMain.handle('dialog:pickOpenFile', async () => {
   return { path: filePath, content };
 });
 
-ipcMain.handle('dialog:pickSaveTarget', async (_evt, defaultName: string) => {
-  if (!mainWindow) return null;
-  const res = await dialog.showSaveDialog(mainWindow, {
+ipcMain.handle('dialog:pickSaveTarget', async (event, defaultName: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  const res = await dialog.showSaveDialog(win, {
     title: '名前を付けて保存',
     defaultPath: defaultName,
     filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
@@ -199,13 +236,22 @@ ipcMain.handle('fs:writeTextFile', async (_evt, filePath: string, content: strin
   await fs.writeFile(filePath, content, 'utf-8');
 });
 
+// New window (compare two Gantt files, or a local file next to an online
+// session, side by side) — shares the one embedded server process; each
+// window's renderer is an independent React app / AppContext, so opening a
+// different file or joining a different session in the new window has no
+// effect on any other open window.
+ipcMain.handle('window:new', async () => {
+  await createWindow();
+});
+
 // transferUrl: when set, this is a handoff — SchedulerWeb should navigate to
 // this exact URL (which carries the one-time token) rather than just being
 // "reachable". Re-spawning an already-running instance with a URL argv entry
 // is intentional: SchedulerWeb's own single-instance lock catches it as a
 // 'second-instance' event and forwards the URL to its one real window instead
 // of opening a second one — see SchedulerWeb/electron/main.cts.
-ipcMain.handle('sibling:launchScheduler', async (_evt, transferUrl?: string) => {
+ipcMain.handle('sibling:launchScheduler', async (event, transferUrl?: string) => {
   if (!transferUrl && await isReachable(SCHEDULER_URL)) return { ok: true };
 
   const cfg = await readConfig();
@@ -217,8 +263,9 @@ ipcMain.handle('sibling:launchScheduler', async (_evt, transferUrl?: string) => 
   }
 
   if (!exePath || !existsSync(exePath)) {
-    if (!mainWindow) return { ok: false, error: 'ウィンドウが見つかりません' };
-    const res = await dialog.showOpenDialog(mainWindow, {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { ok: false, error: 'ウィンドウが見つかりません' };
+    const res = await dialog.showOpenDialog(win, {
       title: 'Timefold Scheduler (SchedulerWeb.exe) の場所を選択してください',
       filters: [{ name: 'Executable', extensions: ['exe'] }],
       properties: ['openFile'],
@@ -250,20 +297,26 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     const transferUrl = extractTransferUrl(argv);
-    if (transferUrl) pendingTransferUrl = transferUrl;
-    if (mainWindow) {
-      if (transferUrl) void mainWindow.loadURL(transferUrl);
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    if (!transferUrl) return;
+    pendingTransferUrl = transferUrl;
+    // Forward to whichever window the user was just looking at. If none
+    // exists yet (cold-start race — see createWindow's own comment), the
+    // first window's post-wait re-read of pendingTransferUrl picks this up
+    // once it's ready to load.
+    const win = focusedOrFirstWindow();
+    if (win) {
+      void win.loadURL(transferUrl);
+      if (win.isMinimized()) win.restore();
+      win.focus();
     }
   });
 
   app.whenReady().then(() => {
     startEmbeddedServer();
-    void createWindow();
+    void createWindow({ isInitial: true });
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow({ isInitial: true });
     });
   });
 

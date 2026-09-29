@@ -91,6 +91,12 @@ export function MenuBar() {
       id: 'file',
       label: UI.fileMenu,
       items: [
+        ...(window.electronAPI
+          ? [
+              { label: UI.newWindow, action: () => { void window.electronAPI!.openNewWindow(); setOpenMenu(null); } },
+              { separator: true } as const,
+            ]
+          : []),
         { label: UI.open, shortcut: 'Ctrl+O', action: openFileDialog, disabled: !!state.session },
         { separator: true },
         // Online session entry lives here now — 参加 / 作成 are separate dialogs;

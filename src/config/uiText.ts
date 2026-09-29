@@ -12,6 +12,9 @@ export const UI = {
 
   // File menu items
   open: '開く',
+  // Electron only — opens a second, independent top-level window (e.g. to
+  // compare two Gantt files, or a local file next to an online session).
+  newWindow: '新しいウィンドウ',
   save: '上書き保存',
   saveAs: '名前を付けて保存',
   exportExcel: 'Excelエクスポート',

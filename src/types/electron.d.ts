@@ -13,6 +13,13 @@ export interface ElectronAPI {
   onBeforeClose: (cb: () => void) => void;
   /** Tells main it's safe to actually close the window now. */
   notifyReadyToClose: () => void;
+  /**
+   * Opens another top-level window, independent of this one — sharing the
+   * one embedded server process, but its own renderer/AppContext, so it can
+   * show a different local file or a different online session at the same
+   * time (comparing two Gantts side by side).
+   */
+  openNewWindow: () => Promise<void>;
 }
 
 declare global {
