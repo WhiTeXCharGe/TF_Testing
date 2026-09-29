@@ -251,6 +251,13 @@ describe('stringifyEnvConfigYaml round-trip', () => {
     expect(roundTripped.workerList[0].affinity).toEqual(['w2', 'w3']);
   });
 
+  it('round-trips an operation required_skill_level, which used to be silently dropped on save', () => {
+    const env = richEnv();
+    env.workflowList[0].phaseList[0].operationList[0].requiredSkillLevel = 3;
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(env));
+    expect(roundTripped.workflowList[0].phaseList[0].operationList[0].requiredSkillLevel).toBe(3);
+  });
+
   it('keeps unavailable_dates single.days in internal YYYY-MM-DD format after a round trip, not YYYY/MM/DD', () => {
     const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
     const workerDays = roundTripped.workerList[0].unavailableDates.find(d => d.single)?.single?.days;

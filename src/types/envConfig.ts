@@ -74,6 +74,8 @@ export interface Operation {
   workloadHours?: number;
   minWorkerNum?: number;
   maxWorkerNum?: number;
+  /** Minimum worker.skillMap[operation.id] needed to be assigned this operation — see constraintService's SKILL_MISMATCH check. */
+  requiredSkillLevel?: number;
 }
 
 export interface Phase {

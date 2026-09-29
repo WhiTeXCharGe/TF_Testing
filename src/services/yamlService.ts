@@ -396,6 +396,7 @@ function parseOperation(raw: unknown): Operation {
     workloadHours: r.workload_hours != null ? Number(r.workload_hours) : undefined,
     minWorkerNum: Number(r.min_worker_num ?? 0),
     maxWorkerNum: Number(r.max_worker_num ?? 0),
+    requiredSkillLevel: Number(r.required_skill_level ?? 0),
   };
 }
 
@@ -433,6 +434,7 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
         p(`        workload_hours: ${op.workloadHours ?? 0}`);
         p(`        min_worker_num: ${op.minWorkerNum}`);
         p(`        max_worker_num: ${op.maxWorkerNum}`);
+        p(`        required_skill_level: ${op.requiredSkillLevel ?? 0}`);
       }
     }
   }

@@ -20,13 +20,12 @@ function buildOperationLookups(envConfig: EnvConfig) {
   for (const wf of envConfig.workflowList) {
     for (const ph of wf.phaseList) {
       for (const op of ph.operationList) {
-        const requiredSkillLevel = Number((op as unknown as Record<string, unknown>).required_skill_level ?? 0);
         byOperationId.set(op.id, {
           name: op.name,
           minWorkerNum: op.minWorkerNum,
           maxWorkerNum: op.maxWorkerNum,
           workHours: op.workHours,
-          requiredSkillLevel: Number.isFinite(requiredSkillLevel) ? requiredSkillLevel : 0,
+          requiredSkillLevel: op.requiredSkillLevel ?? 0,
         });
       }
     }
