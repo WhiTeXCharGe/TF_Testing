@@ -117,3 +117,67 @@ describe('buildWorkerTimelineModel', () => {
     expect(ids).toContain('w003');
   });
 });
+
+// The unavailable-date red bar used to only ever reflect a worker's own
+// personal unavailableDates — a company-wide holiday or a region-wide
+// stand-down declared on WorkerCompany/Region had no effect at all, even
+// though a worker under that company or working that region is just as
+// unavailable then.
+describe('buildWorkerTimelineModel — company/region unavailable dates', () => {
+  it('a company-wide unavailable date shows as unavailable for every worker under that company, overriding a work day', () => {
+    const env: EnvConfig = {
+      ...ENV,
+      workerCompanyList: [{ id: 'co1', name: 'TechCorp', unavailableDates: [{ single: { days: ['2025-09-02'] } }] }],
+    };
+    const model = buildWorkerTimelineModel(env, SCHEDULE, DATES, '2025-09-01');
+    const idx = DATES.indexOf('2025-09-02');
+    const aliceRow = model.rows.find(r => r.workerId === 'w001')!;
+    const bobRow = model.rows.find(r => r.workerId === 'w002')!;
+    expect(aliceRow.dayCells[idx].kind).toBe('unavailable'); // would otherwise be 'work' (ot1 runs sep01-02)
+    expect(bobRow.dayCells[idx].kind).toBe('unavailable');
+  });
+
+  it('a worker under a company with no unavailable dates is unaffected', () => {
+    const model = buildWorkerTimelineModel(ENV, SCHEDULE, DATES, '2025-09-01'); // ENV's co1 has unavailableDates: []
+    const idx = DATES.indexOf('2025-09-02');
+    const aliceRow = model.rows.find(r => r.workerId === 'w001')!;
+    expect(aliceRow.dayCells[idx].kind).toBe('work');
+  });
+
+  it('a company-wide unavailable date can add a row for a worker with no assignments at all', () => {
+    const env: EnvConfig = {
+      ...ENV,
+      workerCompanyList: [{ id: 'co1', name: 'TechCorp', unavailableDates: [{ single: { days: ['2025-09-02'] } }] }],
+      workerList: [...ENV.workerList, { id: 'w_idle', name: 'Idle', workerCompany: 'co1', unavailableDates: [] }],
+    };
+    const model = buildWorkerTimelineModel(env, SCHEDULE, DATES, '2025-09-01');
+    const idleRow = model.rows.find(r => r.workerId === 'w_idle');
+    expect(idleRow).toBeDefined();
+    expect(idleRow!.dayCells[DATES.indexOf('2025-09-02')].kind).toBe('unavailable');
+  });
+
+  it('a region-wide unavailable date shows as unavailable for a worker whose that-day task is in that region, overriding a work day', () => {
+    const env: EnvConfig = {
+      ...ENV,
+      regionList: [{ id: 'r1', name: 'Kansai', unavailableDates: [{ single: { days: ['2025-09-04'] } }] }],
+    };
+    const model = buildWorkerTimelineModel(env, SCHEDULE, DATES, '2025-09-01');
+    const idx = DATES.indexOf('2025-09-04');
+    // w001's ot2 (sep03-05) is fab1 → region r1 — sep04 would otherwise be 'work'
+    const aliceRow = model.rows.find(r => r.workerId === 'w001')!;
+    expect(aliceRow.dayCells[idx].kind).toBe('unavailable');
+  });
+
+  it('a region-wide unavailable date does not affect a day the worker has no assignment at all', () => {
+    const env: EnvConfig = {
+      ...ENV,
+      regionList: [{ id: 'r1', name: 'Kansai', unavailableDates: [{ single: { days: ['2025-09-01'] } }] }],
+      workerList: [...ENV.workerList, { id: 'w_idle', name: 'Idle', workerCompany: 'co1', unavailableDates: [] }],
+    };
+    const model = buildWorkerTimelineModel(env, SCHEDULE, DATES, '2025-09-01');
+    const idleRow = model.rows.find(r => r.workerId === 'w_idle');
+    // w_idle has no assignments and no personal/company off-dates, so a
+    // region blackout alone shouldn't be enough to even give them a row.
+    expect(idleRow).toBeUndefined();
+  });
+});

@@ -400,15 +400,39 @@ export function buildWorkerTimelineModel(
     }
   }
 
+  // unavailable_dates isn't only a per-worker (personal) thing — a worker's
+  // company or the region they're working in can declare its own blackout
+  // days (a company holiday, a region-wide stand-down), and a worker under
+  // that company/working that region is unavailable then too, same as if it
+  // were on their own record. Company is static per worker; region isn't (a
+  // worker can work different regions on different days), so region
+  // unavailability is checked per day against whichever region that day's
+  // actual assignment is in (see the dayCells loop below) rather than folded
+  // into this per-worker set up front.
+  const companyOffDates = new Map<string, Set<string>>(
+    envConfig.workerCompanyList.map(c => [
+      c.id,
+      parseUnavailableDates(c.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+    ]),
+  );
+  const regionOffDates = new Map<string, Set<string>>(
+    envConfig.regionList.map(r => [
+      r.id,
+      parseUnavailableDates(r.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+    ]),
+  );
+
   const workerOffDates = new Map<string, Set<string>>();
   const workersWithOff = new Set<string>();
 
   for (const worker of envConfig.workerList) {
-    const off = parseUnavailableDates(
+    const personalOff = parseUnavailableDates(
       worker.unavailableDates as unknown,
       schedule.planRange.startDate,
       schedule.planRange.endDate,
     );
+    const companyOff = worker.workerCompany ? companyOffDates.get(worker.workerCompany) : undefined;
+    const off = companyOff && companyOff.size > 0 ? new Set([...personalOff, ...companyOff]) : personalOff;
     workerOffDates.set(worker.id, off);
     if (off.size > 0) workersWithOff.add(worker.id);
   }
@@ -467,6 +491,18 @@ export function buildWorkerTimelineModel(
       const work = dayMap.get(day);
       if (!work) {
         dayCells.push({ kind: 'empty' });
+        dayAssignmentIndices.push(undefined);
+        continue;
+      }
+      // Region-level blackout: only meaningful for a day the worker actually
+      // has a task, checked against THAT task's region (a worker can be in a
+      // different region on a different day) — see the comment above
+      // regionOffDates for why this can't be folded into the per-worker
+      // offSet the way personal/company unavailability is.
+      const assignmentForDay = schedule.assignmentList[work.assignmentIndex] as Assignment | undefined;
+      const regionIdForDay = assignmentForDay ? opTaskRegionMap.get(assignmentForDay.operationTask) : null;
+      if (regionIdForDay && regionOffDates.get(regionIdForDay)?.has(day)) {
+        dayCells.push({ kind: 'unavailable' });
         dayAssignmentIndices.push(undefined);
         continue;
       }
