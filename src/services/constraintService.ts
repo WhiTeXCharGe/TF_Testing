@@ -111,12 +111,17 @@ function checkSkillMapCompatibility(envConfig: EnvConfig, schedule: ScheduleData
     const opTask = operationTaskLookup.get(assignment.operationTask);
     if (!worker || !opTask) return;
 
+    // Matches the actual scheduling engine's own gate (TFDocker
+    // EmployeeSchedule.java): a worker is eligible for an operation only if
+    // skill_map[operationId] >= 1 — it's a binary qualification, not a
+    // graduated level, and no real EnvConfig.yaml sets a per-operation
+    // required_skill_level (it isn't part of the solver's data model at
+    // all). required_skill_level is still honored as an optional stricter
+    // threshold if some future YAML ever does set one above 1.
     const op = operationLookup.get(opTask.operationId);
-    const required = op?.requiredSkillLevel ?? 0;
-    if (required <= 0) return;
-
+    const threshold = Math.max(1, op?.requiredSkillLevel ?? 0);
     const workerSkill = Number(worker.skillMap?.[opTask.operationId] ?? 0);
-    if (workerSkill >= required) return;
+    if (workerSkill >= threshold) return;
 
     const date = assignment.workDateList.find(wd => wd.hour > 0)?.date;
     violations.push({
@@ -124,7 +129,7 @@ function checkSkillMapCompatibility(envConfig: EnvConfig, schedule: ScheduleData
       assignmentIndices: [assignmentIndex],
       date: date ? normalizeDate(date) : undefined,
       severity: 'error',
-      message: UI.skillMismatchViolation(worker.name ?? worker.id, opTask.operationId, required, workerSkill),
+      message: UI.skillMismatchViolation(worker.name ?? worker.id, opTask.operationId, threshold, workerSkill),
     });
   });
 
