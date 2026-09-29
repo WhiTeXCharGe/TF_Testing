@@ -81,7 +81,7 @@ export function MenuBar() {
     }
   };
 
-  const openSessionDialog = (kind: 'join' | 'create' | 'update') => {
+  const openSessionDialog = (kind: 'join' | 'create' | 'update' | 'delete') => {
     dispatch({ type: 'OPEN_SESSION_DIALOG', payload: kind });
     setOpenMenu(null);
   };
@@ -117,7 +117,15 @@ export function MenuBar() {
         { label: UI.exportExcel, action: () => void exportExcel(), disabled: !canSave },
       ],
     },
-    { id: 'edit', label: UI.editMenu, items: [] },
+    {
+      id: 'edit',
+      label: UI.editMenu,
+      items: [
+        // Reachable whether or not you're currently in an online session —
+        // lists every session, not just this window's own.
+        { label: UI.editMenuDeleteSession, action: () => openSessionDialog('delete') },
+      ],
+    },
     { id: 'view', label: UI.viewMenu, items: [] },
     ...(state.session
       ? [{

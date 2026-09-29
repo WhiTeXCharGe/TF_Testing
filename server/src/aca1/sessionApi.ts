@@ -6,7 +6,7 @@ import type { AppConfig } from '../config.js';
 import type { SessionMeta, SessionStatusRecord, SessionSummary } from '../collab/types.js';
 import {
   createSessionRecord, deleteSessionRecord, hashOwnerToken, listSessionIds,
-  metaKey, ownerTokenMatches, statusKey,
+  metaKey, statusKey,
 } from '../collab/persistence.js';
 import { intake, intakeBaseline, IntakeError } from './yamlIntake.js';
 import type { Aca2Client } from './aca2Client.js';
@@ -170,16 +170,15 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
     }
   });
 
+  // Delete — no owner-token gate: this is a shared admin action reachable
+  // from 編集 > オンラインセッションを削除 for ANY session in the list, not
+  // just ones this client created (matching this app's general stance of not
+  // gating collab actions on ownership — see lock/unlock and /replace above).
   router.delete('/sessions/:id', async (req, res) => {
     const { id } = req.params;
     const meta = await storage.getJson<SessionMeta>(metaKey(id));
     if (!meta) {
       res.status(404).json({ ok: false, error: 'no such session' });
-      return;
-    }
-    const token = req.get('x-owner-token') ?? '';
-    if (!token || !ownerTokenMatches(token, meta.ownerTokenHash)) {
-      res.status(403).json({ ok: false, error: 'owner token required' });
       return;
     }
     await aca2.evict(id);

@@ -210,12 +210,12 @@ export async function openSession(sessionId: string): Promise<{ relayUrl: string
   return { relayUrl: rewriteLoopback(data.relayUrl as string), status: data.status as SessionStatus };
 }
 
-export async function deleteSession(sessionId: string, ownerToken: string): Promise<void> {
+// No owner-token gate server-side (see sessionApi.ts's DELETE handler) — a
+// shared admin action reachable from 編集 > オンラインセッションを削除 for
+// any session in the list, not just ones this client created.
+export async function deleteSession(sessionId: string): Promise<void> {
   await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-    headers: { 'x-owner-token': ownerToken },
-  });
+  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await readJson(res);
     throw new Error((data.error as string) ?? 'セッションの削除に失敗しました');

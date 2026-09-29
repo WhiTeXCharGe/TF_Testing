@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import {
-  listSessions, getServerUrl, setServerUrl, fetchLanHosts, parseYamlBaseline, LanHost,
+  listSessions, getServerUrl, setServerUrl, fetchLanHosts, parseYamlBaseline, deleteSession, LanHost,
 } from '../../services/collabService';
 import { loadDisplayName, saveDisplayName } from '../../lib/collabPrefs';
 import { SessionBaseline, SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
@@ -542,6 +542,101 @@ function SessionUpdateDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ---- オンラインセッションを削除 (編集 menu — any session, whether or not
+// you're currently in one yourself) -----------------------------------------
+// No owner-token gate server-side (see collabService.deleteSession's own
+// comment) — lists every session, picks one, confirms, deletes.
+
+function SessionDeleteDialog({ onClose }: { onClose: () => void }) {
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    listSessions()
+      .then((rows) => { setSessions(rows); setError(null); })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleDeleteClick = () => {
+    const target = sessions?.find((s) => s.id === selectedId);
+    if (!target) { setError(UI.sessionDeleteNeedSelection); return; }
+    setError(null);
+    setPendingDelete({ id: target.id, name: target.name });
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteSession(pendingDelete.id);
+      setPendingDelete(null);
+      setSelectedId(null);
+      refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (pendingDelete) {
+    return (
+      <div>
+        <div style={titleStyle}>{UI.sessionDeleteDialogTitle}</div>
+        <div style={{ fontSize: 13, color: '#222', marginBottom: 16 }}>{UI.sessionDeleteConfirmWarning(pendingDelete.name)}</div>
+        {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button disabled={busy} onClick={() => setPendingDelete(null)} style={neutralBtnStyle}>{UI.sessionDeleteCancelBtn}</button>
+          <button disabled={busy} onClick={() => void confirmDelete()} style={{ ...primaryBtnStyle, backgroundColor: '#c62828' }}>
+            {busy ? UI.sessionDeleteBtnBusy : UI.sessionDeleteBtn}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={titleStyle}>{UI.sessionDeleteDialogTitle}</div>
+      <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{UI.sessionDeleteListLabel}</div>
+      <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, maxHeight: 220, overflowY: 'auto', marginBottom: 12 }}>
+        {sessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
+        {sessions != null && sessions.length === 0 && (
+          <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListEmpty}</div>
+        )}
+        {sessions?.map((s) => (
+          <div
+            key={s.id}
+            onClick={() => setSelectedId(s.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
+              borderBottom: '1px solid #f0f0f0', cursor: 'pointer',
+              backgroundColor: s.id === selectedId ? '#e3f2fd' : undefined,
+            }}
+          >
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+            <StatusChip status={s.status} />
+            <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button disabled={!selectedId} onClick={handleDeleteClick} style={{ ...primaryBtnStyle, backgroundColor: '#c62828' }}>{UI.sessionDeleteBtn}</button>
+        <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
+      </div>
+    </div>
+  );
+}
+
 export function SessionDialog() {
   const { state, dispatch } = useAppContext();
   const kind = state.sessionDialog;
@@ -554,6 +649,7 @@ export function SessionDialog() {
         {kind === 'join' && <SessionJoinDialog onClose={handleClose} />}
         {kind === 'create' && <SessionCreateDialog onClose={handleClose} />}
         {kind === 'update' && <SessionUpdateDialog onClose={handleClose} />}
+        {kind === 'delete' && <SessionDeleteDialog onClose={handleClose} />}
       </div>
     </div>
   );

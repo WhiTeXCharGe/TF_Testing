@@ -157,3 +157,36 @@ describe('online-session menu placement', () => {
     expect(screen.queryByText('ロック解除')).not.toBeInTheDocument();
   });
 });
+
+describe('編集 menu — delete session (reachable whether or not you are in a session yourself)', () => {
+  it('offers オンラインセッションを削除 with no active session', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(false);
+    await user.click(screen.getByText('編集'));
+    expect(screen.getByText('オンラインセッションを削除')).toBeInTheDocument();
+  });
+
+  it('offers オンラインセッションを削除 while in an active session too', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(true);
+    await user.click(screen.getByText('編集'));
+    expect(screen.getByText('オンラインセッションを削除')).toBeInTheDocument();
+  });
+
+  it('clicking it closes the dropdown (MenuBar alone has no SessionDialog mounted to observe opening)', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(false);
+    await user.click(screen.getByText('編集'));
+    await user.click(screen.getByText('オンラインセッションを削除'));
+    expect(screen.queryByText('オンラインセッションを削除')).not.toBeInTheDocument();
+  });
+});
+
+describe('ファイル menu — 新しいウィンドウ (Electron only)', () => {
+  it('is not shown outside Electron (no window.electronAPI)', async () => {
+    const user = userEvent.setup();
+    renderMenuBar(false);
+    await user.click(screen.getByText('ファイル'));
+    expect(screen.queryByText('新しいウィンドウ')).not.toBeInTheDocument();
+  });
+});

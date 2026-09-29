@@ -402,3 +402,61 @@ describe('update dialog (locked-session data replace)', () => {
     await waitFor(() => expect(mockedCollab.sendCollabSessionUpdate).toHaveBeenCalledWith(parsed));
   });
 });
+
+describe('delete dialog (編集 > オンラインセッションを削除)', () => {
+  it('lists every session and keeps 削除する disabled until one is picked', async () => {
+    renderDialog({ kind: 'delete' });
+    await screen.findByText('Weekly Plan');
+    expect(screen.getByText('Locked One')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
+  });
+
+  it('picking a row enables 削除する, which shows a named confirm warning', async () => {
+    renderDialog({ kind: 'delete' });
+    await userEvent.click(await screen.findByText('Weekly Plan'));
+    const deleteBtn = screen.getByRole('button', { name: '削除する' });
+    expect(deleteBtn).toBeEnabled();
+
+    await userEvent.click(deleteBtn);
+
+    expect(await screen.findByText('「Weekly Plan」を削除しますか？この操作は取り消せません。')).toBeInTheDocument();
+    expect(mockedCollab.deleteSession).not.toHaveBeenCalled();
+  });
+
+  it('cancelling the confirm step returns to the list without deleting', async () => {
+    renderDialog({ kind: 'delete' });
+    await userEvent.click(await screen.findByText('Weekly Plan'));
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
+    await screen.findByText(/この操作は取り消せません/);
+
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
+    expect(mockedCollab.deleteSession).not.toHaveBeenCalled();
+  });
+
+  it('confirming deletes the picked session by id and refreshes the list', async () => {
+    mockedCollab.deleteSession.mockResolvedValue(undefined);
+    renderDialog({ kind: 'delete' });
+    await userEvent.click(await screen.findByText('Locked One')); // id s2, per beforeEach
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
+    await screen.findByText(/この操作は取り消せません/);
+
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => expect(mockedCollab.deleteSession).toHaveBeenCalledWith('s2'));
+    await waitFor(() => expect(mockedCollab.listSessions).toHaveBeenCalledTimes(2)); // initial load + post-delete refresh
+  });
+
+  it('surfaces the server error and stays on the confirm step when the delete fails', async () => {
+    mockedCollab.deleteSession.mockRejectedValue(new Error('boom'));
+    renderDialog({ kind: 'delete' });
+    await userEvent.click(await screen.findByText('Weekly Plan'));
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
+    await screen.findByText(/この操作は取り消せません/);
+
+    await userEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+  });
+});

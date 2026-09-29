@@ -472,6 +472,18 @@ export const UI = {
   sessionUpdateSubmitBtn: '更新する',
   sessionUpdateSubmitBtnBusy: '更新中...',
   sessionUpdateSuccessMessage: 'セッションデータを更新しました',
+  // Delete — 編集 menu, reachable whether or not you're currently in an
+  // online session yourself; lists every session (not just ones this app
+  // created). No owner-token gate server-side — see collabService's
+  // deleteSession.
+  editMenuDeleteSession: 'オンラインセッションを削除',
+  sessionDeleteDialogTitle: 'オンラインセッションを削除',
+  sessionDeleteListLabel: '削除するセッションを選んでください:',
+  sessionDeleteNeedSelection: '削除するセッションを選択してください',
+  sessionDeleteConfirmWarning: (name: string) => `「${name}」を削除しますか？この操作は取り消せません。`,
+  sessionDeleteBtn: '削除する',
+  sessionDeleteBtnBusy: '削除中...',
+  sessionDeleteCancelBtn: 'キャンセル',
   joinSessionPromptTitle: 'このセッションに参加',
   joinSessionPromptTitleNamed: (name: string) => `「${name}」の参加`,
   joinSessionNamePlaceholder: 'ニックネームを入力',

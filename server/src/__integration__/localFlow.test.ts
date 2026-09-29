@@ -163,9 +163,9 @@ describe('local ACA1 + ACA2 + fs-blob end-to-end', () => {
     c.disconnect();
     await wait(300);
 
-    // 13. delete needs the owner token, then the list is empty
-    await api(`/api/sessions/${sessionId}`, { method: 'DELETE' }).then((r) => expect(r.status).toBe(403));
-    const del = await api(`/api/sessions/${sessionId}`, { method: 'DELETE', headers: { 'x-owner-token': ownerToken } });
+    // 13. delete — no owner token needed (a shared admin action, reachable
+    // from 編集 > オンラインセッションを削除 for any session in the list)
+    const del = await api(`/api/sessions/${sessionId}`, { method: 'DELETE' });
     expect(del.status).toBe(200);
     const list2 = await api('/api/sessions').then((r) => r.json());
     expect(list2.sessions).toEqual([]);

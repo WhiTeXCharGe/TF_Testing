@@ -163,20 +163,17 @@ describe('POST /api/sessions/:id/replace', () => {
 });
 
 describe('DELETE /api/sessions/:id', () => {
-  it('403 without the owner token', async () => {
+  // No owner-token gate — a shared admin action, same as lock/unlock and
+  // /replace: any client can delete any session, not just the one it created.
+  it('removes the record and evicts on ACA2, with no owner token needed', async () => {
     const { sessionId } = await createJsonSession();
-    await request(app).delete(`/api/sessions/${sessionId}`).expect(403);
-  });
-
-  it('removes the record and evicts on ACA2 with the owner token', async () => {
-    const { sessionId, ownerToken } = await createJsonSession();
-    await request(app).delete(`/api/sessions/${sessionId}`).set('x-owner-token', ownerToken).expect(200);
+    await request(app).delete(`/api/sessions/${sessionId}`).expect(200);
     expect(aca2.evict).toHaveBeenCalledWith(sessionId);
     expect(await loadSessionRecord(storage, sessionId)).toBeNull();
   });
 
   it('404 for an unknown id', async () => {
-    await request(app).delete('/api/sessions/nope').set('x-owner-token', 'x').expect(404);
+    await request(app).delete('/api/sessions/nope').expect(404);
   });
 });
 
