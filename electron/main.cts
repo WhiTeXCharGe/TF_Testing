@@ -38,9 +38,9 @@ let serverProcess: ChildProcess | null = null;
 // local file next to an online session — all sharing the one embedded
 // server process (a second server on the same port would just fail to
 // bind, so "multi-window" here means multiple BrowserWindows in this one
-// process, not multiple app processes; the single-instance lock below is
-// unrelated and unchanged). Every IPC handler below resolves the calling
-// window from the event itself rather than assuming a single fixed window.
+// process, not multiple app processes). Every IPC handler below resolves
+// the calling window from the event itself rather than assuming a single
+// fixed window.
 const windows: BrowserWindow[] = [];
 // Per-window close-intercept ack callback (see createWindow's 'close'
 // listener), keyed by BrowserWindow.id so each window's checkpoint-then-
@@ -51,10 +51,6 @@ ipcMain.on('app:ready-to-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (win) windowReadyToClose.get(win.id)?.();
 });
-
-function focusedOrFirstWindow(): BrowserWindow | null {
-  return BrowserWindow.getFocusedWindow() ?? windows[0] ?? null;
-}
 
 // A cross-app handoff passes the target URL (with its one-time ?incomingTransfer=
 // token) as a plain argv entry when spawning/re-spawning the sibling app.
@@ -145,12 +141,15 @@ function stopEmbeddedServer(): void {
 
 // ── Window ────────────────────────────────────────────────────────────────
 
-// urlOverride: used for the cold-start handoff case only (see
-// pendingTransferUrl) — every other caller (the initial launch, and the
-// in-app "new window" action) just loads the app's own root and lets that
-// window's own File > Open pick whatever it should show, independently of
-// any other window.
-async function createWindow(opts: { isInitial?: boolean } = {}): Promise<BrowserWindow> {
+// opts.url: an explicit URL to load (used for a warm handoff — see
+// 'second-instance' below — which always opens a NEW window at that URL
+// rather than disturbing whatever's already open elsewhere). opts.isInitial:
+// this is the very first window at app launch, so it's the one that
+// consumes a cold-start pendingTransferUrl if one is waiting. Every other
+// caller (a plain "new window" from the menu) just loads the app's own root
+// and lets that window's own File > Open pick whatever it should show,
+// independently of any other window.
+async function createWindow(opts: { isInitial?: boolean; url?: string } = {}): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -170,12 +169,10 @@ async function createWindow(opts: { isInitial?: boolean } = {}): Promise<Browser
 
   // Re-read pendingTransferUrl now, not before the wait above — a handoff may
   // have arrived while we were waiting. Only the very first window created at
-  // launch ever consumes a pending handoff; a window opened later via the
-  // in-app "new window" action always starts at the app root, regardless of
-  // whether some earlier handoff URL is still sitting in this variable.
-  const url = opts.isInitial && pendingTransferUrl
-    ? pendingTransferUrl
-    : (app.isPackaged ? SERVER_URL : 'http://localhost:5173');
+  // launch ever consumes a pending handoff this way; a window opened later
+  // via the in-app "new window" action, or via opts.url, ignores it.
+  const url = opts.url
+    ?? (opts.isInitial && pendingTransferUrl ? pendingTransferUrl : (app.isPackaged ? SERVER_URL : 'http://localhost:5173'));
   await win.loadURL(url);
   if (opts.isInitial) pendingTransferUrl = null;
 
@@ -289,8 +286,10 @@ ipcMain.handle('sibling:launchScheduler', async (event, transferUrl?: string) =>
 
 // Single-instance lock: a handoff re-spawns this exe with a transfer URL as
 // an argv entry even when an instance is already running. Without this lock
-// that would open a second, unrelated window — with it, the second launch
-// attempt is caught below and forwarded to the one real window instead.
+// that would start a second, wholly separate process — one that would just
+// fail to bind the embedded server's port (see the windows[] comment up
+// top). With it, the second launch attempt is caught below and turned into
+// a new window in THIS process instead.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -298,17 +297,21 @@ if (!gotSingleInstanceLock) {
   app.on('second-instance', (_event, argv) => {
     const transferUrl = extractTransferUrl(argv);
     if (!transferUrl) return;
-    pendingTransferUrl = transferUrl;
-    // Forward to whichever window the user was just looking at. If none
-    // exists yet (cold-start race — see createWindow's own comment), the
-    // first window's post-wait re-read of pendingTransferUrl picks this up
-    // once it's ready to load.
-    const win = focusedOrFirstWindow();
-    if (win) {
-      void win.loadURL(transferUrl);
+    if (windows.length === 0) {
+      // Cold-start race: this process IS the fresh primary instance, still
+      // waiting on its own first createWindow() (see that function's own
+      // comment) — there's no window yet to open a new one "instead of", so
+      // just let the in-flight initial window pick this up when it's ready.
+      pendingTransferUrl = transferUrl;
+      return;
+    }
+    // A handoff opens a NEW window rather than replacing whatever's already
+    // open — losing the user's current work in progress just because
+    // another app handed off to this one would be a bad surprise.
+    void createWindow({ url: transferUrl }).then((win) => {
       if (win.isMinimized()) win.restore();
       win.focus();
-    }
+    });
   });
 
   app.whenReady().then(() => {
