@@ -397,6 +397,9 @@ export const UI = {
   fileMenuLeaveSession: 'オンラインセッションを退出',
   sessionPickHostLabel: '参加先を選んでください:',
   sessionSearchingMessage: '検索中...',
+  // Shown in place of the session list itself before the first fetch comes
+  // back — previously just "...", easy to mistake for the app having frozen.
+  sessionListLoadingMessage: '読み込み中...',
   sessionNoneFoundMessage: 'オンラインセッションが見つかりません。主催者のPCでアプリが起動しているか確認してください。',
   sessionListUnreachableMessage: '接続できません。ネットワークを確認してください。',
   sessionJoinDialogTitle: 'オンラインセッションに参加',
@@ -409,6 +412,7 @@ export const UI = {
   sessionListLastJoinCol: '最終参加',
   sessionListNeverJoined: '—',
   sessionJoinConfirmBtn: '参加',
+  sessionJoinConfirmBtnBusy: '参加中...',
   sessionListPageLabel: (from: number, to: number, total: number) => `${from}–${to} / ${total}`,
   sessionListPrevBtn: '前へ',
   sessionListNextBtn: '次へ',
@@ -435,6 +439,7 @@ export const UI = {
   sessionCreateScheduleFileLabel: 'スケジュール YAML',
   sessionCreateEnvFileLabel: 'EnvConfig YAML',
   sessionCreateSubmitBtn: '作成して開始',
+  sessionCreateSubmitBtnBusy: '作成中...',
   // Only a locked session can be overwritten — same rule as the in-session
   // update feature (共同編集 → セッションデータを更新), so nobody's mid-edit
   // when the data under them gets replaced. The list still shows every
@@ -450,6 +455,7 @@ export const UI = {
   sessionDuplicateNameWarning: (name: string) => `「${name}」という名前のセッションは既に存在します。上書きしますか？`,
   sessionDuplicateNameHint: '上書きすると、既存のセッションのデータが置き換わります。',
   sessionOverwriteBtn: '上書きする',
+  sessionOverwriteBtnBusy: '上書き中...',
   sessionOverwriteCancelBtn: 'キャンセル',
   sessionLockBtn: 'ロックする',
   sessionUnlockBtn: 'ロック解除',
@@ -461,6 +467,7 @@ export const UI = {
   sessionUpdateDialogTitle: 'セッションデータを更新',
   sessionUpdateUnavailableHint: '更新するにはまずロックしてください。',
   sessionUpdateSubmitBtn: '更新する',
+  sessionUpdateSubmitBtnBusy: '更新中...',
   sessionUpdateSuccessMessage: 'セッションデータを更新しました',
   joinSessionPromptTitle: 'このセッションに参加',
   joinSessionPromptTitleNamed: (name: string) => `「${name}」の参加`,

@@ -208,7 +208,7 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
             <span style={{ width: 96, textAlign: 'right' }}>{UI.sessionListLastJoinCol}</span>
           </div>
           <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, height: PAGE_SIZE * 28, overflowY: 'auto' }}>
-            {sessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>...</div>}
+            {sessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
             {sessions != null && sorted.length === 0 && (
               <div style={{ padding: 10, fontSize: 12, color: '#999' }}>
                 {searchSettled ? UI.sessionNoneFoundMessage : UI.sessionSearchingMessage}
@@ -263,7 +263,7 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
           disabled={busy || !displayName.trim() || !selectionOnPage}
           style={primaryBtnStyle}
         >
-          {UI.sessionJoinConfirmBtn}
+          {busy ? UI.sessionJoinConfirmBtnBusy : UI.sessionJoinConfirmBtn}
         </button>
         <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
@@ -398,7 +398,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
         {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button disabled={busy} onClick={() => setPendingOverwrite(null)} style={neutralBtnStyle}>{UI.sessionOverwriteCancelBtn}</button>
-          <button disabled={busy} onClick={() => void confirmOverwrite()} style={primaryBtnStyle}>{UI.sessionOverwriteBtn}</button>
+          <button disabled={busy} onClick={() => void confirmOverwrite()} style={primaryBtnStyle}>{busy ? UI.sessionOverwriteBtnBusy : UI.sessionOverwriteBtn}</button>
         </div>
       </div>
     );
@@ -455,7 +455,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
         <div style={{ marginTop: 4 }}>
           <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{UI.sessionOverwriteListLabel}</div>
           <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, maxHeight: 160, overflowY: 'auto', marginBottom: 12 }}>
-            {overwriteSessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>...</div>}
+            {overwriteSessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
             {overwriteSessions != null && overwriteSessions.length === 0 && (
               <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionOverwriteListEmpty}</div>
             )}
@@ -485,7 +485,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{UI.sessionCreateSubmitBtn}</button>
+        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{busy ? UI.sessionCreateSubmitBtnBusy : UI.sessionCreateSubmitBtn}</button>
         <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>
@@ -535,7 +535,7 @@ function SessionUpdateDialog({ onClose }: { onClose: () => void }) {
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{UI.sessionUpdateSubmitBtn}</button>
+        <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{busy ? UI.sessionUpdateSubmitBtnBusy : UI.sessionUpdateSubmitBtn}</button>
         <button onClick={onClose} style={neutralBtnStyle}>{UI.sessionCloseBtn}</button>
       </div>
     </div>

@@ -111,6 +111,21 @@ describe('join dialog', () => {
     expect(localStorage.getItem('gantt.collab.displayName')).toBe('Carol');
   });
 
+  it('shows a busy label ("参加中...") instead of freezing silently while the join is in flight', async () => {
+    let resolveOpen: (v: { relayUrl: string; status: 'open' }) => void;
+    mockedCollab.openSession.mockReturnValue(new Promise(resolve => { resolveOpen = resolve; }));
+    renderDialog({ kind: 'join' });
+    await screen.findByText('Weekly Plan');
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.click(screen.getByText('Weekly Plan'));
+
+    await userEvent.click(screen.getByRole('button', { name: '参加' }));
+    expect(await screen.findByRole('button', { name: '参加中...' })).toBeDisabled();
+
+    resolveOpen!({ relayUrl: 'http://relay:4010', status: 'open' });
+    await waitFor(() => expect(mockedCollab.joinCollabRoom).toHaveBeenCalled());
+  });
+
   it('pre-fills the display name from a previous session', async () => {
     localStorage.setItem('gantt.collab.displayName', 'Dave');
     renderDialog({ kind: 'join' });
