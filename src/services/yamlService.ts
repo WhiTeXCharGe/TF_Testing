@@ -292,7 +292,12 @@ function parseUnavailableDates(raw: unknown[]): UnavailableDateEntry[] {
     }
     if (e.single) {
       const s = e.single as Record<string, unknown>;
-      result.single = { days: (s.days as string[]) ?? [] };
+      // YAML stores these as YYYY/MM/DD (toYD, on the way out); normalize
+      // back to the app's internal YYYY-MM-DD so a save→reload round trip
+      // doesn't silently switch date format out from under every date
+      // comparison downstream (e.g. reducer.ts's isWeeklyDate/unavailable-date
+      // bar rendering, which assume YYYY-MM-DD).
+      result.single = { days: ((s.days as string[]) ?? []).map(d => normalizeDate(String(d))) };
     }
     return result;
   });
@@ -311,7 +316,7 @@ function parseWorker(raw: unknown): Worker {
     id: String(r.id ?? ''),
     name: r.name as string | undefined,
     description,
-    workerCompany: r.worker_company as string | undefined,
+    workerCompany: r.worker_company == null ? undefined : String(r.worker_company),
     isManager: Boolean(r.is_manager ?? false),
     skillMap: (r.skill_map as Record<string, number>) ?? {},
     workerTypeByOperation: r.worker_type_by_operation as Record<string, string> | undefined,
@@ -337,8 +342,8 @@ function parseFab(raw: unknown): Fab {
   return {
     id: String(r.id ?? ''),
     name: r.name as string | undefined,
-    region: r.region as string | undefined,
-    customerCompany: r.customer_company as string | undefined,
+    region: r.region == null ? undefined : String(r.region),
+    customerCompany: r.customer_company == null ? undefined : String(r.customer_company),
     unavailableDates: parseUnavailableDates((r.unavailable_dates as unknown[]) ?? []),
   };
 }
@@ -437,8 +442,9 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
   for (const f of config.fabList) {
     p(`  - id: ${f.id}`);
     p(`    name: ${ys(f.name)}`);
-    p(`    region: ${f.region}`);
-    p(`    customer_company: ${f.customerCompany}`);
+    p(`    region: ${ys(f.region)}`);
+    p(`    customer_company: ${ys(f.customerCompany)}`);
+    emitUnavailDates(L, f.unavailableDates, '    ');
   }
 
   // region_list
@@ -446,6 +452,10 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
   for (const r of config.regionList) {
     p(`  - id: ${r.id}`);
     p(`    name: ${ys(r.name)}`);
+    p(`    max_stay_on: ${r.maxStayOn ?? 0}`);
+    p(`    max_annual_stay: ${r.maxAnnualStay ?? 0}`);
+    p(`    stay_off_interval: ${r.stayOffInterval ?? 0}`);
+    emitUnavailDates(L, r.unavailableDates, '    ');
   }
 
   // customer_company_list
@@ -453,6 +463,7 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
   for (const c of config.customerCompanyList) {
     p(`  - id: ${c.id}`);
     p(`    name: ${ys(c.name)}`);
+    emitUnavailDates(L, c.unavailableDates, '    ');
   }
 
   // worker_company_list
@@ -462,6 +473,7 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
     p(`    name: ${ys(wc.name)}`);
     p(`    annual_overtime_limit: ${wc.annualOvertimeLimit}`);
     p(`    monthly_overtime_limit: ${wc.monthlyOvertimeLimit}`);
+    emitUnavailDates(L, wc.unavailableDates, '    ');
   }
 
   // transite_day_map
@@ -477,7 +489,7 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
   for (const w of config.workerList) {
     p(`  - id: ${w.id}`);
     p(`    name: ${ys(w.name)}`);
-    p(`    worker_company: ${w.workerCompany}`);
+    p(`    worker_company: ${ys(w.workerCompany)}`);
     p(`    is_manager: ${w.isManager}`);
     // skill_map inline
     if (w.skillMap && Object.keys(w.skillMap).length > 0) {

@@ -196,6 +196,74 @@ describe('stringifyScheduleYaml round-trip', () => {
   });
 });
 
+// ── stringifyEnvConfigYaml round-trip — regression test for fields silently
+// dropped on save: fab/region/customerCompany/workerCompany unavailableDates
+// and region's maxStayOn/maxAnnualStay/stayOffInterval were never written out
+// at all (so they defaulted back to [] / 0 on the next load), and
+// unavailable_dates single.days survived a save→reload as YYYY/MM/DD instead
+// of the app's internal YYYY-MM-DD, silently breaking every date comparison
+// downstream (isWeeklyDate, the unavailable-date bar, etc).
+
+describe('stringifyEnvConfigYaml round-trip', () => {
+  const richEnv = () => {
+    const env = parseEnvConfigYaml(ENV_CONFIG_YAML);
+    env.fabList[0].unavailableDates = [{ single: { days: ['2026-01-01'] } }];
+    env.regionList[0] = {
+      ...env.regionList[0],
+      maxStayOn: 30, maxAnnualStay: 180, stayOffInterval: 7,
+      unavailableDates: [{ weekly: { weekdays: ['sunday'] } }],
+    };
+    env.customerCompanyList = [{ id: 'cust1', name: 'Cust1', unavailableDates: [{ single: { days: ['2026-02-01'] } }] }];
+    env.workerCompanyList[0].unavailableDates = [{ single: { days: ['2026-03-01'] } }];
+    env.workerList[0].affinity = ['w2', 'w3'];
+    env.workerList[0].unavailableDates = [
+      { weekly: { weekdays: ['sunday'] } },
+      { single: { days: ['2026-04-01', '2026-04-02'] } },
+    ];
+    return env;
+  };
+
+  it('round-trips fab unavailableDates', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.fabList[0].unavailableDates).toEqual([{ single: { days: ['2026-01-01'] } }]);
+  });
+
+  it('round-trips region maxStayOn/maxAnnualStay/stayOffInterval and unavailableDates', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.regionList[0]).toMatchObject({
+      maxStayOn: 30, maxAnnualStay: 180, stayOffInterval: 7,
+      unavailableDates: [{ weekly: { weekdays: ['sunday'] } }],
+    });
+  });
+
+  it('round-trips customerCompany unavailableDates', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.customerCompanyList[0].unavailableDates).toEqual([{ single: { days: ['2026-02-01'] } }]);
+  });
+
+  it('round-trips workerCompany unavailableDates', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.workerCompanyList[0].unavailableDates).toEqual([{ single: { days: ['2026-03-01'] } }]);
+  });
+
+  it('round-trips worker affinity', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.workerList[0].affinity).toEqual(['w2', 'w3']);
+  });
+
+  it('keeps unavailable_dates single.days in internal YYYY-MM-DD format after a round trip, not YYYY/MM/DD', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    const workerDays = roundTripped.workerList[0].unavailableDates.find(d => d.single)?.single?.days;
+    expect(workerDays).toEqual(['2026-04-01', '2026-04-02']);
+  });
+
+  it('does a full deep-equal round trip with every list populated', () => {
+    const env = richEnv();
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(env));
+    expect(roundTripped).toEqual(env);
+  });
+});
+
 // ── ys() quoting edge cases — regression test for the "-" / "," bug ─────────
 // Bug: description/name fields whose value was exactly "-" or "," (used as
 // N/A-style placeholders) got written back out unquoted on save, producing
