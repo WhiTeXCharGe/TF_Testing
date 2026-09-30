@@ -174,11 +174,22 @@ export function createSessionApiRouter(deps: SessionApiDeps): Router {
   // from 編集 > オンラインセッションを削除 for ANY session in the list, not
   // just ones this client created (matching this app's general stance of not
   // gating collab actions on ownership — see lock/unlock and /replace above).
+  // Only allowed with zero participants currently connected — deleting a
+  // session out from under someone actively in it would just orphan their
+  // socket (see collabSocket.ts: a session removed from the live store
+  // silently stops accepting further actions from anyone still connected to
+  // it, with no error surfaced to them).
   router.delete('/sessions/:id', async (req, res) => {
     const { id } = req.params;
     const meta = await storage.getJson<SessionMeta>(metaKey(id));
     if (!meta) {
       res.status(404).json({ ok: false, error: 'no such session' });
+      return;
+    }
+    const live = await aca2.live(id);
+    const participantCount = 'unreachable' in live ? 0 : live.participantCount;
+    if (participantCount > 0) {
+      res.status(409).json({ ok: false, error: '参加者が0人のセッションのみ削除できます' });
       return;
     }
     await aca2.evict(id);

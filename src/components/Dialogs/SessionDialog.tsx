@@ -545,7 +545,14 @@ function SessionUpdateDialog({ onClose }: { onClose: () => void }) {
 // ---- オンラインセッションを削除 (編集 menu — any session, whether or not
 // you're currently in one yourself) -----------------------------------------
 // No owner-token gate server-side (see collabService.deleteSession's own
-// comment) — lists every session, picks one, confirms, deletes.
+// comment) — lists every session, picks one, confirms, deletes. Only a
+// session with zero participants connected can actually be picked (server
+// enforces this too) — deleting one out from under someone actively in it
+// would just silently orphan their socket.
+
+function isDeletable(s: SessionSummary): boolean {
+  return !s.participantCount; // 0 or null (never activated / fully idle) — not a positive count
+}
 
 function SessionDeleteDialog({ onClose }: { onClose: () => void }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
@@ -563,8 +570,11 @@ function SessionDeleteDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => { refresh(); }, [refresh]);
 
   const handleDeleteClick = () => {
+    // Rows for a session with participants aren't clickable, but the list
+    // could have gone stale (someone just joined) between fetch and submit —
+    // re-check rather than trust the stale selection.
     const target = sessions?.find((s) => s.id === selectedId);
-    if (!target) { setError(UI.sessionDeleteNeedSelection); return; }
+    if (!target || !isDeletable(target)) { setError(UI.sessionDeleteNeedSelection); return; }
     setError(null);
     setPendingDelete({ id: target.id, name: target.name });
   };
@@ -610,21 +620,25 @@ function SessionDeleteDialog({ onClose }: { onClose: () => void }) {
         {sessions != null && sessions.length === 0 && (
           <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListEmpty}</div>
         )}
-        {sessions?.map((s) => (
-          <div
-            key={s.id}
-            onClick={() => setSelectedId(s.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
-              borderBottom: '1px solid #f0f0f0', cursor: 'pointer',
-              backgroundColor: s.id === selectedId ? '#e3f2fd' : undefined,
-            }}
-          >
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-            <StatusChip status={s.status} />
-            <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
-          </div>
-        ))}
+        {sessions?.map((s) => {
+          const selectable = isDeletable(s);
+          return (
+            <div
+              key={s.id}
+              onClick={selectable ? () => setSelectedId(s.id) : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 12,
+                borderBottom: '1px solid #f0f0f0', cursor: selectable ? 'pointer' : 'not-allowed',
+                opacity: selectable ? 1 : 0.5,
+                backgroundColor: s.id === selectedId ? '#e3f2fd' : undefined,
+              }}
+            >
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+              <StatusChip status={s.status} />
+              <span style={{ width: 40, textAlign: 'right', color: '#666' }}>{UI.sessionParticipantCount(s.participantCount)}</span>
+            </div>
+          );
+        })}
       </div>
 
       {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}

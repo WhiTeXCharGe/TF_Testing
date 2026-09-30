@@ -404,54 +404,73 @@ describe('update dialog (locked-session data replace)', () => {
 });
 
 describe('delete dialog (編集 > オンラインセッションを削除)', () => {
-  it('lists every session and keeps 削除する disabled until one is picked', async () => {
+  // Weekly Plan (s1, 3 participants) and Locked One (s2, 1 participant) come
+  // from the shared beforeEach fixture and are both non-deletable here —
+  // Idle Session (s3, 0 participants) is the only selectable one.
+  beforeEach(() => {
+    mockedCollab.listSessions.mockResolvedValue([
+      summary({ id: 's1', name: 'Weekly Plan', status: 'open', lastJoinAt: 5000, participantCount: 3 }),
+      summary({ id: 's2', name: 'Locked One', status: 'lock', lastJoinAt: 9000, participantCount: 1 }),
+      summary({ id: 's3', name: 'Idle Session', status: 'close', lastJoinAt: 1000, participantCount: 0 }),
+    ]);
+  });
+
+  it('lists every session and keeps 削除する disabled until a deletable one is picked', async () => {
     renderDialog({ kind: 'delete' });
     await screen.findByText('Weekly Plan');
     expect(screen.getByText('Locked One')).toBeInTheDocument();
+    expect(screen.getByText('Idle Session')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
   });
 
-  it('picking a row enables 削除する, which shows a named confirm warning', async () => {
+  it('a session with participants is shown but not selectable — clicking it does nothing', async () => {
     renderDialog({ kind: 'delete' });
-    await userEvent.click(await screen.findByText('Weekly Plan'));
+    await screen.findByText('Weekly Plan'); // participantCount 3
+    await userEvent.click(screen.getByText('Weekly Plan'));
+    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
+  });
+
+  it('picking the deletable (0-participant) row enables 削除する, which shows a named confirm warning', async () => {
+    renderDialog({ kind: 'delete' });
+    await userEvent.click(await screen.findByText('Idle Session'));
     const deleteBtn = screen.getByRole('button', { name: '削除する' });
     expect(deleteBtn).toBeEnabled();
 
     await userEvent.click(deleteBtn);
 
-    expect(await screen.findByText('「Weekly Plan」を削除しますか？この操作は取り消せません。')).toBeInTheDocument();
+    expect(await screen.findByText('「Idle Session」を削除しますか？この操作は取り消せません。')).toBeInTheDocument();
     expect(mockedCollab.deleteSession).not.toHaveBeenCalled();
   });
 
   it('cancelling the confirm step returns to the list without deleting', async () => {
     renderDialog({ kind: 'delete' });
-    await userEvent.click(await screen.findByText('Weekly Plan'));
+    await userEvent.click(await screen.findByText('Idle Session'));
     await userEvent.click(screen.getByRole('button', { name: '削除する' }));
     await screen.findByText(/この操作は取り消せません/);
 
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
 
-    expect(await screen.findByText('Weekly Plan')).toBeInTheDocument();
+    expect(await screen.findByText('Idle Session')).toBeInTheDocument();
     expect(mockedCollab.deleteSession).not.toHaveBeenCalled();
   });
 
   it('confirming deletes the picked session by id and refreshes the list', async () => {
     mockedCollab.deleteSession.mockResolvedValue(undefined);
     renderDialog({ kind: 'delete' });
-    await userEvent.click(await screen.findByText('Locked One')); // id s2, per beforeEach
+    await userEvent.click(await screen.findByText('Idle Session')); // id s3
     await userEvent.click(screen.getByRole('button', { name: '削除する' }));
     await screen.findByText(/この操作は取り消せません/);
 
     await userEvent.click(screen.getByRole('button', { name: '削除する' }));
 
-    await waitFor(() => expect(mockedCollab.deleteSession).toHaveBeenCalledWith('s2'));
+    await waitFor(() => expect(mockedCollab.deleteSession).toHaveBeenCalledWith('s3'));
     await waitFor(() => expect(mockedCollab.listSessions).toHaveBeenCalledTimes(2)); // initial load + post-delete refresh
   });
 
   it('surfaces the server error and stays on the confirm step when the delete fails', async () => {
     mockedCollab.deleteSession.mockRejectedValue(new Error('boom'));
     renderDialog({ kind: 'delete' });
-    await userEvent.click(await screen.findByText('Weekly Plan'));
+    await userEvent.click(await screen.findByText('Idle Session'));
     await userEvent.click(screen.getByRole('button', { name: '削除する' }));
     await screen.findByText(/この操作は取り消せません/);
 

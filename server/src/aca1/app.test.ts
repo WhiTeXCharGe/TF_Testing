@@ -175,6 +175,21 @@ describe('DELETE /api/sessions/:id', () => {
   it('404 for an unknown id', async () => {
     await request(app).delete('/api/sessions/nope').expect(404);
   });
+
+  it('409s when the session currently has participants connected, and leaves the record in place', async () => {
+    const { sessionId } = await createJsonSession();
+    aca2.live.mockResolvedValue({ active: true, participantCount: 2, status: 'open' as const });
+    await request(app).delete(`/api/sessions/${sessionId}`).expect(409);
+    expect(aca2.evict).not.toHaveBeenCalled();
+    expect(await loadSessionRecord(storage, sessionId)).not.toBeNull();
+  });
+
+  it('allows deleting once participantCount drops back to 0', async () => {
+    const { sessionId } = await createJsonSession();
+    aca2.live.mockResolvedValue({ active: true, participantCount: 0, status: 'open' as const });
+    await request(app).delete(`/api/sessions/${sessionId}`).expect(200);
+    expect(aca2.evict).toHaveBeenCalledWith(sessionId);
+  });
 });
 
 describe('GET /api/health', () => {

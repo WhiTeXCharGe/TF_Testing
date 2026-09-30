@@ -478,8 +478,8 @@ export const UI = {
   // deleteSession.
   editMenuDeleteSession: 'オンラインセッションを削除',
   sessionDeleteDialogTitle: 'オンラインセッションを削除',
-  sessionDeleteListLabel: '削除するセッションを選んでください:',
-  sessionDeleteNeedSelection: '削除するセッションを選択してください',
+  sessionDeleteListLabel: '削除するセッションを選んでください（参加者が0人のセッションのみ選択できます）:',
+  sessionDeleteNeedSelection: '削除するセッションを選択してください（参加者が0人である必要があります）',
   sessionDeleteConfirmWarning: (name: string) => `「${name}」を削除しますか？この操作は取り消せません。`,
   sessionDeleteBtn: '削除する',
   sessionDeleteBtnBusy: '削除中...',
