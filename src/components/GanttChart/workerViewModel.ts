@@ -409,17 +409,29 @@ export function buildWorkerTimelineModel(
   // unavailability is checked per day against whichever region that day's
   // actual assignment is in (see the dayCells loop below) rather than folded
   // into this per-worker set up front.
+  //
+  // Toggle: set this to false to go back to showing ONLY each worker's own
+  // unavailableDates (fab/region/workerCompany unavailableDates are simply
+  // ignored) — company- and region-wide blackouts turned out to make the
+  // timeline noisy in real data, so this is here to switch off easily
+  // without ripping the feature out. No UI for it yet — flip it here.
+  const SHOW_COMPANY_REGION_UNAVAILABLE_DATES = false;
+
   const companyOffDates = new Map<string, Set<string>>(
-    envConfig.workerCompanyList.map(c => [
-      c.id,
-      parseUnavailableDates(c.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
-    ]),
+    SHOW_COMPANY_REGION_UNAVAILABLE_DATES
+      ? envConfig.workerCompanyList.map(c => [
+          c.id,
+          parseUnavailableDates(c.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+        ])
+      : [],
   );
   const regionOffDates = new Map<string, Set<string>>(
-    envConfig.regionList.map(r => [
-      r.id,
-      parseUnavailableDates(r.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
-    ]),
+    SHOW_COMPANY_REGION_UNAVAILABLE_DATES
+      ? envConfig.regionList.map(r => [
+          r.id,
+          parseUnavailableDates(r.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+        ])
+      : [],
   );
 
   const workerOffDates = new Map<string, Set<string>>();
