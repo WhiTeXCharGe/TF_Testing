@@ -296,19 +296,22 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     const transferUrl = extractTransferUrl(argv);
-    if (!transferUrl) return;
     if (windows.length === 0) {
       // Cold-start race: this process IS the fresh primary instance, still
       // waiting on its own first createWindow() (see that function's own
       // comment) — there's no window yet to open a new one "instead of", so
-      // just let the in-flight initial window pick this up when it's ready.
-      pendingTransferUrl = transferUrl;
+      // just let the in-flight initial window pick this up when it's ready
+      // (a plain relaunch with no transferUrl needs nothing here at all —
+      // the initial window already covers it).
+      if (transferUrl) pendingTransferUrl = transferUrl;
       return;
     }
-    // A handoff opens a NEW window rather than replacing whatever's already
-    // open — losing the user's current work in progress just because
-    // another app handed off to this one would be a bad surprise.
-    void createWindow({ url: transferUrl }).then((win) => {
+    // Launching the exe again — the Start Menu/desktop icon, not the
+    // taskbar (which just focuses the running app) — opens a NEW window,
+    // same as VS Code, rather than silently doing nothing or replacing
+    // whatever's already open. A handoff (transferUrl set) loads straight
+    // into that new window instead of the app's own root.
+    void createWindow(transferUrl ? { url: transferUrl } : {}).then((win) => {
       if (win.isMinimized()) win.restore();
       win.focus();
     });
