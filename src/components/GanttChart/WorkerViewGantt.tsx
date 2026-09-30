@@ -90,8 +90,14 @@ export function WorkerViewGantt({ dates }: Props) {
     return buildWorkerTimelineModel(envConfig, schedule, dates, formatDate(new Date()));
   }, [schedule, envConfig, dates]);
 
+  // WORKER_UNAVAILABLE is excluded from the live red-border highlight — it
+  // fires on every schedule change (see useConstraintCheck), so dragging a
+  // bar across an unavailable day flashed a red border immediately on drop,
+  // which read as an alarming live warning rather than useful feedback.
+  // Still fully reported in state.violations for the deliberate 制約チェック
+  // results list — only the bar-border rendering here skips it.
   const violationIndices = useMemo(
-    () => new Set(violations.flatMap(v => v.assignmentIndices)),
+    () => new Set(violations.filter(v => v.type !== 'WORKER_UNAVAILABLE').flatMap(v => v.assignmentIndices)),
     [violations],
   );
 
