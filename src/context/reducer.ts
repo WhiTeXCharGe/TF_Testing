@@ -3,15 +3,39 @@ import { ScheduleData, PlanFlexibility } from '../types/schedule';
 import { EnvConfig } from '../types/envConfig';
 import { MAX_UNDO_STACK } from '../config/appConfig';
 import { generateDateRange } from '../utils/dateUtils';
-import { generateId } from '../utils/id';
 
 function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
   const existingIds = new Set(existing.map(x => x.id));
   return [...existing, ...incoming.filter(x => !existingIds.has(x.id))];
 }
 
+function stableAssignmentKey(a: ScheduleData['assignmentList'][number]): string {
+  return `${a.worker}::${a.operationTask}::${a.startDate}::${a.endDate}`;
+}
+
+// Assignments loaded from a baseline/YAML have no natural stable id (see
+// utils/id.ts's own comment), but undo/redo AND cross-participant sync (see
+// AppContext's dispatch wrapper, and RESTORE_ASSIGNMENT_FIELDS/REVERT_MERGE)
+// both need one that's the SAME across every client that loads the
+// identical data. A random id minted independently per client (the previous
+// behavior, via generateId()) would essentially never match between the
+// session creator and a joiner — this is why bulk-flexibility/merge undo
+// used to be blocked outright while in a session. Deriving the id instead
+// from the assignment's own identifying fields means every client computes
+// the identical id for the "same" assignment with zero network
+// coordination. A genuine duplicate (same worker+task+dates twice) still
+// gets a unique id via the occurrence-count suffix below, which is itself
+// deterministic given array order — part of the transmitted baseline, so
+// every client sees the same order too.
 function withAssignmentIds(assignmentList: ScheduleData['assignmentList']): ScheduleData['assignmentList'] {
-  return assignmentList.map(a => (a._id ? a : { ...a, _id: generateId() }));
+  const seen = new Map<string, number>();
+  return assignmentList.map(a => {
+    if (a._id) return a;
+    const key = stableAssignmentKey(a);
+    const occurrence = seen.get(key) ?? 0;
+    seen.set(key, occurrence + 1);
+    return { ...a, _id: occurrence === 0 ? key : `${key}::${occurrence}` };
+  });
 }
 
 const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

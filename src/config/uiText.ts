@@ -300,7 +300,6 @@ export const UI = {
   redoBlockedError: '他の参加者がこの対象を変更したため、やり直せません。',
   undoUnsupportedError: 'この操作は元に戻すことに対応していません。',
   redoUnsupportedError: 'この操作はやり直しに対応していません。',
-  bulkUndoUnsupportedInSessionError: 'この一括操作はオンラインセッション中は元に戻せません。',
   savedMessage: '保存しました',
   saveFailedMessage: (msg: string) => `保存失敗: ${msg}`,
   excelExportedMessage: 'Excelエクスポートしました',

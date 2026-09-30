@@ -505,6 +505,71 @@ describe('own-action, conflict-aware undo/redo', () => {
     expect(mockedCollab.sendCollabAction).toHaveBeenCalledWith('UPDATE_OPERATION_TASK_COLOR', { operationTaskId: 'ot1', colorCode: 'red' });
   });
 
+  // BULK_UPDATE_FLEXIBILITY (バー可動性 — changing many bars' flexibility in
+  // one action) used to be undoable in solo mode but blocked outright once
+  // in a session, because its revert (RESTORE_ASSIGNMENT_FIELDS) keys on
+  // Assignment._id, which used to be minted randomly per client — not
+  // guaranteed to match between participants. reducer.ts's withAssignmentIds
+  // now derives _id deterministically from the assignment's own
+  // worker/task/dates, so every participant computes the same id
+  // independently and this can safely sync like any other revert.
+  describe('bulk-flexibility undo/redo now works in an online session too', () => {
+    const MULTI_SCHEDULE: ScheduleData = {
+      ...RICH_SCHEDULE,
+      assignmentList: [
+        { worker: 'w1', operationTask: 'ot1', startDate: '2026-01-01', endDate: '2026-01-05', planFlexibility: 'Flexible', workDateList: [] },
+        { worker: 'w2', operationTask: 'ot1', startDate: '2026-01-06', endDate: '2026-01-07', planFlexibility: 'Flexible', workDateList: [] },
+      ],
+    };
+
+    it('undoing a bulk change reverts every affected assignment and forwards RESTORE_ASSIGNMENT_FIELDS to the server', async () => {
+      mockJoin((_isCreator, cb) => {
+        cb.onSyncInit('Mock Session', { schedule: MULTI_SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+        cb.onStatusChange('connected');
+      });
+      renderApp();
+      await act(async () => { await userEvent.click(screen.getByText('join')); });
+      await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+      act(() => capturedApi!.dispatch({ type: 'BULK_UPDATE_FLEXIBILITY', payload: { flexibility: 'Fixed', target: 'all' } }));
+      expect(capturedApi!.state.schedule!.assignmentList.every(a => a.planFlexibility === 'Fixed')).toBe(true);
+
+      mockedCollab.sendCollabAction.mockClear();
+      act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+
+      expect(capturedApi!.state.schedule!.assignmentList.every(a => a.planFlexibility === 'Flexible')).toBe(true);
+      expect(mockedCollab.sendCollabAction).toHaveBeenCalledWith(
+        'RESTORE_ASSIGNMENT_FIELDS',
+        expect.arrayContaining([expect.objectContaining({ updates: { planFlexibility: 'Flexible' } })]),
+      );
+      expect(screen.getByTestId('error-message')).toHaveTextContent('none');
+    });
+
+    it('is still blocked if another participant touched one of the affected assignments since ("if no one touched")', async () => {
+      let capturedOnAction: ((a: { type: string; payload: unknown }) => void) | null = null;
+      mockJoin((_isCreator, cb) => {
+        cb.onSyncInit('Mock Session', { schedule: MULTI_SCHEDULE, envConfig: ENV_CONFIG, currentView: 'worker' }, []);
+        capturedOnAction = cb.onAction;
+        cb.onStatusChange('connected');
+      });
+      renderApp();
+      await act(async () => { await userEvent.click(screen.getByText('join')); });
+      await waitFor(() => expect(screen.getByTestId('schedule-start')).toHaveTextContent('2026-01-01'));
+
+      act(() => capturedApi!.dispatch({ type: 'BULK_UPDATE_FLEXIBILITY', payload: { flexibility: 'Fixed', target: 'all' } }));
+
+      // "userB" remotely touches the SECOND assignment (w2) after the bulk change.
+      act(() => capturedOnAction!({ type: 'UPDATE_ASSIGNMENT', payload: { index: 1, updates: { planFlexibility: 'Reluctant' } } }));
+
+      act(() => capturedApi!.dispatch({ type: 'UNDO' }));
+
+      // Blocked entirely — even the untouched w1 assignment stays as the bulk change left it.
+      expect(capturedApi!.state.schedule!.assignmentList[0].planFlexibility).toBe('Fixed');
+      expect(capturedApi!.state.schedule!.assignmentList[1].planFlexibility).toBe('Reluctant');
+      expect(screen.getByTestId('error-message')).toHaveTextContent(UI.undoBlockedError);
+    });
+  });
+
   it('solo mode (no session) keeps working: undo/redo apply and revert locally with no server involvement', async () => {
     renderApp();
     await userEvent.click(screen.getByText('load')); // LOAD_FILES with the shared empty SCHEDULE/ENV_CONFIG fixtures — solo mode doesn't need RICH_SCHEDULE

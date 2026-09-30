@@ -398,6 +398,59 @@ describe('Assignment _id backfill', () => {
     expect(merged?._id).toEqual(expect.any(String));
   });
 
+  // Cross-participant sync (RESTORE_ASSIGNMENT_FIELDS/REVERT_MERGE) and the
+  // conflict-aware undo check both key on Assignment._id — for that to work
+  // once forwarded to another participant, every client has to compute the
+  // SAME id for the "same" baseline-loaded assignment on their own, with no
+  // network coordination. That only holds if the id is deterministic from
+  // the assignment's own content, not randomly minted per client.
+  describe('_id is deterministic — same input, computed independently, same id', () => {
+    it('two separate LOAD_FILES calls on identical data produce identical ids (simulating two different clients)', () => {
+      const scheduleA = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+      const scheduleB = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+      const nextA = reducer(BASE_STATE, { type: 'LOAD_FILES', payload: { schedule: scheduleA, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      const nextB = reducer(BASE_STATE, { type: 'LOAD_FILES', payload: { schedule: scheduleB, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      expect(nextA.schedule?.assignmentList[0]._id).toBe(nextB.schedule?.assignmentList[0]._id);
+    });
+
+    it('two separate SET_SESSION_BASELINE applications of the identical baseline (creator + a joiner) produce identical ids', () => {
+      const baselineA = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+      const baselineB = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
+      const creator = reducer(BASE_STATE, { type: 'SET_SESSION_BASELINE', payload: { schedule: baselineA, envConfig: EMPTY_ENV, currentView: 'worker' } });
+      const joiner = reducer(BASE_STATE, { type: 'SET_SESSION_BASELINE', payload: { schedule: baselineB, envConfig: EMPTY_ENV, currentView: 'worker' } });
+      expect(creator.schedule?.assignmentList[0]._id).toBe(joiner.schedule?.assignmentList[0]._id);
+    });
+
+    it('different assignments (different worker/task/dates) get different ids', () => {
+      const schedule = {
+        ...EMPTY_SCHEDULE,
+        assignmentList: [
+          { ...EMPTY_SCHEDULE.assignmentList[0], worker: 'w001' },
+          { ...EMPTY_SCHEDULE.assignmentList[0], worker: 'w002' },
+        ],
+      };
+      const next = reducer(BASE_STATE, { type: 'LOAD_FILES', payload: { schedule, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      const [id1, id2] = next.schedule!.assignmentList.map(a => a._id);
+      expect(id1).not.toBe(id2);
+    });
+
+    it('true duplicates (identical worker/task/dates twice) still get distinct ids, deterministically by order', () => {
+      const schedule = {
+        ...EMPTY_SCHEDULE,
+        assignmentList: [
+          { ...EMPTY_SCHEDULE.assignmentList[0] },
+          { ...EMPTY_SCHEDULE.assignmentList[0] },
+        ],
+      };
+      const nextA = reducer(BASE_STATE, { type: 'LOAD_FILES', payload: { schedule: { ...schedule, assignmentList: schedule.assignmentList.map(a => ({ ...a })) }, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      const nextB = reducer(BASE_STATE, { type: 'LOAD_FILES', payload: { schedule: { ...schedule, assignmentList: schedule.assignmentList.map(a => ({ ...a })) }, envConfig: EMPTY_ENV, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      const idsA = nextA.schedule!.assignmentList.map(a => a._id);
+      const idsB = nextB.schedule!.assignmentList.map(a => a._id);
+      expect(idsA[0]).not.toBe(idsA[1]); // distinct within one load
+      expect(idsA).toEqual(idsB); // but still identical across independent loads of the same data
+    });
+  });
+
   it('LOAD_FILES keeps schedule and savedScheduleRef pointing at the same object (dirty-check invariant)', () => {
     const schedule = { ...EMPTY_SCHEDULE, assignmentList: [{ ...EMPTY_SCHEDULE.assignmentList[0] }] };
     const next = reducer(BASE_STATE, {
