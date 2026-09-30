@@ -96,6 +96,17 @@ export interface TransiteDayMap {
   days: number;
 }
 
+// Tag DEFINITIONS (id + weight, weight can be negative) — a top-level
+// EnvConfig.yaml section distinct from Worker.affinity, which is just a
+// worker's own list of tag id references into this list. Optional (not a
+// required array like the other *List fields) so existing EnvConfig
+// literals across the codebase don't all need updating for a section that
+// may simply be absent from older/simpler YAML.
+export interface AffinityTag {
+  id: string;
+  weight: number;
+}
+
 export interface EnvConfig {
   workflowList: Workflow[];
   fabList: Fab[];
@@ -104,4 +115,5 @@ export interface EnvConfig {
   workerCompanyList: WorkerCompany[];
   workerList: Worker[];
   transiteDayMap: TransiteDayMap[];
+  affinityTagList?: AffinityTag[];
 }

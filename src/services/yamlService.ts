@@ -1,6 +1,6 @@
 import * as yaml from 'js-yaml';
 import { ScheduleData, Assignment, WorkflowTask, PhaseTask, OperationTask, WorkDate, PlanFlexibility } from '../types/schedule';
-import { EnvConfig, Worker, WorkerCompany, Fab, Region, CustomerCompany, Workflow, Phase, Operation, UnavailableDateEntry, TransiteDayMap } from '../types/envConfig';
+import { EnvConfig, Worker, WorkerCompany, Fab, Region, CustomerCompany, Workflow, Phase, Operation, UnavailableDateEntry, TransiteDayMap, AffinityTag } from '../types/envConfig';
 import { HOURS_PER_DAY } from '../config/appConfig';
 import { normalizeDate } from '../utils/dateUtils';
 
@@ -279,7 +279,16 @@ function normalizeEnvConfig(data: Record<string, unknown>): EnvConfig {
     workerCompanyList: ((data.worker_company_list ?? []) as unknown[]).map(parseWorkerCompany),
     workerList: ((data.worker_list ?? []) as unknown[]).map(parseWorker),
     transiteDayMap: ((data.transite_day_map ?? []) as unknown[]).map(parseTransiteDay),
+    // undefined (not []) when the source YAML never had this key at all, so
+    // stringify's "only emit when present" check round-trips its absence
+    // too, not just its contents.
+    affinityTagList: data.affinity_tag != null ? (data.affinity_tag as unknown[]).map(parseAffinityTag) : undefined,
   };
+}
+
+function parseAffinityTag(raw: unknown): AffinityTag {
+  const r = raw as Record<string, unknown>;
+  return { id: String(r.id ?? ''), weight: Number(r.weight ?? 0) };
 }
 
 function parseUnavailableDates(raw: unknown[]): UnavailableDateEntry[] {
@@ -431,7 +440,11 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
         p(`      - id: ${op.id}`);
         p(`        name: ${ys(op.name)}`);
         p(`        work_hours: ${flowArr(op.workHours)}`);
-        p(`        workload_hours: ${op.workloadHours ?? 0}`);
+        // Only emitted when set — writing a default of 0 here would turn a
+        // genuinely-absent workload_hours (Timefold's own output for some
+        // operations) into an explicit 0 that survives every future
+        // save→reload, which is a different (and wrong) value.
+        if (op.workloadHours !== undefined) p(`        workload_hours: ${op.workloadHours}`);
         p(`        min_worker_num: ${op.minWorkerNum}`);
         p(`        max_worker_num: ${op.maxWorkerNum}`);
         p(`        required_skill_level: ${op.requiredSkillLevel ?? 0}`);
@@ -484,6 +497,18 @@ export function stringifyEnvConfigYaml(config: EnvConfig): string {
     p(`  - from: ${t.from}`);
     p(`    to: ${t.to}`);
     p(`    days: ${t.days}`);
+  }
+
+  // affinity_tag — tag DEFINITIONS (id + weight), distinct from a worker's
+  // own affinity: [...] list of tag id references. Optional: only emitted
+  // when present on the loaded EnvConfig, same as this file's other
+  // optional sections.
+  if (config.affinityTagList !== undefined) {
+    p('  affinity_tag:');
+    for (const tag of config.affinityTagList) {
+      p(`  - id: ${tag.id}`);
+      p(`    weight: ${tag.weight}`);
+    }
   }
 
   // worker_list

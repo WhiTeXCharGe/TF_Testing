@@ -220,8 +220,21 @@ describe('stringifyEnvConfigYaml round-trip', () => {
       { weekly: { weekdays: ['sunday'] } },
       { single: { days: ['2026-04-01', '2026-04-02'] } },
     ];
+    env.affinityTagList = [{ id: 'wct1', weight: 2 }, { id: 'a3', weight: -1 }];
     return env;
   };
+
+  it('round-trips the affinity_tag list (tag definitions, distinct from a worker\'s own affinity references)', () => {
+    const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
+    expect(roundTripped.affinityTagList).toEqual([{ id: 'wct1', weight: 2 }, { id: 'a3', weight: -1 }]);
+  });
+
+  it('omits affinity_tag entirely when the source EnvConfig never had it', () => {
+    const env = parseEnvConfigYaml(ENV_CONFIG_YAML); // no affinity_tag in the fixture
+    expect(env.affinityTagList).toBeUndefined();
+    const yamlOut = stringifyEnvConfigYaml(env);
+    expect(yamlOut).not.toMatch(/affinity_tag/);
+  });
 
   it('round-trips fab unavailableDates', () => {
     const roundTripped = parseEnvConfigYaml(stringifyEnvConfigYaml(richEnv()));
