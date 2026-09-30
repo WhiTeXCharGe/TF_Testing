@@ -125,3 +125,60 @@ describe('WorkTaskPanel date editing', () => {
     expect(await screen.findByText(UI.workHourTableTitle)).toBeInTheDocument();
   });
 });
+
+// misc_task_list connects to a region directly (unlike workflow_task_list,
+// which goes through fab) — MiscPanel didn't show it at all before.
+describe('MiscPanel region display', () => {
+  const ENV_WITH_REGION: EnvConfig = {
+    ...ENV_CONFIG,
+    regionList: [{ id: 'r1', name: 'Kansai', unavailableDates: [] }],
+  };
+
+  const MISC_SCHEDULE: ScheduleData = {
+    planRange: { startDate: '2026-01-01', endDate: '2026-01-31' },
+    workflowTaskList: [
+      { id: 'misc_1', name: 'VISA', workflow: 'wf_misc', region: 'r1', phaseTaskList: [] },
+    ],
+    assignmentList: [
+      {
+        worker: 'w1', operationTask: 'misc_1', startDate: '2026-01-01', endDate: '2026-01-05',
+        workDateList: [], planFlexibility: 'Fixed', description: '',
+      },
+    ],
+  };
+
+  function MiscHarness() {
+    const { dispatch } = useAppContext();
+    useEffect(() => {
+      dispatch({ type: 'LOAD_FILES', payload: { schedule: MISC_SCHEDULE, envConfig: ENV_WITH_REGION, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+      dispatch({ type: 'SELECT_ASSIGNMENT', payload: 0 });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return null;
+  }
+
+  it('shows the misc task region by name, resolved from regionList', async () => {
+    render(<AppProvider><MiscHarness /><SidePanel /></AppProvider>);
+    expect(await screen.findByText('Kansai')).toBeInTheDocument();
+  });
+
+  it('shows nothing region-related when the misc task has no region set', async () => {
+    const schedule: ScheduleData = {
+      ...MISC_SCHEDULE,
+      workflowTaskList: [{ id: 'misc_1', name: 'VISA', workflow: 'wf_misc', phaseTaskList: [] }],
+    };
+    function NoRegionHarness() {
+      const { dispatch } = useAppContext();
+      useEffect(() => {
+        dispatch({ type: 'LOAD_FILES', payload: { schedule, envConfig: ENV_WITH_REGION, envPath: 'e.yaml', schedulePath: 's.yaml' } });
+        dispatch({ type: 'SELECT_ASSIGNMENT', payload: 0 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, []);
+      return null;
+    }
+    render(<AppProvider><NoRegionHarness /><SidePanel /></AppProvider>);
+    await screen.findByText('VISA'); // panel rendered
+    expect(screen.queryByText('Kansai')).not.toBeInTheDocument();
+    expect(screen.queryByText(UI.regionFieldLabel)).not.toBeInTheDocument();
+  });
+});

@@ -476,6 +476,9 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isReadOn
 
     const worker = envConfig?.workerList.find(w => w.id === assignment.worker);
     const workerCompany = envConfig?.workerCompanyList.find(c => c.id === worker?.workerCompany);
+    // misc_task_list connects to a region directly, unlike workflow_task_list
+    // (which goes through fab) — see TaskAddDialog's own note on this.
+    const region = miscTask?.region ? envConfig?.regionList.find(r => r.id === miscTask.region) : undefined;
 
     const commitDates = (start: string, end: string) => {
       if (!start || !end || start > end) return;
@@ -505,6 +508,13 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isReadOn
           <span style={labelStyle}>{UI.taskLabel}</span>
           <span style={valueStyle}>{miscTask?.name ?? assignment.operationTask}</span>
         </div>
+
+        {miscTask?.region && (
+          <div style={rowStyle}>
+            <span style={labelStyle}>{UI.regionFieldLabel}</span>
+            <span style={valueStyle}>{region?.name ?? miscTask.region}</span>
+          </div>
+        )}
 
         <div style={rowStyle}>
           <span style={labelStyle}>{UI.startLabel}</span>

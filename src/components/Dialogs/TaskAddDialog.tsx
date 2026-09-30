@@ -30,6 +30,10 @@ interface MiscEntry {
   miscTaskId: string;
   isNewTask: boolean;
   newTaskName: string;
+  // Only meaningful for a new task — misc_task_list connects to a region
+  // directly (unlike workflow_task_list, which goes through fab), so this
+  // has to be picked here rather than derived.
+  region: string;
   workerDates: WorkerDateEntry[];
 }
 
@@ -55,6 +59,7 @@ export function TaskAddDialog() {
     miscTaskId: '',
     isNewTask: false,
     newTaskName: '',
+    region: '',
     workerDates: [makeWorkerDate(planStart, 'Fixed')],
   });
 
@@ -132,6 +137,7 @@ export function TaskAddDialog() {
             id: newId,
             name: misc.newTaskName,
             workflow: MISC_WORKFLOW_ID,
+            region: misc.region || undefined,
             phaseTaskList: [],
           }],
         });
@@ -165,7 +171,7 @@ export function TaskAddDialog() {
 
   const resetState = () => {
     setRegular({ deviceId: '', phaseId: '', opTaskId: '', workerDates: [makeWorkerDate(planStart)] });
-    setMisc({ miscTaskId: '', isNewTask: false, newTaskName: '', workerDates: [makeWorkerDate(planStart, 'Fixed')] });
+    setMisc({ miscTaskId: '', isNewTask: false, newTaskName: '', region: '', workerDates: [makeWorkerDate(planStart, 'Fixed')] });
     setUnavailWorkerIds([]);
     setUnavailStart(planStart);
     setUnavailEnd('');
@@ -299,11 +305,20 @@ export function TaskAddDialog() {
                     />
                   </Field>
                 ) : (
-                  <Field label={UI.miscNewTaskNameLabel}>
-                    <input style={S.input} type="text" value={misc.newTaskName}
-                      placeholder={UI.miscNewTaskNamePlaceholder}
-                      onChange={e => setMisc(m => ({ ...m, newTaskName: e.target.value }))} />
-                  </Field>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Field label={UI.miscNewTaskNameLabel}>
+                      <input style={S.input} type="text" value={misc.newTaskName}
+                        placeholder={UI.miscNewTaskNamePlaceholder}
+                        onChange={e => setMisc(m => ({ ...m, newTaskName: e.target.value }))} />
+                    </Field>
+                    <Field label={UI.regionFieldLabel}>
+                      <SearchableSelect
+                        value={misc.region}
+                        options={envConfig.regionList.map(r => ({ value: r.id, label: r.name ?? r.id }))}
+                        onChange={v => setMisc(m => ({ ...m, region: v }))}
+                      />
+                    </Field>
+                  </div>
                 )}
 
                 <div style={{ borderTop: '1px solid #e8e8e8', paddingTop: 8, marginTop: 8 }}>
