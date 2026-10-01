@@ -1,8 +1,29 @@
-Version 0.2.3
-Delete now requires 0 connected participants — server-enforced (409) and client-gated, matching your explicit ask
-Relaunching the app (Start Menu icon etc.) opens a new window instead of doing nothing, like VS Code
-Removed the live red violation border when a moved bar lands on a worker's unavailable date — this was my best inference from tracing useConstraintCheck's live recompute → hasViolation border; still fully reported in the deliberate 制約チェック results, just not as a per-drag highlight. Flag this one if I read it wrong — I couldn't find a second candidate mechanism after a thorough search.
-Misc tasks can have a region — add-bar dialog and the side panel now both support it
-Company/region unavailable-date display is off by default now, with a single SHOW_COMPANY_REGION_UNAVAILABLE_DATES boolean at the top of buildWorkerTimelineModel in workerViewModel.ts — flip it to true to re-enable
-affinity_tag fix — this was the real bug: a whole separate top-level EnvConfig.yaml section (tag definitions, distinct from each worker's own affinity list) that was never supported at all. Found and verified by diffing your EnvConfig_saved_before_backup.yaml/_after_backup.yaml pair directly, then confirmed the fix with a full structural round-trip against your real file. Also caught a related workload_hours bug the same way (defaulted to 0 when genuinely unset).
-Bulk-action undo/redo (バー可動性 etc.) now works in online sessions — root cause was that each client minted a random ID for assignments loaded from a session, so a revert from one participant couldn't reliably find the right assignment on another's copy. Made the ID deterministic (derived from worker+task+dates) instead of random, so every client computes the same one independently. Undo/redo now syncs properly, and still correctly blocks if someone else touched an affected bar since — verified with tests for both cases.
+件名：新規製番の工数（作業時間）設定方法についてご相談
+
+お疲れ様です。
+
+自動計画用データ（EnvConfig / Schedule）を作成するにあたり、新規製番の工数の決め方についてご相談させてください。
+
+■ 背景
+従来の製番は SU_Others に実績の割り当てが十分にあるため、実績（担当者数×日数）から工数を算出していました。
+一方、「初期データ追加情報 _20260930.rev1」の製番シートで、65行目以降に追加された新規製番（31件）は、SU_Others 側の情報が少なく、また製番シートの内容とも一致しないものが多いため、同じ方法では工数を算出できません。
+
+■ 現状（65行目以降の新規製番 31件）
+
+SU_Others の割り当てが不足している
+SU_Others に割り当てが全くない：2件（830300308A、530N03498A）
+割り当て日数が10日未満：8件
+QC担当者、またはE（電気）担当者の割り当てがないため、工程ごとの工数を算出できない：多数
+→ 現在のルールで計画対象として残るのは 31件中 5件のみです。
+製番シートと SU_Others の日程が一致しない
+第2工程開始日と、SU_Others 上の最初の割り当て日が2週間以上ずれている：12件
+例）830300272A：製番は第2工程開始 2026/12/28、SU_Others は 2026/11/08〜12/25
+例）530N03361A：製番は第2工程開始 2027/04/10、SU_Others は 2026/09/11〜09/12
+製番シートの工数がほとんど未記入
+工数の記入は第4工程のみです（60 / 42 / 90、単位の記載なし）。
+第2工程（M・E）と第3工程の工数は未記入です。
+推奨人数は 26件に記入があります。
+開始日の記入がない製番が 5件あります（うち3件は希望納期欄に「製番間違い」と記載）。
+
+■ ご相談したい点
+新規製番の工数について、どの方法で設定するのがよいかご判断いただけますでしょうか。
