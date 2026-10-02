@@ -7,30 +7,35 @@
 #
 # Decoder7 vs Decoder6 — what changed and why:
 #
-# 1) ONE INPUT FILE. 初期データ追加情報(.xlsx / _r.xlsx) are no longer read.
-#    - 製番 is gone: every tool code found in SU_Others is a candidate module,
-#      and its planned reference window is built from SU_Others' own actual
-#      span (the same "rescue" path decoder6 used for modules with no 製番
-#      dates). customer / fab / region are unknown -> "Other".
-#    - 作業者 (R/S) is gone: regular/spot now comes from SU_Others' Status column.
+# 1) INPUTS (two files):
+#    --su-others   SU_Others .xlsm (e.g. "20260915 SU_Others_skill level有配布禁止_.xlsm")
+#                    - 予定表_2026      : MAIN TASK sheet (day-by-day assignments,
+#                                         red/grey cells, company, 作業責任者, description)
+#                    - 予定表_2026 (2)  : SKILL REFERENCE sheet (担当職種, スキルレベル,
+#                                         Status = Primary/Secondary)
+#    --seiban-info 初期データ追加情報 (e.g. "初期データ追加情報 _20260930.rev1.xlsx"),
+#                  sheet 製番 only: the TARGET modules = rows from
+#                  --seiban-start-row (default 65) down. A tool code that is
+#                  not in that part of 製番 becomes an "other" misc task.
+#                  Rows whose 希望納期 says 製番間違い/製番まちがい ("wrong 製番")
+#                  are not targets either. There is no 作業者 sheet anymore.
 #
-# 2) SKILL LEVELS from SU_Others 担当職種 (G) + スキルレベル (H):
+# 2) SKILL LEVELS, from the skill sheet's 担当職種 (G) + スキルレベル (H),
+#    matched to the main-sheet worker by ID, then by name:
 #    - 担当職種 blank                -> not a target of (auto) planning
-#    - スキルレベル == 0              -> not a target of (auto) planning
+#    - スキルレベル == 0 / blank      -> not a target of (auto) planning
+#    - worker not in the skill sheet -> not a target of (auto) planning
 #    - "M/QC" + "2/3"               -> M=2, QC=3 (paired by position)
 #    - "M/QC" + "3" (single number) -> M=3, QC=3 (same level for every role)
 #    Role -> operation: M -> p2o1, E -> p2o2, QC (or a lone "Q") -> p3o1+p4o1.
 #    Other roles (搬送/溶接/通訳/安全/...) map to no operation.
-#    When several スキルレベル columns exist, the one whose date stamp in the
-#    header row above it is the newest (e.g. 20260915 over 20260401) is used.
 #    Workers that are not planning targets keep their real SU_Others
 #    assignments, but always as plan_flexibility: Fixed.
+#    (The skill sheet's 担当職種 is also the role used by the phase-split /
+#    no-QC heuristics; the main sheet's 担当職種 is only a fallback there.)
 #
-# 3) STATUS: Primary -> "regular"; Secondary / blank -> "spot", applied to
-#    every operation in the worker's skill_map. 予定表_2026's Status column is
-#    blank in the 20260915 file, so a blank Status falls back to the same
-#    worker's Status in --status-sheet (default "予定表_2026 (2)"), matched by
-#    ID, then by name.
+# 3) STATUS (skill sheet): Primary -> "regular"; Secondary / blank -> "spot",
+#    applied to every operation in the worker's skill_map.
 #
 # 4) MISC TASKS live in Schedule.yaml only: EnvConfig no longer has
 #    other_op / personal_business_op in skill_map. misc_task_list entries use
@@ -46,6 +51,15 @@
 #    company (wct{n}, weight 2), and each worker gets affinity: [wct{n}] for
 #    its own company, so workers of the same company prefer working together.
 #
+# 8) WORKLOAD PREDICTION (see PRED_* config): 新規製番 have too little
+#    SU_Others data for actual-only workloads, so every target module gets
+#    workload = max(actual, 推奨人数 x 30 worker-days) (工数 60 / 推奨人数 2),
+#    in hours = worker-days x 10 like decoder6. Targets with a blank 推奨人数
+#    (and 製番間違い rows) become misc tasks.
+#    Target modules the actual-data cut rules would drop (no QC, zero
+#    workload, few cells) are kept when 製番 has p2/p3/p4 start dates: phase
+#    windows from 製番 (p4 end predicted), their SU_Others cells kept.
+#
 # 7) Tool codes are NFKC-normalised before matching, so full-width digits
 #    (e.g. "５３０N03567A") are the same module as "530N03567A".
 #
@@ -54,8 +68,8 @@
 # overtime limits.
 #
 # The SU_Others cell rules (red = unavailable, grey = personal business,
-# FI/FO ignored) and the whole cut/outlier/shift pipeline are carried over
-# from decoder6 unchanged.
+# FI/FO ignored), the 製番 dummy/rescue rules and the whole cut/outlier/shift
+# pipeline are carried over from decoder6 unchanged.
 #
 #python decoder7.py --su-others "20260915 SU_Others_skill level有配布禁止_.xlsm" --plan-start 2026/09/15 --envconfig-out decoder7_out/EnvConfig.yaml --schedule-out decoder7_out/Schedule.yaml --log-out decoder7_out/TransformationLog.txt
 # ---------------------------------------------------------------------
@@ -76,7 +90,7 @@ from openpyxl import load_workbook
 from openpyxl.styles.colors import COLOR_INDEX
 
 # ---------------------------------------------------------------------
-# CONFIG (edit here; the input file + plan range are CLI args, see main())
+# CONFIG (edit here; the input files + plan range are CLI args, see main())
 # ---------------------------------------------------------------------
 DEFAULT_MAX_WORKER = 8
 HOURS_PER_WORKDAY = 10  # matches the "hour: 10" used per assignment work day
@@ -93,11 +107,10 @@ SHIFT_USE_WORKED_DAYS = True
 CUT_MODULE_IF_PHASE_ZERO_WORKLOAD = False
 
 # Decoder5 default was True (skip modules with no SU_Others match entirely).
-# Decoder6 default was False (a 製番 module with no SU_Others work still showed
-# up on its planned dates). Decoder7 has no 製番: a module whose every cell was
-# cut by the cleanup rules above has no data left at all, so it is dropped
-# (its cells already fell through to "other" misc tasks).
-SKIP_MODULE_IF_NO_SU_MATCH = True
+# Decoder6/7 default is False: modules with no actual work found still show up
+# in Schedule.yaml, using their planned 製番 dates (as long as those dates are
+# complete — see parse_seiban_merged).
+SKIP_MODULE_IF_NO_SU_MATCH = False
 
 MIN_WORKED_DAYS_FOR_TOOL = 4
 MIN_LEFT_DATE_SPAN_RATIO = 0.20
@@ -113,6 +126,25 @@ DUMMY_HEAD_DAYS_FROM_PLAN_START = 10
 ONGOING_TAIL_KEEP_GAP_DAYS = 30
 
 TRANSFORMATION_LOG = "TransformationLog.txt"
+
+# ------------------------------------------------------------------
+# Workload PREDICTION for target (新規) modules.
+# 新規製番 have little or no SU_Others data yet, so actual-only workloads
+# (decoder6) leave most of them empty. Rule agreed for now: 製番's
+# 第4工程 is 工数 60 for 推奨人数 2, i.e. 30 workload (worker-days) per
+# recommended person, applied to every operation:
+#     predicted worker-days = 推奨人数 x PRED_WD_PER_PERSON
+# converted to hours like decoder6 (1 worker-day = HOURS_PER_WORKDAY h).
+# Final workload = max(actual SU_Others worker-days, predicted).
+# Target modules with any blank 推奨人数 can't be predicted -> misc tasks.
+# ------------------------------------------------------------------
+PREDICT_TARGET_WORKLOAD = True
+PRED_WD_PER_PERSON = 60 / 2  # 製番 第4工程: 工数 60 / 推奨人数 2
+
+# 製番 target list starts at this Excel row (rows 3..64 of
+# "初期データ追加情報 _20260930.rev1" are an older block; the target list is
+# 65 onward). Codes in rows above it are treated like codes not in 製番 (misc).
+SEIBAN_START_ROW = 65
 
 EXCEL_EPOCH = datetime(1899, 12, 30)
 
@@ -969,10 +1001,11 @@ def _detect_su_columns(ws, label_row_idx, stamp_row_idx=None):
     }
 
 
-def _read_status_fallback(wb, sheet_name):
+def _read_skill_reference(wb, sheet_name):
     """
-    {("id", ID) | ("name", norm_name): "Primary"/"Secondary"} from another
-    sheet (default "予定表_2026 (2)"), used when the main sheet's Status is blank.
+    {("id", ID) | ("name", norm_name): {"role", "skill", "status"}} from the
+    skill reference sheet (default "予定表_2026 (2)": 担当職種 / スキルレベル /
+    Status). The first row wins when an ID/name repeats.
     """
     if not sheet_name or sheet_name not in wb.sheetnames:
         return {}
@@ -982,22 +1015,27 @@ def _read_status_fallback(wb, sheet_name):
     except RuntimeError:
         return {}
     label_row_idx = date_row_idx + 1
-    cols = _detect_su_columns(ws, label_row_idx)
-    if cols["status"] is None:
-        return {}
+    cols = _detect_su_columns(ws, label_row_idx, stamp_row_idx=date_row_idx)
+    used = [c for c in (cols["id"], cols["name"], cols["role"], cols["skill"], cols["status"]) if c is not None]
+    last_col = max(used) + 1
+
+    def _get(row, c):
+        return _cell_str(row[c]) if c is not None and c < len(row) else ""
+
     out = {}
-    last_col = max(c for c in (cols["id"], cols["name"], cols["status"]) if c is not None) + 1
     for row in ws.iter_rows(min_row=label_row_idx + 1, max_col=last_col, values_only=True):
-        name = row[cols["name"]] if cols["name"] < len(row) else None
-        status = row[cols["status"]] if cols["status"] < len(row) else None
-        if not name or not isinstance(status, str) or not status.strip():
+        name = _get(row, cols["name"])
+        if not name:
             continue
-        status = status.strip()
-        out.setdefault(("name", _norm_name(str(name))), status)
-        wid_raw = row[cols["id"]] if cols["id"] is not None and cols["id"] < len(row) else None
-        wid_s = str(wid_raw).strip() if wid_raw is not None else ""
-        if wid_s and wid_s.lower() != "null":
-            out.setdefault(("id", wid_s), status)
+        ref = {
+            "role": "/".join("QC" if t.upper() == "Q" else t for t in _split_slash(_get(row, cols["role"]))),
+            "skill": _get(row, cols["skill"]),
+            "status": _get(row, cols["status"]),
+        }
+        out.setdefault(("name", _norm_name(name)), ref)
+        ext_id = _get(row, cols["id"])
+        if ext_id and ext_id.lower() != "null":
+            out.setdefault(("id", ext_id), ref)
     return out
 
 
@@ -1009,14 +1047,14 @@ def _cell_str(v):
     return _clean_text(str(v)).strip()
 
 
-def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None, status_fallback_sheet=None):
+def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None, skill_sheet=None):
     wb = load_workbook(path, data_only=True, read_only=False)
     used_sheets = [s for s in sheet_names if s in wb.sheetnames]
     if not used_sheets:
         raise ValueError(f"None of {sheet_names} found in {path}. Available: {wb.sheetnames}")
 
     theme_palette = _load_theme_palette(wb)
-    status_fallback = _read_status_fallback(wb, status_fallback_sheet)
+    skill_ref = _read_skill_reference(wb, skill_sheet)
     f_start, f_end = date_filter if date_filter else (None, None)
 
     worker_company_map = {}
@@ -1039,10 +1077,11 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
     worker_date_map = {}
     worker_personal_map = {}
     worker_color_map = {}      # (wid, dt) -> "RRGGBB" fill colour of that cell
-    worker_roles = {}
+    worker_roles = {}          # wid -> role used by the phase heuristics (skill sheet, else main sheet)
+    worker_skill_role = {}     # wid -> 担当職種 from the skill sheet ("" if absent)
     worker_skill_raw = {}      # wid -> raw スキルレベル text ("3", "2/3", "0", ...)
     worker_status = {}         # wid -> "Primary"/"Secondary"/""
-    worker_status_source = {}  # wid -> "main" / "fallback" / "none"
+    worker_in_skill_sheet = {} # wid -> True if matched in the skill sheet
     worker_description = {}
 
     plan_start = None
@@ -1115,22 +1154,21 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
                     worker_acc[key]["is_manager"] = True
 
             wid = worker_key_to_id[key]
-            if role_text:
-                prev_role = worker_roles.get(wid, "")
-                if len(role_text) >= len(prev_role):
+            if wid not in worker_in_skill_sheet:
+                ext_id = _col_text(cols["id"])
+                ref = (skill_ref.get(("id", ext_id)) if ext_id and ext_id.lower() != "null" else None) \
+                    or skill_ref.get(("name", key))
+                worker_in_skill_sheet[wid] = ref is not None
+                ref = ref or {}
+                worker_skill_role[wid] = ref.get("role", "")
+                worker_skill_raw[wid] = ref.get("skill", "")
+                worker_status[wid] = ref.get("status", "")
+                if worker_skill_role[wid]:
+                    worker_roles[wid] = worker_skill_role[wid]
+            # main-sheet role only as a fallback for the phase heuristics
+            if role_text and not worker_skill_role.get(wid):
+                if len(role_text) >= len(worker_roles.get(wid, "")):
                     worker_roles[wid] = role_text
-                    worker_skill_raw[wid] = _col_text(cols["skill"])
-
-            if wid not in worker_status:
-                status = _col_text(cols["status"])
-                source = "main" if status else "none"
-                if not status:
-                    ext_id = _col_text(cols["id"])
-                    status = (status_fallback.get(("id", ext_id)) if ext_id and ext_id.lower() != "null" else None) \
-                        or status_fallback.get(("name", key)) or ""
-                    source = "fallback" if status else "none"
-                worker_status[wid] = status
-                worker_status_source[wid] = source
 
             if wid not in worker_description:
                 gyoumu = _col_text(cols["gyoumu"])
@@ -1197,8 +1235,9 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
         "worker_list": worker_list, "plan_range": plan_range,
         "worker_date_map": worker_date_map, "worker_personal_map": worker_personal_map,
         "worker_color_map": worker_color_map,
-        "worker_roles": worker_roles, "worker_skill_raw": worker_skill_raw,
-        "worker_status": worker_status, "worker_status_source": worker_status_source,
+        "worker_roles": worker_roles, "worker_skill_role": worker_skill_role,
+        "worker_skill_raw": worker_skill_raw, "worker_status": worker_status,
+        "worker_in_skill_sheet": worker_in_skill_sheet,
         "worker_description": worker_description,
     }
 
@@ -1237,7 +1276,9 @@ def parse_worker_skills(role_text: str, skill_raw: str):
             levels.append(int(float(tok)))
         except ValueError:
             levels.append(None)
-    if not levels or all(lv is None for lv in levels):
+    if not levels:
+        return {}, "スキルレベル blank"
+    if all(lv is None for lv in levels):
         return {}, f"スキルレベル unreadable ({skill_raw!r})"
     if all((lv or 0) == 0 for lv in levels):
         return {}, "スキルレベル 0"
@@ -1262,30 +1303,162 @@ def parse_worker_skills(role_text: str, skill_raw: str):
 
 
 # ============================================================
-# Planned reference per module, from SU_Others alone (no 製番 in decoder7)
+# 製番 sheet parsing (replaces 新規製番リスト "CSV" sheet)
 # ============================================================
+# Columns (1-based), confirmed against both new Excel files:
+#  1 製番 | 2 ユーザー | 3 Fab | 4 地域
+#  5 第2工程 開始日 | 6 作業種別(M) | 7 工数(M) | 8 推奨人数(M)
+#  9 作業種別(E) | 10 工数(E) | 11 推奨人数(E)
+# 12 第3工程 開始日 | 13 作業種別(QC) | 14 工数 | 15 推奨人数
+# 16 第4工程 開始日 | 17 作業種別(QC) | 18 工数 | 19 推奨人数
+# 20 希望納期
 
-def build_planned_meta_from_su(su_code_span: dict):
+_SEIBAN_COL = {
+    "code": 1, "customer": 2, "fab": 3, "region": 4,
+    "p2_start": 5, "p2m_headcount": 8,
+    "p2e_headcount": 11,
+    "p3_start": 12, "p3_headcount": 15,
+    "p4_start": 16, "p4_kousu": 18, "p4_headcount": 19,
+    "delivery": 20,
+}
+
+
+def _num_or_none(v):
+    if v is None:
+        return None
+    if isinstance(v, (int, float)) and not (isinstance(v, float) and pd.isna(v)):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            return float(v.strip())
+        except Exception:
+            return None
+    return None
+
+
+def _read_seiban_sheet(path, start_row=3):
+    if not path:
+        return {}
+    wb = load_workbook(path, data_only=True)
+    if "製番" not in wb.sheetnames:
+        return {}
+    ws = wb["製番"]
+    rows = {}
+    for r in range(max(3, int(start_row)), ws.max_row + 1):
+        code_raw = ws.cell(row=r, column=_SEIBAN_COL["code"]).value
+        if not isinstance(code_raw, str) or not code_raw.strip():
+            continue
+        code = unicodedata.normalize("NFKC", code_raw).strip()
+
+        def cell(key):
+            return ws.cell(row=r, column=_SEIBAN_COL[key]).value
+
+        rows[code] = {
+            "customer": cell("customer"),
+            "fab": cell("fab"),
+            "region": cell("region"),
+            "p2_start": _as_timestamp(cell("p2_start")),
+            "p2m_headcount": _num_or_none(cell("p2m_headcount")),
+            "p2e_headcount": _num_or_none(cell("p2e_headcount")),
+            "p3_start": _as_timestamp(cell("p3_start")),
+            "p3_headcount": _num_or_none(cell("p3_headcount")),
+            "p4_start": _as_timestamp(cell("p4_start")),
+            "p4_headcount": _num_or_none(cell("p4_headcount")),
+            "p4_kousu": _num_or_none(cell("p4_kousu")),
+            "delivery": _as_timestamp(cell("delivery")),
+            "delivery_note": cell("delivery") if isinstance(cell("delivery"), str) else None,
+        }
+    return rows
+
+
+def parse_seiban_merged(base_path, r_path, plan_start: pd.Timestamp, plan_end: pd.Timestamp, su_code_span: dict | None = None,
+                        start_row=3):
     """
-    Same shape as decoder6's parse_seiban_merged() output. With no 製番 file,
-    every tool code found in SU_Others gets decoder6's "rescue" treatment:
-    its nominal planned p2/p3/p4 window is its own actual first..last
-    occurrence span, split evenly. The real phase boundaries are re-derived
-    from role data by build_shifted_meta() afterwards anyway; this nominal
-    window only feeds the ratio/distance cut rules, which are therefore
-    self-consistent by construction. customer/fab/region are unknown.
+    Returns the same shape as decoder5's parse_tasks_from_csv_v5():
+    {"valid_codes", "planned_meta", "cut_rows", "date_list"}, so the rest of
+    the pipeline (build_shifted_meta etc.) is unchanged.
+
+    SU_Others is the main source of truth, same philosophy as decoder5's
+    "SU_Others provides actual execution span". 製番's p2/p3/p4 start dates
+    are only used as a *planned reference* (proportions, ratio checks) — if
+    they're missing or out of order, but the module code has real occurrences
+    in SU_Others (`su_code_span`), the module is NOT dropped: a nominal
+    evenly-split "planned" window is built from SU_Others' own actual span
+    instead, and the rest of the pipeline (which shifts onto the real worked
+    days regardless) takes it from there. A module is only dropped entirely
+    (treated as dummy/not-listed) when 製番 has nothing usable AND SU_Others
+    has no occurrences of it either — genuinely no data anywhere.
+
+    There is no plan-range containment check here anymore: a module starting
+    before plan_start is not dummied, it's kept and its already-happened
+    portion is marked plan_flexibility="Fixed" downstream (build_assignments_v6),
+    with only the portion at/after plan_start left "Flexible" for the
+    scheduler.
+
+    希望納期 (delivery) is handled separately from p2/p3/p4: in practice it is
+    blank in essentially every row of both files (0/60 in the sample data),
+    unlike p2/p3/p4 start (26/60 filled) — so treating a missing delivery the
+    same as missing start dates would dummy out every module. When missing
+    (or earlier than p4_start), it defaults to plan_end.
     """
+    su_code_span = su_code_span or {}
+    base_rows = _read_seiban_sheet(base_path, start_row)
+    r_rows = _read_seiban_sheet(r_path, start_row)
+    all_codes = sorted(set(base_rows) | set(r_rows))
+
     planned_meta = {}
+    cut_rows = []
     all_dates = []
 
-    for code in sorted(su_code_span):
-        actual_start, actual_end = su_code_span[code]
-        total_days = int((actual_end - actual_start).days) + 1
-        alloc = _allocate_phase_lengths_v5(total_days, {2: 1, 3: 1, 4: 1}, phase_ids=(2, 3, 4), min_one=(total_days >= 3))
-        p2s = actual_start
-        p3s = p2s + pd.Timedelta(days=int(alloc[2]))
-        p4s = p3s + pd.Timedelta(days=int(alloc[3]))
-        deliv = max(actual_end, p4s)
+    for code in all_codes:
+        b = base_rows.get(code, {})
+        rr = r_rows.get(code, {})
+
+        def pick(key):
+            v = rr.get(key)
+            if v is None or (isinstance(v, str) and not v.strip()):
+                v = b.get(key)
+            return v
+
+        customer = pick("customer")
+        customer = str(customer).strip() if isinstance(customer, str) and str(customer).strip() else "OTHER"
+        fab_name = pick("fab")
+        fab_name = str(fab_name).strip() if isinstance(fab_name, str) and str(fab_name).strip() else "Other"
+        country = pick("region")
+        country = str(country).strip() if isinstance(country, str) and str(country).strip() else "Other"
+
+        note = pick("delivery_note")
+        if isinstance(note, str) and ("間違" in note or "まちがい" in note):
+            cut_rows.append((code, f"DUMMY: 希望納期 says {note.strip()!r} (wrong 製番) -> not a target"))
+            continue
+
+        p2s, p3s, p4s, deliv = pick("p2_start"), pick("p3_start"), pick("p4_start"), pick("delivery")
+
+        complete = all(x is not None for x in (p2s, p3s, p4s))
+        ordered = complete and (p2s <= p3s <= p4s)
+
+        if not ordered:
+            span = su_code_span.get(code)
+            reason = "missing p2/p3/p4" if not complete else "p2/p3/p4 out of order"
+            if span is None:
+                cut_rows.append((code, f"DUMMY: {reason}, no SU_Others data either"))
+                continue
+            actual_start, actual_end = span
+            total_days = int((actual_end - actual_start).days) + 1
+            alloc = _allocate_phase_lengths_v5(total_days, {2: 1, 3: 1, 4: 1}, phase_ids=(2, 3, 4), min_one=(total_days >= 3))
+            p2s = actual_start
+            p3s = p2s + pd.Timedelta(days=int(alloc[2]))
+            p4s = p3s + pd.Timedelta(days=int(alloc[3]))
+            deliv = actual_end
+            cut_rows.append((code, f"NOTE: {reason}; using SU_Others span {_to_ymd(actual_start)}-{_to_ymd(actual_end)} as planned reference"))
+
+        if deliv is None or deliv < p4s:
+            reason = "missing" if deliv is None else "before p4_start"
+            deliv = max(p4s, plan_end)
+            cut_rows.append((code, f"NOTE: delivery {reason}; defaulted to {_to_ymd(deliv)}"))
+
+        overall_start = p2s
+        overall_end = deliv
 
         starts = {2: p2s, 3: p3s, 4: p4s}
         ends = {
@@ -1298,20 +1471,37 @@ def build_planned_meta_from_su(su_code_span: dict):
                 ends[ph] = starts[ph]
 
         phase_len = {ph: int((ends[ph] - starts[ph]).days) + 1 for ph in (2, 3, 4)}
+
+        # 希望納期 (delivery) is a customer deadline, not a tight "phase-4 end"
+        # like the old sheet's p4終了予定日 was — it can sit hundreds of days
+        # past p4's start. Used raw, that blows up phase4's weight and skews
+        # every ratio-based heuristic downstream (e.g. a module with a fine,
+        # short real worked span gets wrongly judged "too short vs. plan").
+        # overall_end / ends[4] still show the true delivery date; only the
+        # *proportion* used for splitting/ratio checks is capped.
+        cap4 = phase_len[2] + phase_len[3]
+        if cap4 <= 0:
+            cap4 = phase_len[4]
+        if phase_len[4] > cap4:
+            phase_len[4] = max(cap4, 1)
+
         total_len = sum(phase_len.values())
         phase_pct = {ph: (phase_len[ph] / total_len) for ph in (2, 3, 4)}
 
         planned_meta[code] = {
-            "customer": "OTHER", "country": "Other", "fab_name": "Other",
+            "customer": customer, "country": country, "fab_name": fab_name,
             "starts": starts, "ends": ends, "phase_len": phase_len, "phase_pct": phase_pct,
-            "overall_start": p2s, "overall_end": deliv, "total_len": total_len,
-            "p2m_headcount": None, "p2e_headcount": None, "p3_headcount": None, "p4_headcount": None,
+            "overall_start": overall_start, "overall_end": overall_end, "total_len": total_len,
+            "p2m_headcount": pick("p2m_headcount"), "p2e_headcount": pick("p2e_headcount"),
+            "p3_headcount": pick("p3_headcount"), "p4_headcount": pick("p4_headcount"),
+            "p4_kousu": pick("p4_kousu"),
+            "seiban_dates": bool(ordered),  # p2/p3/p4 start really come from 製番
         }
-        all_dates.extend([p2s, deliv])
+        all_dates.extend([overall_start, overall_end])
 
     return {
         "valid_codes": sorted(planned_meta.keys()), "planned_meta": planned_meta,
-        "cut_rows": [], "date_list": all_dates,
+        "cut_rows": cut_rows, "date_list": all_dates,
     }
 
 
@@ -1894,17 +2084,37 @@ def _format_phase_line(ph, start, end, extra=""):
     return f"  - P{ph}: {s} - {e} {extra}" if extra else f"  - P{ph}: {s} - {e}"
 
 
+SEIBAN_HEADCOUNT_KEYS = {"p2o1": "p2m_headcount", "p2o2": "p2e_headcount",
+                         "p3o1": "p3_headcount", "p4o1": "p4_headcount"}
+
+
+def predict_operation_workdays(meta):
+    """Predicted worker-days per operation: 推奨人数 x PRED_WD_PER_PERSON."""
+    return {op: float(meta.get(key) or 0) * PRED_WD_PER_PERSON for op, key in SEIBAN_HEADCOUNT_KEYS.items()}
+
+
+def _prediction_log_header(shifted_meta, predicted_codes, seiban_planned):
+    lines = [f"method: worker-days = 推奨人数 x {PRED_WD_PER_PERSON:g} (= 工数 60 / 推奨人数 2), "
+             f"hours = worker-days x {HOURS_PER_WORKDAY}; workload = max(actual SU_Others, predicted)"]
+    for code in sorted(shifted_meta):
+        m = seiban_planned.get(code, {})
+        kind = "製番 dates + prediction (cut by actual-data rules)" if code in predicted_codes else "SU_Others actual + prediction"
+        k4 = m.get("p4_kousu")
+        lines.append(f"module {code}: {kind}; 推奨人数 M/E/P3/P4 = {m.get('p2m_headcount')}/{m.get('p2e_headcount')}/"
+                     f"{m.get('p3_headcount')}/{m.get('p4_headcount')}; 製番 第4工程 工数 = {k4 if k4 is not None else '-'}")
+    return lines
+
+
 def _worker_skill_log_lines(worker_list, su_data, excluded_workers):
-    roles = su_data.get("worker_roles", {})
+    roles = su_data.get("worker_skill_role", {})
     skill_raw = su_data.get("worker_skill_raw", {})
     status = su_data.get("worker_status", {})
-    status_src = su_data.get("worker_status_source", {})
     lines = []
     for w in worker_list:
         wid = w["id"]
         head = (f"- {wid}({w['name']}) 担当職種={roles.get(wid, '') or '-'} "
                 f"スキルレベル={skill_raw.get(wid, '') or '-'} "
-                f"Status={status.get(wid, '') or '-'}({status_src.get(wid, 'none')})")
+                f"Status={status.get(wid, '') or '-'}")
         if wid in excluded_workers:
             lines.append(f"{head} -> NOT A PLANNING TARGET ({excluded_workers[wid]}); assignments kept as Fixed")
         else:
@@ -1916,14 +2126,18 @@ def _worker_skill_log_lines(worker_list, su_data, excluded_workers):
 
 def write_transformation_log(out_path, cut_rows, shifted_meta, worker_id_to_name, workload_zero_ops,
                               dummy_tool_labels, su_outlier_corrections, outlier_cut_summary, pb_worker_dates,
-                              worker_skill_lines=()):
+                              worker_skill_lines=(), prediction_lines=()):
     lines = ["Decoder7 Transformation Log", ""]
 
-    lines.append("---------------------- WORKER SKILL / STATUS (担当職種 + スキルレベル + Status) ----------------------")
+    lines.append("---------------------- WORKLOAD PREDICTION (target 新規製番) ----------------------")
+    lines.extend(prediction_lines or ["(none)"])
+    lines.append("")
+
+    lines.append("---------------------- WORKER SKILL / STATUS (skill sheet: 担当職種 + スキルレベル + Status) ----------------------")
     lines.extend(worker_skill_lines or ["(none)"])
     lines.append("")
 
-    lines.append("---------------------- CUT (module level) ----------------------")
+    lines.append("---------------------- CUT / DEFAULTED (from 製番) ----------------------")
     lines.append("(none)" if not cut_rows else "")
     for code, reason in cut_rows:
         lines.append(f"- {code}: {reason}")
@@ -1955,7 +2169,7 @@ def write_transformation_log(out_path, cut_rows, shifted_meta, worker_id_to_name
         m = shifted_meta[code]
         plan = m["plan"]
         lines.append(f"module: {code}")
-        lines.append("planned reference (SU_Others span, split evenly):")
+        lines.append("planned (製番):")
         total_len = plan["total_len"]
         for ph in (2, 3, 4):
             pl = plan["phase_len"][ph]
@@ -1984,7 +2198,7 @@ def write_transformation_log(out_path, cut_rows, shifted_meta, worker_id_to_name
             lines.append(f"- operation_task: {op_id} / module: {mod} (no assigned worker-days in SU_Others after shifting)")
     lines.append("")
 
-    lines.append("---------------------- DUMMY MODULES (tool-code cells that ended up as 'other') ----------------------")
+    lines.append("---------------------- DUMMY MODULES (SU_Others tool-code not in 製番 -> misc) ----------------------")
     if not dummy_tool_labels:
         lines.append("(none)")
     else:
@@ -2025,13 +2239,13 @@ def write_transformation_log(out_path, cut_rows, shifted_meta, worker_id_to_name
 # ============================================================
 
 def build_env_and_schedule_decoder7(
-    su_others_path,
+    su_others_path, seiban_info_path,
     envconfig_out="EnvConfig.yaml", schedule_out="Schedule.yaml", log_out=TRANSFORMATION_LOG,
     plan_start=None, plan_end=None, su_sheet_names=("予定表_2026",),
-    status_sheet="予定表_2026 (2)", phase34_cap_days=None,
+    skill_sheet="予定表_2026 (2)", seiban_start_row=SEIBAN_START_ROW, phase34_cap_days=None,
 ):
     # 1) SU_Others actual work data (need this first to get a natural plan range fallback)
-    su_data = parse_su_others(su_others_path, sheet_names=su_sheet_names, status_fallback_sheet=status_sheet)
+    su_data = parse_su_others(su_others_path, sheet_names=su_sheet_names, skill_sheet=skill_sheet)
 
     natural_start = _as_timestamp(su_data["plan_range"]["start_date"])
     natural_end = _as_timestamp(su_data["plan_range"]["end_date"])
@@ -2043,7 +2257,9 @@ def build_env_and_schedule_decoder7(
         resolved_plan_start, resolved_plan_end = resolved_plan_end, resolved_plan_start
 
     # 1.5) raw code -> (earliest, latest) occurrence in SU_Others, BEFORE any
-    # outlier cleanup — the nominal planned window of every module (no 製番).
+    # outlier cleanup — used so parse_seiban_merged can recognize "this
+    # module has no usable 製番 dates, but SU_Others is the main source and
+    # it does have real data for it" instead of dummying it.
     su_code_dates = defaultdict(list)
     for (_wid, _dt), _text in su_data["worker_date_map"].items():
         _code = extract_tool_code(_text)
@@ -2051,11 +2267,24 @@ def build_env_and_schedule_decoder7(
             su_code_dates[_code].append(_dt)
     su_code_span = {code: (min(dts), max(dts)) for code, dts in su_code_dates.items()}
 
-    # 2) planned modules = every tool code in SU_Others (no 製番 in decoder7)
-    task_meta = build_planned_meta_from_su(su_code_span)
+    # 2) 製番 = the target modules; SU_Others fills in for modules missing 製番 dates.
+    #    Single file in decoder7 (no base/_r pair), so it is passed as the "_r" file.
+    #    Only 製番 rows >= seiban_start_row are targets; codes above it fall
+    #    through to "other" misc tasks like any code not in 製番.
+    task_meta = parse_seiban_merged(None, seiban_info_path, resolved_plan_start, resolved_plan_end,
+                                    su_code_span=su_code_span, start_row=seiban_start_row)
     planned_meta = task_meta["planned_meta"]
     cut_rows = list(task_meta["cut_rows"])
     valid_code_set = set(planned_meta.keys())
+    if PREDICT_TARGET_WORKLOAD:
+        for code in sorted(planned_meta):
+            blank = [op for op, key in SEIBAN_HEADCOUNT_KEYS.items() if not planned_meta[code].get(key)]
+            if blank:
+                cut_rows.append((code, f"DUMMY: 推奨人数 blank for {', '.join(blank)} -> misc task"))
+                planned_meta.pop(code)
+        valid_code_set = set(planned_meta.keys())
+        task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
+    seiban_planned = dict(planned_meta)  # every target module, before any cut
 
     # 3) SU_Others outlier cleanup pipeline (unchanged from decoder5/6)
     su_outlier_corrections = cut_su_outlier_cells(
@@ -2101,6 +2330,11 @@ def build_env_and_schedule_decoder7(
     worker_list = su_data["worker_list"]
 
     worker_id_to_name = {w["id"]: w["name"] for w in worker_list}
+
+    # snapshot of the cleaned cells, before the module-level cuts below break
+    # tool codes (no QC / zero phase); predicted modules get their cells back
+    cells_before_module_cuts = dict(su_data["worker_date_map"])
+    orig_keys_before_module_cuts = set(su_data.get("su_outlier_original_text", {}))
 
     # 6) shifted meta (real work -> phase windows) using SU_Others
     shifted_meta, code_to_shifted_phases, code_occ = build_shifted_meta(
@@ -2151,6 +2385,75 @@ def build_env_and_schedule_decoder7(
             shifted_meta.pop(code, None)
         valid_code_set = set(planned_meta.keys())
         task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
+
+    # 6.9) decoder7: a module is only kept if EVERY operation (p2o1, p2o2,
+    #     p3o1, p4o1) gets real worker-days. Dry-run the assignment step; any
+    #     module with a zero-workload operation is dropped, so its cells fall
+    #     through to "other" misc tasks. Repeat until stable.
+    while True:
+        _tt, _c2p, _ = build_tool_tasks(task_meta, shifted_meta)
+        _op_workerdays = build_assignments_v7(su_data, _c2p, valid_code_set, plan_start=resolved_plan_start)[2]
+        zero_codes = {}
+        for t in _tt:
+            zero_ops = [ot["operation"] for pt in t["phase_task_list"] for ot in pt["operation_task_list"]
+                        if not _op_workerdays.get(ot["id"])]
+            if zero_ops:
+                zero_codes[t["module_code"]] = zero_ops
+        if not zero_codes:
+            break
+        for code in sorted(zero_codes):
+            cut_rows.append((code, f"DUMMY: zero workload in {', '.join(zero_codes[code])} -> misc task"))
+            planned_meta.pop(code, None)
+            shifted_meta.pop(code, None)
+        valid_code_set = set(planned_meta.keys())
+        task_meta["valid_codes"] = [c for c in task_meta["valid_codes"] if c in valid_code_set]
+
+    # 6.95) decoder7 prediction: target modules that were cut above (no QC,
+    #      zero workload, too little SU_Others data, ...) are kept anyway when
+    #      製番 has real p2/p3/p4 start dates — that's the normal case for a
+    #      新規製番 that hasn't been staffed in SU_Others yet. Their windows come
+    #      from 製番 (stretched to cover their remaining SU_Others cells), and
+    #      their workload comes from the prediction (step 13).
+    predicted_codes = set()
+    if PREDICT_TARGET_WORKLOAD:
+        restore_codes = sorted(c for c, m in seiban_planned.items()
+                               if c not in planned_meta and m.get("seiban_dates"))
+        orig_map = su_data.setdefault("su_outlier_original_text", {})
+        for code in restore_codes:
+            meta = seiban_planned[code]
+            # give back the cells the module-level cuts broke
+            cell_dates = []
+            for (wid, dt), text in cells_before_module_cuts.items():
+                if extract_tool_code(text) == code:
+                    su_data["worker_date_map"][(wid, dt)] = text
+                    k = (wid, _to_ymd(dt))
+                    if k in orig_map and k not in orig_keys_before_module_cuts:
+                        del orig_map[k]
+                    cell_dates.append(dt)
+            pred = predict_operation_workdays(meta)
+            starts = dict(meta["starts"])
+            p4_days = math.ceil(pred["p4o1"] / meta["p4_headcount"])
+            ends = {2: meta["ends"][2], 3: meta["ends"][3],
+                    4: starts[4] + pd.Timedelta(days=max(1, int(p4_days)) - 1)}
+            if cell_dates:  # stretch the 製番 windows to cover existing SU_Others assignments
+                starts[2] = min(starts[2], min(cell_dates))
+                ends[4] = max(ends[4], max(cell_dates))
+            planned_meta[code] = meta
+            shifted_meta[code] = {
+                "plan": meta, "had_su_match": False, "predicted": True,
+                "actual_first": min(cell_dates) if cell_dates else None,
+                "actual_last": max(cell_dates) if cell_dates else None, "actual_total": len(set(cell_dates)),
+                "alloc_span_days": None, "alloc_worked_days": None, "phase_days": None,
+                "shifted_starts": starts, "shifted_ends": ends,
+                "occ_sample": [], "occ_last_sample": [],
+                "phase3_trigger_reason": "predicted (製番 dates)", "qc_first_join": None,
+                "phase34_cap_days": phase34_cap_days,
+            }
+            predicted_codes.add(code)
+            cut_rows.append((code, "PREDICTED: kept anyway — 製番 dates + predicted workload "
+                                   f"({len(set(cell_dates))} SU_Others day(s) kept as assignments)"))
+        valid_code_set = set(planned_meta.keys())
+        task_meta["valid_codes"] = [c for c in sorted(seiban_planned) if c in valid_code_set]
 
     # 7) build tool tasks (Schedule.yaml workflow_task_list) with new schema
     tool_tasks, code_to_phases, all_dates = build_tool_tasks(task_meta, shifted_meta)
@@ -2235,13 +2538,17 @@ def build_env_and_schedule_decoder7(
     # 10) skills (担当職種 + スキルレベル) and regular/spot (Status), per worker.
     #     Workers that are not planning targets get an empty skill_map, and
     #     their real assignments are kept but forced to Fixed (see step 11).
-    worker_roles = su_data.get("worker_roles", {})
+    worker_skill_role = su_data.get("worker_skill_role", {})
     worker_skill_raw = su_data.get("worker_skill_raw", {})
     worker_status = su_data.get("worker_status", {})
+    in_skill_sheet = su_data.get("worker_in_skill_sheet", {})
     excluded_workers = {}  # wid -> reason
     for w in environment["worker_list"]:
         wid = w["id"]
-        skill_map, excluded_reason = parse_worker_skills(worker_roles.get(wid, ""), worker_skill_raw.get(wid, ""))
+        if in_skill_sheet.get(wid):
+            skill_map, excluded_reason = parse_worker_skills(worker_skill_role.get(wid, ""), worker_skill_raw.get(wid, ""))
+        else:
+            skill_map, excluded_reason = {}, f"not in skill sheet {skill_sheet!r}"
         if excluded_reason:
             excluded_workers[wid] = excluded_reason
         w["skill_map"] = skill_map
@@ -2287,12 +2594,27 @@ def build_env_and_schedule_decoder7(
         headcount_by_op[f"{eid}p3o1"] = plan.get("p3_headcount")
         headcount_by_op[f"{eid}p4o1"] = plan.get("p4_headcount")
 
+    pred_by_op = {}  # op_id -> (predicted worker-days, actual worker-days) for the log
+    if PREDICT_TARGET_WORKLOAD:
+        for t in tool_tasks:
+            pred = predict_operation_workdays(seiban_planned.get(t["module_code"], {}))
+            for pt in t["phase_task_list"]:
+                for ot in pt["operation_task_list"]:
+                    pred_by_op[ot["id"]] = pred[ot["operation"]]
+
     workload_zero_ops = []
+    prediction_lines = []
     for t in tool_tasks_for_yaml:
         for pt in t.get("phase_task_list", []):
             for ot in pt.get("operation_task_list", []):
                 op_id = ot["id"]
-                worked_days = int(op_workerday_count.get(op_id, 0))
+                actual_days = int(op_workerday_count.get(op_id, 0))
+                worked_days = actual_days
+                if op_id in pred_by_op:
+                    worked_days = max(actual_days, int(round(pred_by_op[op_id])))
+                    prediction_lines.append(
+                        f"- {op_id_to_module_code.get(op_id, '')} {ot['operation']}: actual={actual_days}d "
+                        f"predicted={pred_by_op[op_id]:.0f}d -> workload {worked_days}d ({worked_days * HOURS_PER_WORKDAY}h)")
                 if worked_days == 0:
                     workload_zero_ops.append((op_id, op_id_to_module_code.get(op_id, "")))
                 ot["workload_hours"] = worked_days * HOURS_PER_WORKDAY
@@ -2302,7 +2624,7 @@ def build_env_and_schedule_decoder7(
                 excel_headcount = headcount_by_op.get(op_id)
 
                 if assigned_date_count > 0:
-                    recommend_avg = worked_days / assigned_date_count
+                    recommend_avg = actual_days / assigned_date_count
                     rec_min = int(math.floor(recommend_avg))
                     rec_max = int(math.ceil(recommend_avg))
                 else:
@@ -2346,6 +2668,7 @@ def build_env_and_schedule_decoder7(
         su_outlier_corrections=all_su_corrections, outlier_cut_summary=outlier_cut_summary,
         pb_worker_dates=pb_worker_dates,
         worker_skill_lines=_worker_skill_log_lines(environment["worker_list"], su_data, excluded_workers),
+        prediction_lines=_prediction_log_header(shifted_meta, predicted_codes, seiban_planned) + prediction_lines,
     )
 
     return env_root, sch_root, shifted_meta
@@ -2590,13 +2913,16 @@ def _write_schedule_yaml(path, sch):
 # ============================================================
 
 def main():
-    ap = argparse.ArgumentParser(description="Decoder7: single SU_Others workbook -> EnvConfig.yaml + Schedule.yaml")
+    ap = argparse.ArgumentParser(description="Decoder7: SU_Others + 初期データ追加情報 (製番) -> EnvConfig.yaml + Schedule.yaml")
     ap.add_argument("--su-others", required=True, help="Path to the SU_Others .xlsm file (e.g. '20260915 SU_Others_skill level有配布禁止_.xlsm')")
+    ap.add_argument("--seiban-info", required=True, help="Path to 初期データ追加情報 (e.g. '初期データ追加情報 _20260930.rev1.xlsx'); its 製番 sheet lists the target modules")
     ap.add_argument("--plan-start", default=None, help="Plan range start date, e.g. 2026/09/15. Default: earliest date found in SU_Others.")
     ap.add_argument("--plan-end", default=None, help="Plan range end date, e.g. 2027/03/31. Default: latest date found in SU_Others.")
-    ap.add_argument("--su-sheets", default="予定表_2026", help="Comma-separated SU_Others sheet names to read (schedule, roles, skill levels).")
-    ap.add_argument("--status-sheet", default="予定表_2026 (2)",
-                    help="Sheet to take Status (Primary/Secondary) from when the main sheet's Status is blank. '' to disable.")
+    ap.add_argument("--su-sheets", default="予定表_2026", help="Comma-separated SU_Others main task sheet name(s).")
+    ap.add_argument("--seiban-start-row", type=int, default=SEIBAN_START_ROW,
+                    help=f"First 製番 row (Excel row number) that is a target module; rows above it become misc tasks. Default {SEIBAN_START_ROW}. Use 3 for the whole list.")
+    ap.add_argument("--skill-sheet", default="予定表_2026 (2)",
+                    help="SU_Others sheet with 担当職種 / スキルレベル / Status (skill + regular/spot reference).")
     ap.add_argument("--envconfig-out", default="EnvConfig.yaml")
     ap.add_argument("--schedule-out", default="Schedule.yaml")
     ap.add_argument("--log-out", default=TRANSFORMATION_LOG)
@@ -2606,15 +2932,16 @@ def main():
     plan_end = _parse_simple_date(args.plan_end) if args.plan_end else None
     su_sheets = tuple(s.strip() for s in args.su_sheets.split(",") if s.strip())
 
-    if not Path(args.su_others).exists():
-        print(f"ERROR: --su-others file not found: {args.su_others}", file=sys.stderr)
-        sys.exit(1)
+    for label, path in [("--su-others", args.su_others), ("--seiban-info", args.seiban_info)]:
+        if not Path(path).exists():
+            print(f"ERROR: {label} file not found: {path}", file=sys.stderr)
+            sys.exit(1)
 
     build_env_and_schedule_decoder7(
-        args.su_others,
+        args.su_others, args.seiban_info,
         envconfig_out=args.envconfig_out, schedule_out=args.schedule_out, log_out=args.log_out,
         plan_start=plan_start, plan_end=plan_end, su_sheet_names=su_sheets,
-        status_sheet=args.status_sheet or None,
+        skill_sheet=args.skill_sheet, seiban_start_row=args.seiban_start_row,
     )
     print(f"{args.envconfig_out}, {args.schedule_out}, and {args.log_out} have been written.")
 
