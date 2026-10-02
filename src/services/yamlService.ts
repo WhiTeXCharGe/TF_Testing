@@ -36,7 +36,6 @@ function parseMiscTask(raw: unknown): WorkflowTask {
     id: String(r.id ?? ''),
     name: r.name as string | undefined,
     description: r.description as string | undefined,
-    workflow: String(r.workflow ?? ''),
     fab: undefined,
     region: r.region as string | undefined,
     colorCode: r.color_code ? String(r.color_code) : undefined,
@@ -238,7 +237,6 @@ export function stringifyScheduleYaml(data: ScheduleData): string {
     p(`  - id: ${wt.id}`);
     if (wt.name !== undefined) p(`    name: ${ys(wt.name)}`);
     p(`    description: ${ys(wt.description)}`);
-    p(`    workflow: ${wt.workflow}`);
     if (wt.region !== undefined) p(`    region: ${wt.region}`);
     if (wt.colorCode !== undefined) p(`    color_code: ${wt.colorCode}`);
   }

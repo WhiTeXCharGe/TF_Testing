@@ -72,9 +72,6 @@ type UnavailableDateEntryLike = {
   weekly?: { weekdays?: string[] };
 };
 
-const PB_WORKFLOW_ID = 'wf_personal_business';
-const PB_COLOR = '#898989';
-const PB_TEXT_COLOR = '#ffffff';
 const UNAVAILABLE_COLOR = '#ff0000';
 const UNAVAILABLE_TEXT_COLOR = '#000000';
 
@@ -375,15 +372,10 @@ export function buildWorkerTimelineModel(
       });
     }
 
-    let color = opTaskColorMap.get(assignment.operationTask) ?? UNKNOWN_COLOR;
-    let textColor = BLACK;
+    const color = opTaskColorMap.get(assignment.operationTask) ?? UNKNOWN_COLOR;
+    const textColor = BLACK;
     const moduleName = moduleInfo?.name ?? moduleId.replace('UNKNOWN::', '');
     const taskName = isMisc ? '' : (opTaskNameMap.get(assignment.operationTask) ?? '');
-
-    if (moduleInfo?.workflow === PB_WORKFLOW_ID) {
-      color = PB_COLOR;
-      textColor = PB_TEXT_COLOR;
-    }
 
     const days = collectDayAssignments(assignment);
     for (const day of days) {
@@ -416,12 +408,15 @@ export function buildWorkerTimelineModel(
   // timeline noisy in real data, so this is here to switch off easily
   // without ripping the feature out. No UI for it yet — flip it here.
   const SHOW_COMPANY_REGION_UNAVAILABLE_DATES = false;
+  const unavailableStart = dates[0] ?? schedule.planRange.startDate;
+  const unavailableEnd = dates[dates.length - 1] ?? schedule.planRange.endDate;
 
   const companyOffDates = new Map<string, Set<string>>(
     SHOW_COMPANY_REGION_UNAVAILABLE_DATES
       ? envConfig.workerCompanyList.map(c => [
           c.id,
-          parseUnavailableDates(c.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+          // parseUnavailableDates(c.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+          parseUnavailableDates(c.unavailableDates as unknown, unavailableStart, unavailableEnd),
         ])
       : [],
   );
@@ -429,7 +424,8 @@ export function buildWorkerTimelineModel(
     SHOW_COMPANY_REGION_UNAVAILABLE_DATES
       ? envConfig.regionList.map(r => [
           r.id,
-          parseUnavailableDates(r.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+          // parseUnavailableDates(r.unavailableDates as unknown, schedule.planRange.startDate, schedule.planRange.endDate),
+          parseUnavailableDates(r.unavailableDates as unknown, unavailableStart, unavailableEnd),
         ])
       : [],
   );
@@ -440,8 +436,10 @@ export function buildWorkerTimelineModel(
   for (const worker of envConfig.workerList) {
     const personalOff = parseUnavailableDates(
       worker.unavailableDates as unknown,
-      schedule.planRange.startDate,
-      schedule.planRange.endDate,
+      // schedule.planRange.startDate,
+      // schedule.planRange.endDate,
+      unavailableStart,
+      unavailableEnd,
     );
     const companyOff = worker.workerCompany ? companyOffDates.get(worker.workerCompany) : undefined;
     const off = companyOff && companyOff.size > 0 ? new Set([...personalOff, ...companyOff]) : personalOff;

@@ -7,8 +7,6 @@ import { Workflow } from '../../types/envConfig';
 import { SearchableSelect, SelectOption } from '../common/SearchableSelect';
 import { UI } from '../../config/uiText';
 
-const MISC_WORKFLOW_ID = 'wf_misc';
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface WorkerDateEntry {
@@ -72,7 +70,9 @@ export function TaskAddDialog() {
 
   const S = styles;
 
-  const miscWorkflowTasks = schedule.workflowTaskList.filter(wt => wt.workflow === MISC_WORKFLOW_ID);
+  // Misc tasks are identified by having no phases, not by a workflow id
+  // (misc_task_list entries don't carry one).
+  const miscWorkflowTasks = schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length === 0);
 
   // ── Regular helpers ────────────────────────────────────────────────────────
   const regDevice = schedule.workflowTaskList.find(d => d.id === regular.deviceId);
@@ -83,7 +83,7 @@ export function TaskAddDialog() {
   const envOp = regSelectedOp ? findEnvOp(regSelectedOp.operation, envConfig.workflowList) : undefined;
   const hoursOptions = envOp?.workHours?.length ? envOp.workHours : [4, 6, 8, 10, 12];
 
-  const regularDevices = schedule.workflowTaskList.filter(wt => wt.workflow !== MISC_WORKFLOW_ID);
+  const regularDevices = schedule.workflowTaskList.filter(wt => wt.phaseTaskList.length > 0);
 
   const patchWorkerDate = (
     list: WorkerDateEntry[],
@@ -136,7 +136,6 @@ export function TaskAddDialog() {
           payload: [{
             id: newId,
             name: misc.newTaskName,
-            workflow: MISC_WORKFLOW_ID,
             region: misc.region || undefined,
             phaseTaskList: [],
           }],

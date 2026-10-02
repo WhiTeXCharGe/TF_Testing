@@ -244,7 +244,7 @@ export function buildModuleViewModel(
       };
     });
 
-    const workflowName = workflowNameById.get(wt.workflow) ?? wt.workflow ?? '';
+    const workflowName = workflowNameById.get(wt.workflow ?? '') ?? wt.workflow ?? '';
     return { moduleId, moduleName, workflowName, fab: wt.fab ?? null, region: wt.region ?? null, phases };
   });
 

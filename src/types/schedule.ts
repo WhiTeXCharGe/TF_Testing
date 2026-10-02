@@ -51,7 +51,9 @@ export interface WorkflowTask {
   id: string;
   name?: string;
   description?: string;
-  workflow: string;
+  // Absent on misc tasks (empty phaseTaskList) — misc_task_list no longer
+  // carries a workflow, so only regular workflow_task_list entries set it.
+  workflow?: string;
   fab?: string;
   region?: string;
   colorCode?: string;

@@ -180,6 +180,42 @@ describe('parseEnvConfigYaml', () => {
 
 // ── stringifyScheduleYaml round-trip ─────────────────────────────────────────
 
+describe('misc_task_list no longer carries a workflow', () => {
+  const withMisc = `
+schedule:
+  plan_range:
+    start_date: 2025/09/01
+    end_date: 2025/09/30
+  workflow_task_list: []
+  misc_task_list:
+  - id: misc_2
+    name: VISA
+    description:
+    workflow: wf_misc
+    region: r1
+    color_code: 7B68EE
+  assignment_list: []
+`;
+
+  it('drops a legacy workflow value when saving, keeping region and color_code', () => {
+    const out = stringifyScheduleYaml(parseScheduleYaml(withMisc));
+    const miscSection = out.slice(out.indexOf('misc_task_list:'), out.indexOf('assignment_list:'));
+    expect(miscSection).toContain('id: misc_2');
+    expect(miscSection).toContain('region: r1');
+    expect(miscSection).toContain('color_code: 7B68EE');
+    expect(miscSection).not.toMatch(/workflow:/);
+  });
+
+  it('does not set workflow on a parsed misc task', () => {
+    expect(parseScheduleYaml(withMisc).workflowTaskList[0].workflow).toBeUndefined();
+  });
+
+  it('still writes workflow for regular workflow_task_list entries', () => {
+    const out = stringifyScheduleYaml(parseScheduleYaml(SCHEDULE_YAML));
+    expect(out).toMatch(/workflow: wf_standard/);
+  });
+});
+
 describe('stringifyScheduleYaml round-trip', () => {
   it('re-parses to the same plan range', () => {
     const original = parseScheduleYaml(SCHEDULE_YAML);

@@ -121,6 +121,18 @@ describe('Toolbar read-only gating', () => {
     renderWithRole('edit', <Toolbar />, 'lock');
     expect(screen.getByRole('button', { name: UI.addBarBtn })).toBeDisabled();
   });
+
+  // Sending to the scheduler only reads the data, so read-only states
+  // (locked session, view role) must not disable it.
+  it('keeps the send-to-scheduler button enabled in a locked session', () => {
+    renderWithRole('edit', <Toolbar />, 'lock');
+    expect(screen.getByRole('button', { name: UI.sendToSchedulerBtn })).toBeEnabled();
+  });
+
+  it('keeps the send-to-scheduler button enabled for a view-role session', () => {
+    renderWithRole('view', <Toolbar />);
+    expect(screen.getByRole('button', { name: UI.sendToSchedulerBtn })).toBeEnabled();
+  });
 });
 
 describe('UndoRedoButtons read-only gating', () => {

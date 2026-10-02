@@ -107,9 +107,11 @@ export function Toolbar() {
         </button>
         <div style={{ marginLeft: 'auto' }}>
           <button
-            disabled={!canEdit}
+            // Sending only reads the current data, so it isn't gated on
+            // read-only (locked session / view role) like the edit buttons.
+            disabled={!has}
             onClick={() => dispatch({ type: 'OPEN_SEND_TO_SCHEDULER_DIALOG' })}
-            style={S.submitBtn(canEdit)}
+            style={S.submitBtn(has)}
           >
             {UI.sendToSchedulerBtn}
           </button>
