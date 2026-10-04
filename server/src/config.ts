@@ -26,7 +26,6 @@ export interface AppConfig {
   publicRelayUrl: string;
   /** This replica's identifier, recorded as status.json.relayInstance. */
   instanceId: string;
-  absoluteSessionMaxMs: number;
   idleSweepMs: number;
   idleSessionTimeoutMs: number;
   limits: {
@@ -127,7 +126,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     aca2Url: env.ACA2_URL ?? 'http://localhost:4010',
     publicRelayUrl: env.PUBLIC_RELAY_URL ?? `http://localhost:${port}`,
     instanceId: env.CONTAINER_APP_REPLICA_NAME ?? env.HOSTNAME ?? randomUUID(),
-    absoluteSessionMaxMs: parseMs(env.ABSOLUTE_SESSION_MAX_MS, 8 * 60 * 60 * 1000),
     idleSweepMs: parseMs(env.IDLE_SWEEP_MS, 5 * 60 * 1000),
     idleSessionTimeoutMs: parseMs(env.IDLE_SESSION_TIMEOUT_MS, 30 * 60 * 1000),
     limits: {

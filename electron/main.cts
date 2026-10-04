@@ -185,14 +185,25 @@ async function createWindow(opts: { isInitial?: boolean; url?: string } = {}): P
   // guards against a wedged/crashed renderer never acking. Scoped to this
   // window alone — another open window's session is unaffected.
   let readyToClose = false;
+  let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  const finishClose = () => {
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = null;
+    readyToClose = true;
+    if (!win.isDestroyed()) win.close();
+  };
   win.on('close', (event) => {
     if (readyToClose) return;
     event.preventDefault();
+    if (closeTimer) return;
     win.webContents.send('app:before-close');
-    setTimeout(() => { readyToClose = true; win.close(); }, 3000).unref();
+    closeTimer = setTimeout(finishClose, 3000);
+    closeTimer.unref();
   });
-  windowReadyToClose.set(win.id, () => { readyToClose = true; win.close(); });
+  windowReadyToClose.set(win.id, finishClose);
   win.on('closed', () => {
+    if (closeTimer) clearTimeout(closeTimer);
+    closeTimer = null;
     windowReadyToClose.delete(win.id);
     const idx = windows.indexOf(win);
     if (idx !== -1) windows.splice(idx, 1);

@@ -290,4 +290,26 @@ describe('probeAzureReachability', () => {
     expect(global.fetch).not.toHaveBeenCalled();
     setServerUrl('');
   });
+
+  it('probes only on session access and retries Azure after a failed cold start', async () => {
+    Object.defineProperty(globalThis, '__ACA1_URL__', { configurable: true, value: 'https://azure.example' });
+    try {
+      jest.resetModules();
+      const service = require('../../services/collabService') as typeof import('../../services/collabService');
+      global.fetch = jest.fn()
+        .mockRejectedValueOnce(new Error('cold start'))
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, sessions: [] }) })
+        .mockResolvedValueOnce({ ok: true })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, sessions: [] }) });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      await service.listSessions();
+      expect(global.fetch).toHaveBeenNthCalledWith(2, `${window.location.origin}/api/sessions`);
+      await service.listSessions();
+      expect(global.fetch).toHaveBeenNthCalledWith(3, 'https://azure.example/api/health', expect.any(Object));
+      expect(global.fetch).toHaveBeenNthCalledWith(4, 'https://azure.example/api/sessions');
+    } finally {
+      Reflect.deleteProperty(globalThis, '__ACA1_URL__');
+    }
+  });
 });

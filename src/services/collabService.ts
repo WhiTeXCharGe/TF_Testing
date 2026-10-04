@@ -59,16 +59,12 @@ export function setServerUrl(url: string): void {
   }
 }
 
-// Set by probeAzureReachability() below — in-memory only (never persisted),
-// separate from the user's own runtime override in localStorage. Starts
-// false (optimistic: try the baked-in Azure URL) until the startup probe
-// says otherwise.
+// In-memory fallback after a failed probe; retried on the next session request.
 let azureUnreachable = false;
 
 // ACA1 (session API) base URL, most-specific first:
 //   1. runtime override (join-dialog "接続先サーバー")
-//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1) — unless the
-//      startup probe found it unreachable, in which case skip straight to (3)
+//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1) when reachable
 //   3. this app's own origin (packaged Electron / a LAN browser on the host)
 function aca1Base(): string {
   const runtime = getServerUrl();
@@ -78,21 +74,7 @@ function aca1Base(): string {
   return window.location.origin;
 }
 
-// Called once at app startup (AppContext) when a build-time Azure URL is
-// baked in — a packaged installer built with .env.production's
-// VITE_ACA1_URL should "just work" against the company's deployed backend,
-// but must not get stuck trying to reach Azure with no network/VPN, so this
-// does a quick, short-timeout reachability check up front and remembers the
-// result for aca1Base() to use for the rest of the app's lifetime. A no-op
-// if there's a runtime override already (the user/LAN-discovery picked an
-// explicit server, which always wins) or no build-time URL at all.
-//
-// Memoized to a single in-flight/settled promise (idempotent — a second call
-// just returns the first one) so every network call below can safely await
-// it via ensureProbed() without re-probing. That await is what closes the
-// startup race where a dialog opened in the first ~3s (before the probe
-// resolves) would otherwise hit the unreachable Azure URL directly and show
-// a scary "接続できません" error that only clears on the next 5s poll.
+// Share in-flight probes across requests; retry failures on the next request.
 let probePromise: Promise<void> | null = null;
 
 export function probeAzureReachability(): Promise<void> {
@@ -102,19 +84,23 @@ export function probeAzureReachability(): Promise<void> {
     if (!built || getServerUrl()) return;
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
-      clearTimeout(timer);
-      azureUnreachable = !res.ok;
+      const timer = setTimeout(() => controller.abort(), 60_000);
+      try {
+        const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
+        azureUnreachable = !res.ok;
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       azureUnreachable = true;
     }
   })();
+  void probePromise.then(() => { if (azureUnreachable) probePromise = null; });
   return probePromise;
 }
 
 async function ensureProbed(): Promise<void> {
-  if (probePromise) await probePromise;
+  await probeAzureReachability();
 }
 
 // ACA1 records its reachable URL as PUBLIC_RELAY_URL; in local/LAN mode that

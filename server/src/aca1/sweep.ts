@@ -2,14 +2,14 @@ import type { StorageClient } from '../collab/storage/storageClient.js';
 import type { AppConfig } from '../config.js';
 import type { SessionMeta, SessionStatusRecord } from '../collab/types.js';
 import {
-  deleteSessionRecord, listSessionIds, metaKey, statusKey, writeStatus,
+  listSessionIds, metaKey, statusKey, writeStatus,
 } from '../collab/persistence.js';
 import type { Aca2Client } from './aca2Client.js';
 
 export interface SweepDeps {
   storage: StorageClient;
   aca2: Aca2Client;
-  config: Pick<AppConfig, 'absoluteSessionMaxMs' | 'idleSessionTimeoutMs' | 'idleSweepMs'>;
+  config: Pick<AppConfig, 'idleSessionTimeoutMs' | 'idleSweepMs'>;
   now?: number;
 }
 
@@ -19,7 +19,6 @@ export interface SweepResult {
 }
 
 // One pass:
-//  - a `close` session older than the absolute cap → delete outright
 //  - an `open`/`lock` session whose relay is gone (ACA2 says not-active or is
 //    unreachable) and that has been idle past the timeout → force to `close`
 //    so the next open re-activates it cleanly
@@ -37,13 +36,7 @@ export async function runSweepOnce(deps: SweepDeps): Promise<SweepResult> {
     if (!meta || !status) continue;
     const age = now - status.lastActivityAt;
 
-    if (status.status === 'close') {
-      if (age > config.absoluteSessionMaxMs) {
-        await deleteSessionRecord(storage, id);
-        deleted.push(id);
-      }
-      continue;
-    }
+    if (status.status === 'close') continue;
 
     // status is 'open' or 'lock'
     if (age <= config.idleSessionTimeoutMs) continue;

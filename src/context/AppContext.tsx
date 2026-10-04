@@ -9,7 +9,6 @@ import {
   createSessionFromState, createSessionFromYaml, joinCollabRoom, sendCollabAction,
   sendCollabLock, sendCollabUnlock, sendCollabCheckpoint, sendCollabSessionUpdate,
   parseYamlBaseline, openSession, overwriteSessionState, parseSessionId,
-  probeAzureReachability,
 } from '../services/collabService';
 import type { SessionBaseline } from '../types/appState';
 import { UI } from '../config/uiText';
@@ -115,13 +114,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     actionsSinceCheckpointRef.current = 0;
     lastCheckpointAtRef.current = Date.now();
   }, []);
-
-  // Resolve once, in the background, whether this app can actually reach the
-  // build-time Azure URL (if any was baked in) — before the user opens a
-  // session dialog, so 参加/作成 already point the right way by the time they
-  // click. A packaged installer with no network/VPN falls back to its own
-  // bundled local server instead of hanging on an unreachable host.
-  useEffect(() => { void probeAzureReachability(); }, []);
 
   // Outgoing: apply locally as normal, and if we're an editor in an active
   // session, also forward data-mutating actions to the server. UNDO/REDO are
