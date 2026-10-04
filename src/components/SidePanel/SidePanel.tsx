@@ -81,8 +81,25 @@ export function SidePanel() {
         dispatch({ type: 'SELECT_UNAVAILABLE', payload: null });
       }
     };
+    // Fields commit on blur, but the mousedown below deselects (unmounting the
+    // panel) or lets the click re-target the panel at another bar before the
+    // browser moves focus — so the blur never reaches the edited field's
+    // handler, or reaches it bound to the wrong assignment. Blur the focused
+    // field first, in the capture phase, so its pending edit is committed
+    // against the assignment it was made on, ahead of any selection change.
+    const flushPendingEdit = (e: MouseEvent) => {
+      const panel = panelRef.current;
+      const active = document.activeElement;
+      if (panel && active instanceof HTMLElement && panel.contains(active) && !panel.contains(e.target as Node)) {
+        active.blur();
+      }
+    };
+    document.addEventListener('mousedown', flushPendingEdit, true);
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    return () => {
+      document.removeEventListener('mousedown', flushPendingEdit, true);
+      document.removeEventListener('mousedown', handler);
+    };
   }, [isOpen, dispatch]);
 
   const assignment = selectedAssignmentIndex !== null && schedule
@@ -119,10 +136,11 @@ export function SidePanel() {
   if (!assignment || selectedAssignmentIndex === null) return null;
 
   if (taskInfo?.type === 'misc') {
-    return <MiscPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
+    return <MiscPanel key={selectedAssignmentIndex} ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
   }
 
-  return <WorkTaskPanel ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
+  // keyed so drafts never carry over when another bar is selected
+  return <WorkTaskPanel key={selectedAssignmentIndex} ref={panelRef} assignmentIndex={selectedAssignmentIndex} isReadOnly={isReadOnly} />;
 }
 
 // ── Work Task Panel ──────────────────────────────────────────────────────────
@@ -482,6 +500,7 @@ const MiscPanel = forwardRef<HTMLDivElement, { assignmentIndex: number; isReadOn
 
     const commitDates = (start: string, end: string) => {
       if (!start || !end || start > end) return;
+      if (start === assignment.startDate && end === assignment.endDate) return;
       dispatch({
         type: 'UPDATE_ASSIGNMENT',
         payload: { index: assignmentIndex, updates: { startDate: start, endDate: end } },
