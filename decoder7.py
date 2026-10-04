@@ -38,9 +38,8 @@
 #    applied to every operation in the worker's skill_map.
 #
 # 4) MISC TASKS live in Schedule.yaml only: EnvConfig no longer has
-#    other_op / personal_business_op in skill_map. misc_task_list entries use
-#    workflow "wf_misc" (other work; what GanttChartEditor's TaskAddDialog
-#    expects) and "wf_personal_business" (grey cells).
+#    other_op / personal_business_op in skill_map. "Other work" misc tasks
+#    have no workflow line; grey cells use workflow "wf_personal_business".
 #
 # 5) COLOR CODE + DESCRIPTION: every operation task and misc task gets
 #    color_code = the most common SU_Others cell fill colour (6-digit hex,
@@ -71,7 +70,7 @@
 # FI/FO ignored), the 製番 dummy/rescue rules and the whole cut/outlier/shift
 # pipeline are carried over from decoder6 unchanged.
 #
-#python decoder7.py --su-others "20260915 SU_Others_skill level有配布禁止_.xlsm" --plan-start 2026/09/15 --envconfig-out decoder7_out/EnvConfig.yaml --schedule-out decoder7_out/Schedule.yaml --log-out decoder7_out/TransformationLog.txt
+#python decoder7.py --su-others "20260915 SU_Others_skill level有配布禁止_.xlsm" --seiban-info "初期データ追加情報 _20260930.rev1.xlsx" --plan-start 2026/09/15 --plan-end 2027/07/31 --seiban-start-row 65 --su-sheets "予定表_2026" --skill-sheet "予定表_2026 (2)" --envconfig-out decoder7_out/EnvConfig.yaml --schedule-out decoder7_out/Schedule.yaml --log-out decoder7_out/TransformationLog.txt
 # ---------------------------------------------------------------------
 
 import argparse
@@ -1831,8 +1830,8 @@ def build_assignments_v7(su_data, code_to_phases, valid_code_set, plan_start=Non
         as plan_flexibility="Fixed".
       - every operation task / misc task gets a color_code: the most common
         SU_Others cell fill colour among the cells assigned to it.
-      - "other work" misc tasks use workflow "wf_misc" (what GanttChartEditor's
-        TaskAddDialog treats as misc), grey cells "wf_personal_business".
+      - "other work" misc tasks have no workflow; grey cells use
+        "wf_personal_business".
 
     decoder6 notes — same "known tool task vs everything else" split as
     decoder5's build_assignments_v5, but:
@@ -2006,7 +2005,7 @@ def build_assignments_v7(su_data, code_to_phases, valid_code_set, plan_start=Non
         misc_label_to_id[label] = task_id
         misc_tasks.append({
             "id": task_id, "name": label, "description": None,
-            "workflow": "wf_misc", "region": "r_other", "color_code": _top_color(misc_colors.get(label)),
+            "workflow": None, "region": "r_other", "color_code": _top_color(misc_colors.get(label)),
         })
 
     for (wid, label), dates in misc_worker_label_dates.items():
@@ -2886,7 +2885,8 @@ def _write_schedule_yaml(path, sch):
         p(f"  - id: {mt['id']}")
         p(f"    name: {_ys(mt.get('name'))}")
         p(f"    description: {_ys(mt.get('description'))}")
-        p(f"    workflow: {mt['workflow']}")
+        if mt.get("workflow"):
+            p(f"    workflow: {mt['workflow']}")
         if mt.get("region") is not None:
             p(f"    region: {mt['region']}")
         if mt.get("color_code"):
