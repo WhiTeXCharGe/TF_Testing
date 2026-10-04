@@ -802,7 +802,12 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                 const left = segment.startIndex * DATE_CELL_WIDTH;
                 const isSelected = segment.assignmentIndex === selectedAssignmentIndex;
                 const hasViolation = segment.assignmentIndex !== undefined && violationAssignmentIndices.has(segment.assignmentIndex);
-                const inDrag = dragPreview?.assignmentIndex === segment.assignmentIndex;
+                const isUnavailableSegment = segment.kind === 'unavailable';
+                // Unavailable segments have no assignmentIndex, so without the
+                // kind guard `undefined === undefined` made them look "in drag"
+                // (faded) while idle and snap to full red as soon as any other
+                // bar started moving.
+                const inDrag = !isUnavailableSegment && dragPreview?.assignmentIndex === segment.assignmentIndex;
 
                 // Highlight logic: a bar is highlighted when it matches the active global filter.
                 const matchesAssignment = segment.assignmentIndex !== undefined
@@ -863,9 +868,8 @@ export const WorkerTimelineGrid = memo(function WorkerTimelineGrid({
                       textOverflow: 'ellipsis',
                       fontSize: 10,
                       cursor: 'grab',
-                      opacity: inDrag || (unavailDragPreview?.workerId === row.workerId && segment.kind === 'unavailable' && segment.startIndex >= (unavailDragPreview?.startIndex ?? -1) && segment.endIndex <= (unavailDragPreview?.endIndex ?? -1))
-                        ? 0.3
-                        : isDimmed ? 0.3 : 1,
+                      // unavailable bars are always shown faded, drag or not
+                      opacity: isUnavailableSegment || inDrag || isDimmed ? 0.3 : 1,
                       boxShadow: isHighlighted
                         ? '0 0 0 2px rgba(21,101,192,0.45), 0 1px 3px rgba(0,0,0,0.2)'
                         : '0 1px 2px rgba(0,0,0,0.15)',
