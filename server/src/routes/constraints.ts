@@ -34,7 +34,7 @@ const PhaseTaskSchema = z.object({
 const WorkflowTaskSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  workflow: z.string(),
+  workflow: z.string().optional(),
   fab: z.string().optional(),
   region: z.string().optional(),
   phaseTaskList: z.array(PhaseTaskSchema),

@@ -28,7 +28,7 @@ export interface PhaseTask {
 export interface WorkflowTask {
   id: string;
   name?: string;
-  workflow: string;
+  workflow?: string;
   fab?: string;
   region?: string;
   phaseTaskList: PhaseTask[];
