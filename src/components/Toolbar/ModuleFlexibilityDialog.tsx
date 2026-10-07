@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { UI } from '../../config/uiText';
 import { PlanFlexibility } from '../../types/schedule';
@@ -24,23 +24,24 @@ interface OpNode { id: string; name: string }
 interface PhaseNode { id: string; name: string; ops: OpNode[] }
 interface ModuleNode { id: string; name: string; phases: PhaseNode[] }
 
-const overlay: React.CSSProperties = {
-  position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 800,
-};
-const modal: React.CSSProperties = {
-  backgroundColor: '#fff', borderRadius: 6, width: 560, maxHeight: '86vh',
-  display: 'flex', flexDirection: 'column',
-  boxShadow: '0 8px 24px rgba(0,0,0,0.3)', fontFamily: 'MS Gothic, monospace', overflow: 'hidden',
+// A floating panel, not a modal: there is no backdrop, so the Gantt behind it
+// stays visible and clickable while the user adjusts flexibility. It can be
+// dragged by its title bar to get out of the way.
+const PANEL_WIDTH = 500;
+const panel: React.CSSProperties = {
+  position: 'fixed', zIndex: 800, width: PANEL_WIDTH, maxHeight: '78vh',
+  backgroundColor: '#fff', borderRadius: 6, display: 'flex', flexDirection: 'column',
+  border: '1px solid #b8c6d5', boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+  fontFamily: 'MS Gothic, monospace', overflow: 'hidden',
 };
 const titleBar: React.CSSProperties = {
-  backgroundColor: '#1c2b3a', color: '#fff', padding: '10px 16px', fontSize: 13, fontWeight: 'bold',
+  backgroundColor: '#1c2b3a', color: '#fff', padding: '8px 12px', fontSize: 13, fontWeight: 'bold',
+  display: 'flex', alignItems: 'center', cursor: 'move', userSelect: 'none',
 };
 const body: React.CSSProperties = { padding: '14px 20px', overflowY: 'auto', flex: 1 };
-const sectionLabel: React.CSSProperties = { fontSize: 11, color: '#666', marginBottom: 6, fontWeight: 'bold' };
 const footer: React.CSSProperties = {
   display: 'flex', justifyContent: 'flex-end', gap: 8,
-  padding: '12px 20px', borderTop: '1px solid #e0e0e0', backgroundColor: '#fafafa',
+  padding: '10px 16px', borderTop: '1px solid #e0e0e0', backgroundColor: '#fafafa',
 };
 const okBtn: React.CSSProperties = {
   padding: '6px 20px', backgroundColor: '#1976d2', color: '#fff', border: 'none',
@@ -65,15 +66,20 @@ function FlexSelect({ value, onChange, label, placeholder }: {
   label: string;
   placeholder?: string;
 }) {
+  // null = nobody is assigned anywhere under this node: greyed out, not selectable.
+  const none = value === null;
   return (
     <select
       aria-label={label}
-      value={value === 'mixed' || value === null ? '' : value}
+      value={value === 'mixed' || none ? '' : value}
+      disabled={none}
       onChange={e => onChange(e.target.value as PlanFlexibility)}
-      style={{ ...inputStyle, cursor: 'pointer' }}
+      style={none
+        ? { ...inputStyle, cursor: 'not-allowed', backgroundColor: '#eceff1', color: '#9aa5b1', border: '1px solid #d5dbe1' }
+        : { ...inputStyle, cursor: 'pointer' }}
     >
       {value === 'mixed' && <option value="" disabled>{UI.moduleFlexMixed}</option>}
-      {value === null && <option value="" disabled>{placeholder ?? UI.moduleFlexNoAssignment}</option>}
+      {none && <option value="" disabled>{placeholder ?? UI.moduleFlexNoAssignment}</option>}
       {FLEX_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
@@ -87,6 +93,28 @@ export function ModuleFlexibilityDialog() {
   const [edits, setEdits] = useState<Record<string, PlanFlexibility>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pos, setPos] = useState({ left: 0, top: 110 });
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      setPos({
+        left: Math.max(0, Math.min(window.innerWidth - 80, e.clientX - d.dx)),
+        top: Math.max(0, Math.min(window.innerHeight - 40, e.clientY - d.dy)),
+      });
+    };
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isOpen]);
 
   const modules = useMemo<ModuleNode[]>(() => {
     if (!schedule) return [];
@@ -168,6 +196,8 @@ export function ModuleFlexibilityDialog() {
     setEdits({});
     setExpanded(new Set());
     setSearch('');
+    setPickerOpen(false);
+    setPos({ left: Math.max(0, window.innerWidth - PANEL_WIDTH - 24), top: 110 });
     setIsOpen(true);
   };
 
@@ -177,6 +207,7 @@ export function ModuleFlexibilityDialog() {
   };
 
   const allOpIds = addedModules.flatMap(moduleOpIds);
+  const addOne = (id: string) => setAdded(prev => [...prev, id]);
 
   return (
     <>
@@ -188,120 +219,149 @@ export function ModuleFlexibilityDialog() {
       </button>
 
       {isOpen && (
-        <div style={overlay} onClick={e => { if (e.target === e.currentTarget) setIsOpen(false); }}>
-          <div style={modal} role="dialog" aria-label={UI.moduleFlexDialogTitle}>
-            <div style={titleBar}>{UI.moduleFlexDialogTitle}</div>
-            <div style={body}>
+        <div style={{ ...panel, left: pos.left, top: pos.top }} role="dialog" aria-label={UI.moduleFlexDialogTitle}>
+          <div
+            style={titleBar}
+            onMouseDown={e => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              e.preventDefault();
+              dragRef.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top };
+            }}
+          >
+            <span style={{ flex: 1 }}>{UI.moduleFlexDialogTitle}</span>
+            <button
+              aria-label={UI.moduleFlexClose}
+              onClick={() => setIsOpen(false)}
+              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14 }}
+            >
+              ✕
+            </button>
+          </div>
 
-              {/* 製番を追加 (searchable) */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={sectionLabel}>{UI.moduleFlexAddLabel}</div>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder={UI.moduleFlexSearchPlaceholder}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button
-                    style={{ ...smallBtn, opacity: candidates.length ? 1 : 0.4 }}
-                    disabled={candidates.length === 0}
-                    onClick={() => setAdded(prev => [...prev, ...candidates.map(m => m.id)])}
-                  >
-                    {UI.moduleFlexAddAll}
-                  </button>
-                </div>
-                <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #dde5ef', borderRadius: 3 }}>
-                  {candidates.length === 0 && (
-                    <div style={{ padding: '6px 8px', fontSize: 11, color: '#888' }}>
-                      {modules.length > 0 && added.length === modules.length && !needle ? UI.moduleFlexAllAdded : UI.moduleFlexNoMatch}
-                    </div>
-                  )}
-                  {candidates.map(m => (
-                    <div
-                      key={m.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setAdded(prev => [...prev, m.id])}
-                      onKeyDown={e => { if (e.key === 'Enter') setAdded(prev => [...prev, m.id]); }}
-                      style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #edf2f8' }}
+          <div style={body}>
+            {/* 製番を追加 — hidden until asked for, so the settings below stay the focus */}
+            <div style={{ marginBottom: 12 }}>
+              <button
+                style={{ ...smallBtn, padding: '4px 10px', fontSize: 12 }}
+                aria-expanded={pickerOpen}
+                onClick={() => setPickerOpen(o => !o)}
+              >
+                {pickerOpen ? `▲ ${UI.moduleFlexClose}` : `＋ ${UI.moduleFlexAddLabel}`}
+              </button>
+              {pickerOpen && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder={UI.moduleFlexSearchPlaceholder}
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button
+                      style={{ ...smallBtn, opacity: candidates.length ? 1 : 0.4 }}
+                      disabled={candidates.length === 0}
+                      onClick={() => {
+                        setAdded(prev => [...prev, ...candidates.map(m => m.id)]);
+                        setPickerOpen(false);
+                      }}
                     >
-                      + {m.name}
-                    </div>
-                  ))}
+                      {UI.moduleFlexAddAll}
+                    </button>
+                  </div>
+                  <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #dde5ef', borderRadius: 3 }}>
+                    {candidates.length === 0 && (
+                      <div style={{ padding: '6px 8px', fontSize: 11, color: '#888' }}>
+                        {modules.length > 0 && added.length === modules.length && !needle ? UI.moduleFlexAllAdded : UI.moduleFlexNoMatch}
+                      </div>
+                    )}
+                    {candidates.map(m => (
+                      <div
+                        key={m.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => addOne(m.id)}
+                        onKeyDown={e => { if (e.key === 'Enter') addOne(m.id); }}
+                        style={{ padding: '4px 8px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #edf2f8' }}
+                      >
+                        + {m.name}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              {/* 一括設定 for every added module */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 12 }}>{UI.moduleFlexSetAllLabel}</span>
-                <FlexSelect
-                  label={UI.moduleFlexSetAllLabel}
-                  value={addedModules.length === 0 ? null : combine(addedModules.map(moduleShown))}
-                  placeholder={UI.moduleFlexSetAllPlaceholder}
-                  onChange={flex => setOps(allOpIds, flex)}
-                />
-              </div>
-
-              {/* Added modules */}
-              {addedModules.length === 0 && (
-                <div style={{ fontSize: 12, color: '#888', padding: '8px 0' }}>{UI.moduleFlexNothingAdded}</div>
               )}
-              {addedModules.map(m => {
-                const mOpen = expanded.has(m.id);
-                return (
-                  <div key={m.id} data-testid={`flex-module-${m.id}`} style={{ border: '1px solid #dde5ef', borderRadius: 4, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#f3f7fb' }}>
-                      <button style={smallBtn} aria-label={mOpen ? UI.moduleFlexCollapse : UI.moduleFlexExpand} onClick={() => toggleExpanded(m.id)}>
-                        {mOpen ? '▼' : '▶'}
-                      </button>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 'bold' }}>{m.name}</span>
-                      <FlexSelect
-                        label={`${m.name} ${UI.moduleFlexModuleLevel}`}
-                        value={moduleShown(m)}
-                        onChange={flex => setOps(moduleOpIds(m), flex)}
-                      />
-                      <button style={smallBtn} onClick={() => removeModule(m)}>{UI.moduleFlexRemove}</button>
-                    </div>
+            </div>
 
-                    {mOpen && m.phases.map(p => {
-                      const pKey = `${m.id}/${p.id}`;
-                      const pOpen = expanded.has(pKey);
-                      return (
-                        <div key={p.id} style={{ borderTop: '1px solid #edf2f8' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 24px' }}>
-                            <button style={smallBtn} aria-label={pOpen ? UI.moduleFlexCollapse : UI.moduleFlexExpand} onClick={() => toggleExpanded(pKey)}>
-                              {pOpen ? '▼' : '▶'}
-                            </button>
-                            <span style={{ flex: 1, fontSize: 12 }}>{p.name}</span>
+            {/* 一括設定 for every added module */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 12 }}>{UI.moduleFlexSetAllLabel}</span>
+              <FlexSelect
+                label={UI.moduleFlexSetAllLabel}
+                value={addedModules.length === 0 ? null : combine(addedModules.map(moduleShown))}
+                placeholder={addedModules.length === 0 ? UI.moduleFlexSetAllPlaceholder : undefined}
+                onChange={flex => setOps(allOpIds, flex)}
+              />
+            </div>
+
+            {/* Added modules */}
+            {addedModules.length === 0 && (
+              <div style={{ fontSize: 12, color: '#888', padding: '8px 0' }}>{UI.moduleFlexNothingAdded}</div>
+            )}
+            {addedModules.map(m => {
+              const mOpen = expanded.has(m.id);
+              return (
+                <div key={m.id} data-testid={`flex-module-${m.id}`} style={{ border: '1px solid #dde5ef', borderRadius: 4, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', backgroundColor: '#f3f7fb' }}>
+                    <button style={smallBtn} aria-label={mOpen ? UI.moduleFlexCollapse : UI.moduleFlexExpand} onClick={() => toggleExpanded(m.id)}>
+                      {mOpen ? '▼' : '▶'}
+                    </button>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 'bold' }}>{m.name}</span>
+                    <FlexSelect
+                      label={`${m.name} ${UI.moduleFlexModuleLevel}`}
+                      value={moduleShown(m)}
+                      onChange={flex => setOps(moduleOpIds(m), flex)}
+                    />
+                    <button style={smallBtn} onClick={() => removeModule(m)}>{UI.moduleFlexRemove}</button>
+                  </div>
+
+                  {mOpen && m.phases.map(p => {
+                    const pKey = `${m.id}/${p.id}`;
+                    const pOpen = expanded.has(pKey);
+                    return (
+                      <div key={p.id} style={{ borderTop: '1px solid #edf2f8' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 24px' }}>
+                          <button style={smallBtn} aria-label={pOpen ? UI.moduleFlexCollapse : UI.moduleFlexExpand} onClick={() => toggleExpanded(pKey)}>
+                            {pOpen ? '▼' : '▶'}
+                          </button>
+                          <span style={{ flex: 1, fontSize: 12 }}>{p.name}</span>
+                          <FlexSelect
+                            label={`${m.name} ${p.name}`}
+                            value={phaseShown(p)}
+                            onChange={flex => setOps(phaseOpIds(p), flex)}
+                          />
+                        </div>
+                        {pOpen && p.ops.map(o => (
+                          <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 8px 3px 56px' }}>
+                            <span style={{ flex: 1, fontSize: 11, color: '#444' }}>{o.name}</span>
                             <FlexSelect
-                              label={`${m.name} ${p.name}`}
-                              value={phaseShown(p)}
-                              onChange={flex => setOps(phaseOpIds(p), flex)}
+                              label={`${m.name} ${p.name} ${o.name}`}
+                              value={opShown(o.id)}
+                              onChange={flex => setOps([o.id], flex)}
                             />
                           </div>
-                          {pOpen && p.ops.map(o => (
-                            <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 8px 3px 56px' }}>
-                              <span style={{ flex: 1, fontSize: 11, color: '#444' }}>{o.name}</span>
-                              <FlexSelect
-                                label={`${m.name} ${p.name} ${o.name}`}
-                                value={opShown(o.id)}
-                                onChange={flex => setOps([o.id], flex)}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={footer}>
-              <button style={{ ...okBtn, opacity: changes.length ? 1 : 0.5 }} disabled={changes.length === 0} onClick={apply}>{UI.bulkApply}</button>
-              <button style={cancelBtn} onClick={() => setIsOpen(false)}>{UI.dialogCancel}</button>
-            </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={footer}>
+            <button style={{ ...okBtn, opacity: changes.length ? 1 : 0.5 }} disabled={changes.length === 0} onClick={apply}>{UI.bulkApply}</button>
+            <button style={cancelBtn} onClick={() => setIsOpen(false)}>{UI.dialogCancel}</button>
           </div>
         </div>
       )}

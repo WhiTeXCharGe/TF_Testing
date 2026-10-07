@@ -163,7 +163,8 @@ export const UI = {
   moduleFlexNothingAdded: '製番を追加してください',
   moduleFlexRemove: '削除',
   moduleFlexExpand: '工程・作業を表示',
-  moduleFlexCollapse: '閉じる',
+  moduleFlexCollapse: '折りたたむ',
+  moduleFlexClose: '閉じる',
   moduleFlexModuleLevel: '製番全体',
 
   // Plan range edit dialog

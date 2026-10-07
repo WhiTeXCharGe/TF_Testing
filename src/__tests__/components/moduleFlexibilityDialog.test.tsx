@@ -38,6 +38,12 @@ const SCHEDULE: ScheduleData = {
         { id: 'pB1', name: 'PhaseB1', phase: 'p', startDate: '2026-01-01', endDate: '2026-01-10', operationTaskList: [op('oB1')] },
       ],
     },
+    {
+      id: 'wtC', name: 'GAMMA-300', workflow: 'wf',
+      phaseTaskList: [
+        { id: 'pC1', name: 'PhaseC1', phase: 'p', startDate: '2026-01-01', endDate: '2026-01-10', operationTaskList: [op('oC1')] },
+      ],
+    },
   ],
   assignmentList: [asg('oA1'), asg('oA2'), asg('oA3'), asg('oB1')],
 };
@@ -60,14 +66,66 @@ function openDialog() {
   render(<AppProvider><Harness /></AppProvider>);
   fireEvent.click(screen.getByRole('button', { name: UI.moduleFlexBtn }));
 }
-const addModule = (name: string) => fireEvent.click(screen.getByText(`+ ${name}`));
+// The list is hidden until 製番を追加 is clicked; reopen it if a previous add closed it.
+const openPicker = () => {
+  if (!screen.queryByPlaceholderText(UI.moduleFlexSearchPlaceholder)) {
+    fireEvent.click(screen.getByRole('button', { name: `＋ ${UI.moduleFlexAddLabel}` }));
+  }
+};
+const addModule = (name: string) => {
+  openPicker();
+  fireEvent.click(screen.getByText(`+ ${name}`));
+};
 const pick = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const apply = () => fireEvent.click(screen.getByRole('button', { name: UI.bulkApply }));
 
 describe('ModuleFlexibilityDialog', () => {
+  it('keeps the module list hidden until the add button is clicked', () => {
+    openDialog();
+    expect(screen.queryByPlaceholderText(UI.moduleFlexSearchPlaceholder)).not.toBeInTheDocument();
+    expect(screen.queryByText('+ ALPHA-100')).not.toBeInTheDocument();
+    openPicker();
+    expect(screen.getByText('+ ALPHA-100')).toBeInTheDocument();
+  });
+
+  it('is a floating panel with no backdrop, so the Gantt behind stays usable', () => {
+    openDialog();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.style.position).toBe('fixed');
+    // no full-screen overlay wrapping it
+    expect(dialog.parentElement!.style.position).not.toBe('fixed');
+    expect(dialog.style.inset).toBe('');
+  });
+
+  it('closes from the title bar button', () => {
+    openDialog();
+    fireEvent.click(screen.getByRole('button', { name: UI.moduleFlexClose }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('greys out and disables the selector when nobody is assigned under it', () => {
+    openDialog();
+    addModule('GAMMA-300');
+    const moduleSelect = screen.getByLabelText(`GAMMA-300 ${UI.moduleFlexModuleLevel}`) as HTMLSelectElement;
+    expect(moduleSelect).toBeDisabled();
+    expect(within(moduleSelect).getByText(UI.moduleFlexNoAssignment)).toBeInTheDocument();
+    expect(screen.getByLabelText(UI.moduleFlexSetAllLabel)).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: UI.moduleFlexExpand }));
+    expect(screen.getByLabelText('GAMMA-300 PhaseC1')).toBeDisabled();
+  });
+
+  it('keeps a mixed set enabled when only some of its tasks have nobody assigned', () => {
+    openDialog();
+    addModule('GAMMA-300');
+    addModule('BETA-200');
+    expect(screen.getByLabelText(UI.moduleFlexSetAllLabel)).toBeEnabled();
+  });
+
   it('filters the module list by the search text', () => {
     openDialog();
+    openPicker();
     expect(screen.getByText('+ ALPHA-100')).toBeInTheDocument();
     expect(screen.getByText('+ BETA-200')).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(UI.moduleFlexSearchPlaceholder), { target: { value: 'beta' } });
