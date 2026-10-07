@@ -199,6 +199,9 @@ export type ActionType =
   | { type: 'UPDATE_OPERATION_TASK'; payload: { workflowTaskId: string; phaseTaskId: string; operationTaskId: string; updates: Partial<import('./schedule').OperationTask> } }
   | { type: 'DELETE_ASSIGNMENT'; payload: number }
   | { type: 'BULK_UPDATE_FLEXIBILITY'; payload: { flexibility: string; target: 'all' | 'selected'; targetDate?: string } }
+  // Sets planFlexibility on every assignment of each listed operation task
+  // (the module → 工程 → 作業 dialog resolves module/phase picks down to these).
+  | { type: 'BULK_UPDATE_FLEXIBILITY_BY_TASK'; payload: { changes: { operationTaskId: string; flexibility: PlanFlexibility }[] } }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'OPEN_TASK_ADD_DIALOG' }
   | { type: 'CLOSE_TASK_ADD_DIALOG' }

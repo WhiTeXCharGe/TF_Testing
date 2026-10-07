@@ -31,6 +31,7 @@ export const UI = {
   redo: 'やり直し',
   addTask: '+ 追加',
   bulkFlexEdit: 'バー可動性',
+  moduleFlexBtn: '製番別バー可動性',
   search: '検索',
   clear: 'クリア',
   addBarBtn: '+ バー配置',
@@ -147,6 +148,23 @@ export const UI = {
   bulkDateFilter: '指定日付以前に開始する作業のみ',
   bulkApply: 'OK',
   bulkNoSelectionSuffix: '(未選択)',
+
+  // Module (製番) flexibility dialog — per module / 工程 / 作業
+  moduleFlexDialogTitle: '製番別バー可動性',
+  moduleFlexAddLabel: '製番を追加',
+  moduleFlexSearchPlaceholder: '製番名で検索…',
+  moduleFlexNoMatch: '該当する製番がありません',
+  moduleFlexAllAdded: 'すべて追加済みです',
+  moduleFlexAddAll: '表示中をすべて追加',
+  moduleFlexSetAllLabel: '追加した製番すべてを一括設定',
+  moduleFlexSetAllPlaceholder: '一括設定…',
+  moduleFlexMixed: '混在',
+  moduleFlexNoAssignment: '配置なし',
+  moduleFlexNothingAdded: '製番を追加してください',
+  moduleFlexRemove: '削除',
+  moduleFlexExpand: '工程・作業を表示',
+  moduleFlexCollapse: '閉じる',
+  moduleFlexModuleLevel: '製番全体',
 
   // Plan range edit dialog
   planRangeEditBtn: '計画期間編集',

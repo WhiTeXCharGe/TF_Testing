@@ -392,6 +392,17 @@ export function reducer(state: AppState, action: ActionType): AppState {
       return { ...state, schedule: newSchedule };
     }
 
+    case 'BULK_UPDATE_FLEXIBILITY_BY_TASK': {
+      if (!state.schedule) return state;
+      const flexByTask = new Map(action.payload.changes.map(c => [c.operationTaskId, c.flexibility]));
+      if (flexByTask.size === 0) return state;
+      const newList = state.schedule.assignmentList.map(a => {
+        const flex = flexByTask.get(a.operationTask);
+        return flex && flex !== a.planFlexibility ? { ...a, planFlexibility: flex } : a;
+      });
+      return { ...state, schedule: { ...state.schedule, assignmentList: newList } };
+    }
+
     case 'RESTORE_ASSIGNMENT_FIELDS': {
       if (!state.schedule) return state;
       const byId = new Map(action.payload.map(c => [c.assignmentId, c.updates]));

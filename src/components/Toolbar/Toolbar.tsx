@@ -4,6 +4,7 @@ import { ViewButtons } from './ViewButtons';
 import { UndoRedoButtons } from './UndoRedoButtons';
 import { PlanFlexBulkSettings } from './PlanFlexBulkSettings';
 import { PlanRangeEditDialog } from './PlanRangeEditDialog';
+import { ModuleFlexibilityDialog } from './ModuleFlexibilityDialog';
 import { WorkerViewFilter } from './WorkerViewFilter';
 import { ModuleViewFilter } from './ModuleViewFilter';
 import { toolbarStyles as S } from '../../styles/toolbar';
@@ -67,6 +68,9 @@ export function Toolbar() {
             schedule loaded.) */}
         {canEdit && <PlanFlexBulkSettings />}
         {canEdit && <PlanRangeEditDialog />}
+        {/* Module (製番 → 工程 → 作業) flexibility only makes sense next to the
+            module tree, so it's offered in the module (device) view only. */}
+        {canEdit && currentView === 'device' && <ModuleFlexibilityDialog />}
         <div style={S.divider} />
         <button
           disabled={!has || isChecking}

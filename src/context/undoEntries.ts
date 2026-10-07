@@ -174,7 +174,8 @@ export function captureUndoEntry(type: ActionType['type'], payload: unknown, bef
       // UndoEntry kind for a case that never actually needs it.
       return changed[0] ? { kind: 'workerUnavailable', ...changed[0] } : null;
     }
-    case 'BULK_UPDATE_FLEXIBILITY': {
+    case 'BULK_UPDATE_FLEXIBILITY':
+    case 'BULK_UPDATE_FLEXIBILITY_BY_TASK': {
       if (!before.schedule) return null;
       const after = computeAfter(before, { type, payload } as ActionType);
       const changes = before.schedule.assignmentList
