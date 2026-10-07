@@ -423,6 +423,12 @@ export const UI = {
   sessionListLoadingMessage: '読み込み中...',
   sessionNoneFoundMessage: 'オンラインセッションが見つかりません。主催者のPCでアプリが起動しているか確認してください。',
   sessionListUnreachableMessage: '接続できません。ネットワークを確認してください。',
+  // config.txt mode=online: the Azure server can't be reached. Shown INSTEAD of
+  // the empty-list message — "no sessions" and "can't connect" are different
+  // situations — and session creation is blocked (no fallback to local).
+  serverUnreachableMessage: (url: string) =>
+    `サーバーに接続できません（${url}）。ネットワーク接続と、config.txt の azure_url を確認してください。`,
+  configErrorMessage: (detail: string) => `接続設定（config.txt）に問題があります。${detail}`,
   sessionJoinDialogTitle: 'オンラインセッションに参加',
   sessionCreateDialogTitle: 'オンラインセッションを作成',
   sessionListTab: 'セッション一覧',

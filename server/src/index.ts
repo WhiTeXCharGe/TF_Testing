@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { constraintsRouter } from './routes/constraints.js';
 import { handoffRouter } from './routes/handoff.js';
 import { networkInfoRouter } from './routes/networkInfo.js';
+import { appConfigRouter } from './routes/appConfig.js';
 import { createCollabSocketServer, requestAllCheckpoints, type IoRef } from './collab/collabSocket.js';
 import { createInternalRouter } from './routes/internal.js';
 import { internalAuth } from './internalAuth.js';
@@ -55,6 +56,8 @@ function buildLocalApp(
   app.use('/api', constraintsRouter);
   app.use('/api', handoffRouter);
   app.use('/api', networkInfoRouter);
+  // config.txt → local/online mode + Azure URL for the renderer (see routes/appConfig.ts).
+  app.use('/api', appConfigRouter(() => config.appConfigPath));
 
   // Online-collaboration session API, backed by an in-process ACA2 (same
   // store the socket relay below uses). ioRef is empty at this point (the

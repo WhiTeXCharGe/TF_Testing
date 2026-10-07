@@ -4,6 +4,8 @@ import type {
   SessionStatus, SessionSummary,
 } from '../types/appState';
 import { parseScheduleYaml, parseEnvConfigYaml } from './yamlService';
+import { loadAppConfig, getLoadedAppConfig, isOnlineMode } from './appConfig';
+import { ServerUnreachableError, ConfigError } from './serverErrors';
 
 export interface LoggedAction {
   seq: number;
@@ -32,16 +34,15 @@ export interface JoinCallbacks {
   onCheckpointRequest: () => void;
 }
 
-// Injected by Vite's `define` (see vite.config.ts) — a string literal at build
-// time, absent under jest (guarded by `typeof`). Empty string in dev/LAN.
-declare const __ACA1_URL__: string | undefined;
-
 // Runtime override: the desktop app / LAN host address a participant types in
 // the join dialog. Blank = talk to this app's own bundled server (the
 // packaged Electron window loads it from the same origin).
 const SERVER_URL_KEY = 'gantt.collab.serverUrl';
 
 export function getServerUrl(): string {
+  // config.txt mode=online pins the app to the Azure server — a remembered
+  // LAN host must never leak back in.
+  if (isOnlineMode()) return '';
   try {
     return localStorage.getItem(SERVER_URL_KEY) ?? '';
   } catch {
@@ -50,6 +51,7 @@ export function getServerUrl(): string {
 }
 
 export function setServerUrl(url: string): void {
+  if (isOnlineMode()) return;
   try {
     const trimmed = url.trim().replace(/\/+$/, '');
     if (trimmed) localStorage.setItem(SERVER_URL_KEY, trimmed);
@@ -59,48 +61,49 @@ export function setServerUrl(url: string): void {
   }
 }
 
-// In-memory fallback after a failed probe; retried on the next session request.
-let azureUnreachable = false;
+// Azure Container Apps can scale to zero; a cold start takes a while.
+const ONLINE_REQUEST_TIMEOUT_MS = 60_000;
 
-// ACA1 (session API) base URL, most-specific first:
-//   1. runtime override (join-dialog "接続先サーバー")
-//   2. build-time VITE_ACA1_URL (the deployed Azure ACA1) when reachable
-//   3. this app's own origin (packaged Electron / a LAN browser on the host)
+async function ensureConfig(): Promise<void> {
+  const config = await loadAppConfig();
+  if (config.mode === 'error') throw new ConfigError(config.message);
+}
+
+// ACA1 (session API) base URL:
+//   - config.txt mode=online → the configured Azure URL, and nothing else:
+//     no runtime override, no fallback to this PC if it can't be reached.
+//   - otherwise (mode=local / dev) → runtime override (a LAN host found by
+//     discovery), else this app's own origin (packaged Electron / a LAN
+//     browser on the host).
 function aca1Base(): string {
+  const config = getLoadedAppConfig();
+  if (config?.mode === 'online') return config.azureUrl;
   const runtime = getServerUrl();
   if (runtime) return runtime;
-  const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
-  if (built && !azureUnreachable) return built.replace(/\/+$/, '');
   return window.location.origin;
 }
 
-// Share in-flight probes across requests; retry failures on the next request.
-let probePromise: Promise<void> | null = null;
+// One place every ACA1 call goes through. Online mode turns "couldn't get an
+// answer" into a ServerUnreachableError so the UI can say so (instead of
+// showing it as an empty session list or a vague failure).
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  await ensureConfig();
+  const base = aca1Base();
+  const url = `${base}${path}`;
+  if (!isOnlineMode()) return init ? fetch(url, init) : fetch(url);
 
-export function probeAzureReachability(): Promise<void> {
-  if (probePromise) return probePromise;
-  probePromise = (async () => {
-    const built = typeof __ACA1_URL__ === 'string' ? __ACA1_URL__ : '';
-    if (!built || getServerUrl()) return;
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 60_000);
-      try {
-        const res = await fetch(`${built.replace(/\/+$/, '')}/api/health`, { signal: controller.signal });
-        azureUnreachable = !res.ok;
-      } finally {
-        clearTimeout(timer);
-      }
-    } catch {
-      azureUnreachable = true;
-    }
-  })();
-  void probePromise.then(() => { if (azureUnreachable) probePromise = null; });
-  return probePromise;
-}
-
-async function ensureProbed(): Promise<void> {
-  await probeAzureReachability();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ONLINE_REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw new ServerUnreachableError(base);
+    return res;
+  } catch (err) {
+    if (err instanceof ServerUnreachableError) throw err;
+    throw new ServerUnreachableError(base);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ACA1 records its reachable URL as PUBLIC_RELAY_URL; in local/LAN mode that
@@ -128,8 +131,7 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 // ---- session lifecycle (HTTP to ACA1) -------------------------------------
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions`);
+  const res = await apiFetch('/api/sessions');
   const data = await readJson(res);
   if (!res.ok || !data.ok || !Array.isArray(data.sessions)) {
     throw new Error((data.error as string) ?? 'セッション一覧の取得に失敗しました');
@@ -138,8 +140,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 }
 
 export async function createSessionFromState(name: string, baseline: SessionBaseline): Promise<CreateResult> {
-  await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions`, {
+  const res = await apiFetch('/api/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, ...baseline }),
@@ -178,8 +179,7 @@ export async function createSessionFromYaml(
 // owner token needed (consistent with lock/unlock and the in-session update
 // feature — this app doesn't gate collab actions on ownership).
 export async function overwriteSessionState(sessionId: string, baseline: SessionBaseline): Promise<void> {
-  await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/replace`, {
+  const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/replace`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(baseline),
@@ -189,8 +189,7 @@ export async function overwriteSessionState(sessionId: string, baseline: Session
 }
 
 export async function openSession(sessionId: string): Promise<{ relayUrl: string; status: SessionStatus }> {
-  await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST' });
+  const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST' });
   const data = await readJson(res);
   if (!res.ok || !data.ok || !data.relayUrl) throw new Error((data.error as string) ?? 'セッションを開けませんでした');
   return { relayUrl: rewriteLoopback(data.relayUrl as string), status: data.status as SessionStatus };
@@ -200,8 +199,7 @@ export async function openSession(sessionId: string): Promise<{ relayUrl: string
 // shared admin action reachable from 編集 > オンラインセッションを削除 for
 // any session in the list, not just ones this client created.
 export async function deleteSession(sessionId: string): Promise<void> {
-  await ensureProbed();
-  const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await readJson(res);
     throw new Error((data.error as string) ?? 'セッションの削除に失敗しました');
@@ -210,8 +208,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 export async function fetchSessionName(sessionId: string): Promise<string | null> {
   try {
-    await ensureProbed();
-    const res = await fetch(`${aca1Base()}/api/sessions/${encodeURIComponent(sessionId)}`);
+    const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
     const data = await readJson(res);
     const session = data.session as { name?: string } | undefined;
     if (!res.ok || !data.ok || !session?.name) return null;
@@ -226,8 +223,9 @@ export async function fetchSessionName(sessionId: string): Promise<string | null
 // which address to enter as 接続先サーバー.
 export async function fetchLanAddresses(): Promise<string[]> {
   try {
-    await ensureProbed();
-    const res = await fetch(`${aca1Base()}/api/network-info`);
+    await ensureConfig();
+    if (isOnlineMode()) return []; // no LAN to advertise when pinned to Azure
+    const res = await apiFetch('/api/network-info');
     const data = await readJson(res);
     return Array.isArray(data.addresses) ? (data.addresses as string[]) : [];
   } catch {
@@ -257,8 +255,9 @@ export interface LanHost {
 // never errors — it's just an empty result off the LAN/local role.
 export async function fetchLanHosts(): Promise<LanHost[]> {
   try {
-    await ensureProbed();
-    const res = await fetch(`${aca1Base()}/api/lan-hosts`);
+    await ensureConfig();
+    if (isOnlineMode()) return []; // LAN discovery is meaningless when pinned to Azure
+    const res = await apiFetch('/api/lan-hosts');
     const data = await readJson(res);
     return Array.isArray(data.hosts) ? (data.hosts as LanHost[]) : [];
   } catch {

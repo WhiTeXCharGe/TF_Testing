@@ -24,6 +24,8 @@ export interface AppConfig {
   aca2Url: string;
   /** URL clients open their socket to; aca2 writes this into status.json. */
   publicRelayUrl: string;
+  /** Desktop/local role only: path to the user-editable config.txt (local vs online mode + Azure URL). */
+  appConfigPath?: string | null;
   /** This replica's identifier, recorded as status.json.relayInstance. */
   instanceId: string;
   idleSweepMs: number;
@@ -125,6 +127,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     internalKey,
     aca2Url: env.ACA2_URL ?? 'http://localhost:4010',
     publicRelayUrl: env.PUBLIC_RELAY_URL ?? `http://localhost:${port}`,
+    appConfigPath: env.APP_CONFIG_PATH || null,
     instanceId: env.CONTAINER_APP_REPLICA_NAME ?? env.HOSTNAME ?? randomUUID(),
     idleSweepMs: parseMs(env.IDLE_SWEEP_MS, 5 * 60 * 1000),
     idleSessionTimeoutMs: parseMs(env.IDLE_SESSION_TIMEOUT_MS, 30 * 60 * 1000),

@@ -1,0 +1,18 @@
+# GanttChartEditor 接続設定 / connection settings
+#
+# このファイルは GanttChartEditor.exe と同じフォルダにあります。
+# 編集後、アプリを再起動（または新しいウィンドウを開く）すると反映されます。再ビルドは不要です。
+# Edit, then restart the app (or open a new window). No rebuild needed.
+#
+# mode
+#   online : Azure のセッションサーバーに接続します（お客様向け／本番）。
+#            接続できない場合はエラーを表示し、ローカルには切り替わりません。
+#            セッションの作成・参加もできません。
+#   local  : このPC内蔵のサーバーを使います（開発用／LAN内の共同編集）。
+#
+# azure_url
+#   mode=online のときに接続する Azure ACA1 の URL です（mode=local のときは無視されます）。
+#   本番と開発で別のサーバーを使う場合は、ここを書き換えてください。
+
+mode=online
+azure_url=https://as-eq-gantt-api.livelyground-11135bce.japaneast.azurecontainerapps.io

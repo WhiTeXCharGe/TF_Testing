@@ -44,6 +44,10 @@
       {
         "from": "server/package.json",
         "to": "server/package.json"
+      },
+      {
+        "from": "config.txt",
+        "to": "config.default.txt"
       }
     ],
     "win": {
@@ -53,7 +57,13 @@
       "perMachine": false,
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "extraFiles": [
+      {
+        "from": "config.txt",
+        "to": "config.txt"
+      }
+    ]
   },
   "dependencies": {
     "exceljs": "^4.4.0",

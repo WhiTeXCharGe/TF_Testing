@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { ChildProcess, spawn } from 'node:child_process';
-import { promises as fs, existsSync, readdirSync } from 'node:fs';
+import { promises as fs, existsSync, readdirSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 
 const SERVER_PORT = 3010;
@@ -113,6 +113,29 @@ async function waitUntilUp(url: string, timeoutMs: number, intervalMs = 1000): P
   return false;
 }
 
+// ── config.txt (local vs online mode, Azure URL) ─────────────────────────
+// Lives next to the exe so it can be edited after install — no rebuild, no
+// in-app UI. The embedded server reads it on every request (routes/
+// appConfig.ts) and hands the result to the renderer. The installer ships a
+// copy (electron-builder extraFiles) and also keeps a pristine template in
+// resources: if the file is ever deleted it is recreated from that template,
+// never left missing (a missing file would silently mean "local").
+function configTxtPath(): string {
+  return path.join(path.dirname(app.getPath('exe')), 'config.txt');
+}
+
+function ensureConfigTxt(): string {
+  const target = configTxtPath();
+  if (existsSync(target)) return target;
+  try {
+    const template = path.join(process.resourcesPath, 'config.default.txt');
+    copyFileSync(template, target);
+  } catch (err) {
+    console.error('[config] could not create config.txt:', err);
+  }
+  return target;
+}
+
 // ── Embedded local Express server (dist build, run via Electron's own Node) ──
 
 function startEmbeddedServer(): void {
@@ -120,6 +143,7 @@ function startEmbeddedServer(): void {
 
   const serverEntry = path.join(process.resourcesPath, 'server', 'dist', 'index.js');
   const staticDir = path.join(process.resourcesPath, 'app-dist');
+  const appConfigPath = ensureConfigTxt();
 
   serverProcess = spawn(process.execPath, [serverEntry], {
     env: {
@@ -128,6 +152,7 @@ function startEmbeddedServer(): void {
       SERVE_STATIC_DIR: staticDir,
       PORT: String(SERVER_PORT),
       DESKTOP_MODE: '1',
+      APP_CONFIG_PATH: appConfigPath,
     },
     stdio: 'inherit',
   });

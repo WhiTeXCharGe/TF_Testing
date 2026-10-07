@@ -8,6 +8,7 @@ import { AppProvider, useAppContext } from '../../context/AppContext';
 import { SessionDialog } from '../../components/Dialogs/SessionDialog';
 import { SessionDialogKind, SessionState, SessionSummary } from '../../types/appState';
 import * as collabService from '../../services/collabService';
+import { ServerUnreachableError, ConfigError } from '../../services/serverErrors';
 
 jest.mock('../../services/collabService');
 const mockedCollab = collabService as jest.Mocked<typeof collabService>;
@@ -477,5 +478,43 @@ describe('delete dialog (編集 > オンラインセッションを削除)', () 
     await userEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     expect(await screen.findByText('boom')).toBeInTheDocument();
+  });
+});
+
+// config.txt mode=online: when Azure can't be reached the dialogs say so — a
+// "no sessions" message would be a lie — and nothing can be created.
+describe('unreachable online server (config.txt mode=online)', () => {
+  const AZURE = 'https://azure.example';
+
+  it('join dialog shows the connection error, not the empty-list message', async () => {
+    mockedCollab.listSessions.mockRejectedValue(new ServerUnreachableError(AZURE));
+    renderDialog({ kind: 'join' });
+    expect(await screen.findByText(new RegExp('サーバーに接続できません'))).toBeInTheDocument();
+    expect(screen.queryByText(/オンラインセッションが見つかりません/)).not.toBeInTheDocument();
+    expect(screen.queryByText('検索中...')).not.toBeInTheDocument();
+    expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument();
+  });
+
+  it('join dialog does not fall back to another host or this PC', async () => {
+    mockedCollab.listSessions.mockRejectedValue(new ServerUnreachableError(AZURE));
+    renderDialog({ kind: 'join' });
+    await screen.findByText(new RegExp('サーバーに接続できません'));
+    expect(mockedCollab.setServerUrl).not.toHaveBeenCalled();
+  });
+
+  it('join dialog shows a config.txt error plainly', async () => {
+    mockedCollab.listSessions.mockRejectedValue(new ConfigError('mode が正しくありません'));
+    renderDialog({ kind: 'join' });
+    expect(await screen.findByText(new RegExp('config.txt'))).toBeInTheDocument();
+  });
+
+  it('create dialog shows the error up front and blocks creating a session', async () => {
+    mockedCollab.listSessions.mockRejectedValue(new ServerUnreachableError(AZURE));
+    renderDialog({ kind: 'create', loadedGantt: true });
+    expect(await screen.findByText(new RegExp('サーバーに接続できません'))).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText('ニックネームを入力'), 'Carol');
+    await userEvent.type(screen.getByPlaceholderText('セッション名を入力'), 'New Plan');
+    expect(screen.getByRole('button', { name: '作成して開始' })).toBeDisabled();
+    expect(mockedCollab.createSessionFromState).not.toHaveBeenCalled();
   });
 });

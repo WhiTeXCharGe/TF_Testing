@@ -4,6 +4,7 @@ import {
   listSessions, getServerUrl, setServerUrl, fetchLanHosts, parseYamlBaseline, deleteSession, LanHost,
 } from '../../services/collabService';
 import { loadDisplayName, saveDisplayName } from '../../lib/collabPrefs';
+import { isConnectionError } from '../../services/serverErrors';
 import { SessionBaseline, SessionRole, SessionStatus, SessionSummary } from '../../types/appState';
 import { UI } from '../../config/uiText';
 
@@ -72,11 +73,24 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
   const [hosts, setHosts] = useState<LanHost[]>([]);
   const [searchSettled, setSearchSettled] = useState(false);
   const autoSwitchedRef = useRef(false);
+  const refreshingRef = useRef(false);
 
   const refresh = useCallback(() => {
+    // Azure can take a while to answer (cold start) — don't stack up polls behind it.
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     listSessions()
       .then((rows) => { setSessions(rows); setError(null); })
-      .catch(() => {
+      .catch((err) => {
+        // Pinned to Azure by config.txt (or the config is invalid): say so
+        // plainly. Never present it as "no sessions", and never fall back to
+        // this PC or a LAN host.
+        if (isConnectionError(err)) {
+          setSessions(null);
+          setSelectedId(null);
+          setError(err.message);
+          return;
+        }
         // A remembered host (from a previous visit) that's no longer
         // reachable self-heals silently — fall back to this PC and let
         // discovery find something else, rather than dead-ending on an
@@ -94,7 +108,8 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
           autoSwitchedRef.current = false;
           return '';
         });
-      });
+      })
+      .finally(() => { refreshingRef.current = false; });
   }, []);
 
   // Point at a different server (auto-discovered or picked from the list —
@@ -208,7 +223,7 @@ function SessionJoinDialog({ onClose }: { onClose: () => void }) {
             <span style={{ width: 96, textAlign: 'right' }}>{UI.sessionListLastJoinCol}</span>
           </div>
           <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, height: PAGE_SIZE * 28, overflowY: 'auto' }}>
-            {sessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
+            {sessions == null && !error && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
             {sessions != null && sorted.length === 0 && (
               <div style={{ padding: 10, fontSize: 12, color: '#999' }}>
                 {searchSettled ? UI.sessionNoneFoundMessage : UI.sessionSearchingMessage}
@@ -305,6 +320,17 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   const [target, setTarget] = useState<CreateTarget>('new');
   const [overwriteSessions, setOverwriteSessions] = useState<SessionSummary[] | null>(null);
   const [selectedOverwriteId, setSelectedOverwriteId] = useState<string | null>(null);
+  // Set when the (Azure) server can't be reached or config.txt is invalid —
+  // creating a session is then impossible, not just "failed on submit".
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSessions()
+      .then(() => { if (!cancelled) setConnectionError(null); })
+      .catch((err) => { if (!cancelled && isConnectionError(err)) setConnectionError(err.message); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (target !== 'overwrite') return;
@@ -385,7 +411,7 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
   };
 
   const dataReady = dataSource === 'current' ? canUseCurrent : !!envFile && !!scheduleFile;
-  const canSubmit = target === 'overwrite' ? dataReady && !!selectedOverwriteId : dataReady;
+  const canSubmit = !connectionError && (target === 'overwrite' ? dataReady && !!selectedOverwriteId : dataReady);
 
   if (pendingOverwrite) {
     return (
@@ -482,7 +508,8 @@ function SessionCreateDialog({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {error && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {connectionError && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{connectionError}</div>}
+      {error && error !== connectionError && <div style={{ color: '#c62828', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button disabled={busy || !canSubmit} onClick={() => void handleSubmit()} style={primaryBtnStyle}>{busy ? UI.sessionCreateSubmitBtnBusy : UI.sessionCreateSubmitBtn}</button>
@@ -616,7 +643,7 @@ function SessionDeleteDialog({ onClose }: { onClose: () => void }) {
       <div style={titleStyle}>{UI.sessionDeleteDialogTitle}</div>
       <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>{UI.sessionDeleteListLabel}</div>
       <div style={{ border: '1px solid #e0e0e0', borderRadius: 2, maxHeight: 220, overflowY: 'auto', marginBottom: 12 }}>
-        {sessions == null && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
+        {sessions == null && !error && <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListLoadingMessage}</div>}
         {sessions != null && sessions.length === 0 && (
           <div style={{ padding: 10, fontSize: 12, color: '#999' }}>{UI.sessionListEmpty}</div>
         )}

@@ -5,8 +5,10 @@ import { io } from 'socket.io-client';
 import {
   joinCollabRoom, fetchSessionName, openSession, listSessions, createSessionFromYaml,
   getServerUrl, setServerUrl, fetchLanHosts, sendCollabSessionUpdate, sendCollabCheckpoint,
-  overwriteSessionState, probeAzureReachability,
+  overwriteSessionState, createSessionFromState,
 } from '../../services/collabService';
+import { resetAppConfigForTests } from '../../services/appConfig';
+import { ServerUnreachableError, ConfigError } from '../../services/serverErrors';
 import { SessionBaseline } from '../../types/appState';
 
 jest.mock('socket.io-client', () => ({ io: jest.fn() }));
@@ -273,43 +275,87 @@ describe('sendCollabCheckpoint', () => {
   });
 });
 
-describe('probeAzureReachability', () => {
-  // __ACA1_URL__ isn't defined under jest (no Vite `define`), so there's
-  // nothing to probe here either way — these just lock in the two guard
-  // conditions that skip the fetch entirely (see aca1Base()'s own comment).
-  it('is a no-op with no build-time Azure URL', async () => {
-    global.fetch = jest.fn();
-    await probeAzureReachability();
-    expect(global.fetch).not.toHaveBeenCalled();
+// config.txt (served at /api/app-config) decides local vs online — nothing is
+// baked in at build time, and online mode never falls back to this PC.
+describe('config.txt connection modes', () => {
+  const AZURE = 'https://azure.example';
+  const ORIGIN = window.location.origin;
+
+  // Routes /api/app-config to `config`, everything else to `other`.
+  function mockFetch(config: unknown | Error, other: (url: string) => unknown | Promise<unknown>) {
+    const fn = jest.fn().mockImplementation(async (url: string) => {
+      if (url === '/api/app-config') {
+        if (config instanceof Error) throw config;
+        return { ok: true, json: async () => config };
+      }
+      return other(url);
+    });
+    global.fetch = fn as never;
+    return fn;
+  }
+  const sessionsOk = () => ({ ok: true, status: 200, json: async () => ({ ok: true, sessions: [] }) });
+  const callsTo = (fn: jest.Mock, prefix: string) => fn.mock.calls.filter(([u]) => String(u).startsWith(prefix));
+
+  beforeEach(() => { resetAppConfigForTests(); setServerUrl(''); });
+  afterAll(() => { resetAppConfigForTests(); });
+
+  it('mode=local uses this app\'s own origin', async () => {
+    const fn = mockFetch({ ok: true, mode: 'local', azureUrl: null }, sessionsOk);
+    await listSessions();
+    expect(fn).toHaveBeenCalledWith(`${ORIGIN}/api/sessions`);
   });
 
-  it('is a no-op when a runtime server override already exists', async () => {
+  it('falls back to local when the config route itself is unavailable (dev / older server)', async () => {
+    const fn = mockFetch(new Error('ECONNREFUSED'), sessionsOk);
+    await listSessions();
+    expect(fn).toHaveBeenCalledWith(`${ORIGIN}/api/sessions`);
+  });
+
+  it('mode=online talks to the configured Azure URL', async () => {
+    const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, sessionsOk);
+    await listSessions();
+    expect(fn).toHaveBeenCalledWith(`${AZURE}/api/sessions`, expect.any(Object));
+    expect(callsTo(fn, ORIGIN)).toHaveLength(0);
+  });
+
+  it('mode=online ignores a remembered LAN host override', async () => {
     setServerUrl('http://10.0.0.4:3010');
-    global.fetch = jest.fn();
-    await probeAzureReachability();
-    expect(global.fetch).not.toHaveBeenCalled();
-    setServerUrl('');
+    const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, sessionsOk);
+    await listSessions();
+    expect(callsTo(fn, 'http://10.0.0.4')).toHaveLength(0);
+    expect(getServerUrl()).toBe('');
   });
 
-  it('probes only on session access and retries Azure after a failed cold start', async () => {
-    Object.defineProperty(globalThis, '__ACA1_URL__', { configurable: true, value: 'https://azure.example' });
-    try {
-      jest.resetModules();
-      const service = require('../../services/collabService') as typeof import('../../services/collabService');
-      global.fetch = jest.fn()
-        .mockRejectedValueOnce(new Error('cold start'))
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, sessions: [] }) })
-        .mockResolvedValueOnce({ ok: true })
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, sessions: [] }) });
+  it('mode=online: an unreachable server is an error, never an empty list or a local fallback', async () => {
+    const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, () => { throw new TypeError('Failed to fetch'); });
+    await expect(listSessions()).rejects.toBeInstanceOf(ServerUnreachableError);
+    await expect(listSessions()).rejects.toThrow(AZURE);
+    expect(callsTo(fn, ORIGIN)).toHaveLength(0);
+  });
 
-      expect(global.fetch).not.toHaveBeenCalled();
-      await service.listSessions();
-      expect(global.fetch).toHaveBeenNthCalledWith(2, `${window.location.origin}/api/sessions`);
-      await service.listSessions();
-      expect(global.fetch).toHaveBeenNthCalledWith(3, 'https://azure.example/api/health', expect.any(Object));
-      expect(global.fetch).toHaveBeenNthCalledWith(4, 'https://azure.example/api/sessions');
-    } finally {
-      Reflect.deleteProperty(globalThis, '__ACA1_URL__');
-    }
+  it('mode=online: a 503 from Azure counts as unreachable', async () => {
+    mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, () => ({ ok: false, status: 503, json: async () => ({}) }));
+    await expect(listSessions()).rejects.toBeInstanceOf(ServerUnreachableError);
+  });
+
+  it('mode=online: a session cannot be created while the server is unreachable', async () => {
+    const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, () => { throw new TypeError('Failed to fetch'); });
+    await expect(createSessionFromState('x', BASELINE)).rejects.toBeInstanceOf(ServerUnreachableError);
+    expect(callsTo(fn, ORIGIN)).toHaveLength(0);
+  });
+
+  it('an invalid config.txt is a ConfigError, with no request made to any session server', async () => {
+    const fn = mockFetch({ ok: false, error: 'mode が正しくありません' }, sessionsOk);
+    const err = await listSessions().catch((e) => e);
+    expect(err).toBeInstanceOf(ConfigError);
+    expect(err.message).toContain('mode が正しくありません');
+    expect(callsTo(fn, ORIGIN)).toHaveLength(0);
+    expect(callsTo(fn, AZURE)).toHaveLength(0);
+  });
+
+  it('mode=online skips LAN discovery entirely', async () => {
+    const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, sessionsOk);
+    expect(await fetchLanHosts()).toEqual([]);
+    expect(callsTo(fn, AZURE)).toHaveLength(0);
   });
 });

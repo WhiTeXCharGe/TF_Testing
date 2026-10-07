@@ -5,6 +5,14 @@
 //   npm run dev:mock
 //
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// The web client learns where ACA1 is from config.txt (served by the local
+// server on :3010 via the Vite /api proxy) — point it at the mock ACA1.
+const MOCK_CONFIG = join(tmpdir(), 'gantt-dev-mock-config.txt');
+writeFileSync(MOCK_CONFIG, 'mode=online\nazure_url=http://localhost:4000\n', 'utf-8');
 
 const SHARED = {
   STORAGE: 'fs',
@@ -16,9 +24,10 @@ const SHARED = {
 const targets = [
   ['aca1', 'npm', ['--prefix', 'server', 'run', 'dev'], { ...SHARED, ROLE: 'aca1', PORT: '4000', ACA2_URL: 'http://localhost:4010' }],
   ['aca2', 'npm', ['--prefix', 'server', 'run', 'dev'], { ...SHARED, ROLE: 'aca2', PORT: '4010', PUBLIC_RELAY_URL: 'http://localhost:4010' }],
-  // The mock runs ACA1 on :4000; bake that in so the dev client talks to it
-  // instead of falling back to its own origin.
-  ['web', 'npm', ['run', 'dev'], { VITE_ACA1_URL: 'http://localhost:4000' }],
+  // Local server on :3010 (what Vite proxies /api to): serves /api/app-config
+  // from the file above, so the dev client talks to the mock ACA1 on :4000.
+  ['local', 'npm', ['--prefix', 'server', 'run', 'dev'], { ROLE: 'local', PORT: '3010', APP_CONFIG_PATH: MOCK_CONFIG }],
+  ['web', 'npm', ['run', 'dev'], {}],
 ];
 
 let shuttingDown = false;
