@@ -505,7 +505,7 @@ describe('unreachable online server (config.txt mode=online)', () => {
   it('join dialog shows a config.txt error plainly', async () => {
     mockedCollab.listSessions.mockRejectedValue(new ConfigError('mode が正しくありません'));
     renderDialog({ kind: 'join' });
-    expect(await screen.findByText(new RegExp('config.txt'))).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp('接続設定に問題があります'))).toBeInTheDocument();
   });
 
   it('create dialog shows the error up front and blocks creating a session', async () => {

@@ -426,9 +426,10 @@ export const UI = {
   // config.txt mode=online: the Azure server can't be reached. Shown INSTEAD of
   // the empty-list message — "no sessions" and "can't connect" are different
   // situations — and session creation is blocked (no fallback to local).
-  serverUnreachableMessage: (url: string) =>
-    `サーバーに接続できません（${url}）。ネットワーク接続と、config.txt の azure_url を確認してください。`,
-  configErrorMessage: (detail: string) => `接続設定（config.txt）に問題があります。${detail}`,
+  // Deliberately plain: end users don't need the server address or to know
+  // about config.txt. The technical detail goes to the console (serverErrors.ts).
+  serverUnreachableMessage: 'サーバーに接続できません。ネットワーク接続を確認して、もう一度お試しください。',
+  configErrorMessage: '接続設定に問題があります。管理者にお問い合わせください。',
   sessionJoinDialogTitle: 'オンラインセッションに参加',
   sessionCreateDialogTitle: 'オンラインセッションを作成',
   sessionListTab: 'セッション一覧',

@@ -329,7 +329,10 @@ describe('config.txt connection modes', () => {
   it('mode=online: an unreachable server is an error, never an empty list or a local fallback', async () => {
     const fn = mockFetch({ ok: true, mode: 'online', azureUrl: AZURE }, () => { throw new TypeError('Failed to fetch'); });
     await expect(listSessions()).rejects.toBeInstanceOf(ServerUnreachableError);
-    await expect(listSessions()).rejects.toThrow(AZURE);
+    const unreachable = await listSessions().catch((e) => e);
+    // end users never see the server address or config.txt
+    expect(unreachable.message).not.toContain(AZURE);
+    expect(unreachable.message).not.toContain('config.txt');
     expect(callsTo(fn, ORIGIN)).toHaveLength(0);
   });
 
@@ -348,7 +351,7 @@ describe('config.txt connection modes', () => {
     const fn = mockFetch({ ok: false, error: 'mode が正しくありません' }, sessionsOk);
     const err = await listSessions().catch((e) => e);
     expect(err).toBeInstanceOf(ConfigError);
-    expect(err.message).toContain('mode が正しくありません');
+    expect(err.message).not.toContain('config.txt');
     expect(callsTo(fn, ORIGIN)).toHaveLength(0);
     expect(callsTo(fn, AZURE)).toHaveLength(0);
   });
