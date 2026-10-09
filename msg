@@ -1,16 +1,1 @@
-ご確認ありがとうございます。
-
-原因を確認しました。
-現在のデコーダーでは、新規製番の工数を「推奨人数 × 30人日」で予測しています。この予測値を、SU_Others に実績の割り当てが十分にある製番にも適用しているため、実績より大きい工数になっています。
-
-例）530N03479A（e12）の第2工程 Mech
-・推奨人数：7名
-・予測工数：7名 × 30日 = 210人日（2,100時間）
-・SU_Others の実績：182人日（1,820時間）
-→ 実績より大きい予測値（2,100時間）が工数として使われています。
-
-また、SU_Others の実績の割り当て自体が、ツールの条件を超えている製番もあります。
-・830300272A（e20）第3工程 QC：1日に最大16名が割り当てられています（作業者上限は8名）。
-・e19、e21、e24 の第2工程：1日に9名の日がある、または作業の約3割が土日の割り当てです。
-
-これらの製番について、どのように対応するのがよいかご意見をいただけますでしょうか。
+curl -X POST "$API_BASE_URL/jobs" -H "X-API-Key: $API_KEY" -F "job_id=test-001" -F "scenario_name=scip-test" -F "stage1_solver=scip" -F "stage2_solver=scip" -F "stage1_timeout=60" -F "stage2_timeout=60" -F "weight_preset=standard" -F "environment=@inputs/EnvConfig.yaml;type=application/x-yaml" -F "schedule=@inputs/Schedule.yaml;type=application/x-yaml"
