@@ -385,6 +385,7 @@ export const UI = {
   startSessionItem: 'セッションを開始',
   joinSessionItem: 'セッションに参加',
   sessionParticipantsLabel: (n: number) => `🟢 ${n}人が参加中`,
+  sessionNameHeading: 'セッション名',
   sessionParticipantRoleEdit: '編集者',
   sessionParticipantRoleView: '閲覧者',
   viewOnlyIndicatorLabel: '閲覧のみ',

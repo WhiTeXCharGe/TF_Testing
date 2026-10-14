@@ -299,6 +299,11 @@ export function MenuBar() {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.25)', zIndex: 500, padding: '6px 0',
                 }}
               >
+                {/* Which session this is — shown in the same popup as who's in it. */}
+                <div style={{ padding: '2px 12px 6px', marginBottom: 4, borderBottom: '1px solid #e0e0e0', fontFamily: 'MS Gothic, monospace' }}>
+                  <div style={{ fontSize: 10, color: '#888' }}>{UI.sessionNameHeading}</div>
+                  <div data-testid="session-name" style={{ fontSize: 12, fontWeight: 'bold', color: '#222', wordBreak: 'break-all' }}>{state.session.name}</div>
+                </div>
                 {state.session.participants.map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 12px', fontSize: 12, fontFamily: 'MS Gothic, monospace', color: '#222' }}>
                     <span>{p.name}</span>

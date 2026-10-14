@@ -190,3 +190,12 @@ describe('ファイル menu — 新しいウィンドウ (Electron only)', () =>
     expect(screen.queryByText('新しいウィンドウ')).not.toBeInTheDocument();
   });
 });
+
+it('shows the session name at the top of the same hover popup as the participants', async () => {
+  const user = userEvent.setup();
+  renderMenuBar();
+  expect(screen.queryByText('My Session')).not.toBeInTheDocument();
+  await user.hover(screen.getByText(/人が参加中/));
+  expect(screen.getByTestId('session-name')).toHaveTextContent('My Session');
+  expect(screen.getByText('Alice')).toBeInTheDocument();
+});
