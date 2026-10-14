@@ -11,9 +11,11 @@ const app = createLocalApiApp({
   publicLocalDir,
   ganttEditorUrl: process.env.GANTT_EDITOR_URL ?? 'http://localhost:3010',
   ganttEditorServerUrl: process.env.GANTT_EDITOR_SERVER_URL ?? 'http://localhost:3010',
+  appConfigPath: process.env.APP_CONFIG_PATH || null,
 });
 
 app.listen(PORT, () => {
   console.log(`[localApi] running on http://localhost:${PORT}`);
   console.log(`[localApi] data dir: ${publicLocalDir}`);
+  console.log(`[localApi] config: ${process.env.APP_CONFIG_PATH || '(none)'}`);
 });

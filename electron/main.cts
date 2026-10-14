@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { ChildProcess, spawn } from 'node:child_process';
-import { promises as fs, existsSync, readdirSync } from 'node:fs';
+import { promises as fs, copyFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const APP_PORT = 5174;
@@ -97,6 +97,28 @@ async function waitUntilUp(url: string, timeoutMs: number, intervalMs = 1000): P
   return false;
 }
 
+// ── config.txt (solver API: local vs online mode, Azure URL) ──────────────
+// Lives next to the exe so it can be edited after install — no rebuild, no
+// in-app UI. The embedded server reads it on every GET /api/app-config
+// (localApi/appConfig.ts) and the renderer picks the solver URL from that.
+// The installer ships a copy (electron-builder extraFiles) and also keeps a
+// pristine template in resources: if the file is ever deleted it is
+// recreated from that template, never left missing.
+function configTxtPath(): string {
+  return path.join(path.dirname(app.getPath('exe')), 'config.txt');
+}
+
+function ensureConfigTxt(): string {
+  const target = configTxtPath();
+  if (existsSync(target)) return target;
+  try {
+    copyFileSync(path.join(process.resourcesPath, 'config.default.txt'), target);
+  } catch (err) {
+    console.error('[config] could not create config.txt:', err);
+  }
+  return target;
+}
+
 // ── Embedded local API server (dist build, run via Electron's own Node) ─────
 
 function startEmbeddedServer(): void {
@@ -107,6 +129,7 @@ function startEmbeddedServer(): void {
   // Data lives beside the installed exe (per-user NSIS install dir is writable),
   // keeping the existing local/<runId>/... relative convention the frontend expects.
   const localDataDir = path.join(path.dirname(app.getPath('exe')), 'local');
+  const appConfigPath = ensureConfigTxt();
 
   serverProcess = spawn(process.execPath, [serverEntry], {
     env: {
@@ -116,6 +139,7 @@ function startEmbeddedServer(): void {
       LOCAL_DATA_DIR: localDataDir,
       GANTT_EDITOR_URL,
       GANTT_EDITOR_SERVER_URL: GANTT_EDITOR_URL,
+      APP_CONFIG_PATH: appConfigPath,
       PORT: String(APP_PORT),
     },
     stdio: 'inherit',

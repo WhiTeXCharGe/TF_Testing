@@ -1,0 +1,19 @@
+# Timefold Scheduler ソルバー接続設定 / solver connection settings
+#
+# このファイルは「Timefold Scheduler.exe」と同じフォルダにあります。
+# 編集後、アプリを再起動（または画面を再読み込み）すると反映されます。再ビルドは不要です。
+# Edit, then restart the app (or reload the window). No rebuild needed.
+#
+# mode
+#   online : Azure のソルバー API に接続します（お客様向け／本番）。
+#            送信時に接続できない場合はエラーを表示し、実行一覧に行は追加されません。
+#   local  : このPCのソルバー API（http://localhost:3001）に接続します（開発用）。
+#
+# azure_url
+#   mode=online のときに接続する Azure の URL です（mode=local のときは無視されます）。
+#
+# local_url（省略可）
+#   mode=local のときの接続先です。省略時は http://localhost:3001 です。
+
+mode=local
+azure_url=https://<your-solver-api>.azurecontainerapps.io

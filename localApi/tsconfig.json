@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["server.ts", "standalone.ts"]
+  "include": ["server.ts", "standalone.ts", "appConfig.ts"]
 }

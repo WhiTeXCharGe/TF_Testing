@@ -38,6 +38,8 @@ function localApiPlugin(): Plugin {
         ganttEditorUrl: GANTT_EDITOR_URL,
         ganttEditorServerUrl: GANTT_EDITOR_SERVER_URL,
         ganttEditorDir: GANTT_EDITOR_DIR,
+        // Dev reads the same config.txt that ships next to the packaged exe.
+        appConfigPath: path.resolve(__dirname, 'config.txt'),
       });
       server.middlewares.use(app);
     },

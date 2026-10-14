@@ -7,7 +7,8 @@ import { Dialog } from '@/components/common/Dialog';
 import { useRuns } from '@/hooks/useRuns';
 import { nowLabel } from '@/utils/dateUtils';
 import { fetchText, sendToGanttEditor } from '@/services/ganttHandoffService';
-import { saveOutput } from '@/services/runStore';
+import { saveOutput, nextRunIdFromTimestamp } from '@/services/runStore';
+import { getSolverConfig } from '@/services/solverConfig';
 import type { Run } from '@/types';
 import type { RunStatus } from '@/services/runService';
 
@@ -469,11 +470,38 @@ export function RunLogPage() {
     envFile: File; schedFile: File;
     originalEnvPath: string; originalSchedPath: string;
   }) {
+    const cfg = await getSolverConfig();
+    // A broken config.txt must not silently fall back to local-only.
+    if (cfg.error) throw new Error(cfg.error);
+
+    if (cfg.mode === 'online') {
+      // Online: the solver must accept the run BEFORE a row is created, so an
+      // unreachable Azure API shows an error in the modal and adds no row.
+      const runId = nextRunIdFromTimestamp();
+      try {
+        await submitToSolver(runId, p.envFile, p.schedFile);
+      } catch (err) {
+        throw new Error(UI.runLog.onlineSubmitFailed(cfg.apiBaseUrl, String((err as Error).message || err)));
+      }
+      let run: Run;
+      try {
+        run = await submitNewRun({ ...p, runId });
+      } catch (err) {
+        void cancelRunOnService(runId).catch(() => { /* best effort */ });
+        throw err;
+      }
+      startWatching(run.id);
+      setModalOpen(false);
+      setIncomingTransfer(null);
+      setUploadDone({ run });
+      return;
+    }
+
     // 1. Save files locally so the run appears in the list.
     const run = await submitNewRun(p);
 
-    // 2. If a backend is configured, also send the files to the solver.
-    if (solverEnabled) {
+    // 2. Local mode: also send the files to the local solver (non-fatal).
+    if (cfg.apiBaseUrl) {
       try {
         await submitToSolver(run.id, p.envFile, p.schedFile);
         startWatching(run.id);

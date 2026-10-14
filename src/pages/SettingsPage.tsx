@@ -1,8 +1,12 @@
 import { UI } from '@/config/uiConfig';
-import { APP_CONFIG } from '@/config/appConfig';
+import { useEffect, useState } from 'react';
 import { resetRuns } from '@/services/runStore';
+import { getSolverConfig, type SolverConfig } from '@/services/solverConfig';
 
 export function SettingsPage() {
+  const [cfg, setCfg] = useState<SolverConfig | null>(null);
+  useEffect(() => { void getSolverConfig().then(setCfg); }, []);
+
   async function handleReset() {
     if (!window.confirm(UI.settings.resetConfirm)) return;
     try {
@@ -23,7 +27,12 @@ export function SettingsPage() {
       <div className="card">
         <div className="card-title">{UI.settings.solverApiTitle}</div>
         <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-sec)' }}>
-          {UI.settings.baseUrlLabel} <code>{APP_CONFIG.apiBaseUrl || UI.settings.baseUrlUnset}</code><br />
+          {cfg?.error && (
+            <span style={{ color: 'var(--red, #c0392b)' }}>{UI.settings.configErrorPrefix}{cfg.error}<br /></span>
+          )}
+          {UI.settings.modeLabel} <code>{cfg?.mode ?? '-'}</code><br />
+          {UI.settings.baseUrlLabel} <code>{cfg?.apiBaseUrl || UI.settings.baseUrlUnset}</code><br />
+          {cfg?.configPath && <>{UI.settings.configPathLabel} <code>{cfg.configPath}</code><br /></>}
           {UI.settings.envVarHint}
         </p>
       </div>

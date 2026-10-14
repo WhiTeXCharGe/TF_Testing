@@ -19,6 +19,7 @@
  *                                  (previously the blob only ever reached the
  *                                  browser's Downloads folder via saveAs()).
  *   POST   /api/handoff/create
+ *   GET    /api/app-config      — NEW: solver API mode + base URL from config.txt
  *   GET    /api/handoff/consume/:token
  */
 import express from 'express';
@@ -27,6 +28,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
+import { readAppConfig } from './appConfig';
 
 export interface LocalApiOptions {
   /** Directory that holds runs.json and <runId>/{input,output}/ — e.g. public/local in dev. */
@@ -36,6 +38,8 @@ export interface LocalApiOptions {
   ganttEditorServerUrl?: string;
   /** GanttChartEditor's project dir, used only for the dev-mode `npm run dev:all` fallback spawn. */
   ganttEditorDir?: string;
+  /** Path to the user-editable config.txt (solver mode=local|online + Azure URL). */
+  appConfigPath?: string | null;
 }
 
 interface RunRow {
@@ -202,6 +206,11 @@ export function createLocalApiApp(opts: LocalApiOptions): express.Express {
   app.use(async (req, res, next) => {
     if (!req.url) return next();
 
+    // ── GET /api/app-config ─ solver mode/URL, read fresh from config.txt ──
+    if (req.method === 'GET' && req.url === '/api/app-config') {
+      return send(res, 200, readAppConfig(opts.appConfigPath));
+    }
+
     // ── GET /api/runs ────────────────────────────────────────
     if (req.method === 'GET' && req.url === '/api/runs') {
       return send(res, 200, readDB());
@@ -236,12 +245,17 @@ export function createLocalApiApp(opts: LocalApiOptions): express.Express {
 
         const saved: Record<string, string> = {};
         const filenames: Record<string, string> = {};
+        // The solver (Azure Batch) looks for exactly these names in the input
+        // folder, so always store them under the canonical names regardless of
+        // what the picked files were called. The original names are kept on
+        // the row (inputEnvName / inputSchedName) for display only.
+        const canonicalName: Record<string, string> = { env: 'EnvConfig.yaml', sched: 'Schedule.yaml' };
         for (const f of files) {
-          const safeName = path.basename(f.filename || 'upload.yaml');
+          const safeName = canonicalName[f.fieldName] ?? path.basename(f.filename || 'upload.yaml');
           const dst = path.join(inputDir, safeName);
           fs.writeFileSync(dst, f.data);
           saved[f.fieldName] = `/local/${runId}/input/${safeName}`;
-          filenames[f.fieldName] = safeName;
+          filenames[f.fieldName] = path.basename(f.filename || safeName);
         }
 
         const row: RunRow = {

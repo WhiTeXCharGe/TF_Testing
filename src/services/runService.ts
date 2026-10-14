@@ -1,9 +1,10 @@
 /**
  * Solver API client — talks to the backend service (local Express or Azure ACA).
- * Set VITE_API_BASE_URL in webapp/.env to enable; leave blank for local-only mode.
+ * The base URL comes from config.txt at runtime (see services/solverConfig.ts).
  */
 import axios, { AxiosError } from 'axios';
 import { APP_CONFIG } from '@/config/appConfig';
+import { getSolverBaseUrl } from '@/services/solverConfig';
 import { UI } from '@/config/uiConfig';
 
 export interface SubmitResult {
@@ -40,12 +41,14 @@ export async function submitRun(
 ): Promise<SubmitResult> {
   const form = new FormData();
   form.append('runId', runId);
-  form.append('env',   envFile,   envFile.name);
-  form.append('sched', schedFile, schedFile.name);
+  // The solver stores uploads under their filename and Azure Batch looks for
+  // exactly EnvConfig.yaml / Schedule.yaml, so always send canonical names.
+  form.append('env',   envFile,   APP_CONFIG.envConfigFile);
+  form.append('sched', schedFile, APP_CONFIG.scheduleFile);
 
   try {
     const res = await axios.post<SubmitResult>(
-      `${APP_CONFIG.apiBaseUrl}/runSolver`,
+      `${await getSolverBaseUrl()}/runSolver`,
       form,
     );
     return res.data;
@@ -61,7 +64,7 @@ export async function submitRun(
 export async function checkStatus(runId: string): Promise<RunStatus> {
   try {
     const res = await axios.get<RunStatus>(
-      `${APP_CONFIG.apiBaseUrl}/status/${encodeURIComponent(runId)}`,
+      `${await getSolverBaseUrl()}/status/${encodeURIComponent(runId)}`,
     );
     return res.data;
   } catch (err) {
@@ -79,7 +82,7 @@ export async function downloadOutput(
 ): Promise<{ blob: Blob; filename: string }> {
   try {
     const res = await axios.get(
-      `${APP_CONFIG.apiBaseUrl}/download/${encodeURIComponent(runId)}`,
+      `${await getSolverBaseUrl()}/download/${encodeURIComponent(runId)}`,
       { responseType: 'blob' },
     );
 
@@ -102,7 +105,7 @@ export async function downloadOutput(
 export async function cancelRun(runId: string): Promise<void> {
   try {
     await axios.delete(
-      `${APP_CONFIG.apiBaseUrl}/run/${encodeURIComponent(runId)}`,
+      `${await getSolverBaseUrl()}/run/${encodeURIComponent(runId)}`,
     );
   } catch (err) {
     throw new Error(extractMessage(err, UI.errors.solverCancelFailed));

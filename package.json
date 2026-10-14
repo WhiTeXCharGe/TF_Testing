@@ -1,7 +1,7 @@
 {
   "name": "timefold-scheduler-webapp",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.3",
   "type": "module",
   "main": "electron-dist/main.cjs",
   "scripts": {
@@ -39,6 +39,16 @@
           "node_modules/**",
           "package.json"
         ]
+      },
+      {
+        "from": "config.txt",
+        "to": "config.default.txt"
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "config.txt",
+        "to": "config.txt"
       }
     ],
     "win": {

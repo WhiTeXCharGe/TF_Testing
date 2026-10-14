@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Run } from '@/types';
-import { APP_CONFIG } from '@/config/appConfig';
+import { getSolverConfig, type SolverConfig } from '@/services/solverConfig';
 import {
   fetchRuns, uploadRun, deleteRun as apiDeleteRun, checkOutput,
   type UploadPayload,
@@ -23,9 +23,11 @@ export interface UseRuns {
   /** Delete from runs.json + remove public/local/<id>/ on disk. */
   removeRun: (id: string) => Promise<void>;
 
-  // ── Solver API (only active when VITE_API_BASE_URL is set) ─────────────────
-  /** true when VITE_API_BASE_URL is configured — gates solver API calls. */
+  // ── Solver API (mode + URL from config.txt, see services/solverConfig.ts) ──
+  /** true when a solver URL is configured — gates solver API calls. */
   solverEnabled: boolean;
+  /** Loaded config.txt result (null until loaded). */
+  solverConfig: SolverConfig | null;
   /** POST /runSolver — send the two YAMLs to the solver backend. */
   submitToSolver: (runId: string, envFile: File, schedFile: File) => Promise<void>;
   /** GET /status/:runId — get current solve status from the backend. */
@@ -40,6 +42,9 @@ export function useRuns(): UseRuns {
   const [runs,    setRuns]    = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+  const [solverConfig, setSolverConfig] = useState<SolverConfig | null>(null);
+
+  useEffect(() => { void getSolverConfig().then(setSolverConfig); }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -102,7 +107,8 @@ export function useRuns(): UseRuns {
     submitNewRun,
     checkOutput: checkOutputWrapped,
     removeRun,
-    solverEnabled: Boolean(APP_CONFIG.apiBaseUrl),
+    solverEnabled: Boolean(solverConfig?.apiBaseUrl),
+    solverConfig,
     submitToSolver,
     checkRunStatus,
     triggerDownload,

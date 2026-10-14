@@ -42,6 +42,8 @@ export interface UploadPayload {
   /** User-typed original disk path for the Schedule file. Optional. */
   originalSchedPath?: string;
   label?: string;
+  /** Pre-generated run id (see nextRunIdFromTimestamp). Generated here when omitted. */
+  runId?: string;
 }
 
 /**
@@ -51,7 +53,7 @@ export interface UploadPayload {
  * real disk paths so the user types them.
  */
 export async function uploadRun(p: UploadPayload): Promise<Run> {
-  const id = nextRunIdFromTimestamp();
+  const id = p.runId ?? nextRunIdFromTimestamp();
   const form = new FormData();
   form.append('runId', id);
   form.append('env',   p.envFile,   p.envFile.name);
@@ -123,7 +125,7 @@ export async function resetRuns(): Promise<void> {
 }
 
 /** Generate a unique run id like 20260527_HHMMSSmmm. The server uses this as the folder name. */
-function nextRunIdFromTimestamp(): string {
+export function nextRunIdFromTimestamp(): string {
   const d = new Date();
   const pad = (n: number, w = 2) => String(n).padStart(w, '0');
   return (
