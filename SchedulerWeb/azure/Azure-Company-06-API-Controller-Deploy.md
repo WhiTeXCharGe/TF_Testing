@@ -11,7 +11,7 @@ built, pushed to `$ACR`, and deployed onto the real `$ACA_APP`. By the end,
 | Endpoint                | What it does |
 | ------------------------ | -------------- |
 | `POST /runSolver`        | Upload EnvConfig.yaml + Schedule.yaml to Blob, write `status/{runId}.json` = Submitted, create the Batch task (same JSON as Phase 5 Step 8) |
-| `GET /status/:runId`     | Read `status/{runId}.json` from Blob; while the Batch task is running, return the live file from the node instead (`?debug=1` shows each step — see [Phase 8](./Azure-Company-08-Running-Status-Check.md)) |
+| `GET /status/:runId`     | Read `status/{runId}.json` from Blob; while the Batch task is running, return the live file from the node instead — see [Phase 8](./Azure-Company-08-Running-Status-Check.md) |
 | `GET /download/:runId`   | Stream `output/{runId}/result_Schedule.yaml` straight from Blob as a file download |
 | `DELETE /run/:runId`     | Terminate the Batch task if still running, delete all blobs for that run |
 | `GET /health`            | Returns `{ok:true}` — smoke test |
