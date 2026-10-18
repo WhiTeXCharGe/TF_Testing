@@ -438,11 +438,12 @@ export function RunLogPage() {
   }, [solverEnabled, watching, checkRunStatus]);
 
   const outputDirForRun = (runId: string) => `/local/${runId}/output/`;
-  const progressPercent = (progress?: number) => {
-    const n = Number(progress ?? 0);
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(100, n > 1 ? n : Math.round(n * 100)));
-  };
+  // Hidden for now — progress is only an elapsed-time estimate (see the status dialog).
+  // const progressPercent = (progress?: number) => {
+  //   const n = Number(progress ?? 0);
+  //   if (!Number.isFinite(n)) return 0;
+  //   return Math.max(0, Math.min(100, n > 1 ? n : Math.round(n * 100)));
+  // };
 
   const solverErrorText = (status: RunStatus) => {
     const err = status.error;
@@ -823,11 +824,15 @@ export function RunLogPage() {
                   : solverStatus.status.status === 'Cancelled'
                     ? UI.runLog.solverStatusCancelled
                     : UI.runLog.solverStatusRunning}
+                {/* Hidden for now: Timefold's progress is only an elapsed-time
+                    estimate, not real solve progress — show plain 実行中.
+                    Uncomment (with progressPercent above) once it reports real progress.
                 {solverStatus.status.stage != null && (
                   <span style={{ marginLeft: 6, opacity: 0.7 }}>
                     ({UI.runLog.solverStageWord} {String(solverStatus.status.stage)}, {progressPercent(solverStatus.status.progress)}%)
                   </span>
                 )}
+                */}
               </div>
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
                 {UI.runLog.runIdLabel} {solverStatus.run.id}
@@ -845,9 +850,11 @@ export function RunLogPage() {
           body={
             <>
               <div>{UI.runLog.solverCompletedBody}</div>
+              {/* Hidden for now (see the running dialog above).
               <div style={{ marginTop: 8, opacity: 0.7 }}>
                 ({progressPercent(solverCompleted.status.progress)}%)
               </div>
+              */}
               <div style={{ marginTop: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
                 {UI.runLog.runIdLabel} {solverCompleted.run.id}
               </div>

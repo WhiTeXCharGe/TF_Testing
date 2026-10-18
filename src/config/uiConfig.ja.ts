@@ -72,7 +72,8 @@ export const UI = {
     // Solver status dialog (VITE_API_BASE_URL が設定されている場合)
     solverStatusTitle: 'ソルブ実行中',
     solverStatusSubmitted: '実行はキューに入り、開始待ちです。',
-    solverStatusRunning: 'ソルバはまだ実行中です。',
+    solverStatusRunning: '実行中',
+    // solverStatusRunning: 'ソルバはまだ実行中です。',
     solverStatusCancelled: 'この実行はキャンセル済みです。',
     solverCompletedTitle: 'ソルブ完了',
     solverCompletedBody: '結果ファイルをダウンロードできます。',

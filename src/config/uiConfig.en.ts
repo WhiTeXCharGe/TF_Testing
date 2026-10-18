@@ -73,7 +73,8 @@ export const UI = {
     // Solver status dialog (when VITE_API_BASE_URL is set)
     solverStatusTitle: 'Solve in progress',
     solverStatusSubmitted: 'The run is queued and waiting to start.',
-    solverStatusRunning: 'Solver is still running.',
+    solverStatusRunning: 'Running',
+    // solverStatusRunning: 'Solver is still running.',
     solverStatusCancelled: 'This run was cancelled.',
     solverCompletedTitle: 'Solve completed',
     solverCompletedBody: 'You can download the result file now.',
