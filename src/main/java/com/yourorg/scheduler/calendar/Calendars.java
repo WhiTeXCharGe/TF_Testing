@@ -33,6 +33,24 @@ public class Calendars {
     public String regionOfFab(String fabId) { return fabId == null ? null : fabToRegion.get(fabId); }
     public String customerOfFab(String fabId) { return fabId == null ? null : fabToCustomer.get(fabId); }
 
+    /**
+     * A stay limit at or above this many days is "no limit" (the value 10000 that EnvConfig files use for an unlimited
+     * region; a plan of 10000 days is 27 years). Such a limit can never be exceeded, so its rule is not registered.
+     */
+    public static final int UNLIMITED_STAY_DAYS = 10000;
+
+    /** True when some region has a {@code max_stay_on} below {@link #UNLIMITED_STAY_DAYS}. */
+    public boolean hasFiniteStayMaxOn() {
+        for (int v : regionStayMaxOn.values()) if (v < UNLIMITED_STAY_DAYS) return true;
+        return false;
+    }
+
+    /** True when some region has a {@code max_annual_stay} below {@link #UNLIMITED_STAY_DAYS}. */
+    public boolean hasFiniteAnnualMaxStay() {
+        for (int v : regionAnnualMaxStay.values()) if (v < UNLIMITED_STAY_DAYS) return true;
+        return false;
+    }
+
     public int maxStayOn(String regionId) { return regionStayMaxOn.getOrDefault(regionId, Integer.MAX_VALUE); }
     public int stayOffInterval(String regionId) { return Math.max(1, regionStayOffInterval.getOrDefault(regionId, 1)); }
 

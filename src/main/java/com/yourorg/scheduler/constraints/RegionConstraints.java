@@ -453,11 +453,18 @@ final class RegionConstraints {
             .asConstraint("emp-region-annual-stay-max");
     }
 
+    /**
+     * The transit gap always; each stay rule only when some region has a finite limit for it (see
+     * {@link com.yourorg.scheduler.calendar.Calendars#UNLIMITED_STAY_DAYS}). Without a finite limit the rule can never
+     * fire, but it would still keep a {@code toList} group of every worked day per (employee, region) up to date on
+     * every move. Both rules are decided from the calendars that are loaded when the constraints are defined.
+     */
     Constraint[] all(ConstraintFactory f) {
-        return new Constraint[] {
-            regionTransitGap(f),
-            regionStayMaxOn(f),
-            regionAnnualStayMax(f),
-        };
+        var cal = SolveContext.current().calendars;
+        List<Constraint> out = new ArrayList<>(3);
+        out.add(regionTransitGap(f));
+        if (cal.hasFiniteStayMaxOn()) out.add(regionStayMaxOn(f));
+        if (cal.hasFiniteAnnualMaxStay()) out.add(regionAnnualStayMax(f));
+        return out.toArray(new Constraint[0]);
     }
 }

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import ai.timefold.solver.core.api.score.stream.Constraint;
 import ai.timefold.solver.core.api.score.stream.test.ConstraintVerifier;
 
+import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.constraints.SinglePassConstraints;
 import com.yourorg.scheduler.model.BlockDecision;
 import com.yourorg.scheduler.model.CrewSeat;
@@ -55,9 +56,11 @@ class ConstraintNamesTest {
             "prefer-regular-over-spot",
             "block-recommend-headcount-range");
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void names_and_order_unchanged() throws Exception {
+    static final String STAY = "emp-region-stay-max-on";
+    static final String ANNUAL = "emp-region-annual-stay-max";
+
+    /** The ids {@link SinglePassConstraints#defineConstraints} registers for the current {@link SolveContext}. */
+    static List<String> registeredIds() {
         List<String> actual = new ArrayList<>();
         // verifyThat builds the score director factory at once, so the lambda runs with a real ConstraintFactory
         ConstraintVerifier.build(new SinglePassConstraints(), SinglePassPlan.class, BlockDecision.class, CrewSeat.class)
@@ -66,6 +69,63 @@ class ConstraintNamesTest {
                     for (Constraint c : all) actual.add(c.getConstraintRef().id());
                     return all[0];
                 });
+        return actual;
+    }
+
+    /** A context in which some region has finite stay limits, so that all 23 rules are registered. */
+    static void finiteStayLimits() {
+        SolveContext.clear();
+        SolveContext.current().calendars.regionStayMaxOn.put("r1", 5);
+        SolveContext.current().calendars.regionAnnualMaxStay.put("r1", 6);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void resetContext() {
+        SolveContext.clear();
+    }
+
+    /**
+     * Performance (Task 19): a stay rule that can never fire is not registered (it would still maintain a group of every
+     * worked day per employee and region on every move). Everything else keeps its id and its order.
+     */
+    @Test
+    void stay_rules_are_registered_only_with_a_finite_limit() {
+        List<String> none = new ArrayList<>(EXPECTED_IDS);
+        none.remove(STAY);
+        none.remove(ANNUAL);
+
+        SolveContext.clear(); // no region at all
+        assertEquals(none, registeredIds());
+
+        SolveContext.clear(); // every limit is the "unlimited" 10000 of the EnvConfig files, or absent
+        SolveContext.current().calendars.regionStayMaxOn.put("r1", 10000);
+        SolveContext.current().calendars.regionAnnualMaxStay.put("r1", 10000);
+        SolveContext.current().calendars.regionStayMaxOn.put("r2", Integer.MAX_VALUE);
+        assertEquals(none, registeredIds());
+
+        SolveContext.clear(); // only the maximum stay is finite (in one of two regions)
+        SolveContext.current().calendars.regionStayMaxOn.put("r1", 10000);
+        SolveContext.current().calendars.regionStayMaxOn.put("r2", 80);
+        SolveContext.current().calendars.regionAnnualMaxStay.put("r1", 10000);
+        List<String> onlyStay = new ArrayList<>(EXPECTED_IDS);
+        onlyStay.remove(ANNUAL);
+        assertEquals(onlyStay, registeredIds());
+
+        SolveContext.clear(); // only the annual stay is finite
+        SolveContext.current().calendars.regionAnnualMaxStay.put("r1", 240);
+        List<String> onlyAnnual = new ArrayList<>(EXPECTED_IDS);
+        onlyAnnual.remove(STAY);
+        assertEquals(onlyAnnual, registeredIds());
+
+        finiteStayLimits(); // both
+        assertEquals(EXPECTED_IDS, registeredIds());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void names_and_order_unchanged() throws Exception {
+        finiteStayLimits();
+        List<String> actual = registeredIds();
         assertEquals(EXPECTED_IDS, actual);
         assertEquals(23, actual.size());
         assertTrue(!actual.contains("seat-worker-available-all-days"), "must stay unregistered");

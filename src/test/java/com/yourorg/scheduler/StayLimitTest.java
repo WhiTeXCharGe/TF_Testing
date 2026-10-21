@@ -184,7 +184,11 @@ class StayLimitTest {
     }
 
     private Map<String, ConstraintTotal> totals(String name, Scenario s) throws Exception {
-        return Characterization.initialTotals(build(name, s));
+        Map<String, ConstraintTotal> out = new java.util.HashMap<>(Characterization.initialTotals(build(name, s)));
+        // a stay rule without a finite limit in any region is not registered (it can never fire): total zero
+        out.putIfAbsent(STAY, ZERO);
+        out.putIfAbsent(ANNUAL, ZERO);
+        return out;
     }
 
     // ------------------------------------------------------------------ tests
