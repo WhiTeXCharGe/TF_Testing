@@ -1,0 +1,62 @@
+# Characterisation fixture "tiny" - 2 workers, 1 module, 1 region. Used by SolveContextTest to prove that
+# building a different world does not leave values behind in SolveContext.
+environment:
+  workflow_list:
+  - id: wf1
+    name: Tiny Tool
+    phase_list:
+    - id: p1
+      name: Move In
+      operation_list:
+      - id: p1o1
+        name: Mech
+        work_hours: [8, 10]
+        min_worker_num: 1
+        max_worker_num: 2
+  fab_list:
+  - id: fa
+    name: Fab A
+    region: ra
+    customer_company: ca
+    unavailable_dates: []
+  region_list:
+  - id: ra
+    name: Region A
+    max_stay_on: 10000
+    max_annual_stay: 10000
+    stay_off_interval: 1
+    unavailable_dates:
+    - weekly:
+        weekdays: [sat, sun]
+  customer_company_list:
+  - id: ca
+    name: Customer A
+    unavailable_dates: []
+  worker_company_list:
+  - id: wca
+    name: Worker Company A
+    annual_overtime_limit: 10000
+    monthly_overtime_limit: 10000
+    unavailable_dates: []
+  transite_day_map: []
+  affinity_tag: []
+  worker_list:
+  - id: m1
+    name: Manager
+    worker_company: wca
+    is_manager: true
+    skill_map: {p1o1: 3}
+    worker_type_by_operation: {}
+    fab_suitability_map: []
+    unavailable_dates: []
+    affinity: []
+  - id: t1
+    name: Tech
+    worker_company: wca
+    is_manager: false
+    skill_map: {p1o1: 2}
+    worker_type_by_operation: {}
+    fab_suitability_map: []
+    unavailable_dates:
+    - 2027/01/13
+    affinity: []

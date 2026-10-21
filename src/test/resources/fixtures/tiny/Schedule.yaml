@@ -1,0 +1,31 @@
+schedule:
+  plan_range:
+    start_date: 2027/01/11
+    end_date: 2027/01/17
+  workflow_task_list:
+  - id: x1
+    name: Module X
+    workflow: wf1
+    fab: fa
+    phase_task_list:
+    - id: x1p1
+      name: Move In
+      phase: p1
+      start_date: 2027/01/11
+      end_date: 2027/01/17
+      operation_task_list:
+      - id: x1p1o1
+        name: Mech
+        operation: p1o1
+        workload_hours: 60
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+  misc_task_list: []
+  assignment_list:
+  - worker: m1
+    operation_task: x1p1o1
+    start_date: 2027/01/11
+    end_date: 2027/01/11
+    work_date_list:
+    - {date: 2027/01/11, hour: 10}
+    plan_flexibility: Fixed

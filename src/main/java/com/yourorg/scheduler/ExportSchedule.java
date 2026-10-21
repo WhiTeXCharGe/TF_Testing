@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.model.*;
 
 import org.yaml.snakeyaml.DumperOptions;
@@ -118,7 +119,7 @@ public class ExportSchedule {
 
         // ---- Ensure calendars (optional) ----
         try {
-            if (EmployeeSchedule.CAL == null || EmployeeSchedule.CAL.weekends.isEmpty()) {
+            if (SolveContext.current().calendars == null || SolveContext.current().calendars.weekends.isEmpty()) {
                 Map<String,Object> pr = (Map<String,Object>) sched.get("plan_range");
                 LocalDate planEnd = LocalDate.parse(
                         String.valueOf(pr.get("end_date")).replace("-", "/"),

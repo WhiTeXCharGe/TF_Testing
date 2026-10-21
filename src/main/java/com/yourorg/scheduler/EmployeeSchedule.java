@@ -45,6 +45,8 @@ import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
 import ai.timefold.solver.core.api.domain.variable.VariableListener;
 import ai.timefold.solver.core.api.score.director.ScoreDirector;
 
+import com.yourorg.scheduler.calendar.Calendars;
+import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.model.*;
 
 import org.yaml.snakeyaml.DumperOptions;
@@ -151,32 +153,7 @@ public class EmployeeSchedule {
     // ---------------- Globals & helpers ----------------
 
     static final int DAILY_CAP = 12;
-    static double TARGET_HOURS_PER_EMP = 0.0;
     static final int REQUIRED_HOURS_PER_WORKLOAD_DAY = 10;
-    static final Map<String,Integer> AFFINITY_TAG_WEIGHTS = new HashMap<>();
-    static final Map<String,Integer> OP_CAPACITY = new HashMap<>();
-    static final Map<String,Double>  OP_AVG_SKILL = new HashMap<>();
-    static int SOLVE_MIN_DAY = 0;
-    static int SOLVE_MAX_DAY = 0;
-
-    // dayId -> calendar bucket lookups. The overtime constraints previously
-    // joined DaySlot only to read the year/month of a dayId; these caches give
-    // the same information without the join. Populated once per solve.
-    static final Map<Integer,Integer> DAY_TO_YEAR = new HashMap<>();
-    static final Map<Integer,Integer> DAY_TO_YM   = new HashMap<>(); // year*100 + month
-
-    // fixed schedule background (built once per solveFromYaml)
-    static Map<Integer, Map<Integer, Integer>> FIXED_HOURS_BY_EMP_DAY = new HashMap<>();
-    static Map<Integer, Map<Integer, Set<String>>> FIXED_FACTORIES_BY_EMP_DAY = new HashMap<>();
-
-    // total fixed hours per employee
-    static Map<Integer, Integer> FIXED_TOTAL_HOURS_BY_EMP = new HashMap<>();
-
-    // fixed overtime (max(0, hours-8)) per employee per year
-    static Map<Integer, Map<Integer, Integer>> FIXED_ANNUAL_OT_BY_EMP_YEAR = new HashMap<>();
-
-    // fixed overtime per employee per year-month (ym = year*100 + month)
-    static Map<Integer, Map<Integer, Integer>> FIXED_MONTHLY_OT_BY_EMP_YM = new HashMap<>();
 
     public static final boolean TRIM_FINISHED_MODULES = false;
     // if module ended more than this many days before cutOffDate,
@@ -187,7 +164,7 @@ public class EmployeeSchedule {
     static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
     static boolean isManager(EmployeeFact e) { return e != null && e.isManager; }
     static String company(EmployeeFact e) { return e == null ? "" : (e.workerCompany == null ? "" : e.workerCompany); }
-    static double avgSkill(String opId) { return OP_AVG_SKILL.getOrDefault(opId, 3.0); }
+    static double avgSkill(String opId) { return SolveContext.current().opAvgSkill.getOrDefault(opId, 3.0); }
 
     static int computeAffinityEdge(EmployeeFact e1, EmployeeFact e2) {
         if (e1 == null || e2 == null) return 0;
@@ -196,7 +173,7 @@ public class EmployeeSchedule {
         int weight = 0;
         for (String tag : e1.affinityTags) {
             if (e2Tags.contains(tag)) {
-                weight += AFFINITY_TAG_WEIGHTS.getOrDefault(tag, 0);
+                weight += SolveContext.current().affinityTagWeights.getOrDefault(tag, 0);
             }
         }
         return weight;
@@ -228,9 +205,6 @@ public class EmployeeSchedule {
         score += e.id;
         return score;
     }
-
-    // fixed task-count per employee per day (counts tasks, not hours)
-    static Map<Integer, Map<Integer, Integer>> FIXED_TASKCOUNT_BY_EMP_DAY = new HashMap<>();
 
     static int regionPref(EmployeeFact e, String regionId) {
         if (e == null || regionId == null || regionId.isBlank()) return 1;
@@ -430,51 +404,6 @@ public class EmployeeSchedule {
             appendLoadLog("[WARN] Failed to log module/phase counts: " + ex.getMessage());
         }
     }
-    // ---- Calendar / blackout support ----
-    static class Calendars {
-        Set<Integer> weekends = new HashSet<>();
-        Map<String, Set<Integer>> fabOff = new HashMap<>();
-        Map<String, Set<Integer>> regionOff = new HashMap<>();
-        Map<String, Set<Integer>> customerOff = new HashMap<>();
-        Map<String, Set<Integer>> workerCompanyOff = new HashMap<>();
-        Map<String, String> fabToRegion = new HashMap<>();
-        Map<String, String> fabToCustomer = new HashMap<>();
-        Map<String, Set<Integer>> workerOffByWid = new HashMap<>();
-        Map<String, Map<String, Integer>> transitDays = new HashMap<>(); // fromRegion -> (toRegion -> days)
-        Map<String, Integer> regionStayMaxOn = new HashMap<>();
-        Map<String, Integer> regionStayOffInterval = new HashMap<>();
-
-        //  annual-stay per region
-        Map<String, Integer> regionAnnualMaxStay = new HashMap<>();
-
-        //  overtime limits per worker company (used per-worker)
-        Map<String, Integer> workerCompanyAnnualOtLimit = new HashMap<>();
-        Map<String, Integer> workerCompanyMonthlyOtLimit = new HashMap<>();
-
-        int transitDays(String from, String to) {
-            if (from == null || to == null || from.equals(to)) return 0;
-            return transitDays.getOrDefault(from, Map.of()).getOrDefault(to, 0);
-        }
-        String regionOfFab(String fabId) { return fabId == null ? null : fabToRegion.get(fabId); }
-        String customerOfFab(String fabId) { return fabId == null ? null : fabToCustomer.get(fabId); }
-
-        int maxStayOn(String regionId) { return regionStayMaxOn.getOrDefault(regionId, Integer.MAX_VALUE); }
-        int stayOffInterval(String regionId) { return Math.max(1, regionStayOffInterval.getOrDefault(regionId, 1)); }
-
-        //  helper getters
-        int annualMaxStay(String regionId) {
-            return regionAnnualMaxStay.getOrDefault(regionId, Integer.MAX_VALUE);
-        }
-        int annualOtLimit(String companyId) {
-            return workerCompanyAnnualOtLimit.getOrDefault(companyId, Integer.MAX_VALUE);
-        }
-        int monthlyOtLimit(String companyId) {
-            return workerCompanyMonthlyOtLimit.getOrDefault(companyId, Integer.MAX_VALUE);
-        }
-    }
-
-    static Calendars CAL = new Calendars();
-
     private static final java.time.format.DateTimeFormatter CLOCK =
             java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss");
     private static String nowClock() { return java.time.LocalTime.now().format(CLOCK); }
@@ -620,7 +549,7 @@ public class EmployeeSchedule {
 
     @SuppressWarnings("unchecked")
     public static void buildCalendars(String envPath, LocalDate planStart, LocalDate planEnd) throws IOException {
-        CAL = new Calendars();
+        SolveContext.current().calendars = new Calendars();
 
         int horizon = (int) (planEnd.toEpochDay() - planStart.toEpochDay()) + 1;
 
@@ -639,12 +568,12 @@ public class EmployeeSchedule {
             String fid = String.valueOf(f.get("id"));
             String rid = String.valueOf(f.get("region"));
             String cid = String.valueOf(f.get("customer_company"));
-            CAL.fabToRegion.put(fid, rid);
-            CAL.fabToCustomer.put(fid, cid);
+            SolveContext.current().calendars.fabToRegion.put(fid, rid);
+            SolveContext.current().calendars.fabToCustomer.put(fid, cid);
 
             Set<Integer> off = parseUnavailableDates(
                     f.get("unavailable_dates"), planStart, planEnd);
-            CAL.fabOff.put(fid, off);
+            SolveContext.current().calendars.fabOff.put(fid, off);
         }
 
         List<Map<String,Object>> custs =
@@ -653,7 +582,7 @@ public class EmployeeSchedule {
             String cid = String.valueOf(c.get("id"));
             Set<Integer> off = parseUnavailableDates(
                     c.get("unavailable_dates"), planStart, planEnd);
-            CAL.customerOff.put(cid, off);
+            SolveContext.current().calendars.customerOff.put(cid, off);
         }
 
         List<Map<String,Object>> wcomps =
@@ -663,12 +592,12 @@ public class EmployeeSchedule {
 
             Set<Integer> off = parseUnavailableDates(
                     wc.get("unavailable_dates"), planStart, planEnd);
-            CAL.workerCompanyOff.put(cid, off);
+            SolveContext.current().calendars.workerCompanyOff.put(cid, off);
 
             int annualOt  = parseInt(wc.get("annual_overtime_limit"), Integer.MAX_VALUE);
             int monthlyOt = parseInt(wc.get("monthly_overtime_limit"), Integer.MAX_VALUE);
-            CAL.workerCompanyAnnualOtLimit.put(cid, annualOt);
-            CAL.workerCompanyMonthlyOtLimit.put(cid, monthlyOt);
+            SolveContext.current().calendars.workerCompanyAnnualOtLimit.put(cid, annualOt);
+            SolveContext.current().calendars.workerCompanyMonthlyOtLimit.put(cid, monthlyOt);
         }
 
         List<Map<String,Object>> workers =
@@ -677,7 +606,7 @@ public class EmployeeSchedule {
             String wid = String.valueOf(w.get("id"));
             Set<Integer> off = parseUnavailableDates(
                     w.get("unavailable_dates"), planStart, planEnd);
-            CAL.workerOffByWid.put(wid, off);
+            SolveContext.current().calendars.workerOffByWid.put(wid, off);
         }
 
         List<Map<String,Object>> tmap = (List<Map<String,Object>>) env.getOrDefault("transite_day_map", List.of());
@@ -686,7 +615,7 @@ public class EmployeeSchedule {
             String to   = String.valueOf(t.get("to"));
             int days    = parseInt(t.get("days"), 0);
             if (from != null && to != null && !from.isBlank() && !to.isBlank() && days > 0) {
-                CAL.transitDays.computeIfAbsent(from, k -> new HashMap<>()).put(to, days);
+                SolveContext.current().calendars.transitDays.computeIfAbsent(from, k -> new HashMap<>()).put(to, days);
             }
         }
 
@@ -698,29 +627,22 @@ public class EmployeeSchedule {
             // region-level unavailable dates (weekly + single supported)
             Set<Integer> off = parseUnavailableDates(
                     r.get("unavailable_dates"), planStart, planEnd);
-            CAL.regionOff.put(rid, off);
+            SolveContext.current().calendars.regionOff.put(rid, off);
 
             int maxStayOn   = parseInt(r.get("max_stay_on"), Integer.MAX_VALUE);
             int maxAnnual   = parseInt(r.get("max_annual_stay"), Integer.MAX_VALUE);
             int offInterval = parseInt(r.get("stay_off_interval"), 1);
 
-            CAL.regionStayMaxOn.put(rid, maxStayOn);
-            CAL.regionAnnualMaxStay.put(rid, maxAnnual);
-            CAL.regionStayOffInterval.put(rid, Math.max(1, offInterval));
+            SolveContext.current().calendars.regionStayMaxOn.put(rid, maxStayOn);
+            SolveContext.current().calendars.regionAnnualMaxStay.put(rid, maxAnnual);
+            SolveContext.current().calendars.regionStayOffInterval.put(rid, Math.max(1, offInterval));
         }
 
     }
 
+    // delegates; moves in Task 5/7
     static boolean isWorkingDay(int dayId, String fabId) {
-        if (dayId < 0) return false;
-        if (fabId == null) return true;
-
-        if (CAL.fabOff.getOrDefault(fabId, Set.of()).contains(dayId)) return false;
-        String rid = CAL.fabToRegion.get(fabId);
-        if (rid != null && CAL.regionOff.getOrDefault(rid, Set.of()).contains(dayId)) return false;
-        String cid = CAL.fabToCustomer.get(fabId);
-        if (cid != null && CAL.customerOff.getOrDefault(cid, Set.of()).contains(dayId)) return false;
-        return true;
+        return SolveContext.current().calendars.isWorkingDay(dayId, fabId);
     }
 
 
@@ -756,7 +678,7 @@ public class EmployeeSchedule {
         int end = b.startDay + b.days - 1;
         List<Integer> out = new ArrayList<>(Math.max(0, b.days));
         for (int d = b.startDay; d <= end; d++) {
-            if (d < SOLVE_MIN_DAY || d > SOLVE_MAX_DAY) continue;
+            if (d < SolveContext.current().solveMinDay || d > SolveContext.current().solveMaxDay) continue;
             if (isWorkingDay(d, b.factory)) out.add(d);
         }
         return out;
@@ -820,9 +742,9 @@ public class EmployeeSchedule {
         }
     }
 
+    // delegates; moves in Task 5/7
     static boolean isWorkerUnavailableByWid(String wid, int dayId) {
-        if (wid == null) return false;
-        return CAL.workerOffByWid.getOrDefault(wid, Set.of()).contains(dayId);
+        return SolveContext.current().calendars.isWorkerUnavailable(wid, dayId);
     }
     // ---------------- Constraints ----------------
 
@@ -920,7 +842,7 @@ public class EmployeeSchedule {
 
         private static boolean isWorkerUnavailable(EmployeeFact e, int dayId) {
             if (e == null || e.wid == null) return false;
-            return CAL.workerOffByWid.getOrDefault(e.wid, Set.of()).contains(dayId);
+            return SolveContext.current().calendars.workerOffByWid.getOrDefault(e.wid, Set.of()).contains(dayId);
         }
 
         private static int producedHoursForBlock(BlockDecision b, List<CrewSeat> seats) {
@@ -1010,7 +932,7 @@ public class EmployeeSchedule {
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter((s, b) -> !isUnassigned(s.employee))
                 .filter((s, b) -> {
-                    Set<Integer> off = CAL.workerOffByWid.getOrDefault(s.employee.wid, Set.of());
+                    Set<Integer> off = SolveContext.current().calendars.workerOffByWid.getOrDefault(s.employee.wid, Set.of());
 
                     // FIXED seat: check only exact worked days
                     if (s.pinnedFixed) {
@@ -1114,13 +1036,13 @@ public class EmployeeSchedule {
                 // UniConstraintStream<EmpDayKey>
                 .groupBy(key -> key, ConstraintCollectors.count())
                 .filter((key, dynCount) -> {
-                    int fixedCount = FIXED_TASKCOUNT_BY_EMP_DAY
+                    int fixedCount = SolveContext.current().fixedTaskcountByEmpDay
                         .getOrDefault(key.empId, Collections.emptyMap())
                         .getOrDefault(key.dayId, 0);
                     return (dynCount + fixedCount) > 1;
                 })
                 .penalize(HardMediumSoftScore.ONE_HARD, (key, dynCount) -> {
-                    int fixedCount = FIXED_TASKCOUNT_BY_EMP_DAY
+                    int fixedCount = SolveContext.current().fixedTaskcountByEmpDay
                         .getOrDefault(key.empId, Collections.emptyMap())
                         .getOrDefault(key.dayId, 0);
                     return (dynCount + fixedCount) - 1;
@@ -1145,7 +1067,7 @@ public class EmployeeSchedule {
                 .filter((key, dynamicHours) -> {
                     int empId = (int) key.get(0);
                     int dayId = (int) key.get(1);
-                    int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                    int fixedHours = SolveContext.current().fixedHoursByEmpDay
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(dayId, 0);
                     return dynamicHours + fixedHours > DAILY_CAP;
@@ -1153,7 +1075,7 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD, (key, dynamicHours) -> {
                     int empId = (int) key.get(0);
                     int dayId = (int) key.get(1);
-                    int fixedHours = FIXED_HOURS_BY_EMP_DAY
+                    int fixedHours = SolveContext.current().fixedHoursByEmpDay
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(dayId, 0);
                     int total = dynamicHours + fixedHours;
@@ -1217,7 +1139,7 @@ public class EmployeeSchedule {
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
-                    String region = CAL.regionOfFab(s.factory);
+                    String region = SolveContext.current().calendars.regionOfFab(s.factory);
                     List<EmpDayRegion> rows = new ArrayList<>();
                     for (int dayId : seatCoveredDays(s, b)) {
                         int startDay = s.pinnedFixed
@@ -1266,7 +1188,7 @@ public class EmployeeSchedule {
                         String region = e.getValue();
 
                         if (prevRegion != null && region != null && !region.equals(prevRegion)) {
-                            int need = CAL.transitDays(prevRegion, region);
+                            int need = SolveContext.current().calendars.transitDays(prevRegion, region);
                             if (need > 0) {
                                 int earliestLegal = prevDay + need + 1;
                                 if (day < earliestLegal) {
@@ -1310,7 +1232,7 @@ public class EmployeeSchedule {
                         String region = e.getValue();
 
                         if (prevRegion != null && region != null && !region.equals(prevRegion)) {
-                            int need = CAL.transitDays(prevRegion, region);
+                            int need = SolveContext.current().calendars.transitDays(prevRegion, region);
                             if (need > 0) {
                                 int earliestLegal = prevDay + need + 1;
                                 if (day < earliestLegal) {
@@ -1351,7 +1273,7 @@ public class EmployeeSchedule {
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
-                    String region = CAL.regionOfFab(s.factory);
+                    String region = SolveContext.current().calendars.regionOfFab(s.factory);
                     List<EmpDayRegion> rows = new ArrayList<>();
                     if (region != null) {
                         for (int dayId : seatCoveredDays(s, b)) {
@@ -1370,8 +1292,8 @@ public class EmployeeSchedule {
             return items
                 .filter((key, dayList) -> {
                     String regionId = (String) key.get(1);
-                    int maxOn  = CAL.maxStayOn(regionId);
-                    int offInt = CAL.stayOffInterval(regionId);
+                    int maxOn  = SolveContext.current().calendars.maxStayOn(regionId);
+                    int offInt = SolveContext.current().calendars.stayOffInterval(regionId);
                     if (maxOn == Integer.MAX_VALUE) return false;
                     int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
                     return maxSpan > maxOn;
@@ -1379,8 +1301,8 @@ public class EmployeeSchedule {
                 .penalize(HardMediumSoftScore.ONE_HARD,
                     (key, dayList) -> {
                         String regionId = (String) key.get(1);
-                        int maxOn  = CAL.maxStayOn(regionId);
-                        int offInt = CAL.stayOffInterval(regionId);
+                        int maxOn  = SolveContext.current().calendars.maxStayOn(regionId);
+                        int offInt = SolveContext.current().calendars.stayOffInterval(regionId);
                         int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
                         return Math.max(1, maxSpan - maxOn);
                     })
@@ -1423,7 +1345,7 @@ public class EmployeeSchedule {
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
-                    String region = CAL.regionOfFab(s.factory);
+                    String region = SolveContext.current().calendars.regionOfFab(s.factory);
                     List<EmpDayRegion> rows = new ArrayList<>();
                     if (region != null) {
                         for (int dayId : seatCoveredDays(s, b)) {
@@ -1442,8 +1364,8 @@ public class EmployeeSchedule {
             return items
                 .filter((key, dayList) -> {
                     String regionId = (String) key.get(1);
-                    int maxAnnual = CAL.annualMaxStay(regionId);
-                    int offInt    = CAL.stayOffInterval(regionId);
+                    int maxAnnual = SolveContext.current().calendars.annualMaxStay(regionId);
+                    int offInt    = SolveContext.current().calendars.stayOffInterval(regionId);
                     if (maxAnnual == Integer.MAX_VALUE) return false;
                     int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
                     return totalSpan > maxAnnual;
@@ -1452,8 +1374,8 @@ public class EmployeeSchedule {
                     HardMediumSoftScore.ONE_HARD,
                     (key, dayList) -> {
                         String regionId = (String) key.get(1);
-                        int maxAnnual = CAL.annualMaxStay(regionId);
-                        int offInt    = CAL.stayOffInterval(regionId);
+                        int maxAnnual = SolveContext.current().calendars.annualMaxStay(regionId);
+                        int offInt    = SolveContext.current().calendars.stayOffInterval(regionId);
                         int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
                         return Math.max(1, totalSpan - maxAnnual);
                     }
@@ -1482,7 +1404,7 @@ public class EmployeeSchedule {
                     String comp = company(s.employee);
                     Map<Integer,Integer> byYear = new HashMap<>();
                     for (int dayId : seatCoveredDays(s, b)) {
-                        Integer year = DAY_TO_YEAR.get(dayId);
+                        Integer year = SolveContext.current().dayToYear.get(dayId);
                         if (year == null) continue;
                         byYear.merge(year, otPerDay, Integer::sum);
                     }
@@ -1503,10 +1425,10 @@ public class EmployeeSchedule {
                     int year       = (int) key.get(2);
 
                     if (companyId == null || companyId.isBlank()) return false;
-                    int limit = CAL.annualOtLimit(companyId);
+                    int limit = SolveContext.current().calendars.annualOtLimit(companyId);
                     if (limit == Integer.MAX_VALUE) return false;
 
-                    int fixedOt = FIXED_ANNUAL_OT_BY_EMP_YEAR
+                    int fixedOt = SolveContext.current().fixedAnnualOtByEmpYear
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(year, 0);
 
@@ -1520,8 +1442,8 @@ public class EmployeeSchedule {
                         String companyId = (String) key.get(1);
                         int year       = (int) key.get(2);
 
-                        int limit = CAL.annualOtLimit(companyId);
-                        int fixedOt = FIXED_ANNUAL_OT_BY_EMP_YEAR
+                        int limit = SolveContext.current().calendars.annualOtLimit(companyId);
+                        int fixedOt = SolveContext.current().fixedAnnualOtByEmpYear
                                 .getOrDefault(empId, Collections.emptyMap())
                                 .getOrDefault(year, 0);
 
@@ -1552,7 +1474,7 @@ public class EmployeeSchedule {
                     String comp = company(s.employee);
                     Map<Integer,Integer> byYm = new HashMap<>();
                     for (int dayId : seatCoveredDays(s, b)) {
-                        Integer ym = DAY_TO_YM.get(dayId);
+                        Integer ym = SolveContext.current().dayToYm.get(dayId);
                         if (ym == null) continue;
                         byYm.merge(ym, otPerDay, Integer::sum);
                     }
@@ -1573,10 +1495,10 @@ public class EmployeeSchedule {
                     int ym         = (int) key.get(2);
 
                     if (companyId == null || companyId.isBlank()) return false;
-                    int limit = CAL.monthlyOtLimit(companyId);
+                    int limit = SolveContext.current().calendars.monthlyOtLimit(companyId);
                     if (limit == Integer.MAX_VALUE) return false;
 
-                    int fixedOt = FIXED_MONTHLY_OT_BY_EMP_YM
+                    int fixedOt = SolveContext.current().fixedMonthlyOtByEmpYm
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(ym, 0);
 
@@ -1590,8 +1512,8 @@ public class EmployeeSchedule {
                         String companyId = (String) key.get(1);
                         int ym         = (int) key.get(2);
 
-                        int limit = CAL.monthlyOtLimit(companyId);
-                        int fixedOt = FIXED_MONTHLY_OT_BY_EMP_YM
+                        int limit = SolveContext.current().calendars.monthlyOtLimit(companyId);
+                        int fixedOt = SolveContext.current().fixedMonthlyOtByEmpYm
                                 .getOrDefault(empId, Collections.emptyMap())
                                 .getOrDefault(ym, 0);
 
@@ -1704,7 +1626,7 @@ public class EmployeeSchedule {
                                 seatCoveredDays(s, b).size() * b.chosenHours()))
                 .penalize(HardMediumSoftScore.ONE_SOFT, (emp, dynTot) -> {
                     int total = dynTot + emp.histFixedTotalHours;
-                    return (int) Math.abs(total - TARGET_HOURS_PER_EMP);
+                    return (int) Math.abs(total - SolveContext.current().targetHoursPerEmp);
                 })
                 .asConstraint("soft-balance-total-hours");
         }
@@ -1716,8 +1638,8 @@ public class EmployeeSchedule {
                     Joiners.equal(s -> s.employee.id),
                     Joiners.lessThan(s -> s.blockId))
                 .filter((s1, s2) -> {
-                    String r1 = CAL.regionOfFab(s1.factory);
-                    String r2 = CAL.regionOfFab(s2.factory);
+                    String r1 = SolveContext.current().calendars.regionOfFab(s1.factory);
+                    String r2 = SolveContext.current().calendars.regionOfFab(s2.factory);
                     return r1 != null && r2 != null && !r1.equals(r2);
                 })
                 .penalize(HardMediumSoftScore.ONE_SOFT,
@@ -1734,8 +1656,8 @@ public class EmployeeSchedule {
                     HardMediumSoftScore.ONE_SOFT,
                     (s, b) -> {
                         String fabId      = s.factory;
-                        String regionId   = CAL.regionOfFab(fabId);
-                        String customerId = CAL.customerOfFab(fabId);
+                        String regionId   = SolveContext.current().calendars.regionOfFab(fabId);
+                        String customerId = SolveContext.current().calendars.customerOfFab(fabId);
 
                         int rLevel = regionPref(s.employee, regionId);
                         int cLevel = customerPref(s.employee, customerId);
@@ -1861,14 +1783,14 @@ public class EmployeeSchedule {
         }
 
         // load affinity tag weights
-        AFFINITY_TAG_WEIGHTS.clear();
+        SolveContext.current().affinityTagWeights.clear();
         List<Map<String,Object>> affinityTagList =
                 (List<Map<String,Object>>) env.getOrDefault("affinity_tag", List.of());
         for (Map<String,Object> at : affinityTagList) {
             if (at == null) continue;
             String tagId = safeStr(at.get("id"));
             int tagWeight = parseInt(at.get("weight"), 0);
-            if (!tagId.isBlank()) AFFINITY_TAG_WEIGHTS.put(tagId, tagWeight);
+            if (!tagId.isBlank()) SolveContext.current().affinityTagWeights.put(tagId, tagWeight);
         }
 
         List<EmployeeFact> employees = new ArrayList<>();
@@ -1929,7 +1851,7 @@ public class EmployeeSchedule {
         }
 
         // capacities
-        OP_CAPACITY.clear();
+        SolveContext.current().opCapacity.clear();
         Set<String> opIds = opdef.keySet().stream()
                 .filter(k -> !k.contains("|"))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -1939,11 +1861,11 @@ public class EmployeeSchedule {
                 if (e.id == 0) continue;
                 if (e.skills.getOrDefault(opId, 0) > 0) c++;
             }
-            OP_CAPACITY.put(opId, c);
+            SolveContext.current().opCapacity.put(opId, c);
         }
 
         // average skills
-        OP_AVG_SKILL.clear();
+        SolveContext.current().opAvgSkill.clear();
         for (String opId : opIds) {
             int sum = 0, cnt = 0;
             for (EmployeeFact e : employees) {
@@ -1951,7 +1873,7 @@ public class EmployeeSchedule {
                 int lv = e.skills.getOrDefault(opId, 0);
                 if (lv > 0) { sum += lv; cnt++; }
             }
-            OP_AVG_SKILL.put(opId, cnt > 0 ? (sum / (double) cnt) : 3.0);
+            SolveContext.current().opAvgSkill.put(opId, cnt > 0 ? (sum / (double) cnt) : 3.0);
         }
 
         ParsedEnv out = new ParsedEnv();
@@ -2657,7 +2579,7 @@ public class EmployeeSchedule {
                 if (h <= 0) continue;
 
                 // keep ONLY days inside plan_range/horizon
-                if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+                if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                 // keep ONLY working days
                 if (!isWorkingDay(dayId, factory)) continue;
@@ -2674,7 +2596,7 @@ public class EmployeeSchedule {
             cs.pinnedWorkDays = workDays;
 
             // Keep these for export/debug, but they are NOT used for coverage anymore
-            int minDid = workDays.stream().min(Integer::compareTo).orElse(SOLVE_MIN_DAY);
+            int minDid = workDays.stream().min(Integer::compareTo).orElse(SolveContext.current().solveMinDay);
             int maxDid = workDays.stream().max(Integer::compareTo).orElse(minDid);
 
             cs.pinnedStart = minDid;
@@ -2688,14 +2610,14 @@ public class EmployeeSchedule {
 
             seats.add(cs);
         }
-        int horizonStart = SOLVE_MIN_DAY;
+        int horizonStart = SolveContext.current().solveMinDay;
 
         for (FixedAssign fa : sch.fixedRows) {
             EmployeeFact ef = env.byWid.get(fa.wid);
             if (ef == null || ef.id == 0) continue;
 
             if (fa.factory == null || fa.factory.isBlank()) continue;
-            String region = CAL.regionOfFab(fa.factory);
+            String region = SolveContext.current().calendars.regionOfFab(fa.factory);
             if (region == null || region.isBlank()) continue;
 
             for (var ent : fa.hoursByDay.entrySet()) {
@@ -2728,7 +2650,7 @@ public class EmployeeSchedule {
         Map<Integer, BlockDecision> byBlock = new HashMap<>();
         for (BlockDecision b : blocks) byBlock.put(b.id, b);
 
-        Map<String, Set<Integer>> personalOff = CAL.workerOffByWid;
+        Map<String, Set<Integer>> personalOff = SolveContext.current().calendars.workerOffByWid;
 
         for (CrewSeat s : seats) {
             if (s.pinnedFixed) {
@@ -2754,8 +2676,8 @@ public class EmployeeSchedule {
 
                 //  preference gate (level 0 for region OR customer_company → disallow)
                 String fabId     = s.factory;
-                String regionId  = CAL.regionOfFab(fabId);
-                String customerId = CAL.customerOfFab(fabId);
+                String regionId  = SolveContext.current().calendars.regionOfFab(fabId);
+                String customerId = SolveContext.current().calendars.customerOfFab(fabId);
                 int rp = regionPref(e, regionId);
                 int cp = customerPref(e, customerId);
                 if (rp == 0 || cp == 0) continue; // hate → never candidate
@@ -3395,16 +3317,16 @@ public class EmployeeSchedule {
         String schedFixedPath = preprocessScheduleYaml(schedPath);
         ParsedSchedule sch = parseSchedule(schedFixedPath, env.opdef);
         buildCalendars(envPath, sch.planStart, sch.planEnd);
-        SOLVE_MIN_DAY = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
-        SOLVE_MAX_DAY = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
+        SolveContext.current().solveMinDay = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
+        SolveContext.current().solveMaxDay = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
 
         // Performance redesign: cache dayId -> year and dayId -> year-month so
         // the overtime constraints no longer join DaySlot just to read a date.
-        DAY_TO_YEAR.clear();
-        DAY_TO_YM.clear();
+        SolveContext.current().dayToYear.clear();
+        SolveContext.current().dayToYm.clear();
         for (DaySlot d : sch.daySlots) {
-            DAY_TO_YEAR.put(d.id, d.date.getYear());
-            DAY_TO_YM.put(d.id, d.date.getYear() * 100 + d.date.getMonthValue());
+            SolveContext.current().dayToYear.put(d.id, d.date.getYear());
+            SolveContext.current().dayToYm.put(d.id, d.date.getYear() * 100 + d.date.getMonthValue());
         }
 
         // ---- DEBUG: parse summaries ----
@@ -3421,7 +3343,7 @@ public class EmployeeSchedule {
 
         int realEmp = Math.max(1, env.employees.size() - 1);
         int totalReq = sch.requiredByKey.values().stream().mapToInt(Integer::intValue).sum();
-        TARGET_HOURS_PER_EMP = totalReq / (double) realEmp;
+        SolveContext.current().targetHoursPerEmp = totalReq / (double) realEmp;
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
         // --------------------------------------------------
@@ -3446,7 +3368,7 @@ public class EmployeeSchedule {
                 int h     = ent.getValue();
                 if (h <= 0) continue;
 
-                if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+                if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                 ef.histFixedHoursByDay.merge(dayId, h, Integer::sum);
                 ef.histFixedTotalHours += h;
@@ -3455,7 +3377,7 @@ public class EmployeeSchedule {
             // factories per day (horizon-only)
             if (fa.factory != null && !fa.factory.isBlank()) {
                 for (Integer dayId : fa.hoursByDay.keySet()) {
-                    if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+                    if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                     ef.histFixedFactoriesByDay
                         .computeIfAbsent(dayId, k -> new HashSet<>())
@@ -3476,9 +3398,9 @@ public class EmployeeSchedule {
         // Build background fixed-hours/factories per (emp, day)
         // BUT ONLY INSIDE solver horizon daySlots.
         // --------------------------------------------------
-        FIXED_HOURS_BY_EMP_DAY.clear();
-        FIXED_FACTORIES_BY_EMP_DAY.clear();
-        FIXED_TASKCOUNT_BY_EMP_DAY.clear();
+        SolveContext.current().fixedHoursByEmpDay.clear();
+        SolveContext.current().fixedFactoriesByEmpDay.clear();
+        SolveContext.current().fixedTaskcountByEmpDay.clear();
 
         for (FixedAssign fa : sch.fixedRows) {
             EmployeeFact ef = env.byWid.get(fa.wid);
@@ -3491,32 +3413,32 @@ public class EmployeeSchedule {
                 int h     = e.getValue();
                 if (h <= 0) continue;
 
-                if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+                if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                 // existing: fixed hours
-                FIXED_HOURS_BY_EMP_DAY
+                SolveContext.current().fixedHoursByEmpDay
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(dayId, h, Integer::sum);
 
                 // existing: fixed factories
                 if (fa.factory != null && !fa.factory.isBlank()) {
-                    FIXED_FACTORIES_BY_EMP_DAY
+                    SolveContext.current().fixedFactoriesByEmpDay
                         .computeIfAbsent(empId, k -> new HashMap<>())
                         .computeIfAbsent(dayId, k -> new HashSet<>())
                         .add(fa.factory);
                 }
 
                 // fixed task count (each fixed assignment row counts as 1 task on that day)
-                FIXED_TASKCOUNT_BY_EMP_DAY
+                SolveContext.current().fixedTaskcountByEmpDay
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(dayId, 1, Integer::sum);
             }
         }
 
         // ----  aggregate fixed totals and overtime (HORIZON ONLY) ----
-        FIXED_TOTAL_HOURS_BY_EMP.clear();
-        FIXED_ANNUAL_OT_BY_EMP_YEAR.clear();
-        FIXED_MONTHLY_OT_BY_EMP_YM.clear();
+        SolveContext.current().fixedTotalHoursByEmp.clear();
+        SolveContext.current().fixedAnnualOtByEmpYear.clear();
+        SolveContext.current().fixedMonthlyOtByEmpYm.clear();
 
         for (FixedAssign fa : sch.fixedRows) {
             EmployeeFact ef = env.byWid.get(fa.wid);
@@ -3529,10 +3451,10 @@ public class EmployeeSchedule {
                 int h     = e.getValue();
                 if (h <= 0) continue;
 
-                if (dayId < SOLVE_MIN_DAY || dayId > SOLVE_MAX_DAY) continue;
+                if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                 // total fixed hours per employee
-                FIXED_TOTAL_HOURS_BY_EMP.merge(empId, h, Integer::sum);
+                SolveContext.current().fixedTotalHoursByEmp.merge(empId, h, Integer::sum);
 
                 // overtime maps
                 LocalDate d  = sch.planStart.plusDays(dayId);
@@ -3542,11 +3464,11 @@ public class EmployeeSchedule {
 
                 int ot = Math.max(0, h - SinglePassConstraints.BASE_HOURS_PER_DAY);
 
-                FIXED_ANNUAL_OT_BY_EMP_YEAR
+                SolveContext.current().fixedAnnualOtByEmpYear
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(year, ot, Integer::sum);
 
-                FIXED_MONTHLY_OT_BY_EMP_YM
+                SolveContext.current().fixedMonthlyOtByEmpYm
                     .computeIfAbsent(empId, k -> new HashMap<>())
                     .merge(ym, ot, Integer::sum);
             }
@@ -3688,7 +3610,7 @@ public class EmployeeSchedule {
                 nowClock(), fmt(stage2Dur),
                 String.valueOf(best2.getScore()));
 
-        EmployeeSchedule.validateHorizonOverlaps(best2, SOLVE_MIN_DAY, SOLVE_MAX_DAY);
+        EmployeeSchedule.validateHorizonOverlaps(best2, SolveContext.current().solveMinDay, SolveContext.current().solveMaxDay);
 
         // Append log to file (score + durations + per-constraint score)
         writeFinalScoreAnalysis(factoryStage2, best2, "final_score.txt", 100);
