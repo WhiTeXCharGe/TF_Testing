@@ -1,5 +1,6 @@
 package com.yourorg.scheduler;
 
+import com.yourorg.scheduler.build.PlanBuilder;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -61,7 +62,7 @@ final class Characterization {
         Path sched = workDir.resolve("Schedule.yaml");
         Files.copy(inputDir.resolve("EnvConfig.yaml"), env, StandardCopyOption.REPLACE_EXISTING);
         Files.copy(inputDir.resolve("Schedule.yaml"), sched, StandardCopyOption.REPLACE_EXISTING);
-        return EmployeeSchedule.buildPlanForTests(env.toString(), sched.toString());
+        return PlanBuilder.buildPlanForTests(env.toString(), sched.toString());
     }
 
     // ------------------------------------------------------------------ measuring

@@ -1,4 +1,4 @@
-package com.yourorg.scheduler;
+package com.yourorg.scheduler.export;
 
 import java.io.*;
 import java.nio.file.*;
@@ -8,6 +8,7 @@ import java.util.*;
 
 import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.calendar.WorkingDays;
+import com.yourorg.scheduler.io.EnvConfigParser;
 import com.yourorg.scheduler.io.YamlFiles;
 import com.yourorg.scheduler.model.*;
 
@@ -16,7 +17,7 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
-public class ExportSchedule {
+public class ScheduleExporter {
 
     @SuppressWarnings("unchecked")
     static void moveFlexibleBeforeCutoffToFixed(
@@ -125,9 +126,9 @@ public class ExportSchedule {
                 Map<String,Object> pr = (Map<String,Object>) sched.get("plan_range");
                 LocalDate planEnd = LocalDate.parse(
                         String.valueOf(pr.get("end_date")).replace("-", "/"),
-                        EmployeeSchedule.DF
+                        YamlFiles.DF
                 );
-                EmployeeSchedule.buildCalendars(envPath, planStart, planEnd);
+                EnvConfigParser.buildCalendars(envPath, planStart, planEnd);
             }
         } catch (Exception ignore) {}
 
@@ -192,7 +193,7 @@ public class ExportSchedule {
         LocalDate cutOffDate = null;
         Object cut = sched.get("cut_off_date");
         if (cut != null) {
-            cutOffDate = LocalDate.parse(String.valueOf(cut).replace("-", "/"), EmployeeSchedule.DF);
+            cutOffDate = LocalDate.parse(String.valueOf(cut).replace("-", "/"), YamlFiles.DF);
         } else {
             // if missing, treat as planStart
             cutOffDate = planStart;
