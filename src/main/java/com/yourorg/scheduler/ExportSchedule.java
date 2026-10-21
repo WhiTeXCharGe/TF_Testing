@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import com.yourorg.scheduler.model.*;
+
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -91,7 +93,7 @@ public class ExportSchedule {
 
     @SuppressWarnings("unchecked")
     public static void overwriteScheduleWithAssignments(
-            EmployeeSchedule.SinglePassPlan plan,
+            SinglePassPlan plan,
             LocalDate planStart,
             String schedPath,
             String envPath) throws IOException {
@@ -200,7 +202,7 @@ public class ExportSchedule {
         // ---- Detect "stage1 only" situation (warmPinned still exists) ----
         boolean hasWarmPinned = false;
         if (plan != null && plan.seats != null) {
-            for (EmployeeSchedule.CrewSeat s : plan.seats) {
+            for (CrewSeat s : plan.seats) {
                 if (s != null && s.warmPinned && s.pinnedWid != null) {
                     hasWarmPinned = true;
                     break;
@@ -256,9 +258,9 @@ public class ExportSchedule {
         }
 
         // ---- Index blocks by id ----
-        Map<Integer, EmployeeSchedule.BlockDecision> blockById = new HashMap<>();
+        Map<Integer, BlockDecision> blockById = new HashMap<>();
         if (plan != null && plan.blocks != null) {
-            for (EmployeeSchedule.BlockDecision b : plan.blocks) {
+            for (BlockDecision b : plan.blocks) {
                 if (b != null) blockById.put(b.id, b);
             }
         }
@@ -269,7 +271,7 @@ public class ExportSchedule {
         List<Map<String,Object>> newFlex = new ArrayList<>();
 
         if (plan != null && plan.seats != null) {
-            for (EmployeeSchedule.CrewSeat s : plan.seats) {
+            for (CrewSeat s : plan.seats) {
                 if (s == null || EmployeeSchedule.isUnassigned(s.employee)) continue;
 
                 // Skip fixed pinned seats (they come from original fixed rows)
@@ -280,7 +282,7 @@ public class ExportSchedule {
                 String taskId = opTaskId.get(module + "|" + opId); // e1p2o2
                 if (taskId == null || "null".equals(taskId)) continue;
 
-                EmployeeSchedule.BlockDecision b = blockById.get(s.blockId);
+                BlockDecision b = blockById.get(s.blockId);
 
                 // Build work map once
                 Map<Integer,Integer> byDay = new TreeMap<>();

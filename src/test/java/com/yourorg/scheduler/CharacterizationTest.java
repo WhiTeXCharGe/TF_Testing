@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.yourorg.scheduler.Characterization.ConstraintTotal;
 import com.yourorg.scheduler.Characterization.Snapshot;
-import com.yourorg.scheduler.EmployeeSchedule.SinglePassPlan;
+import com.yourorg.scheduler.model.SinglePassPlan;
 
 /**
  * Characterisation of the baseline (Timefold 1.27) behaviour.

@@ -24,7 +24,7 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
-import com.yourorg.scheduler.EmployeeSchedule.SinglePassPlan;
+import com.yourorg.scheduler.model.SinglePassPlan;
 
 /**
  * Characterisation harness: records what the CURRENT code computes for a fixed input, so that later
