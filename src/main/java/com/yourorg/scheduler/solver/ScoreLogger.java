@@ -14,6 +14,7 @@ import ai.timefold.solver.core.api.score.Score;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 
 import com.yourorg.scheduler.config.SolverConstants;
+import com.yourorg.scheduler.io.LoadLog;
 import com.yourorg.scheduler.model.BlockDecision;
 import com.yourorg.scheduler.model.CrewSeat;
 import com.yourorg.scheduler.model.DaySlot;
@@ -41,6 +42,16 @@ public final class ScoreLogger {
     }
 
     static boolean hardZero(Score<?> s) { return s != null && s.toString().startsWith("0hard"); }
+
+    /**
+     * A score-file writer failed, most likely inside {@link ConstraintBreakdown} (Timefold internal API). Reported on
+     * stderr and in load_log.txt with the exception class, so the failure point is visible after an upgrade.
+     */
+    static void reportFailure(String where, Exception ex) {
+        String msg = where + " failed: " + ex.getClass().getName() + ": " + ex.getMessage();
+        System.err.println(msg);
+        LoadLog.appendLoadLog("[SCORE-FILE-FAILED] " + msg);
+    }
 
     // ---------------- Logging helper ----------------
 
@@ -234,7 +245,7 @@ public final class ScoreLogger {
                 String body = ConstraintBreakdown.summarize(analysis, topMatchesPerConstraints);
                 ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);                
             } catch (Exception ex) {
-                System.err.println("writeInitialScoreAnalysis failed: " + ex.getMessage());
+                reportFailure("writeInitialScoreAnalysis", ex);
             }
         }
 
@@ -251,7 +262,7 @@ public final class ScoreLogger {
                 String body = ConstraintBreakdown.summarize(analysis, topMatchesPerConstraints);
                 ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);
             } catch (Exception ex){
-                System.err.println("writeInitialScoreAnalysis failed:  " + ex.getMessage());
+                reportFailure("writeFinalScoreAnalysis(" + fileName + ")", ex);
             }
         }
 }

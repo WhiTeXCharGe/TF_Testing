@@ -92,14 +92,19 @@ ranges now work as follows:
 
 1. Manager seats that start UNASSIGNED are now filled by the construction heuristic, with managers only. On 1.x they
    started UNASSIGNED and were filled by the local search.
-2. A seeded, fixed-step run gives different results, because 2.7.1 searches differently and starts from the values above.
+2. A phase-1 block that is warm-started on a day after its `windowStart` now starts at `windowStart`, keeping the warm end
+   day. 1.27 and 1.35 kept the later day. A phase-1 block whose warm days all lie outside its window is still not
+   warm-started, as before. On the real sample this changes one block (start day 1 -> 0) and none of the initial scores.
+3. A seeded, fixed-step run gives different results, because 2.7.1 searches differently and starts from the values above.
    The `seeded_run` golden sections were regenerated once (200 steps or 2000 steps, seed 42):
    - small: `-376hard/-150medium/-7476soft` -> `-36hard/0medium/-7138soft`
    - datagen: `-280306hard/0medium/-229632soft` -> `-26031hard/0medium/-256489soft`
-3. Residual: a kept out-of-gate warm-start employee stays in his seat's range for the whole solve, so the search may
+4. Residual: a kept out-of-gate warm-start employee stays in his seat's range for the whole solve, so the search may
    re-select him for that same seat after moving him away. 1.27 could not do that; 1.35 allowed it only through swap moves,
-   see the history below. In the weekly loop, warm starts come from solver output and pass the gates, so this only
-   concerns decoder-made input. The real sample `decoder7_out` has 80 such seats.
+   see the history below. On a manager seat this means a non-manager from decoder input can stay on seat 0, or return to
+   it later, although the manager rule wants a manager there. UNASSIGNED is still never offered on seat 0. In the
+   weekly loop, warm starts come from solver output and pass the gates, so this only concerns decoder-made input. The
+   real sample `decoder7_out` has 80 such seats, 31 of them manager seats.
 
 #### Internal-API dependency: `solver/ConstraintBreakdown`
 

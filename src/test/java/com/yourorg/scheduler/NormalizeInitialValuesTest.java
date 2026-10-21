@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -226,5 +227,23 @@ class NormalizeInitialValuesTest {
 
         assertEquals(12, p2.startDay, "other phases keep the warm start day");
         assertEquals(3, p2.days);
+    }
+
+    @Test
+    void phase1_block_with_all_warm_days_after_window_end_is_not_warm_started() throws Exception {
+        BlockDecision p1 = block(77, 1, "o1"); // window 10..20
+        ParsedSchedule sch = schedule(0, 30, List.of(row("o1", 25, 26)));
+        Path log = Path.of("load_log.txt");
+        long before = Files.exists(log) ? Files.readAllLines(log).size() : 0;
+
+        PlanBuilder.applyInitialPlan(sch, List.of(p1));
+
+        assertNull(p1.startDay, "skipped as on 1.35: left for the construction heuristic");
+        assertNull(p1.days);
+        assertNull(p1.hours);
+        List<String> lines = Files.exists(log) ? Files.readAllLines(log) : List.of();
+        for (String l : lines.subList((int) Math.min(before, lines.size()), lines.size())) {
+            assertFalse(l.contains("blockId=77"), "no INIT-BLOCK / PHASE1-CLAMP log for a skipped block: " + l);
+        }
     }
 }

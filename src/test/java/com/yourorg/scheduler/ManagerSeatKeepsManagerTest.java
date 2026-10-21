@@ -20,10 +20,12 @@ import ai.timefold.solver.core.api.solver.Solver;
 
 /**
  * Business rule: seat 0 of a block must be a manager. Once a manager seat holds a manager (from the warm start or
- * because the search filled it), the search must never empty it again (UNASSIGNED). Timefold 1.35 validates initial
- * values against the value range, which tempts one to widen the manager range with UNASSIGNED; that makes the search
- * re-empty manager seats, visible only after thousands of steps (datagen, seed 42: 3 seats at 6000 steps, 19 at 15000),
- * so the runs below are long enough to see it. Every best solution is inspected, not only the final one.
+ * because the solver filled it), the search must never empty it again (UNASSIGNED). On Timefold 2.x a manager seat
+ * that starts UNASSIGNED starts as {@code null} ({@code PlanBuilder.normalizeInitialValues}) and the construction
+ * heuristic fills it from its manager-only range; manager ranges never contain UNASSIGNED. Widening a manager range
+ * with UNASSIGNED (tried on 1.35) makes the search re-empty manager seats, visible only after thousands of steps
+ * (datagen, seed 42: 3 seats at 6000 steps, 19 at 15000), so the runs below are long enough to see it. Every best
+ * solution is inspected, not only the final one.
  */
 class ManagerSeatKeepsManagerTest {
 

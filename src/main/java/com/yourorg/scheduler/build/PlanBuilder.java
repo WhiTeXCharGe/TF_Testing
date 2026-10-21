@@ -431,9 +431,10 @@ public class PlanBuilder {
             // Clamp the initial plan inside the legal window
             startDay = Math.max(startDay, b.windowStart);
             endDay   = Math.min(endDay,   b.windowEnd);
-            // Phase-1 blocks start at windowStart by design (vrStartWithinWindow = [windowStart]); a later warm-start
-            // day is moved back to windowStart (the warm end day is kept). Timefold 2.x rejects an initial value
-            // outside the value range, 1.35 tolerated it through ValidationTolerantRange.
+            if (startDay > endDay) continue; // warm span outside the window: not warm-started (as on 1.35)
+            // Phase-1 blocks start at windowStart by design (vrStartWithinWindow = [windowStart]); for a block that IS
+            // warm-started, a later warm-start day is moved back to windowStart (the warm end day is kept). Timefold
+            // 2.x rejects an initial value outside the value range, 1.35 tolerated it through ValidationTolerantRange.
             if (b.phaseNum == 1 && startDay > b.windowStart) {
                 LoadLog.appendLoadLog(String.format(
                     Locale.ROOT,
@@ -442,7 +443,6 @@ public class PlanBuilder {
                 ));
                 startDay = b.windowStart;
             }
-            if (startDay > endDay) continue;
 
             b.startDay = startDay;
             b.days     = Math.max(1, endDay - startDay + 1);
