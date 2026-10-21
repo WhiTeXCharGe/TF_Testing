@@ -23,8 +23,91 @@ On Git Bash for Windows, prefix the command with `MSYS_NO_PATHCONV=1` and use `$
 
 The builder image is `maven:3.9-eclipse-temurin-21` and the runtime image is `eclipse-temurin:21-jre`.
 
-Mount `EnvConfig.yaml` and `Schedule.yaml` at `/work/input`. The result is written to `/work/output/result_Schedule.yaml`,
-and the run status to `/work/status/<RUN_ID>.json`. Sample inputs are in `src/main/resource/`.
+Mount `EnvConfig.yaml` and `Schedule.yaml` (and optionally `SolverParams.yaml`) at `/work/input`. The result is written to
+`/work/output/result_Schedule.yaml`, and the run status to `/work/status/<RUN_ID>.json`. Sample inputs are in `src/main/resource/`.
+
+Run the solver (Git Bash on Windows: prefix with `MSYS_NO_PATHCONV=1` and use `$(pwd -W)`; `RUN_ID` names the status file):
+
+    docker run --rm -e RUN_ID=run1 \
+      -v "$(pwd)/work/input:/work/input:ro" -v "$(pwd)/work/output:/work/output" -v "$(pwd)/work/status:/work/status" \
+      timefold-scheduler:local
+
+A short smoke run of the first-run fixture (empty `assignment_list`, one Fixed and one Flexible trip), about 10 seconds:
+
+    mkdir -p work/input work/output work/status
+    cp src/test/resources/fixtures/firstrun/*.yaml work/input/
+    printf 'stage1_unimproved_seconds: 5\nstage2_enabled: false\n' > work/input/SolverParams.yaml
+    docker run --rm -e RUN_ID=firstrun -v "$(pwd)/work/input:/work/input:ro" -v "$(pwd)/work/output:/work/output" \
+      -v "$(pwd)/work/status:/work/status" timefold-scheduler:local
+
+`docker-compose.yml` does the same with `docker compose up --build solver` (folders `./work/{input,output,status}`).
+
+The tests, including the end-to-end scenarios (`EndToEndTest`, about 30 s), run in Docker too (see "Build" above):
+
+    docker run --rm -v "$(pwd):/w" -v tf-m2:/root/.m2 -w /w maven:3.9-eclipse-temurin-21 mvn -B test
+
+### Input files
+
+| File | Required | Content |
+|---|---|---|
+| `EnvConfig.yaml` | yes | the world: workflows, fabs, regions (calendars, `max_stay_on`, `stay_off_interval`, transit days), workers |
+| `Schedule.yaml` | yes | `plan_range`, `workflow_task_list`, `misc_task_list`, `assignment_list` (may be `[]`: a first run), optional `trip_list` |
+| `SolverParams.yaml` | no | a top-level map of the parameters below, for example `stage1_minutes: 30` |
+
+### Output files
+
+| File | Content |
+|---|---|
+| `/work/output/result_Schedule.yaml` | `Schedule.yaml` with the new `assignment_list`, the `trip_list` right after it, and `solver_version` as the last key |
+| `/work/output/trip_warnings.txt` | only when there is something to report (see "trip_list output"); a file of an earlier run is deleted when there is none |
+| `/work/status/<RUN_ID>.json` | `runId`, `status` (`Running`, `Completed`, `Failed`, `Cancelled`), `stage`, `progress`, `startedAt`, `updatedAt`, `finishedAt`, `error`, `output` |
+
+Exit codes of the container: 0 done, 2 input file missing, 3 output file cannot be created, 4 result missing, 143 cancelled
+(SIGTERM), otherwise the exit code of the solver (status `Failed`).
+
+### Parameters
+
+Every parameter is resolved on its own, first source that mentions the key wins:
+
+1. command line `--key=value` (or `--key value`), after the two file arguments (`Main <EnvConfig> <Schedule> [flags]`);
+2. environment variable `TF_<KEY>` (upper case, so `TF_STAGE1_MINUTES`; a blank variable counts as not set);
+3. the params file `SolverParams.yaml`: `--params-file=<path>`, else `TF_PARAMS_FILE`, else `${INPUT_DIR}/SolverParams.yaml`
+   (`/work/input/SolverParams.yaml` in the container; `entrypoint.sh` sets `TF_PARAMS_FILE` when the file exists);
+4. the default.
+
+Key spellings are case-insensitive and ignore `_` and `-` (`--Stage1-Minutes` works). The params file is lenient: a missing file
+is fine; a file that is not valid YAML or not a map is ignored with a warning; an unknown key warns; a value of the wrong type
+falls back to that key's DEFAULT (not to a lower source) and warns, the other keys are still used. Warnings are printed as
+`[params] WARN ...` and never stop the run. The effective values are printed in the `[params]` line at the start.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `stage1_minutes` | 300 | stage 1 time limit in minutes (>= 1) |
+| `stage1_unimproved_seconds` | 600 | stage 1 stops after this many seconds without a new best score (>= 1) |
+| `stage1_stop_when_feasible` | true | stage 1 also stops as soon as the hard score is 0 |
+| `stage2_enabled` | true | false skips the polish stage (the stage 1 result is the result) |
+| `stage2_minutes` | 60 | stage 2 time limit in minutes (>= 1) |
+| `stage2_unimproved_seconds` | 60 | stage 2 stops after this many seconds without a new best score (>= 1) |
+| `random_seed` | none | random seed for both stages |
+| `trip_validation` | `lenient` | `lenient`: trip_list problems are warnings; `strict`: any trip_list warning fails the run (`InvalidInputData`) |
+| `misc_neutral_regions` | `[r_other]` | misc task regions that count as "no region" (list or comma separated; empty = none) |
+| `trip_history_days` | -1 | derived trips ending more than N days before the plan start are dropped from the output; -1 keeps all |
+| `write_score_files` | true | false skips `initial_score.txt`, `stage1_score.txt`, `final_score.txt`, `score_progress.txt` (`solver_log.txt` is always written) |
+| `allow_cut_fixed_trip` | true | an enforced Fixed trip with no same-region work inside is removed from the output and logged (`cut_fixed_trip`); also read from `TF_ALLOWCUTFIXEDFIFO`, `ALLOW_CUT_FIXED_TRIP`, `ALLOWCUTFIXEDFIFO` |
+| `move_thread_count` | - | recognised but ignored (Timefold Enterprise Edition only) |
+
+Example `SolverParams.yaml` for a quick check run:
+
+    stage1_minutes: 2
+    stage1_unimproved_seconds: 30
+    stage2_enabled: false
+    random_seed: 42
+
+Any `TF_*` variable of the container is inherited by the solver: `docker run -e TF_STAGE1_MINUTES=10 ...` beats the file.
+The seconds-level keys are the ones to use for very short runs (`stage1_unimproved_seconds: 5` with `stage2_enabled: false`).
+
+The trip_list (input, marks, output) is described in the sections "trip_list input", "Trip marks (calendar)", "Stay limits
+count FI to FO", "TripDeriver" and "trip_list output" below.
 
 ## Misc task region
 

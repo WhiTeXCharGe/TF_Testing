@@ -4,7 +4,8 @@
 # Flow:
 #   1. Validate /work/input/EnvConfig.yaml + Schedule.yaml
 #   2. Copy Schedule.yaml → /work/output/result_Schedule.yaml (solver mutates in place)
-#   3. Run solver
+#   3. Run solver (optional /work/input/SolverParams.yaml → TF_PARAMS_FILE; TF_* env vars are inherited)
+#      It also writes /work/output/trip_warnings.txt when the trip_list has warnings.
 #   4. Maintain /work/status/<RUN_ID>.json with full spec schema throughout
 #
 # Cancel = SIGTERM (docker stop, ACA Job stop)
@@ -143,6 +144,18 @@ if ! cp -f "${SCHED_FILE_IN}" "${SCHED_FILE_OUT}"; then
   exit 3
 fi
 
+# ─── solver parameters ───────────────────────────────────────────────────────
+# Optional /work/input/SolverParams.yaml (top-level map, e.g. "stage1_minutes: 30"). The java process reads it
+# through TF_PARAMS_FILE. An explicitly set TF_PARAMS_FILE wins. Any TF_* variable of the container environment
+# (TF_STAGE1_MINUTES, TF_STAGE2_ENABLED, ...) is inherited by java and beats the file; see README "Parameters".
+PARAMS_FILE_IN="${INPUT_DIR}/SolverParams.yaml"
+if [[ -z "${TF_PARAMS_FILE:-}" && -f "${PARAMS_FILE_IN}" ]]; then
+  export TF_PARAMS_FILE="${PARAMS_FILE_IN}"
+fi
+if [[ -n "${TF_PARAMS_FILE:-}" ]]; then
+  echo "[entrypoint] params file: ${TF_PARAMS_FILE}"
+fi
+
 # ─── solve ───────────────────────────────────────────────────────────────────
 
 CURRENT_STAGE=1
@@ -169,6 +182,11 @@ fi
 if [[ ! -f "${SCHED_FILE_OUT}" ]]; then
   write_failed "OutputError" "Solver finished but result_Schedule.yaml is missing at ${SCHED_FILE_OUT}" "1"
   exit 4
+fi
+
+# trip_warnings.txt is written by the solver next to the result, only when there is something to report.
+if [[ -f "${OUTPUT_DIR}/trip_warnings.txt" ]]; then
+  echo "[entrypoint] trip warnings: ${OUTPUT_DIR}/trip_warnings.txt"
 fi
 
 write_completed

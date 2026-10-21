@@ -21,7 +21,7 @@ RUN mvn -B -ntp -DskipTests clean package
 FROM eclipse-temurin:21-jre
 
 LABEL org.opencontainers.image.title="timefold-scheduler"
-LABEL org.opencontainers.image.description="Timefold employee scheduler — reads /work/input/{EnvConfig,Schedule}.yaml, writes /work/output/result_Schedule.yaml"
+LABEL org.opencontainers.image.description="Timefold employee scheduler — reads /work/input/{EnvConfig,Schedule}.yaml (+ optional SolverParams.yaml), writes /work/output/result_Schedule.yaml (+ trip_warnings.txt)"
 LABEL org.opencontainers.image.source="https://github.com/WhiTeXCharGe/TF_Testing"
 
 # Non-root user (matches what ACA / k8s will give us in production).
@@ -41,9 +41,10 @@ RUN chmod +x /app/entrypoint.sh && chown -R solver:solver /app
 USER solver
 
 # /work is the conventional mount point. Bind-mount your local folders here:
-#   /work/input   ← EnvConfig.yaml + Schedule.yaml (read-only is recommended)
-#   /work/output  ← result_Schedule.yaml written by the solver
+#   /work/input   ← EnvConfig.yaml + Schedule.yaml (+ optional SolverParams.yaml); read-only is recommended
+#   /work/output  ← result_Schedule.yaml written by the solver (+ trip_warnings.txt when there are warnings)
 #   /work/status  ← status/<RUN_ID>.json updated throughout the run
+# Solver parameters: SolverParams.yaml in /work/input and/or TF_* environment variables (see README).
 ENV INPUT_DIR=/work/input \
     OUTPUT_DIR=/work/output \
     STATUS_DIR=/work/status \

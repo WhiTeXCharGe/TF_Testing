@@ -6,6 +6,9 @@
 #   - Builds the image from this folder's Dockerfile
 #   - Mounts ./work/{input,output,status} into the container
 #   - Sets RUN_ID to a fixed value so you can find the status file easily
+#   - Solver parameters: put a SolverParams.yaml next to the inputs in ./work/input, and/or add TF_* variables
+#     below (for example TF_STAGE1_MINUTES: "10"); TF_* wins over the file. See README "Parameters".
+#   - Outputs in ./work/output: result_Schedule.yaml, and trip_warnings.txt when the trip_list has warnings
 #
 # Cancel it with Ctrl+C — Docker sends SIGTERM and the entrypoint writes
 # status = Cancelled before exiting.
@@ -20,6 +23,8 @@ services:
     environment:
       RUN_ID: "local-run-001"
       JVM_MAX_HEAP: "6g"
+      # TF_STAGE1_MINUTES: "10"
+      # TF_STAGE2_ENABLED: "false"
     volumes:
       - ./work/input:/work/input:ro      # read-only — solver must never modify input
       - ./work/output:/work/output

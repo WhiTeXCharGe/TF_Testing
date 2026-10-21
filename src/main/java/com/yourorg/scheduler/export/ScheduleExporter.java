@@ -104,6 +104,7 @@ public class ScheduleExporter {
         preservedFlexible.addAll(remainFlexible);
     }
 
+    /** Precondition: {@code PlanBuilder.buildProblem} ran for this same schedule (the trip data comes from {@code SolveContext}). */
     @SuppressWarnings("unchecked")
     public static void overwriteScheduleWithAssignments(
             SinglePassPlan plan,
@@ -432,8 +433,12 @@ public class ScheduleExporter {
                     days.add(new WorkedDay(worker,
                             planStart.plusDays(YamlFiles.dayIdFromDate(planStart, String.valueOf(item.get("date")))),
                             region));
-                } catch (java.time.format.DateTimeParseException ignore) {
-                    // an unreadable date is not a worked day
+                } catch (java.time.format.DateTimeParseException e) {
+                    // an unreadable date is not a worked day, but say so instead of dropping it silently
+                    String msg = "unreadable work date \"" + item.get("date") + "\" of worker " + worker + " task "
+                            + a.get("operation_task") + " ignored for trip derivation";
+                    warnings.add(msg);
+                    System.out.println("[trips] WARN " + msg);
                 }
             }
         }
@@ -446,7 +451,9 @@ public class ScheduleExporter {
             boolean fixed = e.trip() == null || e.trip().flexibility() == Flexibility.FIXED;
             if (!fixed) continue; // a Flexible input trip is regenerated
             if (e.worker() == null) {
-                warnings.add("trip_list Fixed trip without a worker is dropped from the output: " + e.raw());
+                String msg = "trip_list Fixed trip without a worker is dropped from the output: " + e.raw();
+                warnings.add(msg);
+                System.out.println("[trips] WARN " + msg);
                 continue;
             }
             fixedEntries.add(e);

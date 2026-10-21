@@ -37,18 +37,28 @@ public class Main {
     }
 
     /**
-     * Command line split into positional arguments (envPath, schedPath) and parameter flags. A flag is a token
-     * starting with {@code --}; for a known parameter written as {@code --key value} the value token belongs to the
-     * flag. Put positional arguments before flags.
+     * Command line split into positional arguments (envPath, schedPath), parameter flags and the params file. A flag
+     * is a token starting with {@code --}; for a known parameter written as {@code --key value} the value token
+     * belongs to the flag. {@code --params-file=<path>} (or {@code --params-file <path>}) names the SolverParams.yaml
+     * and is not a solver parameter (null = not given). Put positional arguments before flags.
      */
-    public record SplitArgs(List<String> positional, String[] flags) {}
+    public record SplitArgs(List<String> positional, String[] flags, String paramsFile) {
+        public SplitArgs(List<String> positional, String[] flags) {
+            this(positional, flags, null);
+        }
+    }
 
     public static SplitArgs splitArgs(String[] args) {
         List<String> positional = new ArrayList<>();
         List<String> flags = new ArrayList<>();
+        String paramsFile = null;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
-            if (a != null && a.startsWith("--")) {
+            if (a != null && (a.equals("--params-file") || a.equals("--params_file"))) {
+                if (i + 1 < args.length && args[i + 1] != null && !args[i + 1].startsWith("--")) paramsFile = args[++i];
+            } else if (a != null && (a.startsWith("--params-file=") || a.startsWith("--params_file="))) {
+                paramsFile = a.substring(a.indexOf('=') + 1);
+            } else if (a != null && a.startsWith("--")) {
                 flags.add(a);
                 if (!a.contains("=") && SolverParams.canonicalKey(a.substring(2)) != null
                         && i + 1 < args.length && args[i + 1] != null && !args[i + 1].startsWith("--")) {
@@ -58,10 +68,10 @@ public class Main {
                 positional.add(a);
             }
         }
-        return new SplitArgs(positional, flags.toArray(new String[0]));
+        return new SplitArgs(positional, flags.toArray(new String[0]), paramsFile);
     }
 
-    /** Params file: TF_PARAMS_FILE, else ${INPUT_DIR or /work/input}/SolverParams.yaml. */
+    /** Params file: TF_PARAMS_FILE, else ${INPUT_DIR or /work/input}/SolverParams.yaml. A missing file is not an error. */
     public static Path paramsFile(Map<String, String> env) {
         String explicit = env.get("TF_PARAMS_FILE");
         if (explicit != null && !explicit.isBlank()) return Path.of(explicit);
@@ -70,13 +80,24 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
+        run(args, System.getenv());
+    }
+
+    /**
+     * The whole run (what {@link #main} does), with the environment passed in so that it can be called from tests;
+     * never calls {@code System.exit}. Resolves the parameters (CLI &gt; env &gt; params file &gt; defaults; the file
+     * is {@code --params-file=}, else {@link #paramsFile}), solves, and overwrites {@code schedPath} with the result.
+     *
+     * @return the parameters that were used (with their warnings)
+     */
+    public static SolverParams run(String[] args, Map<String, String> env) throws Exception {
         SplitArgs split = splitArgs(args);
         List<String> pos = split.positional();
         String envPath = pos.size() > 0 ? pos.get(0) : "EnvConfig.yaml";
         String schedPath = pos.size() > 1 ? pos.get(1) : "Schedule.yaml";
 
-        Map<String, String> env = System.getenv();
-        SolverParams params = SolverParams.load(split.flags(), env, paramsFile(env));
+        Path paramsPath = split.paramsFile() != null ? Path.of(split.paramsFile()) : paramsFile(env);
+        SolverParams params = SolverParams.load(split.flags(), env, paramsPath);
         params.warnings().forEach(w -> System.out.println("[params] WARN " + w));
         System.out.println("[params] " + params.describe());
         ScoreLogger.setWriteScoreFiles(params.writeScoreFiles());
@@ -94,5 +115,6 @@ public class Main {
                 rr.plan, rr.planStart, schedPath, envPath);
 
         System.out.println("Done.");
+        return params;
     }
 }

@@ -384,6 +384,36 @@ class TripExportTest {
         assertEquals("r1", trips.get(0).get("region"));
     }
 
+    @Test
+    void workerless_fixed_trip_is_dropped_warned_and_echoed_to_the_console() throws Exception {
+        Path dir = tmp.resolve("workerless");
+        Files.createDirectories(dir);
+        Files.copy(SMALL.resolve("EnvConfig.yaml"), dir.resolve("EnvConfig.yaml"));
+        Files.writeString(dir.resolve("Schedule.yaml"), MISC_SCHEDULE.formatted("r_other"), StandardCharsets.UTF_8);
+        SolveContext.clear();
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("start_date", "2026/04/01");
+        raw.put("end_date", "2026/04/03");
+        raw.put("region", "r1");
+        raw.put("plan_flexibility", "Fixed");
+        SolveContext.current().tripEntries = new ArrayList<>(List.of(new TripEntry(null, raw, false, null)));
+
+        PrintStream old = System.out;
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+        try {
+            ScheduleExporter.overwriteScheduleWithAssignments(null, LocalDate.of(2026, 3, 23),
+                    dir.resolve("Schedule.yaml").toString(), dir.resolve("EnvConfig.yaml").toString());
+        } finally {
+            System.setOut(old);
+        }
+        String console = buf.toString(StandardCharsets.UTF_8);
+        assertTrue(console.contains("[trips] WARN trip_list Fixed trip without a worker is dropped"), console);
+        String file = Files.readString(dir.resolve(ScheduleExporter.TRIP_WARNINGS_FILE), StandardCharsets.UTF_8);
+        assertTrue(file.contains("without a worker"), file);
+        assertEquals(List.of(), ScheduleExporterTest.schedule(dir.resolve("Schedule.yaml")).get("trip_list"));
+    }
+
     // ------------------------------------------------------------------ TripWriter / constants
 
     private static Trip trip(String worker, String start, String end, String region, Flexibility f) {
@@ -439,10 +469,27 @@ class TripExportTest {
 
     @Test
     void solver_version_constants_match_the_pom() throws Exception {
-        String pom = Files.readString(Path.of("pom.xml"), StandardCharsets.UTF_8);
-        assertTrue(pom.contains("<timefold.version>" + SolverConstants.TIMEFOLD_VERSION + "</timefold.version>"));
-        assertTrue(pom.contains("<artifactId>timefold-scheduler</artifactId>\n  <version>"
-                + SolverConstants.APP_VERSION + "</version>"));
+        // find the project pom from wherever the tests run (basedir, else the working directory and its parents)
+        Path dir = Path.of(System.getProperty("basedir", "")).toAbsolutePath();
+        Path pomFile = null;
+        for (Path d = dir; d != null && pomFile == null; d = d.getParent()) {
+            Path candidate = d.resolve("pom.xml");
+            if (Files.exists(candidate)
+                    && Files.readString(candidate, StandardCharsets.UTF_8).contains("<artifactId>timefold-scheduler</artifactId>")) {
+                pomFile = candidate;
+            }
+        }
+        assertNotNull(pomFile, "pom.xml of the project not found from " + dir);
+        String pom = Files.readString(pomFile, StandardCharsets.UTF_8);
+        // regexes, so that line endings and indentation of the pom do not matter
+        java.util.regex.Matcher tf = java.util.regex.Pattern.compile("<timefold\\.version>\\s*([^<\\s]+)\\s*</timefold\\.version>")
+                .matcher(pom);
+        assertTrue(tf.find(), "timefold.version property not found in the pom");
+        assertEquals(SolverConstants.TIMEFOLD_VERSION, tf.group(1));
+        java.util.regex.Matcher app = java.util.regex.Pattern
+                .compile("<artifactId>timefold-scheduler</artifactId>\\s*<version>\\s*([^<\\s]+)\\s*</version>").matcher(pom);
+        assertTrue(app.find(), "project version not found in the pom");
+        assertEquals(SolverConstants.APP_VERSION, app.group(1));
         assertTrue(SolverConstants.SOLVER_VERSION.contains(SolverConstants.APP_VERSION));
         assertTrue(SolverConstants.SOLVER_VERSION.contains(SolverConstants.TIMEFOLD_VERSION));
     }
