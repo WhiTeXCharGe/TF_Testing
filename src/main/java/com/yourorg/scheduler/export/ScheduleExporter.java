@@ -9,9 +9,17 @@ import java.util.*;
 import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.calendar.WorkerCalendar;
 import com.yourorg.scheduler.calendar.WorkingDays;
+import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.io.EnvConfigParser;
 import com.yourorg.scheduler.io.YamlFiles;
 import com.yourorg.scheduler.model.*;
+import com.yourorg.scheduler.trip.DeriveResult;
+import com.yourorg.scheduler.trip.Flexibility;
+import com.yourorg.scheduler.trip.Trip;
+import com.yourorg.scheduler.trip.TripDeriver;
+import com.yourorg.scheduler.trip.TripEntry;
+import com.yourorg.scheduler.trip.TripWriter;
+import com.yourorg.scheduler.trip.WorkedDay;
 
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -222,14 +230,7 @@ public class ScheduleExporter {
             merged.addAll(preservedFlexible);
 
             sched.put("assignment_list", merged);
-
-            DumperOptions opt = new DumperOptions();
-            opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-            opt.setPrettyFlow(true);
-            Yaml yaml = new Yaml(opt);
-            try (Writer out = Files.newBufferedWriter(Paths.get(schedPath))) {
-                yaml.dump(root, out);
-            }
+            writeResult(root, sched, merged, planStart, schedPath);
 
             System.out.println(
                     "Stage1-only detected (warmPinned exists). Kept original assignments as-is."
@@ -364,14 +365,7 @@ public class ScheduleExporter {
         merged.addAll(newFlex);
 
         sched.put("assignment_list", merged);
-
-        DumperOptions opt = new DumperOptions();
-        opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-        opt.setPrettyFlow(true);
-        Yaml yaml = new Yaml(opt);
-        try (Writer out = Files.newBufferedWriter(Paths.get(schedPath))) {
-            yaml.dump(root, out);
-        }
+        writeResult(root, sched, merged, planStart, schedPath);
 
         System.out.println(
                 "Overwrote " + schedPath
@@ -379,6 +373,136 @@ public class ScheduleExporter {
                         + " | preserved fixed rows=" + preservedFixed.size()
                         + " | (old flexible overwritten because warmPinned not present)"
         );
+    }
+
+    // ---------------------------------------------------------------- trip_list output (design section 6)
+
+    /** Name of the warnings file, written next to the result file only when there is something to report. */
+    public static final String TRIP_WARNINGS_FILE = "trip_warnings.txt";
+
+    /**
+     * Derives the output trip_list from the final assignment list, puts it right after {@code assignment_list}, adds
+     * {@code solver_version}, dumps the YAML and writes (or removes) {@code trip_warnings.txt}.
+     */
+    @SuppressWarnings("unchecked")
+    private static void writeResult(Map<String,Object> root, Map<String,Object> sched,
+                                    List<Map<String,Object>> assignments, LocalDate planStart,
+                                    String schedPath) throws IOException {
+        SolveContext ctx = SolveContext.current();
+        List<String> warnings = new ArrayList<>(ctx.tripWarnings);
+
+        // ---- operation_task id -> region: module task = its fab's region; misc task = its own non-neutral region
+        Map<String,String> taskRegion = new HashMap<>();
+        for (Map<String,Object> wf : (List<Map<String,Object>>) sched.getOrDefault("workflow_task_list", List.of())) {
+            String region = ctx.calendars.regionOfFab(String.valueOf(wf.get("fab")));
+            if (region == null) continue;
+            for (Map<String,Object> ph : (List<Map<String,Object>>) wf.getOrDefault("phase_task_list", List.of())) {
+                for (Map<String,Object> ot : (List<Map<String,Object>>) ph.getOrDefault("operation_task_list", List.of())) {
+                    taskRegion.put(String.valueOf(ot.get("id")), region);
+                }
+            }
+        }
+        Object miscObj = sched.get("misc_task_list");
+        if (miscObj instanceof List) {
+            for (Object o : (List<?>) miscObj) {
+                if (!(o instanceof Map)) continue;
+                Map<?,?> mt = (Map<?,?>) o;
+                String id = YamlFiles.safeStr(mt.get("id"));
+                String region = YamlFiles.safeStr(mt.get("region")).trim();
+                if (id.isBlank() || region.isBlank() || ctx.miscNeutralRegions.contains(region)) continue;
+                taskRegion.putIfAbsent(id, region);
+            }
+        }
+
+        // ---- worked days of the final assignment list (rows without a region are not worked days for a trip)
+        List<WorkedDay> days = new ArrayList<>();
+        for (Map<String,Object> a : assignments) {
+            if (a == null || a.get("worker") == null) continue;
+            String region = taskRegion.get(String.valueOf(a.get("operation_task")));
+            if (region == null) continue;
+            String worker = String.valueOf(a.get("worker")).trim();
+            String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
+            Object wdl = a.get(wdKey);
+            if (!(wdl instanceof List)) continue;
+            for (Object o : (List<?>) wdl) {
+                if (!(o instanceof Map)) continue;
+                Map<?,?> item = (Map<?,?>) o;
+                if (item.get("hour") instanceof Number && ((Number) item.get("hour")).doubleValue() <= 0) continue;
+                try {
+                    days.add(new WorkedDay(worker,
+                            planStart.plusDays(YamlFiles.dayIdFromDate(planStart, String.valueOf(item.get("date")))),
+                            region));
+                } catch (java.time.format.DateTimeParseException ignore) {
+                    // an unreadable date is not a worked day
+                }
+            }
+        }
+
+        // ---- Fixed entries of the input trip_list: kept, cut or dropped
+        List<TripEntry> fixedEntries = new ArrayList<>();
+        List<Trip> enforced = new ArrayList<>();
+        for (TripEntry e : ctx.tripEntries) {
+            if (e == null) continue;
+            boolean fixed = e.trip() == null || e.trip().flexibility() == Flexibility.FIXED;
+            if (!fixed) continue; // a Flexible input trip is regenerated
+            if (e.worker() == null) {
+                warnings.add("trip_list Fixed trip without a worker is dropped from the output: " + e.raw());
+                continue;
+            }
+            fixedEntries.add(e);
+            // only enforced trips take part in the derivation; the others are copied unchanged, never cut
+            if (e.enforced() && e.trip() != null) enforced.add(e.trip());
+        }
+
+        DeriveResult derived = TripDeriver.derive(days, enforced,
+                region -> ctx.calendars.regionStayOffInterval.get(region), ctx.allowCutFixedTrip);
+        warnings.addAll(derived.warnings());
+        Set<Trip> cut = Collections.newSetFromMap(new IdentityHashMap<>());
+        cut.addAll(derived.cutFixed());
+        List<TripEntry> kept = new ArrayList<>();
+        for (TripEntry e : fixedEntries) {
+            if (e.trip() == null || !cut.contains(e.trip())) kept.add(e);
+        }
+        List<Map<String,Object>> tripList = TripWriter.toYaml(kept, derived.derived(), ctx.tripHistoryDays, planStart);
+
+        // ---- trip_list right after assignment_list; solver_version last
+        Map<String,Object> ordered = new LinkedHashMap<>();
+        for (Map.Entry<String,Object> e : sched.entrySet()) {
+            String k = e.getKey();
+            if ("trip_list".equals(k) || "solver_version".equals(k)) continue;
+            ordered.put(k, e.getValue());
+            if ("assignment_list".equals(k)) ordered.put("trip_list", tripList);
+        }
+        if (!ordered.containsKey("trip_list")) ordered.put("trip_list", tripList);
+        ordered.put("solver_version", SolverConstants.SOLVER_VERSION);
+        Map<String,Object> top;
+        if (sched == root) {
+            top = ordered;
+        } else {
+            top = root;
+            top.put("schedule", ordered);
+        }
+
+        DumperOptions opt = new DumperOptions();
+        opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        opt.setPrettyFlow(false); // only affects empty collections: "trip_list: []", not a bracket on its own line
+        Yaml yaml = new Yaml(opt);
+        Path resultFile = Paths.get(schedPath);
+        try (Writer out = Files.newBufferedWriter(resultFile)) {
+            yaml.dump(top, out);
+        }
+
+        // ---- trip_warnings.txt next to the result: only when there is something to report
+        Path warningsFile = resultFile.toAbsolutePath().resolveSibling(TRIP_WARNINGS_FILE);
+        if (warnings.isEmpty()) {
+            Files.deleteIfExists(warningsFile); // our own file from an earlier run would be stale
+        } else {
+            for (String w : derived.warnings()) System.out.println("[trips] WARN " + w);
+            Files.write(warningsFile, warnings, java.nio.charset.StandardCharsets.UTF_8);
+        }
+        System.out.println("trip_list: " + tripList.size() + " worker(s), " + derived.derived().size()
+                + " derived trip(s), " + derived.cutFixed().size() + " Fixed trip(s) cut, "
+                + warnings.size() + " warning(s)");
     }
 
 }

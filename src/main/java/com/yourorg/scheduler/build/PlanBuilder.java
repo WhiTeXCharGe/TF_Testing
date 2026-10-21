@@ -920,6 +920,10 @@ public class PlanBuilder {
         p.seats  = built.seats;
         normalizeInitialValues(p);
 
+        // the exporter derives the output trip_list from these (same list instances, so later warnings count too)
+        SolveContext.current().tripEntries = sch.tripEntries;
+        SolveContext.current().tripWarnings = sch.tripWarnings;
+
         BuiltProblem out = new BuiltProblem();
         out.plan = p;
         out.sch = sch;

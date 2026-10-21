@@ -1,9 +1,13 @@
 package com.yourorg.scheduler.calendar;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import com.yourorg.scheduler.trip.TripEntry;
 
 /**
  * Per-solve state that used to live in static fields of the old single-file scheduler. One current context per JVM
@@ -56,6 +60,21 @@ public class SolveContext {
      * path) without a trip_list.
      */
     public TripCalendar tripCalendar = TripCalendar.empty();
+
+    /**
+     * Output side of the trip_list (design section 6): the entries the parser read, set by PlanBuilder.buildProblem
+     * (the exporter copies Fixed trips from them instead of re-parsing the file). Empty without a trip_list.
+     */
+    public List<TripEntry> tripEntries = new ArrayList<>();
+    /** Parser warnings and Fixed-row/Fixed-trip conflicts of the trip_list; the exporter adds its own and writes them. */
+    public List<String> tripWarnings = new ArrayList<>();
+    /** Parameter {@code allow_cut_fixed_trip}: the exporter removes Fixed trips with no work inside. Set by Main. */
+    public boolean allowCutFixedTrip = true;
+    /**
+     * Parameter {@code trip_history_days}: N >= 0 drops derived trips that ended more than N days before the plan
+     * start, negative keeps all. Set by Main.
+     */
+    public int tripHistoryDays = -1;
 
     /** Average hours per real employee that soft-balance-total-hours aims for; set by PlanBuilder.buildProblem. */
     public double targetHoursPerEmp = 0.0;

@@ -162,15 +162,16 @@ the trip intervals in. A problem-fact stream adds one marker row per (worker, tr
 
 ## TripDeriver (output FI/FO derivation)
 
-`trip/TripDeriver.derive(days, fixedTrips, intervalOf, allowCutFixedTrip)` is a pure class (no solver, no file access, not wired
-into the run yet) that turns the final worked days into the trips of the output `trip_list` (design section 6). It returns
+`trip/TripDeriver.derive(days, fixedTrips, intervalOf, allowCutFixedTrip)` is a pure class (no solver, no file access; the
+exporter calls it, see "trip_list output" below) that turns the final worked days into the trips of the output `trip_list` (design section 6). It returns
 `DeriveResult(derived, cutFixed, warnings)`; the caller merges `derived` with the Fixed trips it keeps. Input days are
 `WorkedDay(worker, date, region)` (region-less days are never passed in). Per worker, independently; results sorted by worker, start:
 
 1. Dedupe days. Two regions on one day: the alphabetically smaller wins, warning `region_conflict_day`.
 2. Cut (only if `allowCutFixedTrip`): a Fixed trip with no worked day of its own region strictly inside (`start < day < end`)
    goes to `cutFixed`, warning `cut_fixed_trip`. Days of other regions inside do not count. A cut trip is gone for the rest of
-   the derivation (it is no longer a barrier).
+   the derivation (it is no longer a barrier). With `allowCutFixedTrip=true` a Fixed trip without a strict interior
+   (`end - start <= 1`) is always cut, since no day can lie strictly inside it.
 3. Days inside a remaining Fixed window (`start <= day <= end`) belong to that trip and are not derived.
 4. Runs: a new run starts when the region changes, when the off-days between two worked days are `>= max(1, interval)`
    (`gap = next - previous - 1`; interval null/0 count as 1), or when a remaining Fixed trip lies between the two days (barrier).
@@ -181,8 +182,29 @@ into the run yet) that turns the final worked days into the trips of the output 
 
 Examples (interval 3): Fixed r1 09/01-09/10 with r1 days 09/03, 09/04, 09/09 and r2 days 09/12-09/14 gives one derived trip
 r2 09/11-09/15. r1 09/01-09/03 followed by r2 09/05-09/06 gives r1 08/31-09/04 and r2 09/04-09/07 (shared boundary day).
-r1 days 09/11-09/13 after the Fixed r1 trip give a separate r1 09/10-09/14. r1 09/01 and 09/05 (gap 3) split into
+r1 days 09/11-09/13 after the Fixed r1 trip give a separate r1 09/10-09/14 (Fixed trip kept). r1 09/01 and 09/05 (gap 3) split into
 08/31-09/02 and 09/04-09/06. r1 09/01 then r2 09/02 gives r2 09/02-09/03 and a `tight_transit` warning.
+
+## trip_list output
+
+After solving, `ScheduleExporter` writes a `trip_list` right after `assignment_list` (also when the input had none), in the
+per-worker nested form (`- worker: w1`, `trips: [...]`), workers sorted, trips sorted by `start_date`:
+
+- Worked days come from the final assignment list (Fixed rows, Fixed history, newly solved rows): module task -> its fab's region,
+  misc task -> its own region from `misc_task_list` (neutral regions per `misc_neutral_regions` and region-less rows are ignored).
+  `TripDeriver` turns them into Flexible trips (`description: ''`); `intervalOf` is the region's `stay_off_interval`.
+- Fixed input trips are copied from the parsed trip unchanged (extra keys and key order kept; the flat form is written nested).
+  Fixed trips the parser could not use (malformed, not enforced) are copied too and never cut. With `allow_cut_fixed_trip=true`
+  (default) an enforced Fixed trip with no same-region day strictly inside is removed and logged as `cut_fixed_trip`.
+  A Fixed trip without a worker is dropped with a warning. Flexible input trips are ignored (regenerated).
+- `trip_history_days` (N >= 0): derived trips with `end < plan start - N days` are dropped; negative (default) keeps all.
+  Fixed entries are never trimmed.
+- `trip_warnings.txt` is written next to the result file only when there is at least one warning (parser warnings, Fixed rows vs.
+  Fixed trips, `cut_fixed_trip`, `tight_transit`, `region_conflict_day`, workerless Fixed trip). Without warnings the file is
+  not written and a file of an earlier run is deleted.
+- `solver_version` (last top-level key of `schedule`) is `SolverConstants.SOLVER_VERSION`, for example
+  `timefold-scheduler 0.1.0 (timefold-solver 2.7.1)`; a test keeps the constants equal to `pom.xml`.
+- The dump uses non-pretty flow style, so an empty list is written `trip_list: []` (also `workflow_task_list: []` etc.).
 
 ## Upgrade notes
 

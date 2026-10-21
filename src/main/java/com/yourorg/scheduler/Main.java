@@ -84,6 +84,9 @@ public class Main {
         SolveContext.current().miscNeutralRegions = params.miscNeutralRegions();
         // trip_list problems fail the run only in strict mode (read by the build step)
         SolveContext.current().tripValidationStrict = "strict".equals(params.tripValidation());
+        // output side of the trip_list (read by the exporter)
+        SolveContext.current().allowCutFixedTrip = params.allowCutFixedTrip();
+        SolveContext.current().tripHistoryDays = params.tripHistoryDays();
 
         RunResult rr = solveFromYaml(envPath, schedPath, params.timers());
 

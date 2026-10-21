@@ -218,7 +218,7 @@ class TripMarksSolverTest {
         }
         // e1p1o1 03/21 and 03/22 lie before the plan (no marks there): no warning
         assertFalse(run.stdout().contains("fixed task conflicts with fixed trip (worker w2, date 2026/03/22"));
-        // the trip_list is still in the file (copied as read; deriving trips is a later task)
+        // the output has a trip_list (derived from the final assignments; see TripExportTest)
         assertNotNull(run.output().get("trip_list"));
     }
 
