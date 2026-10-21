@@ -44,13 +44,18 @@ Change it like any parameter: `--misc_neutral_regions=r_other,r_x`, `TF_MISC_NEU
 `misc_neutral_regions: [r_other]` in `SolverParams.yaml`. `[]` makes `r_other` count too, which changes the results
 (`MiscRegionTest.empty_neutral_list_makes_r_other_count` shows it on the small fixture).
 
-Note: only pinned misc seats that have a region of their own take part in the region rules. In-horizon pinned module seats
-(Fixed rows of a module) still do not, as before; their history before the horizon is covered by the last-fixed-region.
+Note: pinned seats hang on the dummy fixed block 0. Before solving that block is uninitialised, so only the pinned misc seats
+with a region of their own (added separately) take part in the region rules. The construction heuristic initialises block 0
+(it has planning variables and is not pinned; small fixture: start 0, 7 days), so after construction every pinned seat (module
+rows too) joins the region rules on its own work days (`TripMarksSolverTest.dummy_fixed_block_is_initialised_after_construction`).
+A pinned misc seat is then counted twice, which changes none of the three region rules (duplicate days do not change a span).
+History before the horizon is covered by the last-fixed-region.
 
-## trip_list input (validation only, not enforced yet)
+## trip_list input
 
-`Schedule.yaml` may carry a `trip_list` (next to `assignment_list`; the root may be `schedule:`-wrapped or bare). This step only
-reads and validates it. The solver ignores it: a Schedule.yaml with a `trip_list` solves exactly like one without.
+`Schedule.yaml` may carry a `trip_list` (next to `assignment_list`; the root may be `schedule:`-wrapped or bare). It is read and
+validated here; the enforced Fixed trips then mark the worker's calendar (see "Trip marks (calendar)" below). Flexible trips have
+no effect on solving.
 
     trip_list:
     - worker: w1
@@ -82,6 +87,44 @@ into an `InvalidInputDataException` ("InvalidInputData: ..."), default `lenient`
 `PlanBuilder.buildProblem` (via `ScheduleParser.parseTrips`) after the calendars are built, because the region ids come from them.
 `ScheduleParser.preprocessScheduleYaml` rewrites the schedule file in place for the cut-off rule: the `trip_list` is kept in it, but
 unquoted `YYYY-MM-DD` dates are rewritten as timestamps (`2026-09-01T00:00:00Z`); the parser reads those too.
+
+## Trip marks (calendar)
+
+Every enforced Fixed trip (a valid Fixed trip that survived the overlap check) marks its worker's calendar. No score constraint is
+added; a closed day simply does not exist for that worker's flexible work:
+
+| Day of a Fixed trip (FI = `start_date`, FO = `end_date`) | Flexible work of that worker |
+|---|---|
+| FI day and FO day | closed for every task, even of the trip's region |
+| strictly between FI and FO | open only for tasks of the trip's region (another region, or a region-less task, is closed) |
+| outside FI..FO | nothing changes |
+
+Touching trips (`first.end_date == second.start_date`) close the shared day for both. Marks are clamped to the plan range
+(dayId 0 .. plan end). Flexible and not-enforced trips leave no marks.
+
+A closed day acts like a personal day off, plus consistency: the seat does not cover that day anywhere. It produces 0 hours
+(`block-no-underfill` / overfill), it is not counted by the one-task-per-day and 12 h daily cap rules, by overtime, the region
+rules or the total-hours balance, and it is not written to `work_date_list`. The search is steered only indirectly (a closed day
+earns no hours).
+
+Implementation: `calendar/TripCalendar` (built once in `PlanBuilder.buildProblem`, stored in `SolveContext.tripCalendar`, an empty
+calendar without trips) holds per-worker arrays indexed by `EmployeeFact.id` and dayId: `isBlocked` (FI/FO), `lockRegion` (region
+index strictly inside), `presenceRegion` (FI..FO, for the stay limits later) and `hasMarks`. `calendar/WorkerCalendar.isOpen(emp,
+day, regionIdx)` is the one test; it is false on a blocked day or inside a trip of another region. All day-based consumers of a
+dynamic seat go through it: `ConstraintSupport.seatCoveredDays` (the region, overtime and balance rules read this), `SeatConstraints`
+`expandToEmpDays` / `expandToEmpDayHours`, `BlockConstraints.producedHoursForBlock`, both per-day loops of `ScheduleExporter` and the
+`[VALIDATE]` log. Workers without trips take the fast path (`hasMarks == false`: one array read, the shared covered-days list is
+returned unchanged), so without a `trip_list` all results are identical to before (goldens unchanged).
+
+- Pinned (Fixed) rows are facts and are never filtered or moved. A Fixed row of the worker on an FI/FO day, or inside a trip in
+  another region / without a region, is reported once per day: `[trips] WARN fixed task conflicts with fixed trip (worker, date,
+  task, task region, trip): ...; the Fixed row is kept` (stdout, `load_log.txt`, `ParsedSchedule.tripWarnings`). It never fails the
+  run, also not with `trip_validation: strict`.
+- Personal `unavailable_dates` keep their own handling (0 hours that day, not written; the other rules still see the worker).
+  When an unavailable day falls on a closed day the trip mark wins; the result is the same as with the trip mark alone.
+- The solver still may place a seat of a trip worker on a block that spans closed days; those days then produce nothing. On the
+  datagen fixture with 8 crafted Fixed trips (seeded, 2000 steps) 24 of 360 seat-days of the trip workers' seats were closed
+  days. No extra constraint was added (design decision D3); re-measure on a real run before adding one.
 
 ## Upgrade notes
 

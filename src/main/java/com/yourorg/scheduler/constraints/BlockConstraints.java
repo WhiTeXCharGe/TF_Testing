@@ -9,6 +9,7 @@ import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.WorkerCalendar;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.model.*;
 import static com.yourorg.scheduler.constraints.ConstraintSupport.clampToInt;
@@ -63,10 +64,12 @@ final class BlockConstraints {
 
             if (b.startDay == null || b.days == null || b.days <= 0) continue;
 
+            boolean marks = WorkerCalendar.hasMarks(s.employee.id);
             for (int i = 0; i < b.days; i++) {
                 int did = b.startDay + i;
                 if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
                 if (isWorkerUnavailable(s.employee, did)) continue; // zero on personal off-day
+                if (marks && !WorkerCalendar.isOpen(s.employee.id, did, s.regionIdx)) continue; // zero on a trip-closed day
                 total += hours;
             }
         }

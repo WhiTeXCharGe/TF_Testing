@@ -42,11 +42,12 @@ final class RegionConstraints {
     }
     /**
      * Worked (employee, day, region) rows of the pinned MISC seats that have a region of their own (design
-     * section 7). Those seats are the only pinned seats that take part in the region rules: a pinned MODULE seat
-     * never did, because its block is the dummy fixed block 0, which has no start/days (uninitialised), so the inner
-     * join with BlockDecision in the streams below drops it (its history before the horizon is covered by
-     * EmployeeFact.histLastFixed*; the golden totals pin this). With the default misc_neutral_regions no pinned seat
-     * has a misc region, so this stream is empty and nothing changes.
+     * section 7). Before solving, they are the only pinned seats that take part in the region rules: every pinned seat
+     * hangs on the dummy fixed block 0, which is uninitialised (no start/days) until the construction heuristic sets
+     * it, so the inner join with BlockDecision in the streams below drops them (the golden initial totals pin this).
+     * After construction block 0 is initialised and all pinned seats pass that join too; a pinned misc seat is then
+     * counted twice, which changes none of the three rules (duplicate days change no span and no transit). With the
+     * default misc_neutral_regions no pinned seat has a misc region, so this stream is empty.
      */
     private static UniConstraintStream<EmpDayRegion> pinnedMiscRows(ConstraintFactory f, boolean withStartDay) {
         return f.forEachIncludingUnassigned(CrewSeat.class)

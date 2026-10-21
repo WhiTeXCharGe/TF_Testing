@@ -27,7 +27,8 @@ public class ParsedSchedule {
     // flexible warm-start rows
     public List<InitialAssign> initialRows;
 
-    // trip_list (validation only, not enforced yet); filled by ScheduleParser.parseTrips, empty when absent
+    // trip_list; filled by ScheduleParser.parseTrips, empty when absent. The enforced entries become calendar marks
+    // (SolveContext.tripCalendar, built by PlanBuilder.buildProblem).
     public List<TripEntry> tripEntries = new ArrayList<>();
     public List<String> tripWarnings = new ArrayList<>();
 

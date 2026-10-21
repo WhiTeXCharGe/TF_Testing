@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.calendar.RegionIndex;
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.TripCalendar;
+import com.yourorg.scheduler.calendar.WorkerCalendar;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.io.EnvConfigParser;
 import com.yourorg.scheduler.io.LoadLog;
@@ -87,6 +89,7 @@ public class PlanBuilder {
                 int dayId = start + di;
                 if (dayId < minDay || dayId > maxDay) continue;
                 if (!WorkingDays.isWorkingDay(dayId, s.factory)) continue;
+                if (!pinned && !WorkerCalendar.isOpen(empId, dayId, s.regionIdx)) continue; // trip-closed day
 
                 empDayTasks
                     .computeIfAbsent(empId, k -> new HashMap<>())
@@ -648,6 +651,58 @@ public class PlanBuilder {
         return out;
     }
 
+    // ---------------- Fixed rows vs. Fixed trips ----------------
+
+    /**
+     * Fixed rows are facts and are never moved for a trip; this only reports a Fixed row of a worker (any region,
+     * history included) that lies on a start/end day of one of that worker's enforced Fixed trips, or strictly
+     * inside it in another region (or without a region). One line per (trip, row, day):
+     * {@code [trips] WARN fixed task conflicts with fixed trip (...)} on stdout and in load_log.txt; the text is also
+     * added to {@code sch.tripWarnings}. It never fails the run (also not with trip_validation: strict).
+     */
+    static void warnFixedRowsConflictingWithTrips(ParsedSchedule sch, ParsedEnv env) {
+        if (sch.tripEntries == null || sch.tripEntries.isEmpty() || sch.fixedRows == null) return;
+        RegionIndex regions = SolveContext.current().regions;
+        int horizonDays = (int) (sch.planEnd.toEpochDay() - sch.planStart.toEpochDay()) + 1;
+        java.time.format.DateTimeFormatter df = java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd");
+        for (com.yourorg.scheduler.trip.TripEntry te : sch.tripEntries) {
+            if (te == null || !te.enforced() || te.trip() == null) continue;
+            String wid = te.worker() != null ? te.worker() : te.trip().worker();
+            EmployeeFact ef = (wid == null) ? null : env.byWid.get(wid);
+            if (ef == null || ef.id == 0) continue;
+            int tripStart = (int) (te.trip().start().toEpochDay() - sch.planStart.toEpochDay());
+            int tripEnd = (int) (te.trip().end().toEpochDay() - sch.planStart.toEpochDay());
+            int tripRegion = regions.indexOf(te.trip().region());
+            for (FixedAssign fa : sch.fixedRows) {
+                if (fa == null || !wid.equals(fa.wid)) continue;
+                String rowRegion = (fa.region != null) ? fa.region
+                        : SolveContext.current().calendars.regionOfFab(fa.factory);
+                int rowRegionIdx = regions.indexOf(rowRegion);
+                List<Integer> days = new ArrayList<>(fa.hoursByDay.keySet());
+                Collections.sort(days);
+                for (int day : days) {
+                    Integer h = fa.hoursByDay.get(day);
+                    if (h == null || h <= 0) continue;
+                    if (day < 0 || day >= horizonDays || day < tripStart || day > tripEnd) continue;
+                    String why;
+                    if (day == tripStart) why = "on the trip's start day (FI)";
+                    else if (day == tripEnd) why = "on the trip's end day (FO)";
+                    else if (rowRegionIdx == -1 || rowRegionIdx != tripRegion) why = "inside the trip in another region";
+                    else continue;
+                    String msg = "fixed task conflicts with fixed trip (worker " + wid
+                            + ", date " + sch.planStart.plusDays(day).format(df)
+                            + ", task " + fa.module + "/" + fa.opId
+                            + ", task region " + (rowRegion == null || rowRegion.isBlank() ? "none" : rowRegion)
+                            + ", trip " + te.trip().start().format(df) + ".." + te.trip().end().format(df)
+                            + " " + te.trip().region() + "): " + why + "; the Fixed row is kept";
+                    System.out.println("[trips] WARN " + msg);
+                    LoadLog.appendLoadLog("[trips] WARN " + msg);
+                    if (sch.tripWarnings != null) sch.tripWarnings.add(msg);
+                }
+            }
+        }
+    }
+
     // ---------------- Test seam (characterisation tests) ----------------
     // buildProblem() is the unchanged "build" half of solveFromYaml (parse,
     // calendars, entities, static state, warm start, seat candidates), moved
@@ -670,7 +725,8 @@ public class PlanBuilder {
         String schedFixedPath = ScheduleParser.preprocessScheduleYaml(schedPath);
         ParsedSchedule sch = ScheduleParser.parseSchedule(schedFixedPath, env.opdef);
         EnvConfigParser.buildCalendars(envPath, sch.planStart, sch.planEnd);
-        // trip_list: read and validated only (not enforced yet). Needs the region ids built just above.
+        // trip_list: read and validated; the enforced Fixed trips become calendar marks below. Needs the region ids
+        // built just above.
         {
             Set<String> workerIds = new LinkedHashSet<>();
             for (EmployeeFact ef : env.employees) if (ef != null && ef.id != 0) workerIds.add(ef.wid);
@@ -691,6 +747,12 @@ public class PlanBuilder {
         }
         SolveContext.current().solveMinDay = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
         SolveContext.current().solveMaxDay = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
+        // trip marks: per-worker calendar of the enforced Fixed trips (empty without a trip_list); after the region
+        // index is final and the employees exist (wid -> EmployeeFact.id)
+        SolveContext.current().tripCalendar = TripCalendar.build(sch.tripEntries,
+                wid -> { EmployeeFact ef = env.byWid.get(wid); return (ef == null || ef.id == 0) ? null : ef.id; },
+                SolveContext.current().regions, sch.planStart,
+                (int) (sch.planEnd.toEpochDay() - sch.planStart.toEpochDay()) + 1);
 
         // Performance redesign: cache dayId -> year and dayId -> year-month so
         // the overtime constraints no longer join DaySlot just to read a date.
@@ -718,6 +780,8 @@ public class PlanBuilder {
         SolveContext.current().targetHoursPerEmp = totalReq / (double) realEmp;
 
         BuildOut built = buildEntitiesSinglePass(sch, env);
+        // after buildEntitiesSinglePass: it fills in the fab of the Fixed module rows
+        warnFixedRowsConflictingWithTrips(sch, env);
         // --------------------------------------------------
         // Solver horizon (ONLY these dayIds exist as DaySlot)
         // --------------------------------------------------

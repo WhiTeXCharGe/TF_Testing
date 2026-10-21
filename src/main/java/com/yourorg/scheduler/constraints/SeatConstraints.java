@@ -9,6 +9,7 @@ import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.WorkerCalendar;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.model.*;
 import static com.yourorg.scheduler.config.SolverConstants.DAILY_CAP;
@@ -74,19 +75,27 @@ final class SeatConstraints {
 
     // Expands one (seat, block) into one EmpDayKey per working day in the block range.
     // Used with flattenLast so Timefold scores only working days, not all 127 DaySlots.
-    private static List<EmpDayKey> expandToEmpDays(int empId, int start, int days, String fab) {
+    // Days closed by a Fixed trip of the worker (WorkerCalendar.isOpen, region of the seat) are skipped.
+    private static List<EmpDayKey> expandToEmpDays(int empId, int start, int days, String fab, int regionIdx) {
         List<EmpDayKey> out = new ArrayList<>(days);
+        boolean marks = WorkerCalendar.hasMarks(empId);
         for (int d = start, end = start + days - 1; d <= end; d++) {
-            if (WorkingDays.isWorkingDay(d, fab)) out.add(new EmpDayKey(empId, d));
+            if (!WorkingDays.isWorkingDay(d, fab)) continue;
+            if (marks && !WorkerCalendar.isOpen(empId, d, regionIdx)) continue;
+            out.add(new EmpDayKey(empId, d));
         }
         return out;
     }
 
     // Same as expandToEmpDays but also carries hours per day (for the cap constraint).
-    private static List<EmpDayHours> expandToEmpDayHours(int empId, int start, int days, String fab, int hrs) {
+    private static List<EmpDayHours> expandToEmpDayHours(int empId, int start, int days, String fab, int regionIdx,
+                                                         int hrs) {
         List<EmpDayHours> out = new ArrayList<>(days);
+        boolean marks = WorkerCalendar.hasMarks(empId);
         for (int d = start, end = start + days - 1; d <= end; d++) {
-            if (WorkingDays.isWorkingDay(d, fab)) out.add(new EmpDayHours(empId, d, hrs));
+            if (!WorkingDays.isWorkingDay(d, fab)) continue;
+            if (marks && !WorkerCalendar.isOpen(empId, d, regionIdx)) continue;
+            out.add(new EmpDayHours(empId, d, hrs));
         }
         return out;
     }
@@ -101,7 +110,7 @@ final class SeatConstraints {
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
             .map((CrewSeat s, BlockDecision b) ->
-                    expandToEmpDays(s.employee.id, b.startDay, b.days, s.factory))
+                    expandToEmpDays(s.employee.id, b.startDay, b.days, s.factory, s.regionIdx))
             .flattenLast(list -> list)
             // UniConstraintStream<EmpDayKey>
             .groupBy(key -> key, ConstraintCollectors.count())
@@ -128,7 +137,8 @@ final class SeatConstraints {
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
             .map((CrewSeat s, BlockDecision b) ->
-                    expandToEmpDayHours(s.employee.id, b.startDay, b.days, s.factory, b.chosenHours()))
+                    expandToEmpDayHours(s.employee.id, b.startDay, b.days, s.factory, s.regionIdx,
+                            b.chosenHours()))
             .flattenLast(list -> list)
             // UniConstraintStream<EmpDayHours>
             .groupBy(

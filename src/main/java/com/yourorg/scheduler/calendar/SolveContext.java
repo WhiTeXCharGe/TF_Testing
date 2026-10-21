@@ -50,6 +50,13 @@ public class SolveContext {
      */
     public boolean tripValidationStrict = false;
 
+    /**
+     * Day marks of the enforced Fixed trips (design section 5), indexed by employee id and dayId; read through
+     * {@link WorkerCalendar#isOpen}. Built by PlanBuilder.buildProblem; empty (no marks, every worker on the fast
+     * path) without a trip_list.
+     */
+    public TripCalendar tripCalendar = TripCalendar.empty();
+
     /** Average hours per real employee that soft-balance-total-hours aims for; set by PlanBuilder.buildProblem. */
     public double targetHoursPerEmp = 0.0;
     /** Affinity tag id -> weight; filled by EnvConfigParser.parseEnv. */

@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.WorkerCalendar;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.io.EnvConfigParser;
 import com.yourorg.scheduler.io.YamlFiles;
@@ -301,6 +302,7 @@ public class ScheduleExporter {
                         int did = s.pinnedStart + i;
                         if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
                         if (WorkingDays.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
+                        if (!WorkerCalendar.isOpen(s.employee.id, did, s.regionIdx)) continue; // trip-closed day
                         byDay.merge(did, h, Integer::sum);
                     }
 
@@ -313,6 +315,7 @@ public class ScheduleExporter {
                         int did = b.startDay + i;
                         if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
                         if (WorkingDays.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
+                        if (!WorkerCalendar.isOpen(s.employee.id, did, s.regionIdx)) continue; // trip-closed day
                         byDay.merge(did, h, Integer::sum);
                     }
 
