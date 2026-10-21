@@ -265,14 +265,40 @@ class EndToEndTest {
         assertEquals(new ArrayList<>(fixedTrip.keySet()), new ArrayList<>(fixedOut.get(0).keySet()));
 
         // no work of t2 on the FI / FO day, and inside the trip only in the trip's region (rb)
+        // (guards first, so that the loop below cannot pass on an empty set)
+        List<Work> t2Work = new ArrayList<>();
+        List<Work> t2Inside = new ArrayList<>();
         for (Work w : work) {
             if (!"t2".equals(w.worker())) continue;
+            t2Work.add(w);
+            if (w.date().compareTo("2027/01/13") > 0 && w.date().compareTo("2027/01/19") < 0) t2Inside.add(w);
+        }
+        assertFalse(t2Work.isEmpty(), "t2 has no work at all: " + work);
+        assertFalse(t2Inside.isEmpty(), "t2 has no work strictly inside its Fixed trip 01/14..01/18: " + t2Work);
+        for (Work w : t2Work) {
             assertFalse(w.date().equals("2027/01/13") || w.date().equals("2027/01/19"),
                     "t2 works on an FI/FO day: " + w);
-            if (w.date().compareTo("2027/01/13") > 0 && w.date().compareTo("2027/01/19") < 0) {
-                assertEquals("rb", region.get(w.task()), "t2 works in another region inside the trip: " + w);
-            }
         }
+        for (Work w : t2Inside) {
+            assertEquals("rb", region.get(w.task()), "t2 works in another region inside the trip: " + w);
+        }
+
+        // the "no other region inside" check is exercised: WITHOUT the trip the same search puts t2 into ra inside the
+        // window (or on FI/FO), so it is the mark that keeps t2 out
+        Path controlDir = tmp.resolve("first-control");
+        copyFixture(FIRSTRUN, controlDir);
+        String sched = Files.readString(controlDir.resolve("Schedule.yaml"), StandardCharsets.UTF_8);
+        Files.writeString(controlDir.resolve("Schedule.yaml"), sched.substring(0, sched.indexOf("  trip_list:")),
+                StandardCharsets.UTF_8);
+        Result control = run(controlDir, envOf(controlDir), SHORT);
+        List<Work> closedUsed = new ArrayList<>();
+        for (Work w : work(control.sched())) {
+            if (!"t2".equals(w.worker())) continue;
+            boolean fiFo = w.date().equals("2027/01/13") || w.date().equals("2027/01/19");
+            boolean inside = w.date().compareTo("2027/01/13") > 0 && w.date().compareTo("2027/01/19") < 0;
+            if (fiFo || (inside && "ra".equals(region.get(w.task())))) closedUsed.add(w);
+        }
+        assertFalse(closedUsed.isEmpty(), "control run without the trip never uses a day the trip closes for t2");
 
         // the Flexible input trip (t3, "stale decoy") is not carried over: every non-Fixed trip is regenerated
         for (Map.Entry<String, Map<String, Object>> e : allTrips(r.sched())) {
@@ -336,8 +362,8 @@ class EndToEndTest {
             assertEquals(String.valueOf(dates.get(dates.size() - 1).get("date")), String.valueOf(a.get("end_date")));
             for (Map<String, Object> item : dates) {
                 String d = String.valueOf(item.get("date"));
-                // not checked against the plan end: the baseline solver may plan a few days past it (pre-existing,
-                // TripMarksSolverTest sees w2 on 04/06 too)
+                // not checked against the plan end: pre-existing, the exporter expands blocks past the plan end without
+                // clamping (ScheduleExporter block expansion), see follow-up; TripMarksSolverTest sees w2 on 04/06 too
                 assertTrue(d.compareTo("2026/03/23") >= 0, "before the plan: " + d);
                 if (allowedHours.containsKey(task)) {
                     assertTrue(allowedHours.get(task).contains(((Number) item.get("hour")).intValue()), a.toString());

@@ -169,8 +169,9 @@ java -Xms1g -Xmx"${JVM_MAX_HEAP:-6g}" \
      "${ENV_FILE}" \
      "${SCHED_FILE_OUT}" &
 SOLVER_PID=$!
-wait "${SOLVER_PID}"
-SOLVER_EXIT=$?
+# "wait" returns the child's exit code; under "set -e" a bare wait would end the script on a non-zero code before
+# write_failed runs, so the status would stay Running. A trapped SIGTERM still interrupts the wait and runs on_term.
+wait "${SOLVER_PID}" && SOLVER_EXIT=0 || SOLVER_EXIT=$?
 
 if [[ "${SOLVER_EXIT}" -ne 0 ]]; then
   write_failed "SolverError" "solver exited with code ${SOLVER_EXIT}" "1"

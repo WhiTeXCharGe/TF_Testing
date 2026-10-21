@@ -434,7 +434,8 @@ public class ScheduleExporter {
                             planStart.plusDays(YamlFiles.dayIdFromDate(planStart, String.valueOf(item.get("date")))),
                             region));
                 } catch (java.time.format.DateTimeParseException e) {
-                    // an unreadable date is not a worked day, but say so instead of dropping it silently
+                    // defensive net, normally unreachable (earlier loops already throw on an unreadable date): an
+                    // unreadable date is not a worked day, but say so instead of dropping it silently
                     String msg = "unreadable work date \"" + item.get("date") + "\" of worker " + worker + " task "
                             + a.get("operation_task") + " ignored for trip derivation";
                     warnings.add(msg);
