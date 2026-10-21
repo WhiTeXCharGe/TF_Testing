@@ -58,14 +58,23 @@ public class CrewSeat {
     public List<EmployeeFact> getCandidateEmployees() { return candidateEmployees; }
 
     /**
+     * A real warm-start employee who fails this seat's candidate gates (e.g. a non-manager warm-started on a manager
+     * seat, or an employee without the skill). Set only by {@code PlanBuilder.normalizeInitialValues}; it is appended
+     * to this seat's value range so the warm start is carried over and passes the Timefold 2.x initial-value check.
+     * Never UNASSIGNED. Residual: the search may re-select this employee for this seat later in the solve.
+     */
+    public EmployeeFact warmOutOfGateEmployee = null;
+
+    /**
      * Value range of {@link #employee}. Timefold 2.x validates every initial value against this range once, when a
      * working solution is set (pinned entities included, {@code null} skipped), and fails on a value outside it; the
-     * range itself must be a plain List (custom ValueRange classes are rejected), so the range is STRICT and
+     * range itself must be a plain List (custom ValueRange classes are rejected).
      * {@code PlanBuilder.normalizeInitialValues} brings the initial values into it before solving.
      * <ul>
      *   <li>pinned seat: exactly its own (pinned) employee, so it validates; it never moves;</li>
      *   <li>manager seat: the manager candidates only, never UNASSIGNED;</li>
-     *   <li>other seats: the candidates plus the shared {@link #UNASSIGNED}.</li>
+     *   <li>other seats: the candidates plus the shared {@link #UNASSIGNED};</li>
+     *   <li>plus, on any non-pinned seat, its {@link #warmOutOfGateEmployee} (a real employee, never UNASSIGNED).</li>
      * </ul>
      */
     @ValueRangeProvider(id = "eligibleEmployeesForSeat")
@@ -75,7 +84,14 @@ public class CrewSeat {
         if (pinnedFixed && employee != null) {
             return List.of(employee);
         }
-        return strictEligibleEmployees();
+        List<EmployeeFact> strict = strictEligibleEmployees();
+        EmployeeFact extra = warmOutOfGateEmployee;
+        if (extra == null || extra.id == 0) return strict;
+        for (EmployeeFact e : strict) if (e == extra) return strict;
+        List<EmployeeFact> widened = new ArrayList<>(strict.size() + 1);
+        widened.addAll(strict);
+        widened.add(extra);
+        return widened;
     }
 
     /** The value range without the pinned-seat rule: the same lists, in the same order, as on 1.27/1.35. */

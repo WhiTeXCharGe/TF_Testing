@@ -537,19 +537,22 @@ public class PlanBuilder {
      * Brings every initial planning value into its STRICT value range. Timefold 2.x checks once, when a working
      * solution is set (solve, score calculation, every environment mode), that each initial value lies in its
      * entity's value range, pinned entities included, and fails otherwise; {@code null} is skipped and planned by the
-     * construction heuristic. Ranges are never widened (a manager range must never offer UNASSIGNED), so instead:
+     * construction heuristic. Ranges are never widened by UNASSIGNED (a manager range must never offer it), so:
      * <ul>
+     *   <li>a real warm-start employee outside the range (fails the candidate gates, e.g. a non-manager on a manager
+     *       seat) is KEPT: it is recorded in {@link CrewSeat#warmOutOfGateEmployee}, which appends exactly that
+     *       employee to that seat's range (warm start carried over; residual: the search may re-select him for that
+     *       seat later, which 1.27 could not once he was moved away);</li>
      *   <li>an UNASSIGNED copy (id 0, not the shared instance) on a seat whose range holds the shared
      *       {@link CrewSeat#UNASSIGNED} (non-manager seats) becomes the shared instance (same meaning);</li>
-     *   <li>any other non-pinned seat value outside the range becomes {@code null}: UNASSIGNED on a manager seat
-     *       (the construction heuristic then fills it with a manager), a warm-start employee who fails the candidate
-     *       gates (re-planned);</li>
+     *   <li>UNASSIGNED on a manager seat becomes {@code null}: the construction heuristic fills it with a
+     *       manager;</li>
      *   <li>a block startDay / days / hours outside its range becomes {@code null} (re-planned). applyInitialPlan
      *       already clamps into the window, so this is only a safety net;</li>
      *   <li>pinned seats are left alone: their range is exactly their own employee.</li>
      * </ul>
      * Constraints treat a {@code null} employee as UNASSIGNED ({@code WorkerRules.isUnassigned}) and read seats with
-     * {@code forEachIncludingUnassigned}, so the score of the plan is unchanged by this step. Call it after the
+     * {@code forEachIncludingUnassigned}, so the score of the plan is unchanged by this step. Idempotent. Call it after the
      * warm start and after the seat candidates are filled (the employee range depends on them).
      *
      * @return number of changed values per kind (also written to the load log); empty when nothing changed
@@ -562,14 +565,18 @@ public class PlanBuilder {
                 if (s == null || s.employee == null || s.isPinned()) continue;
                 List<EmployeeFact> range = s.eligibleEmployeesForSeat();
                 if (containsIdentity(range, s.employee)) continue;
-                if (s.employee.id == 0 && containsIdentity(range, CrewSeat.UNASSIGNED)) {
+                if (s.employee.id != 0) {
+                    // a real warm-start employee failing the candidate gates: kept, and appended to this seat's range
+                    s.warmOutOfGateEmployee = s.employee;
+                    counts.merge(s.needManager
+                            ? "manager seat warm employee outside candidates -> kept (range + employee)"
+                            : "seat warm employee outside candidates -> kept (range + employee)", 1, Integer::sum);
+                } else if (containsIdentity(range, CrewSeat.UNASSIGNED)) {
                     s.employee = CrewSeat.UNASSIGNED;
                     counts.merge("seat UNASSIGNED copy -> shared UNASSIGNED", 1, Integer::sum);
                 } else {
-                    String kind = (s.employee.id == 0)
-                            ? (s.needManager ? "manager seat UNASSIGNED -> null" : "seat UNASSIGNED outside range -> null")
-                            : "seat warm employee outside candidates -> null";
-                    counts.merge(kind, 1, Integer::sum);
+                    counts.merge(s.needManager ? "manager seat UNASSIGNED -> null" : "seat UNASSIGNED outside range -> null",
+                            1, Integer::sum);
                     s.employee = null;
                 }
             }
