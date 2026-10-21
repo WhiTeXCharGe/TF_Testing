@@ -1,7 +1,7 @@
 {
   "description": "Characterisation golden written by CharacterizationTest with -Dgolden.write=true. Do not edit by hand; regenerate only for an intended behaviour change.",
   "initial": {
-    "score": "-1194hard/-300medium/-8068soft",
+    "score": "-1208hard/-300medium/-8068soft",
     "constraints": {
       "block-end-within-window": {
         "score": "0hard/0medium/0soft",
@@ -36,12 +36,12 @@
         "matches": 11
       },
       "emp-region-annual-stay-max": {
-        "score": "-6hard/0medium/0soft",
+        "score": "-12hard/0medium/0soft",
         "matches": 3
       },
       "emp-region-stay-max-on": {
-        "score": "-9hard/0medium/0soft",
-        "matches": 3
+        "score": "-17hard/0medium/0soft",
+        "matches": 5
       },
       "emp-region-transit-gap": {
         "score": "-6hard/0medium/0soft",
@@ -100,7 +100,7 @@
   "seeded_run": {
     "step_limit": 200,
     "seed": 42,
-    "score": "-36hard/0medium/-7138soft",
+    "score": "-43hard/0medium/-7138soft",
     "constraints": {
       "block-end-within-window": {
         "score": "-7hard/0medium/0soft",
@@ -135,12 +135,12 @@
         "matches": 4
       },
       "emp-region-annual-stay-max": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
+        "score": "-3hard/0medium/0soft",
+        "matches": 2
       },
       "emp-region-stay-max-on": {
-        "score": "-1hard/0medium/0soft",
-        "matches": 1
+        "score": "-5hard/0medium/0soft",
+        "matches": 3
       },
       "emp-region-transit-gap": {
         "score": "-2hard/0medium/0soft",
