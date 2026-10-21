@@ -28,11 +28,15 @@ import com.yourorg.scheduler.model.SinglePassPlan;
 class CharacterizationTest {
 
     static final Path SMALL_FIXTURE = Path.of("src", "test", "resources", "fixtures", "small");
+    static final Path DATAGEN_FIXTURE = Path.of("src", "test", "resources", "fixtures", "datagen");
+    static final Path DATAGEN_GOLDEN = Characterization.GOLDEN_DIR.resolve("datagen-1.27.json");
     static final Path SMALL_GOLDEN = Characterization.GOLDEN_DIR.resolve("small-1.27.json");
     static final Path REAL_GOLDEN = Characterization.GOLDEN_DIR.resolve("real-1.27.json");
 
     static final int STEP_LIMIT = 200;
     static final long SEED = 42L;
+    /** The datagen plan has far more entities than the small one; 200 steps do not even finish construction. */
+    static final int DATAGEN_STEP_LIMIT = 2000;
 
     @TempDir
     Path tmp;
@@ -52,7 +56,7 @@ class CharacterizationTest {
         SinglePassPlan best = Characterization.solveSeeded(p, STEP_LIMIT, SEED);
         Snapshot fin = Characterization.analyze(best);
         assertEquals(String.valueOf(best.getScore()), fin.score(), "solver score vs. re-analysed score");
-        Characterization.checkSection(SMALL_GOLDEN, "seeded_run", seededParams(), fin);
+        Characterization.checkSection(SMALL_GOLDEN, "seeded_run", seededParams(STEP_LIMIT), fin);
     }
 
     /** Same input twice in one JVM must give identical initial totals and an identical seeded run. */
@@ -78,9 +82,27 @@ class CharacterizationTest {
         Characterization.checkSection(REAL_GOLDEN, "initial", Map.of(), Characterization.analyze(p));
     }
 
-    private static Map<String, Object> seededParams() {
+    /** Fixture = unmodified output of logic/data_generator (EnvConfig.yaml + Schedule.yaml). */
+    @Test
+    void datagen_initial_totals_match_golden() throws Exception {
+        SinglePassPlan p = Characterization.buildFrom(DATAGEN_FIXTURE, tmp.resolve("dg-initial"));
+        Snapshot initial = Characterization.analyze(p);
+        assertEquals(Characterization.initialTotals(p), initial.constraints());
+        Characterization.checkSection(DATAGEN_GOLDEN, "initial", Map.of(), initial);
+    }
+
+    @Test
+    void datagen_seeded_run_matches_golden() throws Exception {
+        SinglePassPlan p = Characterization.buildFrom(DATAGEN_FIXTURE, tmp.resolve("dg-seeded"));
+        SinglePassPlan best = Characterization.solveSeeded(p, DATAGEN_STEP_LIMIT, SEED);
+        Snapshot fin = Characterization.analyze(best);
+        assertEquals(String.valueOf(best.getScore()), fin.score(), "solver score vs. re-analysed score");
+        Characterization.checkSection(DATAGEN_GOLDEN, "seeded_run", seededParams(DATAGEN_STEP_LIMIT), fin);
+    }
+
+    private static Map<String, Object> seededParams(int stepLimit) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("step_limit", STEP_LIMIT);
+        m.put("step_limit", stepLimit);
         m.put("seed", SEED);
         return m;
     }
