@@ -26,6 +26,27 @@ The builder image is `maven:3.9-eclipse-temurin-21` and the runtime image is `ec
 Mount `EnvConfig.yaml` and `Schedule.yaml` at `/work/input`. The result is written to `/work/output/result_Schedule.yaml`,
 and the run status to `/work/status/<RUN_ID>.json`. Sample inputs are in `src/main/resource/`.
 
+## Misc task region
+
+A misc task (an id in `misc_task_list`, for example training or a visa trip) has its own `region:`. A Fixed row of such a task now
+counts as presence in that region for the region rules: the transit gap, the stay limits (`max_stay_on`, `max_annual_stay`),
+the soft "fewer region changes" rule, and the last-fixed-region of the history before the horizon. A module task keeps using
+the region of its fab. A misc task without `region` (or with a blank one) stays region-less: no stay, no transit.
+
+The region is resolved once: `calendar/RegionIndex` maps the region ids to an `int`, `FixedAssign.region` holds the misc
+task's region, and `CrewSeat.regionIdx` (-1 = none) is set when the seat is built. The constraints only read the int.
+
+`misc_neutral_regions` (default `[r_other]`) lists misc regions that are treated as "no region". The decoder gives every misc
+task `region: r_other` and the default `transite_day_map` makes `r_other` a 1-day transit to every region, so with the default
+nothing changes: all results are the same as before this feature. Any other misc region (`r1`, `r2`, ...) counts.
+
+Change it like any parameter: `--misc_neutral_regions=r_other,r_x`, `TF_MISC_NEUTRAL_REGIONS=r_other,r_x`, or
+`misc_neutral_regions: [r_other]` in `SolverParams.yaml`. `[]` makes `r_other` count too, which changes the results
+(`MiscRegionTest.empty_neutral_list_makes_r_other_count` shows it on the small fixture).
+
+Note: only pinned misc seats that have a region of their own take part in the region rules. In-horizon pinned module seats
+(Fixed rows of a module) still do not, as before; their history before the horizon is covered by the last-fixed-region.
+
 ## Upgrade notes
 
 ### Timefold Solver 1.35.0 -> 2.7.1, Java 17 -> 21 (2026-10-21)

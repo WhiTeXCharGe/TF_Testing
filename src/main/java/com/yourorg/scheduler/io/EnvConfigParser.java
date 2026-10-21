@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import com.yourorg.scheduler.calendar.Calendars;
+import com.yourorg.scheduler.calendar.RegionIndex;
 import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.model.*;
 
@@ -383,5 +384,16 @@ public class EnvConfigParser {
             SolveContext.current().calendars.regionStayOffInterval.put(rid, Math.max(1, offInterval));
         }
 
+        // region id <-> int index: region_list first, then any region only named by a fab or the transit map, so
+        // that a fab's region is always indexed (a module seat's index then equals regionOfFab(factory)).
+        java.util.LinkedHashSet<String> regionIds = new java.util.LinkedHashSet<>();
+        for (Map<String,Object> r : regionList) regionIds.add(String.valueOf(r.get("id")));
+        Calendars cal = SolveContext.current().calendars;
+        regionIds.addAll(cal.fabToRegion.values());
+        for (var e : cal.transitDays.entrySet()) {
+            regionIds.add(e.getKey());
+            regionIds.addAll(e.getValue().keySet());
+        }
+        SolveContext.current().regions = RegionIndex.of(regionIds);
     }
 }

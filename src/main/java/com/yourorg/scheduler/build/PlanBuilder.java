@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import com.yourorg.scheduler.config.SolverConstants;
+import com.yourorg.scheduler.calendar.RegionIndex;
 import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.io.EnvConfigParser;
@@ -211,6 +212,8 @@ public class PlanBuilder {
                 cs.id = sid++;
                 cs.blockId = b.id;
                 cs.module = w.module; cs.factory = w.factory;
+                cs.regionIdx = SolveContext.current().regions.indexOf(
+                        SolveContext.current().calendars.regionOfFab(w.factory));
                 cs.phaseId = w.phaseId; cs.phaseNum = w.phaseNum;
                 cs.opId = w.opId;
                 cs.seatIndex = sidx;
@@ -238,6 +241,10 @@ public class PlanBuilder {
             cs.blockId = fixedBlock.id; // 0
 
             cs.module = fa.module; cs.factory = factory;
+            // module rows: the fab's region; misc rows: the misc task's own region (null when none/neutral)
+            cs.regionIdx = SolveContext.current().regions.indexOf(
+                    fa.region != null ? fa.region : SolveContext.current().calendars.regionOfFab(factory));
+            cs.regionFromMisc = (fa.region != null);
             cs.phaseId = moduleOpToPhase.getOrDefault(fa.module + "|" + fa.opId, fa.phaseId);
             cs.phaseNum = moduleOpToPhaseNum.getOrDefault(fa.module + "|" + fa.opId, fa.phaseNum);
             cs.opId = fa.opId;
@@ -291,8 +298,12 @@ public class PlanBuilder {
             EmployeeFact ef = env.byWid.get(fa.wid);
             if (ef == null || ef.id == 0) continue;
 
-            if (fa.factory == null || fa.factory.isBlank()) continue;
-            String region = SolveContext.current().calendars.regionOfFab(fa.factory);
+            // region of the row: a misc row's own region, else the module fab's region
+            String region = fa.region;
+            if (region == null) {
+                if (fa.factory == null || fa.factory.isBlank()) continue;
+                region = SolveContext.current().calendars.regionOfFab(fa.factory);
+            }
             if (region == null || region.isBlank()) continue;
 
             for (var ent : fa.hoursByDay.entrySet()) {
@@ -351,7 +362,7 @@ public class PlanBuilder {
 
                 //  preference gate (level 0 for region OR customer_company → disallow)
                 String fabId     = s.factory;
-                String regionId  = SolveContext.current().calendars.regionOfFab(fabId);
+                String regionId  = s.regionId();
                 String customerId = SolveContext.current().calendars.customerOfFab(fabId);
                 int rp = WorkerRules.regionPref(e, regionId);
                 int cp = WorkerRules.customerPref(e, customerId);
@@ -658,6 +669,14 @@ public class PlanBuilder {
         String schedFixedPath = ScheduleParser.preprocessScheduleYaml(schedPath);
         ParsedSchedule sch = ScheduleParser.parseSchedule(schedFixedPath, env.opdef);
         EnvConfigParser.buildCalendars(envPath, sch.planStart, sch.planEnd);
+        // a misc row may name a region the environment does not know (no stay limit, no transit): index it as well
+        {
+            RegionIndex known = SolveContext.current().regions;
+            LinkedHashSet<String> all = new LinkedHashSet<>();
+            for (int i = 0; i < known.size(); i++) all.add(known.idOf(i));
+            for (FixedAssign fa : sch.fixedRows) if (fa.region != null) all.add(fa.region);
+            if (all.size() != known.size()) SolveContext.current().regions = RegionIndex.of(all);
+        }
         SolveContext.current().solveMinDay = sch.daySlots.stream().mapToInt(d -> d.id).min().orElse(0);
         SolveContext.current().solveMaxDay = sch.daySlots.stream().mapToInt(d -> d.id).max().orElse(0);
 

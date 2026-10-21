@@ -26,6 +26,14 @@ public class CrewSeat {
     public int seatIndex;
     public boolean needManager;
 
+    /**
+     * Index (SolveContext.regions) of this seat's region, -1 = none. Set once when the seat is built: a module seat's
+     * fab region, a pinned misc seat's own misc-task region (-1 when it has none or it is neutral).
+     */
+    public int regionIdx = -1;
+    /** True for a pinned misc seat whose {@link #regionIdx} comes from the misc task's own region. */
+    public boolean regionFromMisc = false;
+
     public boolean pinnedFixed = false;
     public boolean warmPinned  = false;
     public String  pinnedWid = null;
@@ -51,6 +59,11 @@ public class CrewSeat {
         new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
 
     public CrewSeat() {}
+
+    /** Region id of {@link #regionIdx}, or null when the seat has no region. */
+    public String regionId() {
+        return com.yourorg.scheduler.calendar.SolveContext.current().regions.idOf(regionIdx);
+    }
 
     public void setCandidateEmployees(List<EmployeeFact> list) {
         this.candidateEmployees = (list == null) ? List.of() : list;

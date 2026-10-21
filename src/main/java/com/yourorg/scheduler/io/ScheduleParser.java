@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
 
+import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.model.*;
 
@@ -289,6 +290,23 @@ public class ScheduleParser {
             int sId, eId;                // from start_date/end_date if present
             Map<Integer,Integer> byDay;   // summed hours by dayId
             boolean isRealOp;             // false for misc/dummy tasks (no OpTaskMeta match)
+            String region;                // misc rows only: the misc task's own region, null if none/neutral
+        }
+
+        // misc_task_list: misc task id -> its own region (design section 7). A region listed in
+        // misc_neutral_regions (default r_other) or a blank/missing one means "no region" (null).
+        Set<String> neutralMiscRegions = SolveContext.current().miscNeutralRegions;
+        Map<String,String> miscRegionById = new HashMap<>();
+        Object miscObj = s.get("misc_task_list");
+        if (miscObj instanceof List) {
+            for (Object o : (List<?>) miscObj) {
+                if (!(o instanceof Map)) continue;
+                Map<?,?> mt = (Map<?,?>) o;
+                String mid = YamlFiles.safeStr(mt.get("id"));
+                String mreg = YamlFiles.safeStr(mt.get("region")).trim();
+                if (mid.isBlank() || mreg.isBlank() || neutralMiscRegions.contains(mreg)) continue;
+                miscRegionById.put(mid, mreg);
+            }
         }
 
         // outputs
@@ -374,6 +392,7 @@ public class ScheduleParser {
             rr.sId = sId; rr.eId = eId;
             rr.byDay = byDay;
             rr.isRealOp = (meta != null);
+            rr.region = (meta != null) ? null : miscRegionById.get(opTask);
 
             rawRows.add(rr);
 
@@ -409,6 +428,7 @@ public class ScheduleParser {
                 fa.module = rr.module; fa.opId = rr.opId; fa.wid = rr.wid;
                 fa.phaseId = rr.phaseId; fa.phaseNum = rr.phaseNum;
                 fa.factory = rr.factory;
+                fa.region = rr.region;
                 fa.startDayId = rr.sId; fa.endDayId = rr.eId;
                 fa.hoursByDay.putAll(rr.byDay);
                 fixedRows.add(fa);

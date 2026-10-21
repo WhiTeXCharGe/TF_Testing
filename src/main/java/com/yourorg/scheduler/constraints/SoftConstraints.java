@@ -145,9 +145,9 @@ final class SoftConstraints {
                 Joiners.equal(s -> s.employee.id),
                 Joiners.lessThan(s -> s.blockId))
             .filter((s1, s2) -> {
-                String r1 = SolveContext.current().calendars.regionOfFab(s1.factory);
-                String r2 = SolveContext.current().calendars.regionOfFab(s2.factory);
-                return r1 != null && r2 != null && !r1.equals(r2);
+                int r1 = s1.regionIdx;
+                int r2 = s2.regionIdx;
+                return r1 >= 0 && r2 >= 0 && r1 != r2;
             })
             .penalize(HardMediumSoftScore.ONE_SOFT,
                 (s1, s2) -> REGION_TRANSITION_W)
@@ -163,7 +163,7 @@ final class SoftConstraints {
                 HardMediumSoftScore.ONE_SOFT,
                 (s, b) -> {
                     String fabId      = s.factory;
-                    String regionId   = SolveContext.current().calendars.regionOfFab(fabId);
+                    String regionId   = s.regionId();
                     String customerId = SolveContext.current().calendars.customerOfFab(fabId);
 
                     int rLevel = WorkerRules.regionPref(s.employee, regionId);

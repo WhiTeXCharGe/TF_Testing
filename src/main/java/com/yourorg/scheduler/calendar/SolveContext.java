@@ -30,6 +30,19 @@ public class SolveContext {
     /** Fab/region/customer/worker calendars and stay/overtime limits; empty until EnvConfigParser.buildCalendars fills it. */
     public Calendars calendars = new Calendars();
 
+    /**
+     * Region id <-> int index (EnvConfig region_list, fab regions and transit regions, plus the regions of misc rows);
+     * filled by EnvConfigParser.buildCalendars / PlanBuilder.buildProblem. Resolve a region once with it, then carry
+     * the int ({@code CrewSeat.regionIdx}).
+     */
+    public RegionIndex regions = RegionIndex.of(java.util.List.of());
+
+    /**
+     * Misc regions treated as "no region" (design section 7, parameter {@code misc_neutral_regions}); default
+     * {@code {r_other}}. Set by Main from SolverParams before the build step, never touched by the build step.
+     */
+    public Set<String> miscNeutralRegions = Set.of("r_other");
+
     /** Average hours per real employee that soft-balance-total-hours aims for; set by PlanBuilder.buildProblem. */
     public double targetHoursPerEmp = 0.0;
     /** Affinity tag id -> weight; filled by EnvConfigParser.parseEnv. */

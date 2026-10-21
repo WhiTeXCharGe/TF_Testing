@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.yourorg.scheduler.build.PlanBuilder;
+import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.config.SolverParams;
 import com.yourorg.scheduler.export.ScheduleExporter;
 import com.yourorg.scheduler.solver.RunResult;
@@ -79,6 +80,8 @@ public class Main {
         params.warnings().forEach(w -> System.out.println("[params] WARN " + w));
         System.out.println("[params] " + params.describe());
         ScoreLogger.setWriteScoreFiles(params.writeScoreFiles());
+        // misc rows whose region is listed here count as region-less (design section 7); read by the build step
+        SolveContext.current().miscNeutralRegions = params.miscNeutralRegions();
 
         RunResult rr = solveFromYaml(envPath, schedPath, params.timers());
 

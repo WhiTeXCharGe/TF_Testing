@@ -6,6 +6,7 @@ import ai.timefold.solver.core.api.score.HardMediumSoftScore;
 import ai.timefold.solver.core.api.score.stream.Constraint;
 import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
+import ai.timefold.solver.core.api.score.stream.uni.UniConstraintStream;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 
 import com.yourorg.scheduler.calendar.SolveContext;
@@ -39,6 +40,34 @@ final class RegionConstraints {
             this.opId = opId;
         }
     }
+    /**
+     * Worked (employee, day, region) rows of the pinned MISC seats that have a region of their own (design
+     * section 7). Those seats are the only pinned seats that take part in the region rules: a pinned MODULE seat
+     * never did, because its block is the dummy fixed block 0, which has no start/days (uninitialised), so the inner
+     * join with BlockDecision in the streams below drops it (its history before the horizon is covered by
+     * EmployeeFact.histLastFixed*; the golden totals pin this). With the default misc_neutral_regions no pinned seat
+     * has a misc region, so this stream is empty and nothing changes.
+     */
+    private static UniConstraintStream<EmpDayRegion> pinnedMiscRows(ConstraintFactory f, boolean withStartDay) {
+        return f.forEachIncludingUnassigned(CrewSeat.class)
+            .filter(s -> s.pinnedFixed && s.regionFromMisc && !WorkerRules.isUnassigned(s.employee))
+            .map(s -> {
+                String region = s.regionId();
+                List<EmpDayRegion> rows = new ArrayList<>();
+                if (region != null && s.pinnedWorkDays != null) {
+                    for (int dayId : s.pinnedWorkDays) {
+                        rows.add(new EmpDayRegion(
+                                s.employee, dayId, region,
+                                true, s.phaseNum,
+                                withStartDay ? (s.pinnedStart == null ? dayId : s.pinnedStart) : 0,
+                                s.module, s.opId));
+                    }
+                }
+                return rows;
+            })
+            .flattenLast(rows -> rows);
+    }
+
     private static List<EmpDayRegion> transitRelevantDays(List<EmpDayRegion> list) {
         if (list == null || list.isEmpty()) return List.of();
 
@@ -70,7 +99,7 @@ final class RegionConstraints {
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .map((CrewSeat s, BlockDecision b) -> {
-                String region = SolveContext.current().calendars.regionOfFab(s.factory);
+                String region = s.regionId();
                 List<EmpDayRegion> rows = new ArrayList<>();
                 for (int dayId : seatCoveredDays(s, b)) {
                     int startDay = s.pinnedFixed
@@ -84,6 +113,7 @@ final class RegionConstraints {
                 return rows;
             })
             .flattenLast(rows -> rows)
+            .concat(pinnedMiscRows(f, true))
             .filter(x -> x.region != null && !x.region.isBlank())
             .groupBy(x -> x.emp, ConstraintCollectors.toList(x -> x));
 
@@ -204,7 +234,7 @@ final class RegionConstraints {
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .map((CrewSeat s, BlockDecision b) -> {
-                String region = SolveContext.current().calendars.regionOfFab(s.factory);
+                String region = s.regionId();
                 List<EmpDayRegion> rows = new ArrayList<>();
                 if (region != null) {
                     for (int dayId : seatCoveredDays(s, b)) {
@@ -217,6 +247,7 @@ final class RegionConstraints {
                 return rows;
             })
             .flattenLast(rows -> rows)
+            .concat(pinnedMiscRows(f, false))
             .groupBy(x -> Arrays.asList(x.emp.id, x.region),
                      ConstraintCollectors.toList(x -> x.dayId));
 
@@ -276,7 +307,7 @@ final class RegionConstraints {
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .map((CrewSeat s, BlockDecision b) -> {
-                String region = SolveContext.current().calendars.regionOfFab(s.factory);
+                String region = s.regionId();
                 List<EmpDayRegion> rows = new ArrayList<>();
                 if (region != null) {
                     for (int dayId : seatCoveredDays(s, b)) {
@@ -289,6 +320,7 @@ final class RegionConstraints {
                 return rows;
             })
             .flattenLast(rows -> rows)
+            .concat(pinnedMiscRows(f, false))
             .groupBy(x -> Arrays.asList(x.emp.id, x.region),
                     ConstraintCollectors.toList(x -> x.dayId));
 
