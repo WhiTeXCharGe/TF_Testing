@@ -104,22 +104,27 @@ async function createBatchTask(runId) {
 
   const task = {
     id: runId,
-    // Run entrypoint, then chmod the outputs so Batch's outputFiles upload can
-    // read them, then exit with the solver's real return code. `-c` (not
-    // `/bin/bash -c`) because containerRunOptions overrides the entrypoint to
-    // /bin/bash below.
+    // Override the image ENTRYPOINT to /bin/bash (see containerRunOptions) so
+    // this wrapper actually runs as the command — otherwise Batch passes it as
+    // ARGS to /app/entrypoint.sh, which ignores them and the chmod never runs.
+    // chmod after the solve so Batch's output-upload agent (runs as the task
+    // autoUser, not root) can read the root-owned result file — the Java solver
+    // writes it 600, so without this the upload fails with FileUploadMiscError.
     commandLine:
       "-c 'mkdir -p /work/output /work/status && /app/entrypoint.sh; " +
       "rc=$?; chmod -R a+rX /work/output /work/status; " +
-      "echo ---PERMS---; ls -la /work/output; exit $rc'",
+      "echo ---PERMS---; ls -la /work/output /work/status; exit $rc'",
+    // Run as root: the image's non-root `solver` user can't create/write the
+    // bind-mounted /work dirs (root-owned by Docker), which fails entrypoint's
+    // mkdir with "Permission denied" → exit 1 before any status file is written.
     userIdentity: { autoUser: { elevationLevel: 'admin', scope: 'task' } },
     containerSettings: {
       imageName: SOLVER_IMAGE,
       containerRunOptions:
         '--rm --entrypoint /bin/bash --user root --workdir /app ' +
-        // resourceFiles (filePath "input" + blobPrefix "input/<runId>/") lands
-        // the files at $AZ_BATCH_TASK_WORKING_DIR/input/input/<runId>/, because
-        // Batch preserves the full blob path under filePath. Mount THAT dir.
+        // Batch preserves the full blob path under filePath, so resourceFiles
+        // (blobPrefix "input/<runId>/" + filePath "input") land at
+        // wd/input/input/<runId>/. Mount THAT dir as /work/input.
         `-v $AZ_BATCH_TASK_WORKING_DIR/input/input/${runId}:/work/input:ro ` +
         '-v $AZ_BATCH_TASK_WORKING_DIR/output:/work/output ' +
         '-v $AZ_BATCH_TASK_WORKING_DIR/status:/work/status ' +
@@ -177,10 +182,10 @@ async function createBatchTask(runId) {
 
 /**
  * Batch only uploads outputFiles (including status/<runId>.json) once the task's
- * command line exits — see uploadCondition: 'taskCompletion' above. So while the
- * task is still active/preparing/running, Blob never gets an update and status
- * would show "Submitted" for the whole solve. These two helpers read the live
- * status file straight off the node instead, via Batch's task-file REST API.
+ * command line exits (uploadCondition: 'taskCompletion'). While the task is still
+ * active/preparing/running, Blob keeps the stale "Submitted" written at /runSolver
+ * time. These two helpers read the live status straight off the node via Batch's
+ * task-file REST API so the caller sees Running + real progress mid-solve.
  */
 async function getBatchTaskState(runId) {
   const res = await batchFetch(`/jobs/${BATCH_JOB_ID}/tasks/${runId}`);
@@ -191,8 +196,8 @@ async function getBatchTaskState(runId) {
 }
 
 async function readLiveStatusFile(runId) {
-  // STATUS_DIR (/work/status) is bind-mounted from $AZ_BATCH_TASK_WORKING_DIR/status,
-  // which the file API addresses as "wd/status/..." relative to the task directory.
+  // /work/status is bind-mounted from $AZ_BATCH_TASK_WORKING_DIR/status, which the
+  // task-file API addresses as "wd/status/..." relative to the task directory.
   const res = await batchFetch(`/jobs/${BATCH_JOB_ID}/tasks/${runId}/files/wd/status/${runId}.json`);
   if (!res.ok) return null; // not written yet, or node unreachable — caller falls back to Blob
   try {
@@ -262,15 +267,14 @@ app.get('/status/:runId', async (req, res) => {
   const { runId } = req.params;
   if (!isValidRunId(runId)) return res.status(400).json({ error: 'Invalid runId format' });
   try {
-    const blobStatus = await readJsonBlob(`status/${runId}.json`);
-    if (!blobStatus) return res.status(404).json({ error: `Run "${runId}" not found` });
+    const status = await readJsonBlob(`status/${runId}.json`);
+    if (!status) return res.status(404).json({ error: `Run "${runId}" not found` });
 
-    // Blob only has "Submitted" (written at /runSolver time) or the final
-    // Completed/Failed/Cancelled (uploaded once at task completion) — while the
+    // Blob only holds "Submitted" (written at /runSolver) or the final
+    // Completed/Failed/Cancelled (uploaded once at task completion). While the
     // task is still active/preparing/running, prefer the live file on the node
-    // so the caller actually sees Running + real progress instead of a stale
-    // "Submitted" for the whole run.
-    if (blobStatus.status === 'Submitted' || blobStatus.status === 'Running') {
+    // so the caller sees Running + real progress instead of a stale "Submitted".
+    if (status.status === 'Submitted' || status.status === 'Running') {
       const state = await getBatchTaskState(runId).catch(() => null);
       if (state === 'active' || state === 'preparing' || state === 'running') {
         const live = await readLiveStatusFile(runId).catch(() => null);
@@ -278,7 +282,7 @@ app.get('/status/:runId', async (req, res) => {
       }
     }
 
-    res.json(blobStatus);
+    res.json(status);
   } catch (e) {
     console.error('[status]', e);
     res.status(500).json({ error: String(e.message || e) });
