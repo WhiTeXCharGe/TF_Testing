@@ -1,0 +1,232 @@
+# Characterisation fixture "small" - Schedule (hand-made, see EnvConfig.yaml for the world).
+#
+# NOTE: EmployeeSchedule.preprocessScheduleYaml REWRITES this file in place when a
+# phase started before the cut-off (it does here: e1 p1). The tests therefore copy
+# the fixture to a temp directory before building; never point the code at this
+# file directly.
+#
+# dayIds: 0=03/23 Mon 1=03/24 2=03/25 3=03/26 4=03/27 5=03/28 Sat (r1 closed)
+#         6=03/29 Sun (c2 closed) 7=03/30 (w2 off) 8=03/31 9=04/01 10=04/02
+#         11=04/03 12=04/04 13=04/05 Sun (c2 closed)
+#
+# Module e1 (fab f1, region r1, customer c1)
+#   e1p1o1  workload 70 h, all covered by Fixed hours -> remaining 0 -> NO block is built
+#           (the "nothing to plan" path).
+#           row A: w1 Fixed 03/20..03/22 (history before the cut-off; sets w1's last
+#                  history region r1 on day -1 -> transit gap into r2 on day 0).
+#           row B: w2 Flexible 03/21..03/24 -> has days before the cut-off, so the
+#                  "phase started" rule turns every e1 p1 row Fixed. Its in-horizon days
+#                  0..1 become fixed background (pinned seat, FIXED_* maps, overtime 2 h/day).
+#           The p1 fixed end (day 1) pushes the e1 p2 window start to day 2.
+#   e1p2o1  workload 160 h, recommended 2..3 heads. Warm start: only w1, 12 h/day,
+#           days 4..11 -> underfill, recommend-headcount (too few), soft-earlier-start
+#           (window starts day 2), overtime, daily cap / one task per day (w1 overlaps).
+#   e1p2o2  workload 40 h, only 8 h allowed. Warm start: w1 + w2 days 3..10 -> overfill
+#           by far more than one day. w2 also has the misc task on day 4.
+# Module e2 (fab f2, region r2, customer c2 with Sundays closed)
+#   e2p1o1  workload 100 h. row: w3 Fixed 03/23..03/24 (Fixed inside the horizon, 20 h
+#           counted as already done; pushes the e2 p2 window to day 2). Warm start: w1
+#           days 0..4 -> still underfilled.
+#   e2p2o1  workload 60 h, recommended 1..2 heads. Warm start: w1, w2, w3 days 3..8
+#           -> phase-order (e2 p1 ends day 4 >= e2 p2 starts day 3), overfill,
+#           recommend-headcount (too many), affinity reward (w1,w2) and penalty (w2,w3),
+#           skill variety (w2,w3 both level 2), spot worker w2, region transitions for w1.
+# Misc task misc_other_1 (region r_other): w2 Fixed on 03/27 (day 4), inside the horizon,
+#   overlapping w2's dynamic work -> emp-one-task-per-day and seat-daily-cap-12h with
+#   fixed counts.
+schedule:
+  plan_range:
+    start_date: 2026/03/23
+    end_date: 2026/04/05
+  workflow_task_list:
+  - id: e1
+    name: Module One
+    workflow: wf1
+    fab: f1
+    phase_task_list:
+    - id: e1p1
+      name: Move In
+      phase: p1
+      start_date: 2026/03/16
+      end_date: 2026/03/26
+      operation_task_list:
+      - id: e1p1o1
+        name: Mech
+        operation: p1o1
+        workload_hours: 70
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+    - id: e1p2
+      name: Setup
+      phase: p2
+      start_date: 2026/03/27
+      end_date: 2026/04/05
+      operation_task_list:
+      - id: e1p2o1
+        name: Elec
+        operation: p2o1
+        workload_hours: 160
+        recommends_worker_min: 2
+        recommends_worker_max: 3
+      - id: e1p2o2
+        name: QC
+        operation: p2o2
+        workload_hours: 40
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+  - id: e2
+    name: Module Two
+    workflow: wf1
+    fab: f2
+    phase_task_list:
+    - id: e2p1
+      name: Move In
+      phase: p1
+      start_date: 2026/03/23
+      end_date: 2026/03/29
+      operation_task_list:
+      - id: e2p1o1
+        name: Mech
+        operation: p1o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+    - id: e2p2
+      name: Setup
+      phase: p2
+      start_date: 2026/03/30
+      end_date: 2026/04/05
+      operation_task_list:
+      - id: e2p2o1
+        name: Elec
+        operation: p2o1
+        workload_hours: 60
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+  misc_task_list:
+  - id: misc_other_1
+    name: Training
+    region: r_other
+  assignment_list:
+  # row A - history before the cut-off
+  - worker: w1
+    operation_task: e1p1o1
+    start_date: 2026/03/20
+    end_date: 2026/03/22
+    work_date_list:
+    - {date: 2026/03/20, hour: 10}
+    - {date: 2026/03/21, hour: 10}
+    - {date: 2026/03/22, hour: 10}
+    plan_flexibility: Fixed
+  # row B - Flexible, but its phase started before the cut-off -> forced Fixed
+  - worker: w2
+    operation_task: e1p1o1
+    start_date: 2026/03/21
+    end_date: 2026/03/24
+    work_date_list:
+    - {date: 2026/03/21, hour: 10}
+    - {date: 2026/03/22, hour: 10}
+    - {date: 2026/03/23, hour: 10}
+    - {date: 2026/03/24, hour: 10}
+    plan_flexibility: Flexible
+  # e1p2o1 warm start: w1 alone at 12 h
+  - worker: w1
+    operation_task: e1p2o1
+    start_date: 2026/03/27
+    end_date: 2026/04/03
+    work_date_list:
+    - {date: 2026/03/27, hour: 12}
+    - {date: 2026/03/29, hour: 12}
+    - {date: 2026/03/30, hour: 12}
+    - {date: 2026/03/31, hour: 12}
+    - {date: 2026/04/01, hour: 12}
+    - {date: 2026/04/02, hour: 12}
+    - {date: 2026/04/03, hour: 12}
+    plan_flexibility: Flexible
+  # e1p2o2 warm start: manager row first (it maps to seat 0), then w2
+  - worker: w1
+    operation_task: e1p2o2
+    start_date: 2026/03/26
+    end_date: 2026/04/02
+    work_date_list:
+    - {date: 2026/03/26, hour: 8}
+    - {date: 2026/03/27, hour: 8}
+    - {date: 2026/03/29, hour: 8}
+    - {date: 2026/03/30, hour: 8}
+    - {date: 2026/03/31, hour: 8}
+    - {date: 2026/04/01, hour: 8}
+    - {date: 2026/04/02, hour: 8}
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e1p2o2
+    start_date: 2026/03/26
+    end_date: 2026/04/02
+    work_date_list:
+    - {date: 2026/03/26, hour: 8}
+    - {date: 2026/03/27, hour: 8}
+    - {date: 2026/03/29, hour: 8}
+    - {date: 2026/03/31, hour: 8}
+    - {date: 2026/04/01, hour: 8}
+    - {date: 2026/04/02, hour: 8}
+    plan_flexibility: Flexible
+  # misc task inside the horizon (always treated as Fixed)
+  - worker: w2
+    operation_task: misc_other_1
+    start_date: 2026/03/27
+    end_date: 2026/03/27
+    work_date_list:
+    - {date: 2026/03/27, hour: 8}
+    plan_flexibility: Fixed
+  # e2p1o1: Fixed row inside the horizon, then the manager's warm start
+  - worker: w3
+    operation_task: e2p1o1
+    start_date: 2026/03/23
+    end_date: 2026/03/24
+    work_date_list:
+    - {date: 2026/03/23, hour: 10}
+    - {date: 2026/03/24, hour: 10}
+    plan_flexibility: Fixed
+  - worker: w1
+    operation_task: e2p1o1
+    start_date: 2026/03/23
+    end_date: 2026/03/27
+    work_date_list:
+    - {date: 2026/03/23, hour: 10}
+    - {date: 2026/03/24, hour: 10}
+    - {date: 2026/03/25, hour: 10}
+    - {date: 2026/03/26, hour: 10}
+    - {date: 2026/03/27, hour: 10}
+    plan_flexibility: Flexible
+  # e2p2o1 warm start: three workers where at most two are recommended
+  - worker: w1
+    operation_task: e2p2o1
+    start_date: 2026/03/26
+    end_date: 2026/03/31
+    work_date_list:
+    - {date: 2026/03/26, hour: 10}
+    - {date: 2026/03/27, hour: 10}
+    - {date: 2026/03/28, hour: 10}
+    - {date: 2026/03/30, hour: 10}
+    - {date: 2026/03/31, hour: 10}
+    plan_flexibility: Flexible
+  - worker: w2
+    operation_task: e2p2o1
+    start_date: 2026/03/26
+    end_date: 2026/03/31
+    work_date_list:
+    - {date: 2026/03/26, hour: 10}
+    - {date: 2026/03/27, hour: 10}
+    - {date: 2026/03/28, hour: 10}
+    - {date: 2026/03/31, hour: 10}
+    plan_flexibility: Flexible
+  - worker: w3
+    operation_task: e2p2o1
+    start_date: 2026/03/26
+    end_date: 2026/03/31
+    work_date_list:
+    - {date: 2026/03/26, hour: 10}
+    - {date: 2026/03/27, hour: 10}
+    - {date: 2026/03/28, hour: 10}
+    - {date: 2026/03/30, hour: 10}
+    - {date: 2026/03/31, hour: 10}
+    plan_flexibility: Flexible

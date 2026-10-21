@@ -26,3 +26,13 @@ hs_err_pid*.log
 
 # Score progress dumps
 score_progress_*.txt
+
+# Files EmployeeSchedule writes into the working directory when building/solving.
+# load_log.txt is written by the build step (observed when running the tests);
+# the others are written by solveFromYaml during a real solve.
+load_log.txt
+initial_score.txt
+stage1_score.txt
+final_score.txt
+score_progress.txt
+solver_log.txt

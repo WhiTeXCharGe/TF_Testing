@@ -1,0 +1,174 @@
+# Characterisation fixture "small" - EnvConfig (hand-made, see Schedule.yaml for the work).
+#
+# Purpose: a tiny world whose warm-start solution deliberately breaks as many of
+# the 23 registered constraints as a warm start can, so that a behaviour change
+# in any of them changes golden/small-1.27.json. Do not "fix" the violations.
+#
+# Plan range (Schedule.yaml): 2026/03/23 (Mon, dayId 0) .. 2026/04/05 (Sun, dayId 13).
+# It crosses a month boundary (03/31 = day 8, 04/01 = day 9) so the monthly and
+# annual overtime buckets differ.
+#
+# What each part targets:
+#   workflow wf1     p1o1 / p2o1 allow [8,10,12] (12 h days create overtime and the
+#                    12 h daily cap), p2o2 allows only [8]. Seat counts come from
+#                    max_worker_num (p1o1: 2 seats, p2o1: 3 seats, p2o2: 2 seats).
+#   fab f1 -> r1/c1, fab f2 -> r2/c2   two modules in two regions and two customers.
+#   r1 calendar      closes 2026/03/28 (day 5): region calendar -> isWorkingDay,
+#                    coveredWorkingDays, production and day-based rules skip it.
+#   c2 calendar      closes every Sunday (weekly pattern): days 6 and 13 for f2.
+#   r1 limits        max_stay_on 5, max_annual_stay 6 -> emp-region-stay-max-on and
+#                    emp-region-annual-stay-max fire for w1 and w2.
+#   r2 limits        max_stay_on 7, max_annual_stay 8 -> fire for w1 and w3.
+#   stay_off_interval 3 everywhere: the 1-day closures do not split a stay.
+#   r_other          10000 sentinels (the production "off" value): computed, never exceeded.
+#   transite_day_map r1<->r2 = 1 day -> emp-region-transit-gap (w1 hops r2->r1->r2->r1,
+#                    and w1's last history day is in r1 the day before the cut-off).
+#   wc1 limits       annual OT 20, monthly OT 12 -> both OT rules fire for w1,
+#                    monthly for w2 (incl. fixed in-horizon overtime).
+#   wc2 limits       annual OT 30 (not exceeded), monthly OT 8 (exceeded by w3).
+#   affinity_tag     t_good (+2): w1 & w2 -> soft-affinity-reward;
+#                    t_bad (-3): w2 & w3 -> soft-affinity-penalty.
+#   w1 (manager)     the only manager, so seat 0 of every block. Region pref r1:3 and
+#                    customer pref c2:2 -> soft-fab-preference.
+#   w2               spot worker for p2o1 -> prefer-regular-over-spot; personal
+#                    unavailable 2026/03/30 (day 7) -> zero production that day.
+#   w3               region pref r1:0 -> never a candidate for r1 seats (candidate gate).
+#                    w2 and w3 share skill level 2 on p2o1 -> soft-encourage-skill-variety.
+environment:
+  workflow_list:
+  - id: wf1
+    name: Small Tool
+    phase_list:
+    - id: p1
+      name: Move In
+      operation_list:
+      - id: p1o1
+        name: Mech
+        work_hours: [8, 10, 12]
+        min_worker_num: 1
+        max_worker_num: 2
+    - id: p2
+      name: Setup
+      operation_list:
+      - id: p2o1
+        name: Elec
+        work_hours: [8, 10, 12]
+        min_worker_num: 1
+        max_worker_num: 3
+      - id: p2o2
+        name: QC
+        work_hours: [8]
+        min_worker_num: 1
+        max_worker_num: 2
+  fab_list:
+  - id: f1
+    name: Fab One
+    region: r1
+    customer_company: c1
+    unavailable_dates: []
+  - id: f2
+    name: Fab Two
+    region: r2
+    customer_company: c2
+    unavailable_dates: []
+  region_list:
+  - id: r_other
+    name: Other
+    max_stay_on: 10000
+    max_annual_stay: 10000
+    stay_off_interval: 3
+    unavailable_dates: []
+  - id: r1
+    name: Region One
+    max_stay_on: 5
+    max_annual_stay: 6
+    stay_off_interval: 3
+    unavailable_dates:
+    - 2026/03/28
+  - id: r2
+    name: Region Two
+    max_stay_on: 7
+    max_annual_stay: 8
+    stay_off_interval: 3
+    unavailable_dates: []
+  customer_company_list:
+  - id: c1
+    name: Customer One
+    unavailable_dates: []
+  - id: c2
+    name: Customer Two
+    unavailable_dates:
+    - weekly:
+        weekdays: [sun]
+  worker_company_list:
+  - id: wc1
+    name: Worker Company One
+    annual_overtime_limit: 20
+    monthly_overtime_limit: 12
+    unavailable_dates: []
+  - id: wc2
+    name: Worker Company Two
+    annual_overtime_limit: 30
+    monthly_overtime_limit: 8
+    unavailable_dates: []
+  transite_day_map:
+  - from: r1
+    to: r2
+    days: 1
+  - from: r2
+    to: r1
+    days: 1
+  - from: r_other
+    to: r1
+    days: 1
+  - from: r_other
+    to: r2
+    days: 1
+  - from: r1
+    to: r_other
+    days: 1
+  - from: r2
+    to: r_other
+    days: 1
+  affinity_tag:
+  - id: t_good
+    weight: 2
+  - id: t_bad
+    weight: -3
+  worker_list:
+  - id: w1
+    name: Manager A
+    worker_company: wc1
+    is_manager: true
+    skill_map: {p1o1: 3, p2o1: 3, p2o2: 2}
+    worker_type_by_operation: {}
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 3}
+    - kind: customer_company
+      suitability: {c2: 2}
+    unavailable_dates: []
+    affinity: [t_good]
+  - id: w2
+    name: Tech B
+    worker_company: wc1
+    is_manager: false
+    skill_map: {p1o1: 2, p2o1: 2, p2o2: 2}
+    worker_type_by_operation: {p2o1: spot}
+    fab_suitability_map: []
+    unavailable_dates:
+    - single:
+        days:
+        - 2026/03/30
+    affinity: [t_good, t_bad]
+  - id: w3
+    name: Tech C
+    worker_company: wc2
+    is_manager: false
+    skill_map: {p2o1: 2, p2o2: 3}
+    worker_type_by_operation: {}
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 0}
+    unavailable_dates: []
+    affinity: [t_bad]

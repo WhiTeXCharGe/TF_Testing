@@ -14,3 +14,6 @@ Dockerfile   text eol=lf
 # Documentation — LF, so diffs/PRs render cleanly on every OS.
 *.md         text eol=lf
 *.txt        text eol=lf
+
+# Characterisation goldens — LF so they stay byte-identical across OSes.
+*.json       text eol=lf

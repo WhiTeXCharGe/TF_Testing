@@ -1,0 +1,100 @@
+{
+  "description": "Characterisation golden written by CharacterizationTest with -Dgolden.write=true. Do not edit by hand; regenerate only for an intended behaviour change.",
+  "initial": {
+    "score": "-45708hard/-38700medium/-743535soft",
+    "constraints": {
+      "block-end-within-window": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "block-hours-in-allowed": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "block-no-underfill": {
+        "score": "-36800hard/0medium/0soft",
+        "matches": 15
+      },
+      "block-overfill-at-most-one-day": {
+        "score": "-6330hard/0medium/0soft",
+        "matches": 19
+      },
+      "block-recommend-headcount-range": {
+        "score": "0hard/-38700medium/0soft",
+        "matches": 42
+      },
+      "emp-annual-overtime-limit": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "emp-monthly-overtime-limit": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "emp-one-task-per-day": {
+        "score": "-286hard/0medium/0soft",
+        "matches": 284
+      },
+      "emp-region-annual-stay-max": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "emp-region-stay-max-on": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "emp-region-transit-gap": {
+        "score": "-4hard/0medium/0soft",
+        "matches": 4
+      },
+      "phase-order": {
+        "score": "0hard/0medium/0soft",
+        "matches": 0
+      },
+      "prefer-regular-over-spot": {
+        "score": "0hard/0medium/-80soft",
+        "matches": 2
+      },
+      "seat-daily-cap-12h": {
+        "score": "-2288hard/0medium/0soft",
+        "matches": 284
+      },
+      "soft-affinity-penalty": {
+        "score": "0hard/0medium/0soft",
+        "matches": 545109
+      },
+      "soft-affinity-reward": {
+        "score": "0hard/0medium/416880soft",
+        "matches": 545109
+      },
+      "soft-balance-block-avg-skill": {
+        "score": "0hard/0medium/-1051423soft",
+        "matches": 380
+      },
+      "soft-balance-total-hours": {
+        "score": "0hard/0medium/-77820soft",
+        "matches": 77
+      },
+      "soft-earlier-start": {
+        "score": "0hard/0medium/-176soft",
+        "matches": 42
+      },
+      "soft-encourage-skill-variety": {
+        "score": "0hard/0medium/-14076soft",
+        "matches": 199
+      },
+      "soft-fab-preference": {
+        "score": "0hard/0medium/0soft",
+        "matches": 196
+      },
+      "soft-minimize-region-transitions": {
+        "score": "0hard/0medium/-40soft",
+        "matches": 8
+      },
+      "soft-smaller-hours": {
+        "score": "0hard/0medium/-16800soft",
+        "matches": 42
+      }
+    }
+  }
+}

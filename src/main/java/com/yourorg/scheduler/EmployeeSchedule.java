@@ -3813,7 +3813,42 @@ public class EmployeeSchedule {
 
     public static class RunResult { public SinglePassPlan plan; public LocalDate planStart; }
 
-    public static RunResult solveFromYaml(String envPath, String schedPath) throws IOException {
+    // ---------------- Test seam (characterisation tests) ----------------
+    // buildProblem() is the unchanged "build" half of solveFromYaml (parse,
+    // calendars, entities, static state, warm start, seat candidates), moved
+    // out so tests can score the initial plan without solving. solveFromYaml
+    // calls it first, so production behaviour is identical.
+
+    static final class BuiltProblem {
+        SinglePassPlan plan;
+        ParsedSchedule sch;
+        ParsedEnv env;
+    }
+
+    /** Same steps as solveFromYaml up to, but not including, solving. Sets the same static state. */
+    static SinglePassPlan buildPlanForTests(String envPath, String schedPath) throws IOException {
+        return buildProblem(envPath, schedPath).plan;
+    }
+
+    /**
+     * Solver factory with the production model (solution, entities, constraints, default phases) for tests:
+     * optional step-count limit and random seed; no time-based termination.
+     */
+    static SolverFactory<SinglePassPlan> factoryForTests(Integer stepLimit, Long seed) {
+        SolverConfig cfg = new SolverConfig();
+        cfg.withSolutionClass(SinglePassPlan.class);
+        cfg.withEntityClasses(BlockDecision.class, CrewSeat.class);
+        cfg.withScoreDirectorFactory(
+                new ScoreDirectorFactoryConfig().withConstraintProviderClass(SinglePassConstraints.class)
+        );
+        TerminationConfig term = new TerminationConfig();
+        if (stepLimit != null) term.setStepCountLimit(stepLimit);
+        cfg.withTerminationConfig(term);
+        if (seed != null) cfg.withRandomSeed(seed);
+        return SolverFactory.create(cfg);
+    }
+
+    static BuiltProblem buildProblem(String envPath, String schedPath) throws IOException {
         ParsedEnv env = parseEnv(envPath);
         String schedFixedPath = preprocessScheduleYaml(schedPath);
         ParsedSchedule sch = parseSchedule(schedFixedPath, env.opdef);
@@ -3982,6 +4017,19 @@ public class EmployeeSchedule {
         p.employees = env.employees;
         p.blocks = built.blocks;
         p.seats  = built.seats;
+
+        BuiltProblem out = new BuiltProblem();
+        out.plan = p;
+        out.sch = sch;
+        out.env = env;
+        return out;
+    }
+
+    public static RunResult solveFromYaml(String envPath, String schedPath) throws IOException {
+        BuiltProblem problem = buildProblem(envPath, schedPath);
+        ParsedEnv env = problem.env;
+        ParsedSchedule sch = problem.sch;
+        SinglePassPlan p = problem.plan;
 
         SolverFactory<SinglePassPlan> factoryForInitial = buildSolverFactory(
             SinglePassPlan.class,
