@@ -160,6 +160,30 @@ loop plus the `+2` arithmetic (`TripCalendar.tripsOf` returns one shared empty l
 the trip intervals in. A problem-fact stream adds one marker row per (worker, trip region), so a trip without tasks still forms a
 (worker, region) group; it never changes while solving.
 
+## TripDeriver (output FI/FO derivation)
+
+`trip/TripDeriver.derive(days, fixedTrips, intervalOf, allowCutFixedTrip)` is a pure class (no solver, no file access, not wired
+into the run yet) that turns the final worked days into the trips of the output `trip_list` (design section 6). It returns
+`DeriveResult(derived, cutFixed, warnings)`; the caller merges `derived` with the Fixed trips it keeps. Input days are
+`WorkedDay(worker, date, region)` (region-less days are never passed in). Per worker, independently; results sorted by worker, start:
+
+1. Dedupe days. Two regions on one day: the alphabetically smaller wins, warning `region_conflict_day`.
+2. Cut (only if `allowCutFixedTrip`): a Fixed trip with no worked day of its own region strictly inside (`start < day < end`)
+   goes to `cutFixed`, warning `cut_fixed_trip`. Days of other regions inside do not count. A cut trip is gone for the rest of
+   the derivation (it is no longer a barrier).
+3. Days inside a remaining Fixed window (`start <= day <= end`) belong to that trip and are not derived.
+4. Runs: a new run starts when the region changes, when the off-days between two worked days are `>= max(1, interval)`
+   (`gap = next - previous - 1`; interval null/0 count as 1), or when a remaining Fixed trip lies between the two days (barrier).
+5. Each run is a FLEXIBLE trip `first - 1 .. last + 1` (calendar days, weekends count, `description` null, no extras).
+6. Neighbour check in start order over derived and remaining Fixed trips: a trip may start on the previous trip's end date
+   (region to region, or right after a Fixed trip) but never before it; otherwise the start moves to that end date and
+   `tight_transit` is warned (zero/missing transit days). Fixed trips are never modified.
+
+Examples (interval 3): Fixed r1 09/01-09/10 with r1 days 09/03, 09/04, 09/09 and r2 days 09/12-09/14 gives one derived trip
+r2 09/11-09/15. r1 09/01-09/03 followed by r2 09/05-09/06 gives r1 08/31-09/04 and r2 09/04-09/07 (shared boundary day).
+r1 days 09/11-09/13 after the Fixed r1 trip give a separate r1 09/10-09/14. r1 09/01 and 09/05 (gap 3) split into
+08/31-09/02 and 09/04-09/06. r1 09/01 then r2 09/02 gives r2 09/02-09/03 and a `tight_transit` warning.
+
 ## Upgrade notes
 
 ### Timefold Solver 1.35.0 -> 2.7.1, Java 17 -> 21 (2026-10-21)
