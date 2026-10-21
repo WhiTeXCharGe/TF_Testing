@@ -3,7 +3,6 @@ package com.yourorg.scheduler;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -46,7 +45,10 @@ class SolveContextTest {
         SolveContext.clear();
 
         SolveContext d = SolveContext.current();
-        assertNull(d.calendars);
+        assertNotNull(d.calendars);
+        assertTrue(d.calendars.weekends.isEmpty());
+        assertTrue(d.calendars.fabToRegion.isEmpty());
+        assertTrue(d.calendars.isWorkingDay(0, "x"));
         assertEquals(0, d.solveMinDay);
         assertEquals(0, d.solveMaxDay);
         assertEquals(0.0, d.targetHoursPerEmp);
