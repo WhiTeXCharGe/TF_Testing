@@ -10,10 +10,16 @@ import ai.timefold.solver.core.api.score.stream.uni.UniConstraintStream;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.TripCalendar.TripInterval;
 import com.yourorg.scheduler.model.*;
 import static com.yourorg.scheduler.constraints.ConstraintSupport.seatCoveredDays;
 
-/** Region rules: transit gap between regions, maximum stay, annual stay (3 constraints). */
+/**
+ * Region rules: transit gap between regions, maximum stay, annual stay (3 constraints).
+ *
+ * <p>The transit gap reads worked days only. The two stay limits measure a stay from FI to FO, both included (design
+ * section 4.1, decision D14): see {@link #longestStay} and {@link #totalStay}.
+ */
 final class RegionConstraints {
 
     // Helper record
@@ -210,19 +216,144 @@ final class RegionConstraints {
             .asConstraint("emp-region-transit-gap");
     }
 
-    private static int maxSegmentSpanWithBreak(List<Integer> dayList, int offInterval) {
-        if (dayList == null || dayList.isEmpty()) return 0;
+    // ------------------------------------------------------------------ stay length (FI -> FO)
+
+    /**
+     * dayId of the marker row that {@link #tripRegionRows} adds per (worker, trip region), so that a trip without any
+     * task of its region still forms a (worker, region) group. Never a real day; the stay helpers skip it.
+     */
+    static final int TRIP_MARKER = Integer.MIN_VALUE;
+
+    /**
+     * One marker row per (worker, region) of the worker's enforced Fixed trips (only workers with trips; a problem-fact
+     * stream, so it never changes while solving). The stay rules then also see a (worker, region) without worked days.
+     */
+    private static UniConstraintStream<EmpDayRegion> tripRegionRows(ConstraintFactory f) {
+        return f.forEach(EmployeeFact.class)
+            .filter(e -> !SolveContext.current().tripCalendar.tripsOf(e.id).isEmpty())
+            .map(e -> {
+                SolveContext ctx = SolveContext.current();
+                List<EmpDayRegion> rows = new ArrayList<>(2);
+                Set<String> seen = new HashSet<>(4);
+                for (TripInterval t : ctx.tripCalendar.tripsOf(e.id)) {
+                    String region = ctx.regions.idOf(t.regionIdx());
+                    if (region == null || !seen.add(region)) continue;
+                    rows.add(new EmpDayRegion(e, TRIP_MARKER, region, true, 0, 0, null, null));
+                }
+                return rows;
+            })
+            .flattenLast(rows -> rows);
+    }
+
+    /** The worker's enforced Fixed trips in {@code regionId} (unclamped dates); the shared empty list for most workers. */
+    private static List<TripInterval> tripsIn(int empId, String regionId) {
+        SolveContext ctx = SolveContext.current();
+        List<TripInterval> all = ctx.tripCalendar.tripsOf(empId);
+        if (all.isEmpty()) return all;
+        int r = ctx.regions.indexOf(regionId);
+        if (r < 0) return List.of();
+        List<TripInterval> out = new ArrayList<>(all.size());
+        for (TripInterval t : all) if (t.regionIdx() == r) out.add(t);
+        return out;
+    }
+
+    /** Worked days of a group, sorted, marker rows dropped. */
+    private static int[] sortedDays(List<Integer> dayList) {
+        int[] ds = new int[dayList.size()];
+        int n = 0;
+        for (Integer d : dayList) if (d != null && d != TRIP_MARKER) ds[n++] = d;
+        if (n != ds.length) ds = Arrays.copyOf(ds, n);
+        Arrays.sort(ds);
+        return ds;
+    }
+
+    /**
+     * Longest stay (FI..FO, both included) of one (worker, region) group. Worked days closer than the interval
+     * ({@code gap = next - prev - 1 < max(1, offInterval)}) form one stay. Without a Fixed trip of that worker in that
+     * region a stay is {@code (last - first + 1) + 2} days (the day before the first and the day after the last task);
+     * otherwise see {@link #measureWithTrips}.
+     */
+    static int longestStay(List<Integer> dayList, int offInterval, int empId, String regionId) {
+        List<TripInterval> trips = tripsIn(empId, regionId);
+        if (!trips.isEmpty()) return measureWithTrips(dayList, offInterval, trips)[0];
+        int[] ds = sortedDays(dayList);
+        if (ds.length == 0) return 0;
         int brk = Math.max(1, offInterval);
-        List<Integer> ds = new ArrayList<>(dayList);
-        Collections.sort(ds);
-        int best = 1, segStart = ds.get(0), prev = ds.get(0);
-        for (int i=1;i<ds.size();i++){
-            int d=ds.get(i); int gap=d-prev-1;
-            if (gap >= brk) { best = Math.max(best, prev - segStart + 1); segStart = d; }
+        int best = 1, segStart = ds[0], prev = ds[0];
+        for (int i = 1; i < ds.length; i++) {
+            int d = ds[i];
+            if (d - prev - 1 >= brk) { best = Math.max(best, prev - segStart + 1); segStart = d; }
             prev = d;
         }
         best = Math.max(best, prev - segStart + 1);
-        return best;
+        return best + 2;
+    }
+
+    /**
+     * Sum of the stay lengths (FI..FO) of one (worker, region) group; a day shared by the FO of one stay and the FI of
+     * the next (possible with interval 1) counts once. Same stays as {@link #longestStay}.
+     */
+    static int totalStay(List<Integer> dayList, int offInterval, int empId, String regionId) {
+        List<TripInterval> trips = tripsIn(empId, regionId);
+        if (!trips.isEmpty()) return measureWithTrips(dayList, offInterval, trips)[1];
+        int[] ds = sortedDays(dayList);
+        if (ds.length == 0) return 0;
+        int brk = Math.max(1, offInterval);
+        int total = 0, segStart = ds[0], prev = ds[0];
+        for (int i = 1; i < ds.length; i++) {
+            int d = ds[i];
+            if (d == prev) continue; // the same day from two seats counts once
+            int gap = d - prev - 1;
+            if (gap >= brk) {
+                total += (prev - segStart + 1) + 2;
+                // this stay's FO (prev + 1) and the next stay's FI (d - 1) coincide when gap == 1
+                total -= Math.max(0, 2 - gap);
+                segStart = d;
+            }
+            prev = d;
+        }
+        total += (prev - segStart + 1) + 2;
+        return total;
+    }
+
+    /**
+     * Stays of a worker with Fixed trips in the region. Present days = worked days plus every day of a trip
+     * (FI..FO, unclamped, the empty days inside included). Present days closer than the interval form one stay; a stay
+     * runs from {@code min(trip.start, first worked - 1)} to {@code max(trip.end, last worked + 1)} over its trips and
+     * worked days. Only workers with trips in the region come here.
+     *
+     * @return {longest stay, sum of the stays with a shared FO/FI day counted once}
+     */
+    private static int[] measureWithTrips(List<Integer> dayList, int offInterval, List<TripInterval> trips) {
+        int[] ds = sortedDays(dayList);
+        // elements {presentStart, presentEnd, spanStart, spanEnd}
+        int[][] el = new int[ds.length + trips.size()][];
+        int n = 0;
+        for (int d : ds) el[n++] = new int[] {d, d, d - 1, d + 1};
+        for (TripInterval t : trips) el[n++] = new int[] {t.startDay(), t.endDay(), t.startDay(), t.endDay()};
+        Arrays.sort(el, (a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0]) : Integer.compare(a[1], b[1]));
+
+        int brk = Math.max(1, offInterval);
+        int best = 0, total = 0;
+        boolean hasPrevStay = false;
+        int prevSpanEnd = 0;
+        int presentEnd = el[0][1], spanStart = el[0][2], spanEnd = el[0][3];
+        for (int i = 1; i <= n; i++) {
+            if (i < n && el[i][0] - presentEnd - 1 < brk) { // same stay
+                presentEnd = Math.max(presentEnd, el[i][1]);
+                spanStart = Math.min(spanStart, el[i][2]);
+                spanEnd = Math.max(spanEnd, el[i][3]);
+                continue;
+            }
+            // close the current stay
+            int len = spanEnd - spanStart + 1;
+            best = Math.max(best, len);
+            total += len - (hasPrevStay ? Math.max(0, prevSpanEnd - spanStart + 1) : 0);
+            hasPrevStay = true;
+            prevSpanEnd = spanEnd;
+            if (i < n) { presentEnd = el[i][1]; spanStart = el[i][2]; spanEnd = el[i][3]; }
+        }
+        return new int[] {best, total};
     }
 
     Constraint regionStayMaxOn(ConstraintFactory f) {
@@ -249,6 +380,7 @@ final class RegionConstraints {
             })
             .flattenLast(rows -> rows)
             .concat(pinnedMiscRows(f, false))
+            .concat(tripRegionRows(f))
             .groupBy(x -> Arrays.asList(x.emp.id, x.region),
                      ConstraintCollectors.toList(x -> x.dayId));
 
@@ -258,7 +390,7 @@ final class RegionConstraints {
                 int maxOn  = SolveContext.current().calendars.maxStayOn(regionId);
                 int offInt = SolveContext.current().calendars.stayOffInterval(regionId);
                 if (maxOn == Integer.MAX_VALUE) return false;
-                int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+                int maxSpan = longestStay(dayList, offInt, (Integer) key.get(0), regionId);
                 return maxSpan > maxOn;
             })
             .penalize(HardMediumSoftScore.ONE_HARD,
@@ -266,37 +398,10 @@ final class RegionConstraints {
                     String regionId = (String) key.get(1);
                     int maxOn  = SolveContext.current().calendars.maxStayOn(regionId);
                     int offInt = SolveContext.current().calendars.stayOffInterval(regionId);
-                    int maxSpan = maxSegmentSpanWithBreak(dayList, offInt);
+                    int maxSpan = longestStay(dayList, offInt, (Integer) key.get(0), regionId);
                     return Math.max(1, maxSpan - maxOn);
                 })
             .asConstraint("emp-region-stay-max-on");
-    }
-
-    private static int totalSegmentSpanWithBreak(List<Integer> dayList, int offInterval) {
-        if (dayList == null || dayList.isEmpty()) return 0;
-        int brk = Math.max(1, offInterval);
-
-        // deduplicate days just in case one person has multiple seats on same day/region
-        List<Integer> ds = new ArrayList<>(new HashSet<>(dayList));
-        Collections.sort(ds);
-
-        int total = 0;
-        int segStart = ds.get(0);
-        int prev     = ds.get(0);
-
-        for (int i = 1; i < ds.size(); i++) {
-            int d   = ds.get(i);
-            int gap = d - prev - 1;
-            if (gap >= brk) {
-                // close previous segment
-                total += (prev - segStart + 1);
-                segStart = d;
-            }
-            prev = d;
-        }
-        // last segment
-        total += (prev - segStart + 1);
-        return total;
     }
 
     Constraint regionAnnualStayMax(ConstraintFactory f) {
@@ -322,6 +427,7 @@ final class RegionConstraints {
             })
             .flattenLast(rows -> rows)
             .concat(pinnedMiscRows(f, false))
+            .concat(tripRegionRows(f))
             .groupBy(x -> Arrays.asList(x.emp.id, x.region),
                     ConstraintCollectors.toList(x -> x.dayId));
 
@@ -331,7 +437,7 @@ final class RegionConstraints {
                 int maxAnnual = SolveContext.current().calendars.annualMaxStay(regionId);
                 int offInt    = SolveContext.current().calendars.stayOffInterval(regionId);
                 if (maxAnnual == Integer.MAX_VALUE) return false;
-                int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
+                int totalSpan = totalStay(dayList, offInt, (Integer) key.get(0), regionId);
                 return totalSpan > maxAnnual;
             })
             .penalize(
@@ -340,7 +446,7 @@ final class RegionConstraints {
                     String regionId = (String) key.get(1);
                     int maxAnnual = SolveContext.current().calendars.annualMaxStay(regionId);
                     int offInt    = SolveContext.current().calendars.stayOffInterval(regionId);
-                    int totalSpan = totalSegmentSpanWithBreak(dayList, offInt);
+                    int totalSpan = totalStay(dayList, offInt, (Integer) key.get(0), regionId);
                     return Math.max(1, totalSpan - maxAnnual);
                 }
             )

@@ -193,8 +193,10 @@ class TripMarksSolverTest {
         // (a) + (b)
         assertMarksHonoured(run, TRIPS);
 
-        // (c) work of a trip's own region inside the trip is allowed, and the solver uses it in both trips here
-        for (String[] t : TRIPS) {
+        // (c) work of a trip's own region inside the trip is allowed, and the solver uses it in the r2 trip here.
+        // Until Task 15 it also did in the r1 trip; since the stay limits count a Fixed trip as a stay (FI..FO), the
+        // search (300..2000 steps, seed 42) puts w2's r1 block (e1p2o1) from 04/06, right after that trip's FO day.
+        for (String[] t : new String[][] {TRIPS[0]}) {
             boolean sameRegionInside = false;
             for (String[] td : workDays(run.output(), WORKER, false)) {
                 if (tripAround(new String[][] {t}, td[1]) != null && t[0].equals(regionOf(fabs, td[0]))) {

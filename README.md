@@ -109,7 +109,8 @@ earns no hours).
 
 Implementation: `calendar/TripCalendar` (built once in `PlanBuilder.buildProblem`, stored in `SolveContext.tripCalendar`, an empty
 calendar without trips) holds per-worker arrays indexed by `EmployeeFact.id` and dayId: `isBlocked` (FI/FO), `lockRegion` (region
-index strictly inside), `presenceRegion` (FI..FO, for the stay limits later) and `hasMarks`. `calendar/WorkerCalendar.isOpen(emp,
+index strictly inside), `presenceRegion` (FI..FO, clamped; kept for compatibility), `hasMarks`, and `tripsOf` (the unclamped
+trips, read by the stay limits, see below). `calendar/WorkerCalendar.isOpen(emp,
 day, regionIdx)` is the one test; it is false on a blocked day or inside a trip of another region. All day-based consumers of a
 dynamic seat go through it: `ConstraintSupport.seatCoveredDays` (the region, overtime and balance rules read this), `SeatConstraints`
 `expandToEmpDays` / `expandToEmpDayHours`, `BlockConstraints.producedHoursForBlock`, both per-day loops of `ScheduleExporter` and the
@@ -125,6 +126,39 @@ returned unchanged), so without a `trip_list` all results are identical to befor
 - The solver still may place a seat of a trip worker on a block that spans closed days; those days then produce nothing. On the
   datagen fixture with 8 crafted Fixed trips (seeded, 2000 steps) 24 of 360 seat-days of the trip workers' seats were closed
   days. No extra constraint was added (design decision D3); re-measure on a real run before adding one.
+
+## Stay limits count FI to FO
+
+The two stay limits measure a stay from the FI day to the FO day, both included (design section 4.1, decision D14). The travel
+gap does not change: `emp-region-transit-gap` (`stay_off_interval` / `transite_day_map`) still reads worked days only and never
+looks at FI/FO or trips.
+
+| Rule | What it counts |
+|---|---|
+| `emp-region-stay-max-on` (`max_stay_on`) | the longest stay of a worker in a region, FI..FO |
+| `emp-region-annual-stay-max` (`max_annual_stay`) | the sum of the FI..FO lengths of all the worker's stays in that region |
+
+- Worked days of one region closer than the interval form one stay: `gap = next - previous - 1`, a new stay starts when
+  `gap >= max(1, stay_off_interval)` (the same rule as before, and as the output).
+- A stay without a Fixed trip runs from the day before the first task to the day after the last task:
+  `length = (last - first + 1) + 2`.
+- A stay that meets an enforced Fixed trip of the same worker and region uses the trip's own dates: present days are the worked
+  days plus every day of the trip (FI..FO, the empty days inside included), the interval rule above runs over them, and the stay
+  runs from `min(trip.start, first - 1)` to `max(trip.end, last + 1)`. A trip without any task inside is a stay of its own length.
+  The trip dates are not clamped to the plan range (`TripCalendar.tripsOf`: a trip that started before the plan start counts in
+  full).
+- A day that is the FO of one stay and the FI of the next stay of the same region counts once in the annual sum (possible with
+  `stay_off_interval: 1`; two touching trips of one region are one stay). A day between two regions (touching trips of different
+  regions) is present in both.
+- Penalties are unchanged: `longest - max_stay_on` and `sum - max_annual_stay` (at least 1) per (worker, region).
+
+With the decoder's `10000` limits nothing changes; with a real limit the same plan shows two more stay days per stay than before.
+The `small` fixture has finite limits, so its golden stay entries changed (+2 days per stay); the datagen and real goldens did not.
+
+Implementation (`constraints/RegionConstraints`: `longestStay`, `totalStay`): workers without a trip in the region take the old
+loop plus the `+2` arithmetic (`TripCalendar.tripsOf` returns one shared empty list). Only a (worker, region) with trips merges
+the trip intervals in. A problem-fact stream adds one marker row per (worker, trip region), so a trip without tasks still forms a
+(worker, region) group; it never changes while solving.
 
 ## Upgrade notes
 
