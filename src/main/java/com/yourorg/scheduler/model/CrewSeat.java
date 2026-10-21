@@ -1,7 +1,5 @@
 package com.yourorg.scheduler.model;
 
-import com.yourorg.scheduler.EmployeeSchedule;
-
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.entity.PlanningPin;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
@@ -103,8 +101,8 @@ public class CrewSeat {
             boolean bUnassigned = (b.id == 0);
             if (aUnassigned != bUnassigned) return aUnassigned ? 1 : -1;
 
-            int aSkills = EmployeeSchedule.positiveSkillCount(a);
-            int bSkills = EmployeeSchedule.positiveSkillCount(b);
+            int aSkills = WorkerRules.positiveSkillCount(a);
+            int bSkills = WorkerRules.positiveSkillCount(b);
             if (aSkills != bSkills) {
                 return Integer.compare(aSkills, bSkills); // fewer skills first
             }

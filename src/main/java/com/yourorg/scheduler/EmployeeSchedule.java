@@ -47,6 +47,8 @@ import ai.timefold.solver.core.api.score.director.ScoreDirector;
 
 import com.yourorg.scheduler.calendar.Calendars;
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.WorkingDays;
+import com.yourorg.scheduler.io.YamlFiles;
 import com.yourorg.scheduler.model.*;
 
 import org.yaml.snakeyaml.DumperOptions;
@@ -59,91 +61,11 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  */
 public class EmployeeSchedule {
 
-    // ---------------- YAML I/O ----------------
+    static final DateTimeFormatter DF = YamlFiles.DF;
 
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> loadYaml(String path) throws IOException {
-        try (InputStream in = Files.newInputStream(Paths.get(path))) {
-            LoaderOptions opts = new LoaderOptions();
-            opts.setCodePointLimit(10 * 1024 * 1024); // ≈ 5 MB
+    // ---------------- YAML I/O (moved to io.YamlFiles) ----------------
 
-            Yaml yaml = new Yaml(new SafeConstructor(opts));
-            return yaml.load(in);
-        }
-    }
-    static void saveYaml(String path, Map<String, Object> root) throws IOException {
-        DumperOptions opt = new DumperOptions();
-        opt.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-        opt.setPrettyFlow(true);
-        Yaml yaml = new Yaml(opt);
-        try (Writer w = Files.newBufferedWriter(Paths.get(path))) {
-            yaml.dump(root, w);
-        }
-    }
 
-    static String safeStr(Object o) { return o == null ? "" : String.valueOf(o); }
-
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> asMap(Object o) {
-        return (o instanceof Map) ? (Map<String, Object>) o : null;
-    }
-
-    static int parseInt(Object o, int def) {
-        if (o == null) return def;
-        try { return Integer.parseInt(String.valueOf(o)); } catch (Exception e) { return def; }
-    }
-    static final Pattern PHASE_NUM_PAT = Pattern.compile("p(\\d+)", Pattern.CASE_INSENSITIVE);
-
-    static int phaseNumFromId(String pid) {
-        if (pid == null) return 0;
-        String t = pid.trim();
-        Matcher m = PHASE_NUM_PAT.matcher(t);
-
-        int last = 0;
-        while (m.find()) {
-            try {
-                last = Integer.parseInt(m.group(1));
-            } catch (Exception ignore) {}
-        }
-        return last; // 0 if not found
-    }
-
-    static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("yyyy/MM/dd");
-
-    static ParsedOpTaskRef parseOpTaskRef(String raw) {
-        ParsedOpTaskRef out = new ParsedOpTaskRef();
-        String t = safeStr(raw).trim();
-        if (t.isBlank()) {
-            out.module = "";
-            out.phaseToken = "";
-            out.phaseNum = 0;
-            out.opToken = "";
-            return out;
-        }
-
-        // Supports both:
-        //   e1_p1, e1_p1o2
-        //   e1p1,  e1p1o2
-        Matcher m = Pattern.compile("^(.*?)(?:_)?(p\\d+(?:o\\d+)?)$", Pattern.CASE_INSENSITIVE).matcher(t);
-        if (m.matches()) {
-            out.module = safeStr(m.group(1));
-            while (out.module.endsWith("_") || out.module.endsWith("-")) {
-                out.module = out.module.substring(0, out.module.length() - 1);
-            }
-            out.opToken = safeStr(m.group(2));
-            String phaseOnly = out.opToken.replaceFirst("(?i)(p\\d+).*$", "$1");
-            out.phaseToken = phaseOnly;
-            out.phaseNum = phaseNumFromId(phaseOnly);
-            return out;
-        }
-
-        // Fallback: keep old behavior, but still try to extract a phase number safely.
-        out.module = t;
-        out.opToken = t;
-        out.phaseNum = phaseNumFromId(t);
-        out.phaseToken = (out.phaseNum > 0) ? ("p" + out.phaseNum) : "";
-        return out;
-    }
 
     // ---------------- Domain ----------------
 
@@ -160,44 +82,11 @@ public class EmployeeSchedule {
     // it is considered finished and can be trimmed.
     public static final int MODULE_TRIM_GRACE_DAYS = 6;
 
-    static boolean isUnassigned(EmployeeFact e) { return e == null || e.id == 0; }
-    static int skill(EmployeeFact e, String opId) { return (e == null) ? 0 : e.skills.getOrDefault(opId, 0); }
-    static boolean isManager(EmployeeFact e) { return e != null && e.isManager; }
-    static String company(EmployeeFact e) { return e == null ? "" : (e.workerCompany == null ? "" : e.workerCompany); }
-    static double avgSkill(String opId) { return SolveContext.current().opAvgSkill.getOrDefault(opId, 3.0); }
-
-    static int computeAffinityEdge(EmployeeFact e1, EmployeeFact e2) {
-        if (e1 == null || e2 == null) return 0;
-        if (e1.affinityTags.isEmpty() || e2.affinityTags.isEmpty()) return 0;
-        Set<String> e2Tags = new HashSet<>(e2.affinityTags);
-        int weight = 0;
-        for (String tag : e1.affinityTags) {
-            if (e2Tags.contains(tag)) {
-                weight += SolveContext.current().affinityTagWeights.getOrDefault(tag, 0);
-            }
-        }
-        return weight;
-    }
-
-    public static int positiveSkillCount(EmployeeFact e) {
-        if (e == null || e.skills == null) return 0;
-        int c = 0;
-        for (Integer v : e.skills.values()) {
-            if (v != null && v > 0) c++;
-        }
-        return c;
-    }
-
-    static int workerTypeRank(EmployeeFact e, String opId) {
-        if (e == null || e.id == 0) return 999;
-        return e.isRegularForOperation(opId) ? 0 : 1;
-    }
-
     static int seatAwareWorkerOrderScore(CrewSeat s, EmployeeFact e) {
         if (e == null || e.id == 0) return Integer.MAX_VALUE;
         int score = 0;
-        score += workerTypeRank(e, s == null ? null : s.opId) * 1_000_000;
-        score += positiveSkillCount(e) * 1_000;
+        score += WorkerRules.workerTypeRank(e, s == null ? null : s.opId) * 1_000_000;
+        score += WorkerRules.positiveSkillCount(e) * 1_000;
         if (s != null && !s.needManager) {
             score += e.isManager ? 100 : 0;
         }
@@ -206,19 +95,10 @@ public class EmployeeSchedule {
         return score;
     }
 
-    static int regionPref(EmployeeFact e, String regionId) {
-        if (e == null || regionId == null || regionId.isBlank()) return 1;
-        return e.regionPreference.getOrDefault(regionId, 1);
-    }
-    static int customerPref(EmployeeFact e, String customerId) {
-        if (e == null || customerId == null || customerId.isBlank()) return 1;
-        return e.customerPreference.getOrDefault(customerId, 1);
-    }
-
     static int autoHours(BlockDecision b) {
         List<Integer> allowed = (b.allowed == null || b.allowed.isEmpty())
                 ? List.of(8) : b.allowed.stream().sorted().collect(Collectors.toList());
-        int D = (b.startDay == null || b.days == null) ? 0 : workingDaysCount(b.startDay, b.days, b.factory);
+        int D = (b.startDay == null || b.days == null) ? 0 : WorkingDays.workingDaysCount(b.startDay, b.days, b.factory);
         if (D == 0) return allowed.get(0);
         int H = 1; // per-seat
         int R = Math.max(1, b.requiredHours);
@@ -257,9 +137,9 @@ public class EmployeeSchedule {
         // stable order
         List<TaskWindow> sorted = new ArrayList<>(sch.windows);
         sorted.sort(Comparator
-            .comparing((TaskWindow w) -> safeStr(w.module))
+            .comparing((TaskWindow w) -> YamlFiles.safeStr(w.module))
             .thenComparingInt(w -> w.phaseNum)
-            .thenComparing(w -> safeStr(w.opId)));
+            .thenComparing(w -> YamlFiles.safeStr(w.opId)));
 
         int idx = 0;
         for (TaskWindow w : sorted) {
@@ -276,8 +156,8 @@ public class EmployeeSchedule {
                 "win=%d..%d clamp=%d..%d exceeds=%s outside=%s " +
                 "workloadDays=%d min=%d max=%d allowed=%s recommendRange=%d..%d",
                 (++idx),
-                safeStr(w.module), safeStr(w.workflowId), safeStr(w.factory),
-                safeStr(w.phaseId), w.phaseNum, safeStr(w.opId),
+                YamlFiles.safeStr(w.module), YamlFiles.safeStr(w.workflowId), YamlFiles.safeStr(w.factory),
+                YamlFiles.safeStr(w.phaseId), w.phaseNum, YamlFiles.safeStr(w.opId),
                 w.startDayId, w.endDayId,
                 clampStart, clampEnd,
                 String.valueOf(exceeds),
@@ -412,11 +292,6 @@ public class EmployeeSchedule {
         return String.format("%02d:%02d:%02d.%03d", h, m, s, ms);
     }
 
-    static Integer dayIdFromDate(LocalDate planStart, String ymd) {
-        LocalDate d = LocalDate.parse(ymd.replace("-", "/"), DF);
-        return (int) (d.toEpochDay() - planStart.toEpochDay());
-    }
-
     @SuppressWarnings("unchecked")
     private static Set<Integer> parseUnavailableDates(Object raw,
                                                     LocalDate planStart,
@@ -467,7 +342,7 @@ public class EmployeeSchedule {
         } else {
             // Single scalar date string
             try {
-                Integer did = dayIdFromDate(planStart, String.valueOf(raw));
+                Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(raw));
                 if (did != null && did >= 0 && did < horizon) {
                     off.add(did);
                 }
@@ -488,7 +363,7 @@ public class EmployeeSchedule {
                 Object dateObj = map.get("date");
                 if (dateObj != null) {
                     try {
-                        Integer did = dayIdFromDate(planStart, String.valueOf(dateObj));
+                        Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(dateObj));
                         if (did != null && did >= 0 && did < horizon) {
                             off.add(did);
                         }
@@ -502,7 +377,7 @@ public class EmployeeSchedule {
                     if (daysObj instanceof List<?> daysList) {
                         for (Object dObj : daysList) {
                             try {
-                                Integer did = dayIdFromDate(planStart, String.valueOf(dObj));
+                                Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(dObj));
                                 if (did != null && did >= 0 && did < horizon) {
                                     off.add(did);
                                 }
@@ -525,7 +400,7 @@ public class EmployeeSchedule {
             } else {
                 // plain string in the list, treat as single date
                 try {
-                    Integer did = dayIdFromDate(planStart, String.valueOf(item));
+                    Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(item));
                     if (did != null && did >= 0 && did < horizon) {
                         off.add(did);
                     }
@@ -594,8 +469,8 @@ public class EmployeeSchedule {
                     wc.get("unavailable_dates"), planStart, planEnd);
             SolveContext.current().calendars.workerCompanyOff.put(cid, off);
 
-            int annualOt  = parseInt(wc.get("annual_overtime_limit"), Integer.MAX_VALUE);
-            int monthlyOt = parseInt(wc.get("monthly_overtime_limit"), Integer.MAX_VALUE);
+            int annualOt  = YamlFiles.parseInt(wc.get("annual_overtime_limit"), Integer.MAX_VALUE);
+            int monthlyOt = YamlFiles.parseInt(wc.get("monthly_overtime_limit"), Integer.MAX_VALUE);
             SolveContext.current().calendars.workerCompanyAnnualOtLimit.put(cid, annualOt);
             SolveContext.current().calendars.workerCompanyMonthlyOtLimit.put(cid, monthlyOt);
         }
@@ -613,7 +488,7 @@ public class EmployeeSchedule {
         for (Map<String,Object> t : tmap) {
             String from = String.valueOf(t.get("from"));
             String to   = String.valueOf(t.get("to"));
-            int days    = parseInt(t.get("days"), 0);
+            int days    = YamlFiles.parseInt(t.get("days"), 0);
             if (from != null && to != null && !from.isBlank() && !to.isBlank() && days > 0) {
                 SolveContext.current().calendars.transitDays.computeIfAbsent(from, k -> new HashMap<>()).put(to, days);
             }
@@ -629,9 +504,9 @@ public class EmployeeSchedule {
                     r.get("unavailable_dates"), planStart, planEnd);
             SolveContext.current().calendars.regionOff.put(rid, off);
 
-            int maxStayOn   = parseInt(r.get("max_stay_on"), Integer.MAX_VALUE);
-            int maxAnnual   = parseInt(r.get("max_annual_stay"), Integer.MAX_VALUE);
-            int offInterval = parseInt(r.get("stay_off_interval"), 1);
+            int maxStayOn   = YamlFiles.parseInt(r.get("max_stay_on"), Integer.MAX_VALUE);
+            int maxAnnual   = YamlFiles.parseInt(r.get("max_annual_stay"), Integer.MAX_VALUE);
+            int offInterval = YamlFiles.parseInt(r.get("stay_off_interval"), 1);
 
             SolveContext.current().calendars.regionStayMaxOn.put(rid, maxStayOn);
             SolveContext.current().calendars.regionAnnualMaxStay.put(rid, maxAnnual);
@@ -640,49 +515,6 @@ public class EmployeeSchedule {
 
     }
 
-    // delegates; moves in Task 5/7
-    static boolean isWorkingDay(int dayId, String fabId) {
-        return SolveContext.current().calendars.isWorkingDay(dayId, fabId);
-    }
-
-
-    // IMPORTANT: Integer (nullable) parameters here
-    static int workingDaysCount(Integer startDay, Integer dayCount, String fabId) {
-        if (startDay == null || dayCount == null || startDay < 0 || dayCount == 0) return 0;
-        int end = startDay + dayCount - 1;
-        int n = 0;
-        for (int d = startDay; d <= end; d++) if (isWorkingDay(d, fabId)) n++;
-        return n;
-    }
-
-    // Returns the list of working day IDs in [startDay, startDay+days-1] for fabId.
-    // Used by flattenLast-based constraints to avoid the Joiners.filtering cartesian product.
-    static List<Integer> getWorkingDayList(int startDay, int days, String fabId) {
-        List<Integer> result = new ArrayList<>(days);
-        int end = startDay + days - 1;
-        for (int d = startDay; d <= end; d++) {
-            if (isWorkingDay(d, fabId)) result.add(d);
-        }
-        return result;
-    }
-
-    // Builds the value cached by the BlockDecision.coveredWorkingDays shadow
-    // variable: every factory-working dayId inside the block's current span,
-    // clamped to the solver horizon [SOLVE_MIN_DAY, SOLVE_MAX_DAY]. The horizon
-    // clamp reproduces the old behaviour where constraints iterated DaySlot
-    // facts (which only existed inside the horizon), so scores are unchanged.
-    public static List<Integer> computeCoveredWorkingDays(BlockDecision b) {
-        if (b == null || b.startDay == null || b.days == null || b.days <= 0) {
-            return List.of();
-        }
-        int end = b.startDay + b.days - 1;
-        List<Integer> out = new ArrayList<>(Math.max(0, b.days));
-        for (int d = b.startDay; d <= end; d++) {
-            if (d < SolveContext.current().solveMinDay || d > SolveContext.current().solveMaxDay) continue;
-            if (isWorkingDay(d, b.factory)) out.add(d);
-        }
-        return out;
-    }
 
     static void validateHorizonOverlaps(SinglePassPlan plan, int minDay, int maxDay) {
         if (plan == null || plan.seats == null || plan.blocks == null) return;
@@ -695,7 +527,7 @@ public class EmployeeSchedule {
         Map<Integer, Map<Integer, Integer>> empDayHours = new HashMap<>();
 
         for (CrewSeat s : plan.seats) {
-            if (s == null || isUnassigned(s.employee)) continue;
+            if (s == null || WorkerRules.isUnassigned(s.employee)) continue;
 
             BlockDecision b = byBlock.get(s.blockId);
             boolean pinned = s.pinnedFixed;
@@ -710,7 +542,7 @@ public class EmployeeSchedule {
             for (int di = 0; di < days; di++) {
                 int dayId = start + di;
                 if (dayId < minDay || dayId > maxDay) continue;
-                if (!isWorkingDay(dayId, s.factory)) continue;
+                if (!WorkingDays.isWorkingDay(dayId, s.factory)) continue;
 
                 empDayTasks
                     .computeIfAbsent(empId, k -> new HashMap<>())
@@ -742,10 +574,6 @@ public class EmployeeSchedule {
         }
     }
 
-    // delegates; moves in Task 5/7
-    static boolean isWorkerUnavailableByWid(String wid, int dayId) {
-        return SolveContext.current().calendars.isWorkerUnavailable(wid, dayId);
-    }
     // ---------------- Constraints ----------------
 
     public static class SinglePassConstraints implements ConstraintProvider {
@@ -832,7 +660,7 @@ public class EmployeeSchedule {
         // ---------- helpers ----------
         private static int staffedCountForBlock(List<CrewSeat> seats) {
             int c = 0;
-            for (CrewSeat s : seats) if (!isUnassigned(s.employee)) c++;
+            for (CrewSeat s : seats) if (!WorkerRules.isUnassigned(s.employee)) c++;
             return c;
         }
 
@@ -852,14 +680,14 @@ public class EmployeeSchedule {
             int hours = b.chosenHours();
             
             for (CrewSeat s : seats) {
-                if (s == null || isUnassigned(s.employee)) continue;
+                if (s == null || WorkerRules.isUnassigned(s.employee)) continue;
                 if (s.pinnedFixed) continue;
 
                 if (b.startDay == null || b.days == null || b.days <= 0) continue;
 
                 for (int i = 0; i < b.days; i++) {
                     int did = b.startDay + i;
-                    if (!isWorkingDay(did, s.factory)) continue;
+                    if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
                     if (isWorkerUnavailable(s.employee, did)) continue; // zero on personal off-day
                     total += hours;
                 }
@@ -905,7 +733,7 @@ public class EmployeeSchedule {
                 .filter((b, seats) -> {
                     int hours = b.chosenHours();
                     int staffed = (int) seats.stream()
-                            .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
+                            .filter(s -> s != null && !WorkerRules.isUnassigned(s.employee) && !s.pinnedFixed)
                             .count();
                     int prod = producedHoursForBlock(b, seats);
                     int over = prod - b.requiredHours;
@@ -915,7 +743,7 @@ public class EmployeeSchedule {
                     (b, seats) -> {
                         int hours = b.chosenHours();
                         int staffed = (int) seats.stream()
-                                .filter(s -> s != null && !isUnassigned(s.employee) && !s.pinnedFixed)
+                                .filter(s -> s != null && !WorkerRules.isUnassigned(s.employee) && !s.pinnedFixed)
                                 .count();
                         int prod = producedHoursForBlock(b, seats);
                         int over = prod - b.requiredHours;
@@ -930,7 +758,7 @@ public class EmployeeSchedule {
             return f.forEach(CrewSeat.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter((s, b) -> !isUnassigned(s.employee))
+                .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
                 .filter((s, b) -> {
                     Set<Integer> off = SolveContext.current().calendars.workerOffByWid.getOrDefault(s.employee.wid, Set.of());
 
@@ -950,7 +778,7 @@ public class EmployeeSchedule {
 
                     for (int di = 0; di < days; di++) {
                         int did = start + di;
-                        if (!isWorkingDay(did, s.factory)) continue;
+                        if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
                         if (off.contains(did)) return true;
                     }
                     return false;
@@ -985,7 +813,7 @@ public class EmployeeSchedule {
         private static List<EmpDayKey> expandToEmpDays(int empId, int start, int days, String fab) {
             List<EmpDayKey> out = new ArrayList<>(days);
             for (int d = start, end = start + days - 1; d <= end; d++) {
-                if (isWorkingDay(d, fab)) out.add(new EmpDayKey(empId, d));
+                if (WorkingDays.isWorkingDay(d, fab)) out.add(new EmpDayKey(empId, d));
             }
             return out;
         }
@@ -994,7 +822,7 @@ public class EmployeeSchedule {
         private static List<EmpDayHours> expandToEmpDayHours(int empId, int start, int days, String fab, int hrs) {
             List<EmpDayHours> out = new ArrayList<>(days);
             for (int d = start, end = start + days - 1; d <= end; d++) {
-                if (isWorkingDay(d, fab)) out.add(new EmpDayHours(empId, d, hrs));
+                if (WorkingDays.isWorkingDay(d, fab)) out.add(new EmpDayHours(empId, d, hrs));
             }
             return out;
         }
@@ -1026,7 +854,7 @@ public class EmployeeSchedule {
             // This replaces the Joiners.filtering DaySlot×Seat cartesian product that was
             // O(127 DaySlots) per incremental move; now it's O(working_days_in_block).
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee) && !s.isPinned())
+                .filter(s -> !WorkerRules.isUnassigned(s.employee) && !s.isPinned())
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
@@ -1053,7 +881,7 @@ public class EmployeeSchedule {
         Constraint dailyCap12h(ConstraintFactory f) {
             // Same flattenLast pattern. Pinned seats excluded — their hours are in FIXED_HOURS_BY_EMP_DAY.
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee) && !s.isPinned())
+                .filter(s -> !WorkerRules.isUnassigned(s.employee) && !s.isPinned())
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .filter((CrewSeat s, BlockDecision b) -> b.startDay != null && b.days != null && b.days > 0)
@@ -1135,7 +963,7 @@ public class EmployeeSchedule {
             // every DaySlot to every CrewSeat (a cartesian product), forcing
             // each incremental move to re-evaluate O(daySlots x seats) tuples.
             var worked = f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
@@ -1269,7 +1097,7 @@ public class EmployeeSchedule {
             // coveredWorkingDays shadow variable. region != null is enforced
             // while building rows, so the old post-groupBy null filter is gone.
             var items = f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
@@ -1341,7 +1169,7 @@ public class EmployeeSchedule {
             // product with a CrewSeat -> BlockDecision join expanded through the
             // coveredWorkingDays shadow variable.
             var items = f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
@@ -1390,7 +1218,7 @@ public class EmployeeSchedule {
             // variable and pre-aggregated by year inside map(); the year of a
             // dayId is resolved through DAY_TO_YEAR instead of a DaySlot join.
             var dynEmpYearOt = f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
@@ -1401,7 +1229,7 @@ public class EmployeeSchedule {
                             ? 0
                             : Math.max(0, b.chosenHours() - BASE_HOURS_PER_DAY);
                     int empId = s.employee.id;
-                    String comp = company(s.employee);
+                    String comp = WorkerRules.company(s.employee);
                     Map<Integer,Integer> byYear = new HashMap<>();
                     for (int dayId : seatCoveredDays(s, b)) {
                         Integer year = SolveContext.current().dayToYear.get(dayId);
@@ -1461,7 +1289,7 @@ public class EmployeeSchedule {
             // through DAY_TO_YM instead of a DaySlot join. The group key now
             // carries ym directly, so the filter/penalize read key.get(2)=ym.
             var dynEmpMonthOt = f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .map((CrewSeat s, BlockDecision b) -> {
@@ -1471,7 +1299,7 @@ public class EmployeeSchedule {
                             ? 0
                             : Math.max(0, b.chosenHours() - BASE_HOURS_PER_DAY);
                     int empId = s.employee.id;
-                    String comp = company(s.employee);
+                    String comp = WorkerRules.company(s.employee);
                     Map<Integer,Integer> byYm = new HashMap<>();
                     for (int dayId : seatCoveredDays(s, b)) {
                         Integer ym = SolveContext.current().dayToYm.get(dayId);
@@ -1559,13 +1387,13 @@ public class EmployeeSchedule {
 
         Constraint softAffinityPenalty(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
-                .join(f.forEach(CrewSeat.class).filter(s -> !isUnassigned(s.employee)),
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
+                .join(f.forEach(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
                     Joiners.equal(s -> s.blockId),
                     Joiners.lessThan(s -> s.employee.id))
                 .penalize(HardMediumSoftScore.ONE_SOFT,
                     (s1, s2) -> {
-                        int edge = computeAffinityEdge(s1.employee, s2.employee);
+                        int edge = WorkerRules.computeAffinityEdge(s1.employee, s2.employee);
                         return AFFINITY_W * Math.max(0, -edge);
                     })
                 .asConstraint("soft-affinity-penalty");
@@ -1573,13 +1401,13 @@ public class EmployeeSchedule {
 
         Constraint softAffinityReward(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
-                .join(f.forEach(CrewSeat.class).filter(s -> !isUnassigned(s.employee)),
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
+                .join(f.forEach(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
                     Joiners.equal(s -> s.blockId),
                     Joiners.lessThan(s -> s.employee.id))
                 .reward(HardMediumSoftScore.ONE_SOFT,
                     (s1, s2) -> {
-                        int edge = computeAffinityEdge(s1.employee, s2.employee);
+                        int edge = WorkerRules.computeAffinityEdge(s1.employee, s2.employee);
                         return AFFINITY_W * Math.max(0, edge);
                     })
                 .asConstraint("soft-affinity-reward");
@@ -1587,10 +1415,10 @@ public class EmployeeSchedule {
 
         Constraint softEncourageSkillVariety(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .groupBy(
                     // key: [blockId, opId, skillLevel]
-                    s -> Arrays.asList(s.blockId, s.opId, skill(s.employee, s.opId)),
+                    s -> Arrays.asList(s.blockId, s.opId, WorkerRules.skill(s.employee, s.opId)),
                     ConstraintCollectors.count()
                 )
                 .filter((key, count) -> count > 1)
@@ -1602,14 +1430,14 @@ public class EmployeeSchedule {
 
         Constraint softBalanceBlockAvgSkill(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .groupBy(s -> Arrays.asList(s.blockId, s.opId),
-                         ConstraintCollectors.sum(s -> skill(s.employee, s.opId)),
+                         ConstraintCollectors.sum(s -> WorkerRules.skill(s.employee, s.opId)),
                          ConstraintCollectors.count())
                 .filter((key, sumLv, cnt) -> cnt > 0)
                 .penalize(HardMediumSoftScore.ONE_SOFT,
                     (key, sumLv, cnt) -> (int)(SKILL_AVG_W *
-                        Math.abs((sumLv / Math.max(1.0, cnt)) - avgSkill((String) key.get(1))) * 100))
+                        Math.abs((sumLv / Math.max(1.0, cnt)) - WorkerRules.avgSkill((String) key.get(1))) * 100))
                 .asConstraint("soft-balance-block-avg-skill");
         }
 
@@ -1618,7 +1446,7 @@ public class EmployeeSchedule {
             // coveredDays * chosenHours, so the per-day DaySlot join and the
             // day flattening are unnecessary - one seat-to-block tuple suffices.
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(BlockDecision.class,
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
                 .groupBy((CrewSeat s, BlockDecision b) -> s.employee,
@@ -1632,9 +1460,9 @@ public class EmployeeSchedule {
         }
         Constraint softContinuousRegionStay(ConstraintFactory f) {
             return f.forEach(CrewSeat.class)
-                .filter(s -> !isUnassigned(s.employee))
+                .filter(s -> !WorkerRules.isUnassigned(s.employee))
                 .join(f.forEach(CrewSeat.class)
-                    .filter(s -> !isUnassigned(s.employee)),
+                    .filter(s -> !WorkerRules.isUnassigned(s.employee)),
                     Joiners.equal(s -> s.employee.id),
                     Joiners.lessThan(s -> s.blockId))
                 .filter((s1, s2) -> {
@@ -1651,7 +1479,7 @@ public class EmployeeSchedule {
             return f.forEach(CrewSeat.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter((s, b) -> !isUnassigned(s.employee))
+                .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
                 .reward(
                     HardMediumSoftScore.ONE_SOFT,
                     (s, b) -> {
@@ -1659,8 +1487,8 @@ public class EmployeeSchedule {
                         String regionId   = SolveContext.current().calendars.regionOfFab(fabId);
                         String customerId = SolveContext.current().calendars.customerOfFab(fabId);
 
-                        int rLevel = regionPref(s.employee, regionId);
-                        int cLevel = customerPref(s.employee, customerId);
+                        int rLevel = WorkerRules.regionPref(s.employee, regionId);
+                        int cLevel = WorkerRules.customerPref(s.employee, customerId);
 
                         // level 0/1 → 0 reward; >=2 → n(n-1)
                         int rScore = (rLevel <= 1) ? 0 : (rLevel * (rLevel - 1));
@@ -1676,7 +1504,7 @@ public class EmployeeSchedule {
             return f.forEach(CrewSeat.class)
                 .join(f.forEach(BlockDecision.class),
                     Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
-                .filter((s, b) -> !isUnassigned(s.employee))
+                .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
                 .filter((s, b) -> !s.employee.isRegularForOperation(s.opId))
                 .penalize(
                     HardMediumSoftScore.ONE_SOFT,
@@ -1737,39 +1565,39 @@ public class EmployeeSchedule {
 
     @SuppressWarnings("unchecked")
     static ParsedEnv parseEnv(String envPath) throws IOException {
-        Map<String,Object> root = loadYaml(envPath);
+        Map<String,Object> root = YamlFiles.loadYaml(envPath);
         Map<String,Object> env = (Map<String,Object>) root.getOrDefault("environment", root);
 
         Map<String,OpDef> opdef = new HashMap<>();
         List<Map<String,Object>> wfl = (List<Map<String,Object>>) env.getOrDefault("workflow_list", List.of());
         for (Map<String,Object> wf : wfl) {
             if (wf == null) continue;
-            String wfId = safeStr(wf.get("id"));
+            String wfId = YamlFiles.safeStr(wf.get("id"));
 
             List<Map<String,Object>> phases =
                     (List<Map<String,Object>>) wf.getOrDefault("phase_list", List.of());
             for (Map<String,Object> ph : phases) {
                 if (ph == null) continue;
-                String phId = safeStr(ph.get("id"));
-                int phNum = phaseNumFromId(phId);
+                String phId = YamlFiles.safeStr(ph.get("id"));
+                int phNum = YamlFiles.phaseNumFromId(phId);
 
                 List<Map<String,Object>> ops =
                         (List<Map<String,Object>>) ph.getOrDefault("operation_list", List.of());
                 for (Map<String,Object> op : ops) {
                     if (op == null) continue;
 
-                    String opId = safeStr(op.get("id"));
+                    String opId = YamlFiles.safeStr(op.get("id"));
                     List<Object> hrs = (List<Object>) op.getOrDefault("work_hours", List.of(8));
                     List<Integer> allowed = hrs.isEmpty() ? List.of(8)
                             : hrs.stream()
-                                .map(x -> parseInt(x, 8))
+                                .map(x -> YamlFiles.parseInt(x, 8))
                                 .sorted()
                                 .collect(Collectors.toList());
 
                     OpDef od = new OpDef();
                     od.phaseId = phId; od.phaseNum = phNum; od.allowed = allowed;
-                    od.min = parseInt(op.get("min_worker_num"), 1);
-                    od.max = parseInt(op.get("max_worker_num"), 999_999);
+                    od.min = YamlFiles.parseInt(op.get("min_worker_num"), 1);
+                    od.max = YamlFiles.parseInt(op.get("max_worker_num"), 999_999);
 
                     // Backward compatibility: still allow lookup by plain opId when unique.
                     opdef.putIfAbsent(opId, od);
@@ -1788,8 +1616,8 @@ public class EmployeeSchedule {
                 (List<Map<String,Object>>) env.getOrDefault("affinity_tag", List.of());
         for (Map<String,Object> at : affinityTagList) {
             if (at == null) continue;
-            String tagId = safeStr(at.get("id"));
-            int tagWeight = parseInt(at.get("weight"), 0);
+            String tagId = YamlFiles.safeStr(at.get("id"));
+            int tagWeight = YamlFiles.parseInt(at.get("weight"), 0);
             if (!tagId.isBlank()) SolveContext.current().affinityTagWeights.put(tagId, tagWeight);
         }
 
@@ -1799,14 +1627,14 @@ public class EmployeeSchedule {
         int eid = 1;
         Map<String, EmployeeFact> byWid = new HashMap<>();
         for (Map<String,Object> w : workers) {
-            String wid = safeStr(w.get("id"));
-            String name = safeStr(w.get("name"));
+            String wid = YamlFiles.safeStr(w.get("id"));
+            String name = YamlFiles.safeStr(w.get("name"));
             boolean isMgr = Boolean.TRUE.equals(w.get("is_manager"));
-            String company = safeStr(w.get("worker_company"));
+            String company = YamlFiles.safeStr(w.get("worker_company"));
             Map<String,Integer> skills = new HashMap<>();
             Map<String,Object> smap = (Map<String,Object>) w.getOrDefault("skill_map", Map.of());
             for (Map.Entry<String,Object> e : smap.entrySet()) {
-                skills.put(e.getKey(), parseInt(e.getValue(), 0));
+                skills.put(e.getKey(), YamlFiles.parseInt(e.getValue(), 0));
             }
             EmployeeFact ef = new EmployeeFact(eid++, wid, name, skills, isMgr, company);
             employees.add(ef);
@@ -1817,12 +1645,12 @@ public class EmployeeSchedule {
                     (List<Map<String,Object>>) w.getOrDefault("fab_suitability_map", List.of());
             for (Map<String,Object> fs : fsmList) {
                 if (fs == null) continue;
-                String kind = safeStr(fs.get("kind"));
+                String kind = YamlFiles.safeStr(fs.get("kind"));
                 Map<String,Object> suitRaw =
                         (Map<String,Object>) fs.getOrDefault("suitability", Map.of());
                 for (Map.Entry<String,Object> se : suitRaw.entrySet()) {
-                    String key = safeStr(se.getKey());
-                    int lvl = parseInt(se.getValue(), 1); // default = 1 (neutral) if missing
+                    String key = YamlFiles.safeStr(se.getKey());
+                    int lvl = YamlFiles.parseInt(se.getValue(), 1); // default = 1 (neutral) if missing
                     if ("region".equals(kind)) {
                         ef.regionPreference.put(key, lvl);
                     } else if ("customer_company".equals(kind)) {
@@ -1833,8 +1661,8 @@ public class EmployeeSchedule {
 
             Map<String,Object> typeMap = (Map<String,Object>) w.getOrDefault("worker_type_by_operation", Map.of());
             for (Map.Entry<String,Object> te : typeMap.entrySet()) {
-                String opId = safeStr(te.getKey());
-                String workerType = safeStr(te.getValue()).trim().toLowerCase(Locale.ROOT);
+                String opId = YamlFiles.safeStr(te.getKey());
+                String workerType = YamlFiles.safeStr(te.getValue()).trim().toLowerCase(Locale.ROOT);
                 if (workerType.isBlank()) workerType = "regular";
                 if (!"spot".equals(workerType)) workerType = "regular";
                 ef.workerTypeByOperation.put(opId, workerType);
@@ -1844,7 +1672,7 @@ public class EmployeeSchedule {
             Object affObj = w.get("affinity");
             if (affObj instanceof List) {
                 for (Object t : (List<?>) affObj) {
-                    String tag = safeStr(t).trim();
+                    String tag = YamlFiles.safeStr(t).trim();
                     if (!tag.isBlank()) ef.affinityTags.add(tag);
                 }
             }
@@ -1882,13 +1710,13 @@ public class EmployeeSchedule {
     }
 
     static String preprocessScheduleYaml(String schedPath) throws IOException {
-        Map<String,Object> root = loadYaml(schedPath);
+        Map<String,Object> root = YamlFiles.loadYaml(schedPath);
         @SuppressWarnings("unchecked")
         Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
 
         // IMPORTANT: We don't have a separate "cut_off_date".
         // The "cutoff" is the plan_range.start_date (history before that is fixed).
-        Map<String, Object> planRange = asMap(s.get("plan_range"));
+        Map<String, Object> planRange = YamlFiles.asMap(s.get("plan_range"));
         if (planRange == null) {
             return schedPath;
         }
@@ -1896,7 +1724,7 @@ public class EmployeeSchedule {
         if (startObj == null) {
             return schedPath;
         }
-        LocalDate cutOffDate = LocalDate.parse(safeStr(startObj).replace("-", "/"), DF);
+        LocalDate cutOffDate = LocalDate.parse(YamlFiles.safeStr(startObj).replace("-", "/"), DF);
 
         Object asgObj = s.get("assignment_list");
         @SuppressWarnings("unchecked")
@@ -1908,7 +1736,7 @@ public class EmployeeSchedule {
         record PhaseKey(String module, int phaseNum) {}
 
         java.util.function.Function<String, PhaseKey> phaseKeyOfOpTask = (opTask) -> {
-            ParsedOpTaskRef ref = parseOpTaskRef(opTask);
+            ParsedOpTaskRef ref = YamlFiles.parseOpTaskRef(opTask);
             return new PhaseKey(ref.module, ref.phaseNum);
         };
 
@@ -1918,7 +1746,7 @@ public class EmployeeSchedule {
         for (Map<String,Object> a : asgs) {
             if (a == null) continue;
 
-            String opTask = safeStr(a.get("operation_task"));
+            String opTask = YamlFiles.safeStr(a.get("operation_task"));
             PhaseKey key = phaseKeyOfOpTask.apply(opTask);
 
             String wdKey = a.containsKey("work_date_lsit") ? "work_date_lsit" : "work_date_list";
@@ -1929,7 +1757,7 @@ public class EmployeeSchedule {
             boolean anyBefore = false;
             for (Map<String,Object> item : wdl) {
                 if (item == null) continue;
-                String ds = safeStr(item.get("date"));
+                String ds = YamlFiles.safeStr(item.get("date"));
                 if (ds.isBlank()) continue;
                 LocalDate d = LocalDate.parse(ds.replace("-", "/"), DF);
                 if (d.isBefore(cutOffDate)) {
@@ -1948,7 +1776,7 @@ public class EmployeeSchedule {
         // PASS 2: convert ALL assignments in those phases to Fixed (NO trimming!)
         for (Map<String,Object> a : asgs) {
             if (a == null) continue;
-            String opTask = safeStr(a.get("operation_task"));
+            String opTask = YamlFiles.safeStr(a.get("operation_task"));
             PhaseKey key = phaseKeyOfOpTask.apply(opTask);
 
             if (started.contains(key)) {
@@ -1957,18 +1785,18 @@ public class EmployeeSchedule {
         }
 
         // Write to temp and return path
-        saveYaml(schedPath, root);
+        YamlFiles.saveYaml(schedPath, root);
         return schedPath;
     }
     @SuppressWarnings("unchecked")
     static ParsedSchedule parseSchedule(String schedPath, Map<String,OpDef> opdef) throws IOException {
-        Map<String,Object> root = loadYaml(schedPath);
+        Map<String,Object> root = YamlFiles.loadYaml(schedPath);
         Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
 
         LocalDate start = LocalDate.parse(
-                safeStr(((Map<String,Object>)s.get("plan_range")).get("start_date")).replace("-", "/"), DF);
+                YamlFiles.safeStr(((Map<String,Object>)s.get("plan_range")).get("start_date")).replace("-", "/"), DF);
         LocalDate end   = LocalDate.parse(
-                safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
+                YamlFiles.safeStr(((Map<String,Object>)s.get("plan_range")).get("end_date")).replace("-", "/"), DF);
 
         int horizon = (int) (end.toEpochDay() - start.toEpochDay()) + 1;
 
@@ -1983,10 +1811,10 @@ public class EmployeeSchedule {
         Object wfObj = s.get("workflow_task_list");
         List<Map<String,Object>> wfTasks = (wfObj instanceof List) ? (List<Map<String,Object>>) wfObj : List.of();
         for (Map<String,Object> wf : wfTasks) {
-            String module = safeStr(wf.get("id"));
-            String workflowId = safeStr(wf.get("workflow"));
-            if (workflowId.isBlank()) workflowId = safeStr(wf.get("workflow_id"));
-            String fab = safeStr(wf.get("fab"));
+            String module = YamlFiles.safeStr(wf.get("id"));
+            String workflowId = YamlFiles.safeStr(wf.get("workflow"));
+            if (workflowId.isBlank()) workflowId = YamlFiles.safeStr(wf.get("workflow_id"));
+            String fab = YamlFiles.safeStr(wf.get("fab"));
 
             Object phasesObj = wf.get("phase_task_list");
             List<Map<String,Object>> phases = (phasesObj instanceof List) ? (List<Map<String,Object>>) phasesObj : List.of();
@@ -1995,23 +1823,23 @@ public class EmployeeSchedule {
             LocalDate phase1Start = null;
             for (Map<String,Object> ph : phases) {
                 if (ph == null) continue;
-                String phId = safeStr(ph.get("phase"));
-                int phNum = phaseNumFromId(phId);
+                String phId = YamlFiles.safeStr(ph.get("phase"));
+                int phNum = YamlFiles.phaseNumFromId(phId);
                 if (phNum == 1) {
-                    phase1Start = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                    phase1Start = LocalDate.parse(YamlFiles.safeStr(ph.get("start_date")).replace("-", "/"), DF);
                     break;
                 }
             }
 
             for (Map<String,Object> ph : phases) {
-                String phId = safeStr(ph.get("phase"));
-                int phNum = phaseNumFromId(phId);
+                String phId = YamlFiles.safeStr(ph.get("phase"));
+                int phNum = YamlFiles.phaseNumFromId(phId);
 
                 // use phase 1 start for every phase if it exists
-                LocalDate originalStart = LocalDate.parse(safeStr(ph.get("start_date")).replace("-", "/"), DF);
+                LocalDate originalStart = LocalDate.parse(YamlFiles.safeStr(ph.get("start_date")).replace("-", "/"), DF);
                 LocalDate pStart = (phase1Start != null) ? phase1Start : originalStart;
 
-                LocalDate pEnd = LocalDate.parse(safeStr(ph.get("end_date")).replace("-", "/"), DF);
+                LocalDate pEnd = LocalDate.parse(YamlFiles.safeStr(ph.get("end_date")).replace("-", "/"), DF);
 
                 int startId = (int) (pStart.toEpochDay() - start.toEpochDay());
                 int endId   = (int) (pEnd.toEpochDay() - start.toEpochDay());
@@ -2023,9 +1851,9 @@ public class EmployeeSchedule {
                 List<Map<String,Object>> opTasks = (opsObj instanceof List) ? (List<Map<String,Object>>) opsObj : List.of();
                 for (Map<String,Object> ot : opTasks) {
 
-                    String opTaskId = safeStr(ot.get("id"));
-                    String opId = safeStr(ot.get("operation"));
-                    if (opId.isBlank()) opId = safeStr(ot.get("operation_id"));
+                    String opTaskId = YamlFiles.safeStr(ot.get("id"));
+                    String opId = YamlFiles.safeStr(ot.get("operation"));
+                    if (opId.isBlank()) opId = YamlFiles.safeStr(ot.get("operation_id"));
                     OpDef od = null;
                     if (workflowId != null && !workflowId.isBlank()) {
                         od = opdef.get(workflowId + "|" + opId);
@@ -2056,21 +1884,21 @@ public class EmployeeSchedule {
                         opTaskMeta.put(opTaskId, m);
                     }
 
-                    int workloadDays = parseInt(ot.get("workload_days"), 0);
+                    int workloadDays = YamlFiles.parseInt(ot.get("workload_days"), 0);
                     int workloadHoursOverride = -1;
                     if (ot.containsKey("workload_hours")) {
-                        workloadHoursOverride = parseInt(ot.get("workload_hours"), 0);
+                        workloadHoursOverride = YamlFiles.parseInt(ot.get("workload_hours"), 0);
                     }
 
                     int minHeads = od.min;
                     int maxHeads = od.max;
 
                     if (ot.containsKey("min_worker_num")) {
-                        int v = parseInt(ot.get("min_worker_num"), minHeads);
+                        int v = YamlFiles.parseInt(ot.get("min_worker_num"), minHeads);
                         if (v > 0) minHeads = v;
                     }
                     if (ot.containsKey("max_worker_num")) {
-                        int v = parseInt(ot.get("max_worker_num"), maxHeads);
+                        int v = YamlFiles.parseInt(ot.get("max_worker_num"), maxHeads);
                         if (v > 0) maxHeads = v;
                     }
 
@@ -2081,10 +1909,10 @@ public class EmployeeSchedule {
                     int recMax = 0;
 
                     if (ot.containsKey("recommends_worker_min")) {
-                        recMin = parseInt(ot.get("recommends_worker_min"), 0);
+                        recMin = YamlFiles.parseInt(ot.get("recommends_worker_min"), 0);
                     }
                     if (ot.containsKey("recommends_worker_max")) {
-                        recMax = parseInt(ot.get("recommends_worker_max"), 0);
+                        recMax = YamlFiles.parseInt(ot.get("recommends_worker_max"), 0);
                     }
                     // fallback / normalization
                     if (recMin <= 0 && recMax > 0) recMin = recMax;
@@ -2113,7 +1941,7 @@ public class EmployeeSchedule {
         LocalDate cutOffDate;
         Object cutOffObj = s.get("cut_off_date");
         if (cutOffObj != null) {
-            cutOffDate = LocalDate.parse(safeStr(cutOffObj).replace("-", "/"), DF);
+            cutOffDate = LocalDate.parse(YamlFiles.safeStr(cutOffObj).replace("-", "/"), DF);
         } else {
             cutOffDate = start;
         }
@@ -2183,8 +2011,8 @@ public class EmployeeSchedule {
         // ---------- PASS 1: parse + detect phaseStartedBeforeCutoff ----------
         for (Map<String,Object> a : asgs) {
 
-            String flex = safeStr(a.get("plan_flexibility"));
-            String opTask = safeStr(a.get("operation_task"));
+            String flex = YamlFiles.safeStr(a.get("plan_flexibility"));
+            String opTask = YamlFiles.safeStr(a.get("operation_task"));
             OpTaskMeta meta = opTaskMeta.get(opTask);
 
             String module, opId, phId; int phNum;
@@ -2195,19 +2023,19 @@ public class EmployeeSchedule {
                 phId   = meta.phaseId;
                 phNum  = meta.phaseNum;
             } else {
-                ParsedOpTaskRef ref = parseOpTaskRef(opTask);
+                ParsedOpTaskRef ref = YamlFiles.parseOpTaskRef(opTask);
                 module = ref.module;
                 opId   = ref.opToken;
                 phId   = ref.phaseToken;
                 phNum  = ref.phaseNum;
             }
 
-            String wid = safeStr(a.get("worker"));
+            String wid = YamlFiles.safeStr(a.get("worker"));
 
             LocalDate sd = a.get("start_date") == null ? null :
-                    LocalDate.parse(safeStr(a.get("start_date")).replace("-", "/"), DF);
+                    LocalDate.parse(YamlFiles.safeStr(a.get("start_date")).replace("-", "/"), DF);
             LocalDate ed = a.get("end_date")   == null ? null :
-                    LocalDate.parse(safeStr(a.get("end_date")).replace("-", "/"), DF);
+                    LocalDate.parse(YamlFiles.safeStr(a.get("end_date")).replace("-", "/"), DF);
             int sId = (sd == null) ? -1 : (int)(sd.toEpochDay() - start.toEpochDay());
             int eId = (ed == null) ? -1 : (int)(ed.toEpochDay() - start.toEpochDay());
 
@@ -2220,9 +2048,9 @@ public class EmployeeSchedule {
             boolean anyBeforeCutoff = false;
 
             for (Map<String,Object> item : wdl) {
-                LocalDate d = LocalDate.parse(safeStr(item.get("date")).replace("-", "/"), DF);
+                LocalDate d = LocalDate.parse(YamlFiles.safeStr(item.get("date")).replace("-", "/"), DF);
                 int did = (int)(d.toEpochDay() - start.toEpochDay());
-                int h = parseInt(item.get("hour"), 0);
+                int h = YamlFiles.parseInt(item.get("hour"), 0);
                 if (h <= 0) continue;
 
                 byDay.merge(did, h, Integer::sum);
@@ -2582,7 +2410,7 @@ public class EmployeeSchedule {
                 if (dayId < SolveContext.current().solveMinDay || dayId > SolveContext.current().solveMaxDay) continue;
 
                 // keep ONLY working days
-                if (!isWorkingDay(dayId, factory)) continue;
+                if (!WorkingDays.isWorkingDay(dayId, factory)) continue;
 
                 workDays.add(dayId);
                 if (h > maxHour) maxHour = h;
@@ -2678,8 +2506,8 @@ public class EmployeeSchedule {
                 String fabId     = s.factory;
                 String regionId  = SolveContext.current().calendars.regionOfFab(fabId);
                 String customerId = SolveContext.current().calendars.customerOfFab(fabId);
-                int rp = regionPref(e, regionId);
-                int cp = customerPref(e, customerId);
+                int rp = WorkerRules.regionPref(e, regionId);
+                int cp = WorkerRules.customerPref(e, customerId);
                 if (rp == 0 || cp == 0) continue; // hate → never candidate
 
                 cand.add(e);
@@ -2698,8 +2526,8 @@ public class EmployeeSchedule {
 
             List<EmployeeFact> ordered = new ArrayList<>(cand);
             ordered.sort(Comparator
-                    .comparingInt((EmployeeFact e) -> workerTypeRank(e, s.opId))
-                    .thenComparingInt(EmployeeSchedule::positiveSkillCount)
+                    .comparingInt((EmployeeFact e) -> WorkerRules.workerTypeRank(e, s.opId))
+                    .thenComparingInt(WorkerRules::positiveSkillCount)
                     .thenComparingInt(e -> (!s.needManager && e.isManager) ? 1 : 0)
                     .thenComparingInt(e -> Math.max(0, e.histFixedTotalHours))
                     .thenComparingInt(e -> e.id));
@@ -3391,7 +3219,7 @@ public class EmployeeSchedule {
         // the warm-started block spans so the pre-solve score analysis sees
         // correct values. During solving BlockSpanVariableListener maintains it.
         for (BlockDecision b : built.blocks) {
-            b.coveredWorkingDays = computeCoveredWorkingDays(b);
+            b.coveredWorkingDays = WorkingDays.computeCoveredWorkingDays(b);
         }
         applyInitialEmployees(sch, env, built.seats);
         // --------------------------------------------------

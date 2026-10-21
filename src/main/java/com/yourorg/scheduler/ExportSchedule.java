@@ -7,6 +7,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.calendar.WorkingDays;
+import com.yourorg.scheduler.io.YamlFiles;
 import com.yourorg.scheduler.model.*;
 
 import org.yaml.snakeyaml.DumperOptions;
@@ -41,7 +43,7 @@ public class ExportSchedule {
             for (Map<String,Object> item : wdl) {
                 if (item == null) continue;
                 String dateStr = String.valueOf(item.get("date"));
-                Integer did = EmployeeSchedule.dayIdFromDate(planStart, dateStr);
+                Integer did = YamlFiles.dayIdFromDate(planStart, dateStr);
                 if (did == null) continue;
 
                 if (did < cutOffDayId) before.add(item);
@@ -57,7 +59,7 @@ public class ExportSchedule {
                 // refresh start/end from before part
                 int minDid = Integer.MAX_VALUE, maxDid = Integer.MIN_VALUE;
                 for (Map<String,Object> item : before) {
-                    Integer did = EmployeeSchedule.dayIdFromDate(planStart, String.valueOf(item.get("date")));
+                    Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(item.get("date")));
                     if (did == null) continue;
                     minDid = Math.min(minDid, did);
                     maxDid = Math.max(maxDid, did);
@@ -76,7 +78,7 @@ public class ExportSchedule {
 
                 int minDid = Integer.MAX_VALUE, maxDid = Integer.MIN_VALUE;
                 for (Map<String,Object> item : after) {
-                    Integer did = EmployeeSchedule.dayIdFromDate(planStart, String.valueOf(item.get("date")));
+                    Integer did = YamlFiles.dayIdFromDate(planStart, String.valueOf(item.get("date")));
                     if (did == null) continue;
                     minDid = Math.min(minDid, did);
                     maxDid = Math.max(maxDid, did);
@@ -253,7 +255,7 @@ public class ExportSchedule {
             for (Map<String, Object> item : wdl) {
                 if (item == null) continue;
                 String dateStr = String.valueOf(item.get("date"));
-                Integer did = EmployeeSchedule.dayIdFromDate(planStart, dateStr);
+                Integer did = YamlFiles.dayIdFromDate(planStart, dateStr);
                 if (did != null) set.add(did);
             }
         }
@@ -273,7 +275,7 @@ public class ExportSchedule {
 
         if (plan != null && plan.seats != null) {
             for (CrewSeat s : plan.seats) {
-                if (s == null || EmployeeSchedule.isUnassigned(s.employee)) continue;
+                if (s == null || WorkerRules.isUnassigned(s.employee)) continue;
 
                 // Skip fixed pinned seats (they come from original fixed rows)
                 if (s.pinnedFixed) continue;
@@ -296,8 +298,8 @@ public class ExportSchedule {
 
                     for (int i = 0; i < s.pinnedDays; i++) {
                         int did = s.pinnedStart + i;
-                        if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
-                        if (EmployeeSchedule.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
+                        if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
+                        if (WorkingDays.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
                         byDay.merge(did, h, Integer::sum);
                     }
 
@@ -308,8 +310,8 @@ public class ExportSchedule {
 
                     for (int i = 0; i < b.days; i++) {
                         int did = b.startDay + i;
-                        if (!EmployeeSchedule.isWorkingDay(did, s.factory)) continue;
-                        if (EmployeeSchedule.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
+                        if (!WorkingDays.isWorkingDay(did, s.factory)) continue;
+                        if (WorkingDays.isWorkerUnavailableByWid(s.employee.wid, did)) continue;
                         byDay.merge(did, h, Integer::sum);
                     }
 

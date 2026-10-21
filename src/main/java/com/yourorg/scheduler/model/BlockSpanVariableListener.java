@@ -1,6 +1,6 @@
 package com.yourorg.scheduler.model;
 
-import com.yourorg.scheduler.EmployeeSchedule;
+import com.yourorg.scheduler.calendar.WorkingDays;
 
 import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
 import ai.timefold.solver.core.api.domain.variable.VariableListener;
@@ -52,7 +52,7 @@ public class BlockSpanVariableListener
         // Timefold must be notified around a shadow-variable mutation so the
         // incremental score engine re-evaluates the constraints that read it.
         scoreDirector.beforeVariableChanged(block, "coveredWorkingDays");
-        block.coveredWorkingDays = EmployeeSchedule.computeCoveredWorkingDays(block);
+        block.coveredWorkingDays = WorkingDays.computeCoveredWorkingDays(block);
         scoreDirector.afterVariableChanged(block, "coveredWorkingDays");
     }
 }
