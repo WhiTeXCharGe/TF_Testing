@@ -1,0 +1,8 @@
+# Scripts run on Linux (Batch nodes, Docker). CRLF would break them ("bash\r: No such file").
+# Windows autocrlf must never touch these.
+*.sh    text eol=lf
+*.yml   text eol=lf
+Dockerfile text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.json  text eol=lf

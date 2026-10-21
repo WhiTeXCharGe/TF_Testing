@@ -1,0 +1,19 @@
+{
+  "name": "timefold-api-controller",
+  "version": "2.0.0",
+  "description": "Azure API Controller v2 — Timefold + Sigma-I routing. Blob Storage + Batch backed. Deployed to Azure Container Apps (TEST app first — see documents/SigmaI/).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "@azure/identity": "^4.4.1",
+    "@azure/storage-blob": "^12.24.0"
+  }
+}

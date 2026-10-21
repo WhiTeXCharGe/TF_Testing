@@ -1,0 +1,59 @@
+# Sigma-I stack for ONE Azure Batch node (pool-sigmai). Based on the delivered
+# docker-compose.yml (sigmaI/…/screenas-workerassign-api/docker-compose.yml) with:
+#   - images from ACR (APP_IMAGE / REDIS_IMAGE come from .env.server) → no Docker Hub
+#   - API bound to 127.0.0.1 only (nothing outside the node can reach it)
+#   - data / wheels under ${SIGMAI_HOME} so bridge.sh can read job artifacts on the host
+#   - restart: unless-stopped so the stack survives a Docker restart
+#
+# Started by start-sigmai.sh:
+#   docker compose -p sigmai --env-file .env.server -f docker-compose.yml up -d
+# Local test: see documents/SigmaI/SigmaI-04-Local-Testing.md
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  api:
+    image: ${APP_IMAGE:-sigmai/screenas-workerassign-api:0.1.0}
+    env_file:
+      - .env.server
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATA_DIR: /app/data
+      OPT_WHEEL_DIR: /opt/wheels
+    command: uvicorn screenas_workerassign_api.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SIGMAI_PORT:-8000}:8000"
+    volumes:
+      - ${SIGMAI_HOME:-.}/data:/app/data
+      - ${SIGMAI_HOME:-.}/wheels:/opt/wheels:ro
+    depends_on:
+      - redis
+
+  worker:
+    image: ${APP_IMAGE:-sigmai/screenas-workerassign-api:0.1.0}
+    env_file:
+      - .env.server
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATA_DIR: /app/data
+      OPT_WHEEL_DIR: /opt/wheels
+    command: celery -A screenas_workerassign_api.workers.celery_app:celery_app worker --loglevel=info
+    restart: unless-stopped
+    volumes:
+      - ${SIGMAI_HOME:-.}/data:/app/data
+      - ${SIGMAI_HOME:-.}/wheels:/opt/wheels:ro
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:

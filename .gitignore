@@ -1,0 +1,8 @@
+node_modules
+.env
+.env.local
+sigmai-setup/local-work/
+# Sigma-I core wheel is licensed — never commit it
+sigmai-setup/wheels/*.whl
+# local test scratch
+local-work/
