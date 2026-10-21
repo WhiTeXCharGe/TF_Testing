@@ -6,7 +6,7 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import com.yourorg.scheduler.EmployeeSchedule;
+import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.calendar.SolveContext;
 import com.yourorg.scheduler.calendar.WorkingDays;
 import com.yourorg.scheduler.io.EnvConfigParser;
@@ -105,7 +105,7 @@ public class PlanBuilder {
                 List<String> tasks = e2.getValue();
                 int totH = empDayHours.getOrDefault(empId, Map.of()).getOrDefault(dayId, 0);
 
-                if (tasks.size() > 1 || totH > EmployeeSchedule.DAILY_CAP) {
+                if (tasks.size() > 1 || totH > SolverConstants.DAILY_CAP) {
                     LoadLog.appendLoadLog(String.format(
                         Locale.ROOT,
                         "[VALIDATE] empId=%d dayId=%d tasks=%d totalHours=%d tasks=%s",
@@ -177,7 +177,7 @@ public class PlanBuilder {
             } else {
                 int baseline = (w.allowed.size() == 1 && w.allowed.get(0) == 4)
                         ? 4
-                        : EmployeeSchedule.REQUIRED_HOURS_PER_WORKLOAD_DAY;
+                        : SolverConstants.REQUIRED_HOURS_PER_WORKLOAD_DAY;
                 totalReq = w.workloadDays * baseline;
             }
             int fixedAll = sch.fixedHoursByKeyAll.getOrDefault(w.module + "|" + w.opId, 0);
@@ -709,7 +709,7 @@ public class PlanBuilder {
                 int month    = d.getMonthValue();
                 int ym       = year * 100 + month;
 
-                int ot = Math.max(0, h - EmployeeSchedule.SinglePassConstraints.BASE_HOURS_PER_DAY);
+                int ot = Math.max(0, h - SolverConstants.BASE_HOURS_PER_DAY);
 
                 SolveContext.current().fixedAnnualOtByEmpYear
                     .computeIfAbsent(empId, k -> new HashMap<>())

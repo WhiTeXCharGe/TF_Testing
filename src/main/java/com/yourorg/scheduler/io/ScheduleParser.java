@@ -5,7 +5,7 @@ import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
 
-import com.yourorg.scheduler.EmployeeSchedule;
+import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.model.*;
 
 /** Schedule.yaml preprocessing and parsing (windows, fixed/flexible/initial rows, day slots). */
@@ -252,8 +252,8 @@ public class ScheduleParser {
 
         // ---- Decide activeModules using grace-gap x days ----
         Set<String> activeModules = new HashSet<>();
-        if (EmployeeSchedule.TRIM_FINISHED_MODULES) {
-            int grace = EmployeeSchedule.MODULE_TRIM_GRACE_DAYS;
+        if (SolverConstants.TRIM_FINISHED_MODULES) {
+            int grace = SolverConstants.MODULE_TRIM_GRACE_DAYS;
 
             for (Map.Entry<String,Integer> e : moduleLastEnd.entrySet()) {
                 String module = e.getKey();
@@ -527,7 +527,7 @@ public class ScheduleParser {
             }
         }
 
-        if (EmployeeSchedule.TRIM_FINISHED_MODULES) {
+        if (SolverConstants.TRIM_FINISHED_MODULES) {
             for (TaskWindow w : windows) {
 
                 boolean phaseStarted =
