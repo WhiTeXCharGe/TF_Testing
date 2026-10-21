@@ -47,14 +47,16 @@ public final class TwoStageRunner {
             timer.seed());
         writeInitialScoreAnalysis(factoryForInitial, p, "initial_score.txt",200);
 
-        // Init score_progress.txt for this run
-        try (BufferedWriter _pw = Files.newBufferedWriter(Paths.get("score_progress.txt"),
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            _pw.write("Stage   | elapsed | total score                             | per-constraint (hard/medium only)");
-            _pw.newLine();
-            _pw.write("------- | ------- | --------------------------------------- | --------------------------------------------------");
-            _pw.newLine();
-        } catch (IOException ignored) {}
+        // Init score_progress.txt for this run (skipped when write_score_files=false)
+        if (ScoreLogger.writeScoreFiles()) {
+            try (BufferedWriter _pw = Files.newBufferedWriter(Paths.get("score_progress.txt"),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                _pw.write("Stage   | elapsed | total score                             | per-constraint (hard/medium only)");
+                _pw.newLine();
+                _pw.write("------- | ------- | --------------------------------------- | --------------------------------------------------");
+                _pw.newLine();
+            } catch (IOException ignored) {}
+        }
 
         // Ticks every few seconds so STATUS_FILE always has a fresh Running
         // stage/progress, independent of how often a new best score is found

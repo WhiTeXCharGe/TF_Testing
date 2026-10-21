@@ -26,6 +26,14 @@ import com.yourorg.scheduler.model.SinglePassPlan;
 public final class ScoreLogger {
     private ScoreLogger() {}
 
+    // write_score_files: false suppresses initial_score.txt, stage1_score.txt, final_score.txt and
+    // score_progress.txt (solver_log.txt is unaffected). Set once by Main before the solve; default true.
+    private static volatile boolean writeScoreFiles = true;
+
+    public static void setWriteScoreFiles(boolean enabled) { writeScoreFiles = enabled; }
+
+    public static boolean writeScoreFiles() { return writeScoreFiles; }
+
     private static final java.time.format.DateTimeFormatter CLOCK =
             java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss");
     static String nowClock() { return java.time.LocalTime.now().format(CLOCK); }
@@ -182,6 +190,7 @@ public final class ScoreLogger {
     static void appendScoreProgress(String stage, long msElapsed, HardMediumSoftScore score,
                                     SolutionManager<SinglePassPlan, HardMediumSoftScore> sm,
                                     SinglePassPlan solution) {
+        if (!writeScoreFiles) return;
         Path logFile = Paths.get("score_progress.txt");
         try (BufferedWriter bw = Files.newBufferedWriter(logFile,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
@@ -231,6 +240,7 @@ public final class ScoreLogger {
         SinglePassPlan initialPlan,
         String fileName,
         int topMatchesPerConstraints ) {
+            if (!writeScoreFiles) return;
             try {
                 var solutionManager = SolutionManager.create(factory);
                 solutionManager.update(initialPlan);
@@ -250,6 +260,7 @@ public final class ScoreLogger {
         SinglePassPlan finalPlan,
         String fileName,
         int topMatchesPerConstraints) {
+            if (!writeScoreFiles) return;
             try {
                 var solutionManager = SolutionManager.create(factory);
                 solutionManager.update(finalPlan);
