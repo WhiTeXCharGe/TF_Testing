@@ -110,6 +110,31 @@ export const UI = {
     envConfigNotFoundError: 'EnvConfigファイルが見つかりません',
   },
 
+  solverPicker: {
+    title: 'ソルバーを選択',
+    hint: 'この計画を実行するソルバーを選択してください。',
+    options: {
+      'timefold': {
+        name: 'Timefold',
+        desc: '現行のソルバーです。動作はこれまでと同じです。',
+      },
+      'sigmai-dwave-scip': {
+        name: 'Sigma-I: D-Wave + SCIP',
+        desc: 'Stage 1 は D-Wave（量子アニーリング／クラウド）、Stage 2 は SCIP で実行します。',
+      },
+      'sigmai-scip-scip': {
+        name: 'Sigma-I: SCIP + SCIP',
+        desc: 'Stage 1・Stage 2 とも SCIP で実行します。',
+      },
+    },
+    timeoutsTitle: '計算時間の上限（秒）',
+    stage1Timeout: 'Stage 1',
+    stage2Timeout: 'Stage 2',
+    timeoutInvalid: (min: number, max: number) => `${min}〜${max} の整数を入力してください。`,
+    back: '戻る',
+    start: '実行開始',
+  },
+
   settings: {
     subheading: 'ローカル プロトタイプ設定。',
     solverApiTitle: 'ソルバー API',
@@ -135,6 +160,7 @@ export const UI = {
     deleteFailed: (status: number, body: string) => `削除に失敗しました (${status}): ${body}`,
     saveOutputFailed: (status: number, body: string) => `出力の保存に失敗しました (${status}): ${body}`,
     resetFailed: (status: number, body: string) => `リセットに失敗しました (${status}): ${body}`,
+    engineNotSupported: (engine: string) => `この接続先のソルバー API はまだ「${engine}」に対応していません。Timefold を選択するか、Sigma-I 対応の API コントローラーに接続してください（documents/SigmaI/ 参照）。`,
     solverUploadFailed: 'ソルバーへのアップロードに失敗しました',
     solverStatusFailed: '実行ステータスの取得に失敗しました',
     solverDownloadFailed: 'ダウンロードに失敗しました',

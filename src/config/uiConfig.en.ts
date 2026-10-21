@@ -111,6 +111,31 @@ export const UI = {
     envConfigNotFoundError: 'EnvConfig file not found',
   },
 
+  solverPicker: {
+    title: 'Choose a solver',
+    hint: 'Select which solver will run this plan.',
+    options: {
+      'timefold': {
+        name: 'Timefold',
+        desc: 'Current solver. Same behaviour as before.',
+      },
+      'sigmai-dwave-scip': {
+        name: 'Sigma-I: D-Wave + SCIP',
+        desc: 'Stage 1 on D-Wave (quantum annealing, cloud), Stage 2 on SCIP.',
+      },
+      'sigmai-scip-scip': {
+        name: 'Sigma-I: SCIP + SCIP',
+        desc: 'Stage 1 and Stage 2 both on SCIP.',
+      },
+    },
+    timeoutsTitle: 'Time limits (seconds)',
+    stage1Timeout: 'Stage 1',
+    stage2Timeout: 'Stage 2',
+    timeoutInvalid: (min: number, max: number) => `Enter a whole number between ${min} and ${max}.`,
+    back: 'Back',
+    start: 'Start run',
+  },
+
   settings: {
     subheading: 'Local prototype settings.',
     solverApiTitle: 'Solver API',
@@ -136,6 +161,7 @@ export const UI = {
     deleteFailed: (status: number, body: string) => `Delete failed (${status}): ${body}`,
     saveOutputFailed: (status: number, body: string) => `Failed to save output (${status}): ${body}`,
     resetFailed: (status: number, body: string) => `Reset failed (${status}): ${body}`,
+    engineNotSupported: (engine: string) => `This solver backend does not support "${engine}" yet. Choose Timefold, or connect to the Sigma-I-enabled API controller (see documents/SigmaI/).`,
     solverUploadFailed: 'Upload to solver failed',
     solverStatusFailed: 'Failed to get run status',
     solverDownloadFailed: 'Download failed',

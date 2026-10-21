@@ -6,6 +6,10 @@ import axios, { AxiosError } from 'axios';
 import { APP_CONFIG } from '@/config/appConfig';
 import { getSolverBaseUrl } from '@/services/solverConfig';
 import { UI } from '@/config/uiConfig';
+import {
+  getSolverOption, toRequestFields,
+  type SolverEngine, type SolverSelection,
+} from '@/services/solverOptions';
 
 export interface SubmitResult {
   runId: string;
@@ -27,6 +31,10 @@ export interface RunStatus {
   finishedAt?: string | null;
   error?: string | RunError | null;
   output?: string | null;
+  /** Set by the v2 API controller. Absent on the Timefold-only controller. */
+  engine?: SolverEngine;
+  /** Only while waiting in the Batch queue (Sigma-I pool). 1 = next to run. */
+  queuePosition?: number;
 }
 
 /**
@@ -38,9 +46,16 @@ export async function submitRun(
   runId:     string,
   envFile:   File,
   schedFile: File,
+  selection?: SolverSelection,
 ): Promise<SubmitResult> {
   const form = new FormData();
   form.append('runId', runId);
+  // Timefold-only backends ignore unknown fields, so a Sigma-I run sent to one would
+  // silently run on Timefold. ensureEngineSupported() refuses that case up front.
+  if (selection) {
+    await ensureEngineSupported(getSolverOption(selection.option).engine);
+    for (const [k, v] of Object.entries(toRequestFields(selection))) form.append(k, v);
+  }
   // The solver stores uploads under their filename and Azure Batch looks for
   // exactly EnvConfig.yaml / Schedule.yaml, so always send canonical names.
   form.append('env',   envFile,   APP_CONFIG.envConfigFile);
@@ -55,6 +70,23 @@ export async function submitRun(
   } catch (err) {
     throw new Error(extractMessage(err, UI.errors.solverUploadFailed));
   }
+}
+
+/**
+ * GET /health → { ok, engines?: string[] }
+ * The Timefold-only controller returns { ok: true } (no `engines`) → only 'timefold'.
+ * The v2 controller lists the engines it can route. Throws if `engine` is not available.
+ */
+export async function ensureEngineSupported(engine: SolverEngine): Promise<void> {
+  if (engine === 'timefold') return;
+  let engines: string[] = ['timefold'];
+  try {
+    const res = await axios.get<{ engines?: string[] }>(`${await getSolverBaseUrl()}/health`);
+    if (Array.isArray(res.data?.engines)) engines = res.data.engines;
+  } catch (err) {
+    throw new Error(extractMessage(err, UI.errors.solverUploadFailed));
+  }
+  if (!engines.includes(engine)) throw new Error(UI.errors.engineNotSupported(engine));
 }
 
 /**

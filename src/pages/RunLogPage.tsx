@@ -4,6 +4,9 @@ import { UI } from '@/config/uiConfig';
 import { APP_CONFIG } from '@/config/appConfig';
 import { Icon } from '@/components/common/Icon';
 import { Dialog } from '@/components/common/Dialog';
+import { SolverPickerDialog } from '@/components/common/SolverPickerDialog';
+import { ensureEngineSupported } from '@/services/runService';
+import { getSolverOption, type SolverSelection } from '@/services/solverOptions';
 import { useRuns } from '@/hooks/useRuns';
 import { nowLabel } from '@/utils/dateUtils';
 import { fetchText, sendToGanttEditor } from '@/services/ganttHandoffService';
@@ -118,7 +121,7 @@ function NewRunModal({ onClose, onSubmit, initialEnvFile, initialSchedFile }: {
     schedFile: File;
     originalEnvPath: string;
     originalSchedPath: string;
-  }) => Promise<void>;
+  }, selection: SolverSelection) => Promise<void>;
   initialEnvFile?: File;
   initialSchedFile?: File;
 }) {
@@ -128,18 +131,21 @@ function NewRunModal({ onClose, onSubmit, initialEnvFile, initialSchedFile }: {
   const [originalSchedPath, setOriginalSchedPath] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Second step: after "Submit Run" the user picks which solver runs the plan.
+  const [picking, setPicking] = useState(false);
 
   const canSubmit = !!envFile && !!schedFile && !uploading;
 
-  async function submit() {
+  async function submit(selection: SolverSelection) {
     if (!canSubmit || !envFile || !schedFile) return;
     setUploading(true);
     setError(null);
     try {
-      await onSubmit({ envFile, schedFile, originalEnvPath, originalSchedPath });
+      await onSubmit({ envFile, schedFile, originalEnvPath, originalSchedPath }, selection);
     } catch (e) {
       setError(String((e as Error).message || e));
       setUploading(false);
+      setPicking(false); // back to the file form, where the error is shown
     }
   }
 
@@ -192,12 +198,19 @@ function NewRunModal({ onClose, onSubmit, initialEnvFile, initialSchedFile }: {
           <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={uploading}>
             {UI.runLog.cancel}
           </button>
-          <button className="btn btn-primary btn-sm" disabled={!canSubmit} onClick={submit}>
+          <button className="btn btn-primary btn-sm" disabled={!canSubmit} onClick={() => setPicking(true)}>
             <Icon name="play" size={13} />
             {uploading ? UI.runLog.uploading : UI.runLog.submit}
           </button>
         </div>
       </div>
+      {picking && (
+        <SolverPickerDialog
+          busy={uploading}
+          onBack={() => setPicking(false)}
+          onConfirm={sel => { void submit(sel); }}
+        />
+      )}
     </div>
   );
 }
@@ -470,17 +483,25 @@ export function RunLogPage() {
   async function handleSubmit(p: {
     envFile: File; schedFile: File;
     originalEnvPath: string; originalSchedPath: string;
-  }) {
+  }, selection: SolverSelection) {
     const cfg = await getSolverConfig();
     // A broken config.txt must not silently fall back to local-only.
     if (cfg.error) throw new Error(cfg.error);
+
+    // Sigma-I needs a backend that can route it. Check BEFORE any row/files are created so
+    // an unsupported backend leaves nothing behind (and never silently runs Timefold instead).
+    const engine = getSolverOption(selection.option).engine;
+    if (engine !== 'timefold') {
+      if (!cfg.apiBaseUrl) throw new Error(UI.errors.engineNotSupported(engine));
+      await ensureEngineSupported(engine);
+    }
 
     if (cfg.mode === 'online') {
       // Online: the solver must accept the run BEFORE a row is created, so an
       // unreachable Azure API shows an error in the modal and adds no row.
       const runId = nextRunIdFromTimestamp();
       try {
-        await submitToSolver(runId, p.envFile, p.schedFile);
+        await submitToSolver(runId, p.envFile, p.schedFile, selection);
       } catch (err) {
         throw new Error(UI.runLog.onlineSubmitFailed(cfg.apiBaseUrl, String((err as Error).message || err)));
       }
@@ -504,7 +525,7 @@ export function RunLogPage() {
     // 2. Local mode: also send the files to the local solver (non-fatal).
     if (cfg.apiBaseUrl) {
       try {
-        await submitToSolver(run.id, p.envFile, p.schedFile);
+        await submitToSolver(run.id, p.envFile, p.schedFile, selection);
         startWatching(run.id);
       } catch (err) {
         // Non-fatal: local row was already created; show a warning but close the modal.

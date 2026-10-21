@@ -9,6 +9,7 @@ import {
   submitRun, checkStatus, downloadOutput, cancelRun,
   type RunStatus,
 } from '@/services/runService';
+import type { SolverSelection } from '@/services/solverOptions';
 
 export interface UseRuns {
   runs:     Run[];
@@ -29,7 +30,7 @@ export interface UseRuns {
   /** Loaded config.txt result (null until loaded). */
   solverConfig: SolverConfig | null;
   /** POST /runSolver — send the two YAMLs to the solver backend. */
-  submitToSolver: (runId: string, envFile: File, schedFile: File) => Promise<void>;
+  submitToSolver: (runId: string, envFile: File, schedFile: File, selection?: SolverSelection) => Promise<void>;
   /** GET /status/:runId — get current solve status from the backend. */
   checkRunStatus: (runId: string) => Promise<RunStatus>;
   /** GET /download/:runId — download output YAML as a Blob. */
@@ -83,8 +84,9 @@ export function useRuns(): UseRuns {
     runId:     string,
     envFile:   File,
     schedFile: File,
+    selection?: SolverSelection,
   ) => {
-    await submitRun(runId, envFile, schedFile);
+    await submitRun(runId, envFile, schedFile, selection);
   }, []);
 
   const checkRunStatus = useCallback(
