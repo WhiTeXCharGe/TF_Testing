@@ -215,7 +215,7 @@ public class PlanBuilder {
                 cs.opId = w.opId;
                 cs.seatIndex = sidx;
                 cs.needManager = (sidx == 0);
-                cs.employee = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+                cs.employee = CrewSeat.UNASSIGNED; // manager seats: normalizeInitialValues turns it into null
                 seats.add(cs);
             }
         }
@@ -280,7 +280,7 @@ public class PlanBuilder {
 
 
             EmployeeFact ef = env.byWid.get(fa.wid);
-            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
+            if (ef == null) ef = CrewSeat.UNASSIGNED;
             cs.employee = ef;
 
             seats.add(cs);
@@ -431,6 +431,17 @@ public class PlanBuilder {
             // Clamp the initial plan inside the legal window
             startDay = Math.max(startDay, b.windowStart);
             endDay   = Math.min(endDay,   b.windowEnd);
+            // Phase-1 blocks start at windowStart by design (vrStartWithinWindow = [windowStart]); a later warm-start
+            // day is moved back to windowStart (the warm end day is kept). Timefold 2.x rejects an initial value
+            // outside the value range, 1.35 tolerated it through ValidationTolerantRange.
+            if (b.phaseNum == 1 && startDay > b.windowStart) {
+                LoadLog.appendLoadLog(String.format(
+                    Locale.ROOT,
+                    "[INIT-BLOCK-PHASE1-CLAMP] module=%s op=%s blockId=%d warmStart=%d -> windowStart=%d",
+                    b.module, b.opId, b.id, startDay, b.windowStart
+                ));
+                startDay = b.windowStart;
+            }
             if (startDay > endDay) continue;
 
             b.startDay = startDay;
@@ -520,6 +531,82 @@ public class PlanBuilder {
 
 
     
+    // ---------------- Warm start vs. value ranges (Timefold 2.x) ----------------
+
+    /**
+     * Brings every initial planning value into its STRICT value range. Timefold 2.x checks once, when a working
+     * solution is set (solve, score calculation, every environment mode), that each initial value lies in its
+     * entity's value range, pinned entities included, and fails otherwise; {@code null} is skipped and planned by the
+     * construction heuristic. Ranges are never widened (a manager range must never offer UNASSIGNED), so instead:
+     * <ul>
+     *   <li>an UNASSIGNED copy (id 0, not the shared instance) on a seat whose range holds the shared
+     *       {@link CrewSeat#UNASSIGNED} (non-manager seats) becomes the shared instance (same meaning);</li>
+     *   <li>any other non-pinned seat value outside the range becomes {@code null}: UNASSIGNED on a manager seat
+     *       (the construction heuristic then fills it with a manager), a warm-start employee who fails the candidate
+     *       gates (re-planned);</li>
+     *   <li>a block startDay / days / hours outside its range becomes {@code null} (re-planned). applyInitialPlan
+     *       already clamps into the window, so this is only a safety net;</li>
+     *   <li>pinned seats are left alone: their range is exactly their own employee.</li>
+     * </ul>
+     * Constraints treat a {@code null} employee as UNASSIGNED ({@code WorkerRules.isUnassigned}) and read seats with
+     * {@code forEachIncludingUnassigned}, so the score of the plan is unchanged by this step. Call it after the
+     * warm start and after the seat candidates are filled (the employee range depends on them).
+     *
+     * @return number of changed values per kind (also written to the load log); empty when nothing changed
+     */
+    public static Map<String, Integer> normalizeInitialValues(SinglePassPlan plan) {
+        Map<String, Integer> counts = new TreeMap<>();
+        if (plan == null) return counts;
+        if (plan.seats != null) {
+            for (CrewSeat s : plan.seats) {
+                if (s == null || s.employee == null || s.isPinned()) continue;
+                List<EmployeeFact> range = s.eligibleEmployeesForSeat();
+                if (containsIdentity(range, s.employee)) continue;
+                if (s.employee.id == 0 && containsIdentity(range, CrewSeat.UNASSIGNED)) {
+                    s.employee = CrewSeat.UNASSIGNED;
+                    counts.merge("seat UNASSIGNED copy -> shared UNASSIGNED", 1, Integer::sum);
+                } else {
+                    String kind = (s.employee.id == 0)
+                            ? (s.needManager ? "manager seat UNASSIGNED -> null" : "seat UNASSIGNED outside range -> null")
+                            : "seat warm employee outside candidates -> null";
+                    counts.merge(kind, 1, Integer::sum);
+                    s.employee = null;
+                }
+            }
+        }
+        if (plan.blocks != null) {
+            for (BlockDecision b : plan.blocks) {
+                if (b == null || b.isPinned()) continue;
+                boolean changed = false;
+                if (b.startDay != null && !b.vrStartWithinWindow().contains(b.startDay)) {
+                    b.startDay = null;
+                    counts.merge("block startDay outside range -> null", 1, Integer::sum);
+                    changed = true;
+                }
+                if (b.days != null && !b.vrDaysWithinWindow().contains(b.days)) {
+                    b.days = null;
+                    counts.merge("block days outside range -> null", 1, Integer::sum);
+                    changed = true;
+                }
+                if (b.hours != null && !b.vrAllowedHours().contains(b.hours)) {
+                    b.hours = null;
+                    counts.merge("block hours outside range -> null", 1, Integer::sum);
+                    changed = true;
+                }
+                if (changed) b.coveredWorkingDays = WorkingDays.computeCoveredWorkingDays(b);
+            }
+        }
+        if (!counts.isEmpty()) {
+            LoadLog.appendLoadLog("[NORMALIZE-INITIAL] " + counts);
+        }
+        return counts;
+    }
+
+    private static <T> boolean containsIdentity(List<T> list, T value) {
+        for (T t : list) if (t == value) return true;
+        return false;
+    }
+
     // ---------------- Debug / validation helpers ----------------
 
     public static Map<String,Integer> recomputeFixedHoursByKeyHorizon(List<FixedAssign> fixedRows, int minDayId, int maxDayId) {
@@ -635,8 +722,9 @@ public class PlanBuilder {
 
         applyInitialPlan(sch, built.blocks);
         // Performance redesign: seed the coveredWorkingDays shadow variable from
-        // the warm-started block spans so the pre-solve score analysis sees
-        // correct values. During solving BlockSpanVariableListener maintains it.
+        // the warm-started block spans so code that reads the plan before Timefold
+        // touches it sees correct values. Timefold itself recomputes it through
+        // BlockDecision.coveredWorkingDaysSupplier when a working solution is set.
         for (BlockDecision b : built.blocks) {
             b.coveredWorkingDays = WorkingDays.computeCoveredWorkingDays(b);
         }
@@ -728,6 +816,7 @@ public class PlanBuilder {
         p.employees = env.employees;
         p.blocks = built.blocks;
         p.seats  = built.seats;
+        normalizeInitialValues(p);
 
         BuiltProblem out = new BuiltProblem();
         out.plan = p;

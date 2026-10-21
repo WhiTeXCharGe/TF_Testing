@@ -19,7 +19,7 @@ final class SeatConstraints {
     // ---------- Seat hard rules ----------
 
     Constraint employeeAvailableAllDays(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .join(f.forEach(BlockDecision.class),
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
@@ -95,7 +95,7 @@ final class SeatConstraints {
         // then flattenLast(list → list) → UniConstraintStream<EmpDayKey>.
         // This replaces the Joiners.filtering DaySlot×Seat cartesian product that was
         // O(127 DaySlots) per incremental move; now it's O(working_days_in_block).
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee) && !s.isPinned())
             .join(f.forEach(BlockDecision.class),
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -122,7 +122,7 @@ final class SeatConstraints {
 
     Constraint dailyCap12h(ConstraintFactory f) {
         // Same flattenLast pattern. Pinned seats excluded — their hours are in FIXED_HOURS_BY_EMP_DAY.
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee) && !s.isPinned())
             .join(f.forEach(BlockDecision.class),
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -148,7 +148,7 @@ final class SeatConstraints {
                 int fixedHours = SolveContext.current().fixedHoursByEmpDay
                         .getOrDefault(empId, Collections.emptyMap())
                         .getOrDefault(dayId, 0);
-                int total = dynamicHours + fixedHours;
+                long total = dynamicHours + fixedHours;
                 return total - DAILY_CAP;
             })
             .asConstraint("seat-daily-cap-12h");

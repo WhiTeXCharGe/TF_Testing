@@ -10,7 +10,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import ai.timefold.solver.core.api.score.HardMediumSoftScore;
-import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 
@@ -85,13 +84,12 @@ public final class TwoStageRunner {
                 timer.seed());
         Solver<SinglePassPlan> stage1 = factoryStage1.buildSolver();
         {
-            SolutionManager<SinglePassPlan, HardMediumSoftScore> smS1 =
-                    SolutionManager.create(factoryStage1);
+            ConstraintBreakdown bdS1 = ConstraintBreakdown.of(factoryStage1);
             stage1.addEventListener(event -> {
                 if (event.getNewBestScore() == null) return;
                 appendScoreProgress("Stage1", event.getTimeMillisSpent(),
                         (HardMediumSoftScore) event.getNewBestScore(),
-                        smS1, event.getNewBestSolution());
+                        bdS1, event.getNewBestSolution());
             });
         }
         SinglePassPlan best1 = stage1.solve(p);
@@ -107,6 +105,10 @@ public final class TwoStageRunner {
         // Warm-start is NOT pinned anymore, so there is nothing to "unpin".
         // Just refresh candidate lists based on the stage1 solution.
         PlanBuilder.fillSeatCandidatesSinglePass(best1.seats, best1.blocks, env.employees);
+        // The employee ranges follow the candidates: keep the stage 1 values inside them (Timefold 2.x validates the
+        // initial values of stage 2 against the ranges). The candidate gates do not depend on the block span, so
+        // this normally changes nothing.
+        PlanBuilder.normalizeInitialValues(best1);
         writeFinalScoreAnalysis(factoryStage1, best1, "stage1_score.txt", 100);
 
         // With stage 2 disabled the stage 1 result is the final result.
@@ -128,13 +130,12 @@ public final class TwoStageRunner {
 
             Solver<SinglePassPlan> stage2 = factoryStage2.buildSolver();
             {
-                SolutionManager<SinglePassPlan, HardMediumSoftScore> smS2 =
-                        SolutionManager.create(factoryStage2);
+                ConstraintBreakdown bdS2 = ConstraintBreakdown.of(factoryStage2);
                 stage2.addEventListener(event -> {
                     if (event.getNewBestScore() == null) return;
                     appendScoreProgress("Stage2", event.getTimeMillisSpent(),
                             (HardMediumSoftScore) event.getNewBestScore(),
-                            smS2, event.getNewBestSolution());
+                            bdS2, event.getNewBestSolution());
                 });
             }
             best2 = stage2.solve(best1);

@@ -54,8 +54,8 @@ public final class SolverFactories {
         // "QueuedEntityPlacerConfig ... has no entityClass configured ..."
         //
         // We still keep weakest-fit style through entity/value sorting support on the model:
-        // - @PlanningEntity(difficultyComparatorClass=...) on BlockDecision and CrewSeat
-        // - strengthComparatorClass on planning variables / value ranges
+        // - @PlanningEntity(comparatorClass=...) on BlockDecision and CrewSeat
+        // - comparatorClass on planning variables (2.x name of the 1.x strengthComparatorClass)
         //
         // If later want explicit per-entity-class CH phases, define one CH phase for
         // BlockDecision and another CH phase for CrewSeat, each with its own entity selector.

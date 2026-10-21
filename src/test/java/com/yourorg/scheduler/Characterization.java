@@ -14,18 +14,14 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import ai.timefold.solver.core.api.score.HardMediumSoftScore;
-import ai.timefold.solver.core.api.score.analysis.ConstraintAnalysis;
-import ai.timefold.solver.core.api.score.analysis.ScoreAnalysis;
-import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.solver.Solver;
-import ai.timefold.solver.core.api.solver.SolverFactory;
 
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import com.yourorg.scheduler.model.SinglePassPlan;
+import com.yourorg.scheduler.solver.ConstraintBreakdown;
 import com.yourorg.scheduler.solver.SolverFactories;
 
 /**
@@ -68,20 +64,16 @@ final class Characterization {
 
     // ------------------------------------------------------------------ measuring
 
-    /** Score analysis of {@code p} as it stands (no solving). Every registered constraint is listed. */
+    /**
+     * Score analysis of {@code p} as it stands (no solving). Every registered constraint is listed. On Timefold 2.x
+     * Community {@code SolutionManager.analyze} is Enterprise-only; {@link ConstraintBreakdown} gives the same
+     * per-constraint scores and match counts (pinned by the goldens).
+     */
     static Snapshot analyze(SinglePassPlan p) {
-        SolverFactory<SinglePassPlan> factory = SolverFactories.forTests(null, null);
-        SolutionManager<SinglePassPlan, HardMediumSoftScore> sm = SolutionManager.create(factory);
-        ScoreAnalysis<HardMediumSoftScore> analysis = sm.analyze(p);
+        ConstraintBreakdown.Result r = ConstraintBreakdown.of(SolverFactories.forTests(null, null)).analyze(p);
         Map<String, ConstraintTotal> totals = new TreeMap<>();
-        for (ConstraintAnalysis<HardMediumSoftScore> ca : analysis.constraintAnalyses()) {
-            ConstraintTotal previous = totals.put(ca.constraintId(),
-                    new ConstraintTotal(String.valueOf(ca.score()), ca.matchCount()));
-            if (previous != null) {
-                throw new IllegalStateException("Duplicate constraint name " + ca.constraintId());
-            }
-        }
-        return new Snapshot(String.valueOf(analysis.score()), totals);
+        r.totals().forEach((id, t) -> totals.put(id, new ConstraintTotal(String.valueOf(t.score()), t.matches())));
+        return new Snapshot(String.valueOf(r.score()), totals);
     }
 
     /** Per-constraint score and match count of the initial (warm-start) solution. */

@@ -2,17 +2,15 @@ package com.yourorg.scheduler.solver;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
+import java.util.Map;
 
 import ai.timefold.solver.core.api.score.HardMediumSoftScore;
 import ai.timefold.solver.core.api.score.Score;
-import ai.timefold.solver.core.api.score.ScoreExplanation;
-import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 
 import com.yourorg.scheduler.config.SolverConstants;
@@ -60,11 +58,8 @@ public final class ScoreLogger {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND)) {
 
-            // SolutionManager + explanation
-            SolutionManager<SinglePassPlan, HardMediumSoftScore> solutionManager =
-                    SolutionManager.create(factoryStage2);
-            ScoreExplanation<SinglePassPlan, HardMediumSoftScore> explanation =
-                    solutionManager.explain(best2);
+            // Per-constraint breakdown (Community replacement of SolutionManager.explain, see ConstraintBreakdown)
+            ConstraintBreakdown.Result breakdown = ConstraintBreakdown.of(factoryStage2).analyze(best2);
 
             // Separator
             bw.write("============================================================");
@@ -164,18 +159,13 @@ public final class ScoreLogger {
             bw.write("Per-constraint scores:");
             bw.newLine();
 
-            // Per-constraint scores
-            explanation.getConstraintMatchTotalMap().forEach((constraintName, cmt) -> {
-                try {
-                    int matchCount = (cmt.getConstraintMatchSet() == null) ? -1 : cmt.getConstraintMatchSet().size();
-                    bw.write("  " + constraintName
-                            + " score=" + cmt.getScore()
-                            + " matches=" + matchCount);
-                    bw.newLine();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
+            // Per-constraint scores (sorted by constraint id; 2.x ids carry no package prefix)
+            for (Map.Entry<String, ConstraintBreakdown.Total> e : breakdown.totals().entrySet()) {
+                bw.write("  " + e.getKey()
+                        + " score=" + e.getValue().score()
+                        + " matches=" + e.getValue().matches());
+                bw.newLine();
+            }
 
             bw.flush();
         } catch (IOException e) {
@@ -188,7 +178,7 @@ public final class ScoreLogger {
     // Call from a BestSolutionChangedEvent listener so you can watch which constraints
     // are still firing and how fast the score is improving over time.
     static void appendScoreProgress(String stage, long msElapsed, HardMediumSoftScore score,
-                                    SolutionManager<SinglePassPlan, HardMediumSoftScore> sm,
+                                    ConstraintBreakdown breakdown,
                                     SinglePassPlan solution) {
         if (!writeScoreFiles) return;
         Path logFile = Paths.get("score_progress.txt");
@@ -200,19 +190,14 @@ public final class ScoreLogger {
 
             // Per-constraint breakdown (slightly expensive; kept because it's best-effort)
             try {
-                ScoreExplanation<SinglePassPlan, HardMediumSoftScore> ex = sm.explain(solution);
-                ex.getConstraintMatchTotalMap().forEach((name, cmt) -> {
-                    HardMediumSoftScore cs = cmt.getScore();
-                    if (cs.hardScore() == 0 && cs.mediumScore() == 0) return; // skip zero-hard
-                    int matches = (cmt.getConstraintMatchSet() == null) ? -1
-                            : cmt.getConstraintMatchSet().size();
-                    try {
-                        String shortName = name.contains("/") ? name.substring(name.lastIndexOf('/') + 1) : name;
-                        bw.write(String.format("          %-45s score=%-30s matches=%d%n",
-                                shortName, cs, matches));
-                    } catch (IOException ex2) { throw new UncheckedIOException(ex2); }
-                });
-            } catch (Exception ignored) { /* explain may fail mid-solve; skip */ }
+                ConstraintBreakdown.Result ex = breakdown.analyze(solution);
+                for (Map.Entry<String, ConstraintBreakdown.Total> e : ex.totals().entrySet()) {
+                    HardMediumSoftScore cs = e.getValue().score();
+                    if (cs.hardScore() == 0 && cs.mediumScore() == 0) continue; // skip zero-hard
+                    bw.write(String.format("          %-45s score=%-30s matches=%d%n",
+                            e.getKey(), cs, e.getValue().matches()));
+                }
+            } catch (Exception ignored) { /* the breakdown may fail mid-solve; skip */ }
 
         } catch (IOException e) { /* best-effort; don't crash the solver */ }
     }
@@ -242,13 +227,11 @@ public final class ScoreLogger {
         int topMatchesPerConstraints ) {
             if (!writeScoreFiles) return;
             try {
-                var solutionManager = SolutionManager.create(factory);
-                solutionManager.update(initialPlan);
-                var analysis = solutionManager.analyze(initialPlan);
+                var analysis = ConstraintBreakdown.of(factory).analyzeWithMatches(initialPlan, topMatchesPerConstraints);
                 String header = "========== INITIAL Score (pre-solve ) ==========\n" +
                     "Total initial score: " + analysis.score();
-                
-                String body = analysis.summarize(Math.max(1, topMatchesPerConstraints));
+
+                String body = ConstraintBreakdown.summarize(analysis, topMatchesPerConstraints);
                 ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);                
             } catch (Exception ex) {
                 System.err.println("writeInitialScoreAnalysis failed: " + ex.getMessage());
@@ -262,12 +245,10 @@ public final class ScoreLogger {
         int topMatchesPerConstraints) {
             if (!writeScoreFiles) return;
             try {
-                var solutionManager = SolutionManager.create(factory);
-                solutionManager.update(finalPlan);
-                var analysis = solutionManager.analyze(finalPlan);
+                var analysis = ConstraintBreakdown.of(factory).analyzeWithMatches(finalPlan, topMatchesPerConstraints);
                 String header = "========== Final Score (pre-solve ) ==========\n" +
                     "Total initial score: " + analysis.score();
-                String body = analysis.summarize(Math.max(1,topMatchesPerConstraints));
+                String body = ConstraintBreakdown.summarize(analysis, topMatchesPerConstraints);
                 ScoreFiles.writeText(java.nio.file.Paths.get(fileName), header, body);
             } catch (Exception ex){
                 System.err.println("writeInitialScoreAnalysis failed:  " + ex.getMessage());

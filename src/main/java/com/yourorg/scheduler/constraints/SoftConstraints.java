@@ -65,9 +65,9 @@ final class SoftConstraints {
 
 
     Constraint softAffinityPenalty(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
-            .join(f.forEach(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
+            .join(f.forEachIncludingUnassigned(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
                 Joiners.equal(s -> s.blockId),
                 Joiners.lessThan(s -> s.employee.id))
             .penalize(HardMediumSoftScore.ONE_SOFT,
@@ -79,9 +79,9 @@ final class SoftConstraints {
     }
 
     Constraint softAffinityReward(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
-            .join(f.forEach(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
+            .join(f.forEachIncludingUnassigned(CrewSeat.class).filter(s -> !WorkerRules.isUnassigned(s.employee)),
                 Joiners.equal(s -> s.blockId),
                 Joiners.lessThan(s -> s.employee.id))
             .reward(HardMediumSoftScore.ONE_SOFT,
@@ -93,7 +93,7 @@ final class SoftConstraints {
     }
 
     Constraint softEncourageSkillVariety(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .groupBy(
                 // key: [blockId, opId, skillLevel]
@@ -108,7 +108,7 @@ final class SoftConstraints {
     }
 
     Constraint softBalanceBlockAvgSkill(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .groupBy(s -> Arrays.asList(s.blockId, s.opId),
                      ConstraintCollectors.sum(s -> WorkerRules.skill(s.employee, s.opId)),
@@ -124,7 +124,7 @@ final class SoftConstraints {
         // Performance redesign: a seat's hours over its whole span equal
         // coveredDays * chosenHours, so the per-day DaySlot join and the
         // day flattening are unnecessary - one seat-to-block tuple suffices.
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -132,15 +132,15 @@ final class SoftConstraints {
                     ConstraintCollectors.sum((CrewSeat s, BlockDecision b) ->
                             seatCoveredDays(s, b).size() * b.chosenHours()))
             .penalize(HardMediumSoftScore.ONE_SOFT, (emp, dynTot) -> {
-                int total = dynTot + emp.histFixedTotalHours;
+                long total = dynTot + emp.histFixedTotalHours;
                 return (int) Math.abs(total - SolveContext.current().targetHoursPerEmp);
             })
             .asConstraint("soft-balance-total-hours");
     }
     Constraint softContinuousRegionStay(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
-            .join(f.forEach(CrewSeat.class)
+            .join(f.forEachIncludingUnassigned(CrewSeat.class)
                 .filter(s -> !WorkerRules.isUnassigned(s.employee)),
                 Joiners.equal(s -> s.employee.id),
                 Joiners.lessThan(s -> s.blockId))
@@ -155,7 +155,7 @@ final class SoftConstraints {
     }
 
     Constraint softFabPreference(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .join(f.forEach(BlockDecision.class),
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
@@ -180,7 +180,7 @@ final class SoftConstraints {
     }
 
     Constraint preferRegularOverSpot(ConstraintFactory f) {
-        return f.forEach(CrewSeat.class)
+        return f.forEachIncludingUnassigned(CrewSeat.class)
             .join(f.forEach(BlockDecision.class),
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
             .filter((s, b) -> !WorkerRules.isUnassigned(s.employee))
@@ -205,7 +205,7 @@ final class SoftConstraints {
     Constraint recommendHeadcount(ConstraintFactory f) {
         var perBlock = f.forEach(BlockDecision.class)
             .filter(b -> b.recommendMinHeads > 0 || b.recommendMaxHeads > 0)
-            .join(f.forEach(CrewSeat.class),
+            .join(f.forEachIncludingUnassigned(CrewSeat.class),
                 Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
             .groupBy((b, s) -> b, ConstraintCollectors.toList((b, s) -> s));
 

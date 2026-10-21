@@ -65,7 +65,7 @@ final class RegionConstraints {
         // coveredWorkingDays shadow variable. The previous version joined
         // every DaySlot to every CrewSeat (a cartesian product), forcing
         // each incremental move to re-evaluate O(daySlots x seats) tuples.
-        var worked = f.forEach(CrewSeat.class)
+        var worked = f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -199,7 +199,7 @@ final class RegionConstraints {
         // product with a CrewSeat -> BlockDecision join expanded through the
         // coveredWorkingDays shadow variable. region != null is enforced
         // while building rows, so the old post-groupBy null filter is gone.
-        var items = f.forEach(CrewSeat.class)
+        var items = f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -271,7 +271,7 @@ final class RegionConstraints {
         // Performance redesign: replaced the DaySlot x CrewSeat cartesian
         // product with a CrewSeat -> BlockDecision join expanded through the
         // coveredWorkingDays shadow variable.
-        var items = f.forEach(CrewSeat.class)
+        var items = f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))

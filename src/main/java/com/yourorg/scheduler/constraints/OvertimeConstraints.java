@@ -30,7 +30,7 @@ final class OvertimeConstraints {
         // seat's block span is expanded via the coveredWorkingDays shadow
         // variable and pre-aggregated by year inside map(); the year of a
         // dayId is resolved through DAY_TO_YEAR instead of a DaySlot join.
-        var dynEmpYearOt = f.forEach(CrewSeat.class)
+        var dynEmpYearOt = f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -73,7 +73,7 @@ final class OvertimeConstraints {
                         .getOrDefault(empId, Collections.emptyMap())
                         .getOrDefault(year, 0);
 
-                int totalOt = dynOtHours + fixedOt;
+                long totalOt = dynOtHours + fixedOt;
                 return totalOt > limit;
             })
             .penalize(
@@ -88,7 +88,7 @@ final class OvertimeConstraints {
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(year, 0);
 
-                    int totalOt = dynOtHours + fixedOt;
+                    long totalOt = dynOtHours + fixedOt;
                     return Math.max(1, totalOt - limit);
                 }
             )
@@ -101,7 +101,7 @@ final class OvertimeConstraints {
         // variable and pre-aggregated by year-month (ym = year*100+month)
         // through DAY_TO_YM instead of a DaySlot join. The group key now
         // carries ym directly, so the filter/penalize read key.get(2)=ym.
-        var dynEmpMonthOt = f.forEach(CrewSeat.class)
+        var dynEmpMonthOt = f.forEachIncludingUnassigned(CrewSeat.class)
             .filter(s -> !WorkerRules.isUnassigned(s.employee))
             .join(BlockDecision.class,
                 Joiners.equal((CrewSeat s) -> s.blockId, (BlockDecision b) -> b.id))
@@ -143,7 +143,7 @@ final class OvertimeConstraints {
                         .getOrDefault(empId, Collections.emptyMap())
                         .getOrDefault(ym, 0);
 
-                int totalOt = dynOtHours + fixedOt;
+                long totalOt = dynOtHours + fixedOt;
                 return totalOt > limit;
             })
             .penalize(
@@ -158,7 +158,7 @@ final class OvertimeConstraints {
                             .getOrDefault(empId, Collections.emptyMap())
                             .getOrDefault(ym, 0);
 
-                    int totalOt = dynOtHours + fixedOt;
+                    long totalOt = dynOtHours + fixedOt;
                     return Math.max(1, totalOt - limit);
                 }
             )

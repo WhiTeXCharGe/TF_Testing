@@ -7,10 +7,13 @@ import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeFactory;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
+import ai.timefold.solver.core.api.domain.variable.ShadowSources;
 import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
-import ai.timefold.solver.core.impl.domain.valuerange.ListValueRange;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+
+import com.yourorg.scheduler.calendar.WorkingDays;
 
 @PlanningEntity(comparatorClass = BlockDecision.DifficultyComparator.class)
 public class BlockDecision {
@@ -90,15 +93,14 @@ public class BlockDecision {
     public Integer hours; // null at start → falls back to first allowed
 
     @ValueRangeProvider(id = "vrStartWithinWindow")
-    public ValueRange<Integer> vrStartWithinWindow() {
-        // Timefold 1.35: an IntValueRange cannot be sorted by the variable's strengthComparatorClass
-        // (UnsupportedOperationException), a ListValueRange can. Same values, same ascending order as before.
+    public List<Integer> vrStartWithinWindow() {
+        // An IntValueRange cannot be sorted by the variable's comparatorClass (UnsupportedOperationException, still
+        // true on 2.7.1), a List can. Same values, same ascending order as the 1.27 IntValueRange.
+        // Phase-1 blocks start at windowStart only; applyInitialPlan clamps a warm start to it.
         int to = (phaseNum == 1) ? windowStart + 1 : windowEnd + 1;
-        List<Integer> l = new java.util.ArrayList<>(Math.max(0, to - windowStart));
+        List<Integer> l = new ArrayList<>(Math.max(0, to - windowStart));
         for (int i = windowStart; i < to; i++) l.add(i);
-        // A warm start (applyInitialPlan) may put a phase-1 block after windowStart; 1.35 validates the initial value
-        // with contains() only, so tolerate it there without offering it to the search.
-        return new ValidationTolerantRange<>(new ListValueRange<>(l), startDay);
+        return l;
     }
     @ValueRangeProvider(id = "vrDaysWithinWindow")
     public ValueRange<Integer> vrDaysWithinWindow() {
@@ -108,32 +110,35 @@ public class BlockDecision {
 
     //  discrete list value range for hours (8,10,12, …)
     @ValueRangeProvider(id = "vrAllowedHours")
-    public ValueRange<Integer> vrAllowedHours() {
-        List<Integer> a = (allowed == null || allowed.isEmpty())
+    public List<Integer> vrAllowedHours() {
+        return (allowed == null || allowed.isEmpty())
                 ? List.of(8)
                 : allowed.stream().distinct().sorted().toList();
-        return new ListValueRange<>(a);
     }
 
     // SHADOW VARIABLE.
     // coveredWorkingDays is the list of factory-working dayIds inside this
     // block's [startDay, startDay+days-1] span, clamped to the solver
     // horizon. It is a pure function of the planning variables startDay and
-    // days (plus the fixed fact factory), so BlockSpanVariableListener
-    // recomputes it once whenever either source variable changes. Day-based
-    // constraints read this cached list instead of re-deriving the span,
-    // which removes the DaySlot-vs-CrewSeat cartesian-product joins that
-    // previously dominated incremental score calculation.
-    // "removal" is suppressed because the variableListenerClass form of
-    // @ShadowVariable is deprecated in Timefold 1.27. It still works on the
-    // Community Edition (the version this project pins) and is kept for
-    // that reason; the warning is only relevant on a future major upgrade.
-    @SuppressWarnings({"deprecation", "removal"})
-    @ShadowVariable(variableListenerClass = BlockSpanVariableListener.class,
-                    sourceVariableName = "startDay")
-    @ShadowVariable(variableListenerClass = BlockSpanVariableListener.class,
-                    sourceVariableName = "days")
+    // days (plus the fixed fact factory and the calendars of the current
+    // SolveContext), so Timefold recomputes it through the supplier below
+    // whenever either source variable changes. Day-based constraints read
+    // this cached list instead of re-deriving the span, which removes the
+    // DaySlot-vs-CrewSeat cartesian-product joins that previously dominated
+    // incremental score calculation.
+    // Timefold 2.x custom shadow variable (replaces the 1.x
+    // BlockSpanVariableListener / @ShadowVariable(variableListenerClass)).
+    @ShadowVariable(supplierName = "coveredWorkingDaysSupplier")
     public List<Integer> coveredWorkingDays = List.of();
+
+    /**
+     * Supplier of {@link #coveredWorkingDays}: pure and deterministic, modifies no field. Reads the static
+     * {@code SolveContext.current()} calendars, which are fixed for the duration of a solve or score calculation.
+     */
+    @ShadowSources({"startDay", "days"})
+    public List<Integer> coveredWorkingDaysSupplier() {
+        return WorkingDays.computeCoveredWorkingDays(this);
+    }
 
     // helper used in constraints where hours is needed
     public int chosenHours() {

@@ -76,7 +76,7 @@ final class BlockConstraints {
     static final int UNDERFILL_MULT = 10; // huge so it dominates other hard constraints
     Constraint noUnderfillByBlock(ConstraintFactory f) {
         var perBlock = f.forEach(BlockDecision.class)
-            .join(f.forEach(CrewSeat.class),
+            .join(f.forEachIncludingUnassigned(CrewSeat.class),
                 Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
             .groupBy((b, s) -> b,
                     ConstraintCollectors.toList((b, s) -> s));
@@ -97,7 +97,7 @@ final class BlockConstraints {
 
     Constraint overfillAtMostOneDayByBlock(ConstraintFactory f) {
         var perBlock = f.forEach(BlockDecision.class)
-            .join(f.forEach(CrewSeat.class),
+            .join(f.forEachIncludingUnassigned(CrewSeat.class),
                 Joiners.equal((BlockDecision b) -> b.id, (CrewSeat s) -> s.blockId))
             .groupBy((b, s) -> b,
                     ConstraintCollectors.toList((b, s) -> s));

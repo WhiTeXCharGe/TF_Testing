@@ -10,18 +10,19 @@ import java.util.TreeSet;
 
 import org.junit.jupiter.api.Test;
 
-import ai.timefold.solver.core.api.score.stream.ConstraintMetaModel;
-import ai.timefold.solver.core.api.solver.SolverFactory;
-import ai.timefold.solver.core.impl.score.stream.common.AbstractConstraintStreamScoreDirectorFactory;
-import ai.timefold.solver.core.impl.solver.DefaultSolverFactory;
+import ai.timefold.solver.core.api.score.stream.Constraint;
+import ai.timefold.solver.core.api.score.stream.test.ConstraintVerifier;
 
 import com.yourorg.scheduler.constraints.SinglePassConstraints;
+import com.yourorg.scheduler.model.BlockDecision;
+import com.yourorg.scheduler.model.CrewSeat;
 import com.yourorg.scheduler.model.SinglePassPlan;
 import com.yourorg.scheduler.solver.SolverFactories;
 
 /**
- * Pins the constraint ids and their registration order. The ids come from the solver's own constraint
- * meta-model, i.e. from what {@link SinglePassConstraints#defineConstraints} really registers.
+ * Pins the constraint ids and their registration order. The ids come from what
+ * {@link SinglePassConstraints#defineConstraints} really registers, called with a real {@code ConstraintFactory}
+ * through the public {@link ConstraintVerifier} API (no internal solver classes).
  */
 class ConstraintNamesTest {
 
@@ -55,14 +56,16 @@ class ConstraintNamesTest {
             "block-recommend-headcount-range");
 
     @Test
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings("unchecked")
     void names_and_order_unchanged() throws Exception {
-        SolverFactory<SinglePassPlan> factory = SolverFactories.forTests(null, null);
-        Object sdf = ((DefaultSolverFactory) factory).getScoreDirectorFactory();
-        assertTrue(sdf instanceof AbstractConstraintStreamScoreDirectorFactory, String.valueOf(sdf));
-        ConstraintMetaModel meta = ((AbstractConstraintStreamScoreDirectorFactory) sdf).getConstraintMetaModel();
         List<String> actual = new ArrayList<>();
-        meta.getConstraints().forEach(c -> actual.add(c.getConstraintRef().constraintName()));
+        // verifyThat builds the score director factory at once, so the lambda runs with a real ConstraintFactory
+        ConstraintVerifier.build(new SinglePassConstraints(), SinglePassPlan.class, BlockDecision.class, CrewSeat.class)
+                .verifyThat((provider, factory) -> {
+                    Constraint[] all = provider.defineConstraints(factory);
+                    for (Constraint c : all) actual.add(c.getConstraintRef().id());
+                    return all[0];
+                });
         assertEquals(EXPECTED_IDS, actual);
         assertEquals(23, actual.size());
         assertTrue(!actual.contains("seat-worker-available-all-days"), "must stay unregistered");
@@ -72,6 +75,9 @@ class ConstraintNamesTest {
         Map<String, Object> initial = (Map<String, Object>) golden.get("initial");
         Map<String, Object> goldenConstraints = (Map<String, Object>) initial.get("constraints");
         assertEquals(new TreeSet<>(goldenConstraints.keySet()), new TreeSet<>(actual));
+
+        // the solver itself accepts the ids (2.x validates them when the score director factory is built)
+        assertTrue(SolverFactories.forTests(10, 1L).buildSolver() != null);
     }
 
     @Test
