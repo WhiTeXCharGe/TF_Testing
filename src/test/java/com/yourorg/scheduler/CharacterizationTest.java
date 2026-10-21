@@ -27,6 +27,7 @@ import com.yourorg.scheduler.model.SinglePassPlan;
  */
 class CharacterizationTest {
 
+    static final Path TINY_FIXTURE = Path.of("src", "test", "resources", "fixtures", "tiny");
     static final Path SMALL_FIXTURE = Path.of("src", "test", "resources", "fixtures", "small");
     static final Path DATAGEN_FIXTURE = Path.of("src", "test", "resources", "fixtures", "datagen");
     static final Path DATAGEN_GOLDEN = Characterization.GOLDEN_DIR.resolve("datagen-1.27.json");
