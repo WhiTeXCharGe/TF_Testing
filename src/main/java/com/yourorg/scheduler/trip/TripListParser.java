@@ -110,7 +110,12 @@ public final class TripListParser {
                                 + " is not a map, ignored: " + t);
                         continue;
                     }
-                    cands.add(candidate(tm, outer != null ? outer : text(tm.get("worker")), ctx));
+                    String inner = text(tm.get("worker"));
+                    if (outer != null && inner != null && !outer.equals(inner)) {
+                        warnings.add("trip_list worker " + outer + ": trip #" + ti + " has its own worker '" + inner
+                                + "', which differs; the worker of the parent entry (" + outer + ") is used");
+                    }
+                    cands.add(candidate(tm, outer != null ? outer : inner, ctx));
                 }
             } else {
                 cands.add(candidate(m, text(m.get("worker")), ctx));
@@ -169,9 +174,9 @@ public final class TripListParser {
             if (c.duplicate) continue;
             if (c.flex == Flexibility.FIXED) {
                 boolean enforced = c.valid() && !notEnforced.contains(c);
-                entries.add(new TripEntry(c.buildable() ? c.toTrip() : null, c.raw, enforced));
+                entries.add(new TripEntry(c.buildable() ? c.toTrip() : null, c.raw, enforced, c.worker));
             } else if (c.valid()) {
-                entries.add(new TripEntry(c.toTrip(), c.raw, false));
+                entries.add(new TripEntry(c.toTrip(), c.raw, false, c.worker));
             } // an invalid Flexible trip is dropped
         }
         return entries;
@@ -180,7 +185,7 @@ public final class TripListParser {
     private static Cand candidate(Map<?, ?> input, String worker, TripContext ctx) {
         Cand c = new Cand();
         c.raw = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : input.entrySet()) c.raw.put(String.valueOf(e.getKey()), e.getValue());
+        for (Map.Entry<?, ?> e : input.entrySet()) c.raw.put(String.valueOf(e.getKey()), plainValue(e.getValue()));
         c.extra = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : c.raw.entrySet()) {
             if (!KNOWN_KEYS.contains(e.getKey())) c.extra.put(e.getKey(), e.getValue());
@@ -227,7 +232,7 @@ public final class TripListParser {
         if (c.region == null) {
             c.blocking.add("region is missing");
         } else if (ctx.regionIds() == null || !ctx.regionIds().contains(c.region)) {
-            c.blocking.add("region '" + c.region + "' is not in EnvConfig region_list");
+            c.blocking.add("region '" + c.region + "' is unknown (not in region_list, the fabs or the transit map)");
         }
         return c;
     }
@@ -256,6 +261,12 @@ public final class TripListParser {
             }
         }
         return null;
+    }
+
+    /** Dates SnakeYAML (or a caller) produced become yyyy/MM/dd strings; everything else is returned as is. */
+    private static Object plainValue(Object v) {
+        LocalDate d = (v instanceof LocalDate || v instanceof Date) ? toDate(v) : null;
+        return d == null ? v : DATE_FORMAT.format(d);
     }
 
     private static String text(Object o) {

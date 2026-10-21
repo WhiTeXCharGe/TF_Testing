@@ -55,20 +55,26 @@ reads and validates it. The solver ignores it: a Schedule.yaml with a `trip_list
     trip_list:
     - worker: w1
       trips:
-      - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed, description: ...}
+      - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed, description: ""}
       - {start_date: 2026/09/10, end_date: 2026/09/15, region: r2, plan_flexibility: Flexible}
 
-The flat form (`worker` on each trip, no `trips:` list) is read too. Dates are `YYYY/MM/DD` or `YYYY-MM-DD`. `flexibility` is an
-alias of `plan_flexibility` (Fixed or Flexible, any case). Any other key of a trip is kept (`Trip.extra`, and `TripEntry.raw` has
-the whole map as read).
+The flat form (`worker` on each trip, no `trips:` list) is read too; both forms can be mixed in one list. Dates are `YYYY/MM/DD` or
+`YYYY-MM-DD` with zero padding (`2026/09/01`, not `2026/9/1`). `flexibility` is an alias of `plan_flexibility` (Fixed or Flexible, any
+case). Any other key of a trip is kept (`Trip.extra`, and `TripEntry.raw` has the whole map). A date value that YAML turned into a
+date object is converted to a `yyyy/MM/dd` string in `raw`; strings stay as written.
 
-`trip/TripListParser.parse(raw, TripContext, strict)` returns one `TripEntry(trip, raw, enforced)` per trip in input order and a
-list of warnings. `enforced` is true only for a valid Fixed trip that survives the overlap check; a valid Flexible trip is listed
-with `enforced=false`. A broken Fixed trip keeps an entry (not enforced; `trip` is null when it cannot be built) so that it can be
-copied to the output unchanged; a broken Flexible trip is dropped. Broken means: worker not in EnvConfig, missing or unparseable
-`start_date` / `end_date` / `region`, region not in EnvConfig, `start > end`, or `start == end` inside one trip. An unknown or
-missing `plan_flexibility` is treated as Flexible. Two valid Fixed trips of one worker that overlap (touching at an end date is
-fine) keep the earlier one enforced. Exact duplicates are dropped silently. Trips outside the plan range are kept.
+`trip/TripListParser.parse(raw, TripContext, strict)` returns one `TripEntry(trip, raw, enforced, worker)` per trip in input order
+and a list of warnings. `enforced` is true only for a valid Fixed trip that survives the overlap check; a valid Flexible trip is
+listed with `enforced=false`. `worker` is the owner (the nested parent's worker, else the trip's own `worker`, trimmed; null = no
+owner); exporters must use `entry.worker()`, never `raw.get("worker")` (a nested `raw` has no worker key). A broken Fixed trip
+keeps an entry (not enforced; `trip` is null when it cannot be built, `worker` is still set) so that it can be copied to the output
+unchanged; a broken Flexible trip is dropped. Broken means: worker not in EnvConfig, missing or unparseable `start_date` /
+`end_date` / `region`, unknown region (not a known region: `region_list`, the fabs' regions or the transit map), `start > end`, or
+`start == end` inside one trip. A MISSING or unknown `plan_flexibility` warns and the trip is treated as Flexible. If a nested trip
+has its own `worker` that differs from its parent's, that warns and the parent's worker is used. Two valid Fixed trips of one
+worker that overlap (touching at an end date is fine) keep the earlier one enforced (sorted by start, then end, then input order).
+Exact duplicates are dropped silently. Trips outside the plan range are kept. A `trips:` that is not a list, or an element that is
+not a map, is dropped with a warning (it never reaches the output).
 
 Warnings are printed as `[trips] WARN <text>` and appended to `load_log.txt`; they are also in `ParsedSchedule.tripWarnings`
 (entries in `tripEntries`, both empty without a `trip_list`). `trip_validation: strict` (see the parameters) turns any warning

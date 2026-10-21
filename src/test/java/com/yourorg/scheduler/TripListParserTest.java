@@ -188,6 +188,8 @@ class TripListParserTest {
         assertTrue(r.warnings().isEmpty(), r.warnings().toString());
         assertEquals(LocalDate.of(2026, 9, 1), r.entries().get(0).trip().start());
         assertEquals(LocalDate.of(2026, 9, 10), r.entries().get(0).trip().end());
+        assertEquals("2026/09/01", r.entries().get(0).raw().get("start_date"));
+        assertEquals("2026/09/10", r.entries().get(0).raw().get("end_date"));
 
         // java.time objects are accepted as well
         Map<String, Object> trip = new LinkedHashMap<>();
@@ -411,6 +413,176 @@ class TripListParserTest {
                 List.copyOf(e.raw().keySet()), "raw keeps the original key order");
         assertEquals(Set.of("ticket", "meta"), e.trip().extra().keySet());
         assertEquals("install", e.trip().description());
+    }
+
+    // ------------------------------------------------------------------ review fixes
+
+    @Test
+    void worker_is_set_for_nested_and_flat_and_incomplete_fixed_entries() {
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                  - {end_date: 2026/09/20, region: r1, plan_flexibility: Fixed}
+                - {worker: w2, start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                - {worker: w2, start_date: 2026/09/12, region: r1, plan_flexibility: Fixed}
+                - {worker: ghost, start_date: 2026/09/12, end_date: 2026/09/14, region: r1, plan_flexibility: Fixed}
+                - {start_date: 2026/09/12, end_date: 2026/09/14, region: r1, plan_flexibility: Fixed}
+                """);
+        assertEquals(6, r.entries().size());
+        assertEquals("w1", r.entries().get(0).worker());
+        assertNotNull(r.entries().get(0).trip());
+        assertNull(r.entries().get(1).trip());
+        assertEquals("w1", r.entries().get(1).worker(), "incomplete nested Fixed trip still knows its worker");
+        assertFalse(r.entries().get(1).raw().containsKey("worker"), "nested raw has no worker key");
+        assertEquals("w2", r.entries().get(2).worker());
+        assertNull(r.entries().get(3).trip());
+        assertEquals("w2", r.entries().get(3).worker(), "incomplete flat Fixed trip still knows its worker");
+        assertEquals("ghost", r.entries().get(4).worker());
+        assertNull(r.entries().get(5).worker(), "no owner");
+        assertNull(r.entries().get(5).trip());
+        // the 3-argument constructor takes the worker from the trip
+        TripEntry viaShortCtor = new TripEntry(r.entries().get(0).trip(), Map.of(), true);
+        assertEquals("w1", viaShortCtor.worker());
+        assertNull(new TripEntry(null, Map.of(), false).worker());
+    }
+
+    @Test
+    void outer_inner_worker_conflict_warns() {
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {worker: w2, start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                  - {worker: w1, start_date: 2026/09/12, end_date: 2026/09/14, region: r1, plan_flexibility: Fixed}
+                """);
+        assertEquals(1, r.warnings().size(), r.warnings().toString());
+        assertTrue(r.warnings().get(0).contains("w2") && r.warnings().get(0).contains("w1"), r.warnings().get(0));
+        assertEquals(2, r.entries().size());
+        assertEquals("w1", r.entries().get(0).worker(), "outer worker wins");
+        assertEquals("w1", r.entries().get(0).trip().worker());
+        assertTrue(r.entries().get(0).enforced());
+    }
+
+    @Test
+    void missing_plan_flexibility_warns_and_is_flexible() {
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1}
+                """);
+        assertEquals(1, r.warnings().size());
+        assertTrue(r.warnings().get(0).contains("plan_flexibility"), r.warnings().get(0));
+        assertEquals(1, r.entries().size());
+        assertFalse(r.entries().get(0).enforced());
+        assertEquals(Flexibility.FLEXIBLE, r.entries().get(0).trip().flexibility());
+    }
+
+    @Test
+    void date_objects_in_raw_become_slash_strings() {
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026-09-01, end_date: '2026-09-10', region: r1, plan_flexibility: Fixed,
+                     ticket_date: 2026-09-05, note: 2026/09/06}
+                """);
+        assertTrue(r.warnings().isEmpty(), r.warnings().toString());
+        Map<String, Object> raw = r.entries().get(0).raw();
+        assertEquals("2026/09/01", raw.get("start_date"), "Date becomes a yyyy/MM/dd string");
+        assertEquals("2026-09-10", raw.get("end_date"), "strings stay as the user wrote them");
+        assertEquals("2026/09/05", raw.get("ticket_date"), "any date value, not only start/end");
+        assertEquals("2026/09/06", raw.get("note"));
+        assertEquals("2026/09/05", r.entries().get(0).trip().extra().get("ticket_date"));
+
+        Map<String, Object> trip = new LinkedHashMap<>();
+        trip.put("worker", "w1");
+        trip.put("start_date", LocalDate.of(2026, 10, 1));
+        trip.put("end_date", LocalDate.of(2026, 10, 5));
+        trip.put("region", "r1");
+        trip.put("plan_flexibility", "Fixed");
+        r = TripListParser.parse(List.of(trip), CTX, false);
+        assertEquals("2026/10/01", r.entries().get(0).raw().get("start_date"));
+        assertEquals(LocalDate.of(2026, 10, 1), r.entries().get(0).trip().start());
+        assertEquals(LocalDate.of(2026, 10, 1), trip.get("start_date"), "the input map is not changed");
+    }
+
+    @Test
+    void numeric_worker_matches_string_id() {
+        TripContext ctx = new TripContext(Set.of("1", "2"), Set.of("r1"), CTX.planStart(), CTX.planEnd());
+        TripParseResult r = TripListParser.parse(yaml("""
+                - worker: 1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                - {worker: ' 2 ', start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                """), ctx, false);
+        assertTrue(r.warnings().isEmpty(), r.warnings().toString());
+        assertEquals("1", r.entries().get(0).worker());
+        assertEquals("1", r.entries().get(0).trip().worker());
+        assertTrue(r.entries().get(0).enforced());
+        assertEquals("2", r.entries().get(1).worker());
+        assertTrue(r.entries().get(1).enforced());
+    }
+
+    @Test
+    void mixed_flat_and_nested_list() {
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                - {worker: w1, start_date: 2026/09/10, end_date: 2026/09/15, region: r2, plan_flexibility: Fixed}
+                - worker: w2
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/03, region: r2, plan_flexibility: Flexible}
+                """);
+        assertTrue(r.warnings().isEmpty(), r.warnings().toString());
+        assertEquals(3, r.entries().size());
+        assertTrue(r.entries().get(0).enforced());
+        assertTrue(r.entries().get(1).enforced(), "touching trips across the two forms");
+        assertFalse(r.entries().get(2).enforced());
+        assertEquals(List.of("w1", "w1", "w2"), r.entries().stream().map(TripEntry::worker).toList());
+    }
+
+    @Test
+    void trip_fully_inside_other_fixed_is_not_enforced() {
+        // the inner trip is listed FIRST; the earlier one by start (the outer) still wins
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/10, end_date: 2026/09/15, region: r2, plan_flexibility: Fixed}
+                  - {start_date: 2026/09/01, end_date: 2026/09/30, region: r1, plan_flexibility: Fixed}
+                  - {start_date: 2026/09/20, end_date: 2026/09/25, region: r2, plan_flexibility: Fixed}
+                  - {start_date: 2026/09/30, end_date: 2026/10/05, region: r2, plan_flexibility: Fixed}
+                """);
+        assertEquals(2, r.warnings().size(), r.warnings().toString());
+        assertFalse(r.entries().get(0).enforced());
+        assertTrue(r.entries().get(1).enforced());
+        assertFalse(r.entries().get(2).enforced());
+        assertTrue(r.entries().get(3).enforced(), "touches the end of the enforced outer trip");
+    }
+
+    @Test
+    void equal_start_fixed_trips_keep_input_order() {
+        // same start and end, different region (not duplicates): the first in the input stays enforced
+        TripParseResult r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r2, plan_flexibility: Fixed}
+                  - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed}
+                """);
+        assertEquals(1, r.warnings().size(), r.warnings().toString());
+        assertTrue(r.entries().get(0).enforced());
+        assertFalse(r.entries().get(1).enforced());
+        assertEquals("r2", r.entries().get(0).trip().region());
+
+        // same start, different end: the one ending first (sort by start, then end) is the earlier one
+        r = parse("""
+                - worker: w1
+                  trips:
+                  - {start_date: 2026/09/01, end_date: 2026/09/20, region: r1, plan_flexibility: Fixed}
+                  - {start_date: 2026/09/01, end_date: 2026/09/05, region: r1, plan_flexibility: Fixed}
+                """);
+        assertEquals(1, r.warnings().size());
+        assertFalse(r.entries().get(0).enforced());
+        assertTrue(r.entries().get(1).enforced());
     }
 
     // ------------------------------------------------------------------ wiring into the schedule file
