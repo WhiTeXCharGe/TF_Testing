@@ -1,7 +1,8 @@
 package com.yourorg.scheduler.model;
 
-import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import java.time.LocalDate;
+
+import ai.timefold.solver.core.api.domain.common.PlanningId;
 
 public class DaySlot {
     @PlanningId public int id;

@@ -13,9 +13,9 @@ import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 import com.yourorg.scheduler.model.CrewSeat;
-import com.yourorg.scheduler.model.EmployeeFact;
 
-import ai.timefold.solver.core.api.domain.valuerange.CountableValueRange;
+import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
+import com.yourorg.scheduler.model.EmployeeFact;
 
 /**
  * The initial value of a seat is accepted by {@code contains} (Timefold 1.35 validation) but is invisible to the
@@ -31,7 +31,7 @@ class ValidationTolerantRangeTest {
         return new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
     }
 
-    private static List<EmployeeFact> everythingOffered(CountableValueRange<EmployeeFact> r, Random rnd) {
+    private static List<EmployeeFact> everythingOffered(ValueRange<EmployeeFact> r, Random rnd) {
         List<EmployeeFact> seen = new ArrayList<>();
         for (Iterator<EmployeeFact> it = r.createOriginalIterator(); it.hasNext();) seen.add(it.next());
         Iterator<EmployeeFact> it = r.createRandomIterator(rnd);
@@ -49,7 +49,7 @@ class ValidationTolerantRangeTest {
         EmployeeFact initial = freshUnassigned();
         seat.employee = initial;
 
-        CountableValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
+        ValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
         assertTrue(r.contains(initial), "initial value must pass validation");
         assertFalse(r.contains(freshUnassigned()), "another id-0 instance must not be accepted");
         assertTrue(r.contains(m1));
@@ -68,7 +68,7 @@ class ValidationTolerantRangeTest {
         seat.pinnedFixed = true; // pinnedWid stays null, as PlanBuilder builds it
         seat.setCandidateEmployees(List.of());
         seat.employee = real;
-        CountableValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
+        ValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
         assertTrue(r.contains(real));
         assertEquals(1, r.getSize());
         for (EmployeeFact e : everythingOffered(r, new Random(2))) assertEquals(0, e.id);
@@ -80,7 +80,7 @@ class ValidationTolerantRangeTest {
         CrewSeat seat = new CrewSeat();
         seat.setCandidateEmployees(List.of(ok));
         seat.employee = gated;
-        CountableValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
+        ValueRange<EmployeeFact> r = seat.eligibleEmployeesForSeat();
         assertTrue(r.contains(gated));
         assertEquals(2, r.getSize()); // ok + UNASSIGNED, exactly the original range
         for (EmployeeFact e : everythingOffered(r, new Random(3))) assertTrue(e != gated);

@@ -1,19 +1,19 @@
 package com.yourorg.scheduler.model;
 
+import ai.timefold.solver.core.api.domain.common.PlanningId;
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.entity.PlanningPin;
-import ai.timefold.solver.core.api.domain.lookup.PlanningId;
-import ai.timefold.solver.core.api.domain.valuerange.CountableValueRange;
+import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
-import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListValueRange;
+import ai.timefold.solver.core.impl.domain.valuerange.ListValueRange;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-@PlanningEntity(difficultyComparatorClass = CrewSeat.DifficultyComparator.class)
+@PlanningEntity(comparatorClass = CrewSeat.DifficultyComparator.class)
 public class CrewSeat {
     @PlanningId public int id;
 
@@ -55,7 +55,7 @@ public class CrewSeat {
     public List<EmployeeFact> getCandidateEmployees() { return candidateEmployees; }
 
     @ValueRangeProvider(id = "eligibleEmployeesForSeat")
-    public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
+    public ValueRange<EmployeeFact> eligibleEmployeesForSeat() {
         // Pinned → pin hard
         if (pinnedFixed && pinnedWid != null) {
             for (EmployeeFact e : candidateEmployees) {
@@ -89,13 +89,13 @@ public class CrewSeat {
      * outside the original range (see {@link ValidationTolerantRange}). The original range is returned unchanged
      * otherwise, so UNASSIGNED is never offered to manager seats.
      */
-    private CountableValueRange<EmployeeFact> tolerant(CountableValueRange<EmployeeFact> range) {
+    private ValueRange<EmployeeFact> tolerant(ValueRange<EmployeeFact> range) {
         return new ValidationTolerantRange<>(range, employee);
     }
 
     @PlanningVariable(
             valueRangeProviderRefs = "eligibleEmployeesForSeat",
-            strengthComparatorClass = EmployeeStrength.class
+            comparatorClass = EmployeeStrength.class
     )
     public EmployeeFact employee;
 

@@ -1,12 +1,13 @@
 package com.yourorg.scheduler.model;
 
-import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+
+import ai.timefold.solver.core.api.domain.common.PlanningId;
 
 public class EmployeeFact {
     @PlanningId public int id;     // 0 = UNASSIGNED

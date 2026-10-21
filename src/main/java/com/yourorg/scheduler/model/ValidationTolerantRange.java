@@ -3,7 +3,6 @@ package com.yourorg.scheduler.model;
 import java.util.Iterator;
 import java.util.Random;
 
-import ai.timefold.solver.core.api.domain.valuerange.CountableValueRange;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
 import ai.timefold.solver.core.impl.domain.valuerange.AbstractCountableValueRange;
 import ai.timefold.solver.core.impl.domain.valuerange.sort.SortableValueRange;
@@ -23,10 +22,10 @@ import ai.timefold.solver.core.impl.domain.valuerange.sort.ValueRangeSorter;
  */
 public final class ValidationTolerantRange<T> extends AbstractCountableValueRange<T> {
 
-    private final CountableValueRange<T> base;
+    private final ValueRange<T> base;
     private final T tolerated;
 
-    public ValidationTolerantRange(CountableValueRange<T> base, T tolerated) {
+    public ValidationTolerantRange(ValueRange<T> base, T tolerated) {
         this.base = base;
         this.tolerated = tolerated;
     }

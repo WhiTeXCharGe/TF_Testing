@@ -2,9 +2,8 @@ package com.yourorg.scheduler.model;
 
 import com.yourorg.scheduler.calendar.WorkingDays;
 
-import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
 import ai.timefold.solver.core.api.domain.variable.VariableListener;
-import ai.timefold.solver.core.api.score.director.ScoreDirector;
+import ai.timefold.solver.core.impl.score.director.ScoreDirector;
 
 // Keeps BlockDecision.coveredWorkingDays in sync with the block's startDay
 // and days planning variables. Centralising the working-day expansion in a

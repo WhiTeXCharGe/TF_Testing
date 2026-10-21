@@ -1,18 +1,18 @@
 package com.yourorg.scheduler.model;
 
+import ai.timefold.solver.core.api.domain.common.PlanningId;
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.entity.PlanningPin;
-import ai.timefold.solver.core.api.domain.lookup.PlanningId;
-import ai.timefold.solver.core.api.domain.valuerange.CountableValueRange;
+import ai.timefold.solver.core.api.domain.valuerange.ValueRange;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeFactory;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
 import ai.timefold.solver.core.api.domain.variable.ShadowVariable;
-import ai.timefold.solver.core.impl.domain.valuerange.buildin.collection.ListValueRange;
+import ai.timefold.solver.core.impl.domain.valuerange.ListValueRange;
 import java.util.Comparator;
 import java.util.List;
 
-@PlanningEntity(difficultyComparatorClass = BlockDecision.DifficultyComparator.class)
+@PlanningEntity(comparatorClass = BlockDecision.DifficultyComparator.class)
 public class BlockDecision {
     @PlanningId public int id;
 
@@ -36,7 +36,7 @@ public class BlockDecision {
 
     public int fixedAssignedHoursActual = 0;
     @PlanningVariable(valueRangeProviderRefs = "vrStartWithinWindow",
-              strengthComparatorClass = StartDayStrength.class)
+              comparatorClass = StartDayStrength.class)
     public Integer startDay;
 
     @PlanningVariable(valueRangeProviderRefs = "vrDaysWithinWindow")
@@ -86,11 +86,11 @@ public class BlockDecision {
 
     // --- PATCH: ValueRangeFactory instead of hand-built lists ---
     @PlanningVariable(valueRangeProviderRefs = "vrAllowedHours",
-                    strengthComparatorClass = HoursStrength.class)
+                    comparatorClass = HoursStrength.class)
     public Integer hours; // null at start → falls back to first allowed
 
     @ValueRangeProvider(id = "vrStartWithinWindow")
-    public CountableValueRange<Integer> vrStartWithinWindow() {
+    public ValueRange<Integer> vrStartWithinWindow() {
         // Timefold 1.35: an IntValueRange cannot be sorted by the variable's strengthComparatorClass
         // (UnsupportedOperationException), a ListValueRange can. Same values, same ascending order as before.
         int to = (phaseNum == 1) ? windowStart + 1 : windowEnd + 1;
@@ -101,14 +101,14 @@ public class BlockDecision {
         return new ValidationTolerantRange<>(new ListValueRange<>(l), startDay);
     }
     @ValueRangeProvider(id = "vrDaysWithinWindow")
-    public CountableValueRange<Integer> vrDaysWithinWindow() {
+    public ValueRange<Integer> vrDaysWithinWindow() {
         int maxLen = Math.max(1, windowEnd - windowStart + 1);
         return ValueRangeFactory.createIntValueRange(1, maxLen + 1);
     }
 
     //  discrete list value range for hours (8,10,12, …)
     @ValueRangeProvider(id = "vrAllowedHours")
-    public CountableValueRange<Integer> vrAllowedHours() {
+    public ValueRange<Integer> vrAllowedHours() {
         List<Integer> a = (allowed == null || allowed.isEmpty())
                 ? List.of(8)
                 : allowed.stream().distinct().sorted().toList();

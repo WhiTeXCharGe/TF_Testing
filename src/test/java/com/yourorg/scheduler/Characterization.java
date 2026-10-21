@@ -14,9 +14,9 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import ai.timefold.solver.core.api.score.HardMediumSoftScore;
 import ai.timefold.solver.core.api.score.analysis.ConstraintAnalysis;
 import ai.timefold.solver.core.api.score.analysis.ScoreAnalysis;
-import ai.timefold.solver.core.api.score.buildin.hardmediumsoft.HardMediumSoftScore;
 import ai.timefold.solver.core.api.solver.SolutionManager;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
@@ -75,10 +75,10 @@ final class Characterization {
         ScoreAnalysis<HardMediumSoftScore> analysis = sm.analyze(p);
         Map<String, ConstraintTotal> totals = new TreeMap<>();
         for (ConstraintAnalysis<HardMediumSoftScore> ca : analysis.constraintAnalyses()) {
-            ConstraintTotal previous = totals.put(ca.constraintName(),
+            ConstraintTotal previous = totals.put(ca.constraintId(),
                     new ConstraintTotal(String.valueOf(ca.score()), ca.matchCount()));
             if (previous != null) {
-                throw new IllegalStateException("Duplicate constraint name " + ca.constraintName());
+                throw new IllegalStateException("Duplicate constraint name " + ca.constraintId());
             }
         }
         return new Snapshot(String.valueOf(analysis.score()), totals);
