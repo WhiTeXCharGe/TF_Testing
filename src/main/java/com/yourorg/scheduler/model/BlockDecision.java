@@ -96,10 +96,9 @@ public class BlockDecision {
         int to = (phaseNum == 1) ? windowStart + 1 : windowEnd + 1;
         List<Integer> l = new java.util.ArrayList<>(Math.max(0, to - windowStart));
         for (int i = windowStart; i < to; i++) l.add(i);
-        // 1.35 validates the initial value against the range; a warm start (applyInitialPlan) may put a phase-1 block
-        // after windowStart. Offer the CURRENT value when it is missing (1.27 tolerated it).
-        if (startDay != null && !l.contains(startDay)) l.add(startDay);
-        return new ListValueRange<>(l);
+        // A warm start (applyInitialPlan) may put a phase-1 block after windowStart; 1.35 validates the initial value
+        // with contains() only, so tolerate it there without offering it to the search.
+        return new ValidationTolerantRange<>(new ListValueRange<>(l), startDay);
     }
     @ValueRangeProvider(id = "vrDaysWithinWindow")
     public CountableValueRange<Integer> vrDaysWithinWindow() {

@@ -56,34 +56,15 @@ public class CrewSeat {
 
     @ValueRangeProvider(id = "eligibleEmployeesForSeat")
     public CountableValueRange<EmployeeFact> eligibleEmployeesForSeat() {
-        return new ListValueRange<>(withCurrentValue(baseRange()));
-    }
-
-    /**
-     * Timefold 1.35 validates once, when a working solution is set, that every initial planning value is inside its
-     * range (1.27 did not). The initial employee can legitimately be outside it: UNASSIGNED on a manager seat, the real
-     * employee of a pinned seat (pinnedWid is never set), or a warm-start employee that fails the candidate gates.
-     * So the range also offers the seat's CURRENT value when it is missing. Once the value has been changed
-     * the next range computed no longer contains it, i.e. the original ranges apply (see Upgrade notes in the README).
-     */
-    private List<EmployeeFact> withCurrentValue(List<EmployeeFact> range) {
-        EmployeeFact cur = employee;
-        if (cur == null || range.contains(cur)) return range;
-        List<EmployeeFact> out = new ArrayList<>(range);
-        out.add(cur);
-        return out;
-    }
-
-    private List<EmployeeFact> baseRange() {
         // Pinned → pin hard
         if (pinnedFixed && pinnedWid != null) {
             for (EmployeeFact e : candidateEmployees) {
                 if (e != null && pinnedWid.equals(e.wid)) {
-                    return List.of(e);
+                    return tolerant(new ListValueRange<>(List.of(e)));
                 }
             }
             // For pinned but missing
-            return List.of(UNASSIGNED);
+            return tolerant(new ListValueRange<>(List.of(UNASSIGNED)));
         }
 
         List<EmployeeFact> base = (candidateEmployees == null) ? List.of() : candidateEmployees;
@@ -92,15 +73,24 @@ public class CrewSeat {
             // STRICT: manager-only, no UNASSIGNED fallback
             base = base.stream().filter(emp -> emp != null && emp.isManager).toList();
             // IMPORTANT: do NOT add UNASSIGNED here
-            return base;
+            return tolerant(new ListValueRange<>(base));
         } else {
             // Non-manager seat may keep UNASSIGNED as a legal value to ease feasibility
             // if (base.isEmpty()) base = List.of(UNASSIGNED);
             List<EmployeeFact> list = new ArrayList<>(base == null? List.of(): base);
             list.add(UNASSIGNED);
             list = list.stream().distinct().toList();
-            return list;
+            return tolerant(new ListValueRange<>(list));
         }
+    }
+
+    /**
+     * Timefold 1.35 validates the initial value against the range via {@code contains} only; the initial value may be
+     * outside the original range (see {@link ValidationTolerantRange}). The original range is returned unchanged
+     * otherwise, so UNASSIGNED is never offered to manager seats.
+     */
+    private CountableValueRange<EmployeeFact> tolerant(CountableValueRange<EmployeeFact> range) {
+        return new ValidationTolerantRange<>(range, employee);
     }
 
     @PlanningVariable(
