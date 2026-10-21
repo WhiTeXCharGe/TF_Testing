@@ -51,7 +51,7 @@ final class SeatConstraints {
             .asConstraint("seat-worker-available-all-days");
     }
 
-    // helper key (put inside EmployeeSchedule class, anywhere static)
+    // helper key for per-employee, per-day lookups
     static final class EmpDayKey {
         final int empId;
         final int dayId;

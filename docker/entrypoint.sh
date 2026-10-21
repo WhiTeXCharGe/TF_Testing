@@ -16,7 +16,7 @@ INPUT_DIR="${INPUT_DIR:-/work/input}"
 OUTPUT_DIR="${OUTPUT_DIR:-/work/output}"
 STATUS_DIR="${STATUS_DIR:-/work/status}"
 # Exported so the java solver process (which writes its own progress updates
-# into STATUS_FILE while solving — see EmployeeSchedule.writeRunningStatus)
+# into STATUS_FILE while solving — see solver.StatusReporter.writeRunningStatus)
 # resolves the same run/paths as this script.
 export RUN_ID INPUT_DIR OUTPUT_DIR STATUS_DIR
 
@@ -152,7 +152,7 @@ echo "[entrypoint] solve started (runId=${RUN_ID})"
 
 java -Xms1g -Xmx"${JVM_MAX_HEAP:-6g}" \
      -cp '/app/lib/*' \
-     com.yourorg.scheduler.EmployeeSchedule \
+     com.yourorg.scheduler.Main \
      "${ENV_FILE}" \
      "${SCHED_FILE_OUT}" &
 SOLVER_PID=$!

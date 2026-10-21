@@ -80,7 +80,7 @@
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.2.0</version>
         <configuration>
-          <mainClass>com.yourorg.scheduler.EmployeeSchedule</mainClass>
+          <mainClass>com.yourorg.scheduler.Main</mainClass>
         </configuration>
       </plugin>
     </plugins>

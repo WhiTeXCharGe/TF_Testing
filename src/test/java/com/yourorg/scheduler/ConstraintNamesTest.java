@@ -17,6 +17,7 @@ import ai.timefold.solver.core.impl.solver.DefaultSolverFactory;
 
 import com.yourorg.scheduler.constraints.SinglePassConstraints;
 import com.yourorg.scheduler.model.SinglePassPlan;
+import com.yourorg.scheduler.solver.SolverFactories;
 
 /**
  * Pins the constraint ids and their registration order. The ids come from the solver's own constraint
@@ -56,7 +57,7 @@ class ConstraintNamesTest {
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void names_and_order_unchanged() throws Exception {
-        SolverFactory<SinglePassPlan> factory = EmployeeSchedule.factoryForTests(null, null);
+        SolverFactory<SinglePassPlan> factory = SolverFactories.forTests(null, null);
         Object sdf = ((DefaultSolverFactory) factory).getScoreDirectorFactory();
         assertTrue(sdf instanceof AbstractConstraintStreamScoreDirectorFactory, String.valueOf(sdf));
         ConstraintMetaModel meta = ((AbstractConstraintStreamScoreDirectorFactory) sdf).getConstraintMetaModel();

@@ -26,6 +26,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import com.yourorg.scheduler.model.SinglePassPlan;
+import com.yourorg.scheduler.solver.SolverFactories;
 
 /**
  * Characterisation harness: records what the CURRENT code computes for a fixed input, so that later
@@ -69,7 +70,7 @@ final class Characterization {
 
     /** Score analysis of {@code p} as it stands (no solving). Every registered constraint is listed. */
     static Snapshot analyze(SinglePassPlan p) {
-        SolverFactory<SinglePassPlan> factory = EmployeeSchedule.factoryForTests(null, null);
+        SolverFactory<SinglePassPlan> factory = SolverFactories.forTests(null, null);
         SolutionManager<SinglePassPlan, HardMediumSoftScore> sm = SolutionManager.create(factory);
         ScoreAnalysis<HardMediumSoftScore> analysis = sm.analyze(p);
         Map<String, ConstraintTotal> totals = new TreeMap<>();
@@ -90,7 +91,7 @@ final class Characterization {
 
     /** Solves {@code p} with a step-count limit and a fixed random seed; returns the best solution. */
     static SinglePassPlan solveSeeded(SinglePassPlan p, int stepLimit, long seed) {
-        Solver<SinglePassPlan> solver = EmployeeSchedule.factoryForTests(stepLimit, seed).buildSolver();
+        Solver<SinglePassPlan> solver = SolverFactories.forTests(stepLimit, seed).buildSolver();
         return solver.solve(p);
     }
 
