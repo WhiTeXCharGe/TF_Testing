@@ -93,15 +93,12 @@ public class BlockDecision {
     public CountableValueRange<Integer> vrStartWithinWindow() {
         // Timefold 1.35: an IntValueRange cannot be sorted by the variable's strengthComparatorClass
         // (UnsupportedOperationException), a ListValueRange can. Same values, same ascending order as before.
-        if (phaseNum == 1) {
-            return ascendingRange(windowStart, windowStart + 1);
-        }
-        return ascendingRange(windowStart, windowEnd + 1);
-    }
-    /** Integers {@code fromInclusive .. toExclusive-1}, ascending (what createIntValueRange(from, to) enumerates). */
-    private static CountableValueRange<Integer> ascendingRange(int fromInclusive, int toExclusive) {
-        List<Integer> l = new java.util.ArrayList<>(Math.max(0, toExclusive - fromInclusive));
-        for (int i = fromInclusive; i < toExclusive; i++) l.add(i);
+        int to = (phaseNum == 1) ? windowStart + 1 : windowEnd + 1;
+        List<Integer> l = new java.util.ArrayList<>(Math.max(0, to - windowStart));
+        for (int i = windowStart; i < to; i++) l.add(i);
+        // 1.35 validates the initial value against the range; a warm start (applyInitialPlan) may put a phase-1 block
+        // after windowStart. Offer the CURRENT value when it is missing (1.27 tolerated it).
+        if (startDay != null && !l.contains(startDay)) l.add(startDay);
         return new ListValueRange<>(l);
     }
     @ValueRangeProvider(id = "vrDaysWithinWindow")
@@ -129,7 +126,7 @@ public class BlockDecision {
     // which removes the DaySlot-vs-CrewSeat cartesian-product joins that
     // previously dominated incremental score calculation.
     // "removal" is suppressed because the variableListenerClass form of
-    // @ShadowVariable is deprecated in Timefold 1.27+. It still works on the
+    // @ShadowVariable is deprecated in Timefold 1.27. It still works on the
     // Community Edition (the version this project pins) and is kept for
     // that reason; the warning is only relevant on a future major upgrade.
     @SuppressWarnings({"deprecation", "removal"})

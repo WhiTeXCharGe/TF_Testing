@@ -215,7 +215,7 @@ public class PlanBuilder {
                 cs.opId = w.opId;
                 cs.seatIndex = sidx;
                 cs.needManager = (sidx == 0);
-                cs.employee = CrewSeat.UNASSIGNED;
+                cs.employee = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
                 seats.add(cs);
             }
         }
@@ -245,8 +245,6 @@ public class PlanBuilder {
             cs.needManager = false;
 
             cs.pinnedFixed = true;
-            // Timefold 1.35 validates the initial value against the range, which for a pinned seat is built from pinnedWid.
-            cs.pinnedWid = fa.wid;
             Set<Integer> workDays = new HashSet<>();
             int maxHour = 0;
 
@@ -282,7 +280,7 @@ public class PlanBuilder {
 
 
             EmployeeFact ef = env.byWid.get(fa.wid);
-            if (ef == null) ef = CrewSeat.UNASSIGNED;
+            if (ef == null) ef = new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
             cs.employee = ef;
 
             seats.add(cs);
@@ -506,7 +504,6 @@ public class PlanBuilder {
 
                     // ---- Warm-start (NOT pinned) ----
                     seat.employee = emp;
-                    seat.warmStartEmployee = emp;
                     // seat.warmPinned = true; // do not pin
                     // seat.pinnedWid  = row.wid; // not used without pinning
 

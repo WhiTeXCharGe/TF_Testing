@@ -100,39 +100,39 @@
   "seeded_run": {
     "step_limit": 2000,
     "seed": 42,
-    "score": "-257435hard/0medium/-233505soft",
+    "score": "-261757hard/0medium/-228419soft",
     "constraints": {
       "block-end-within-window": {
-        "score": "-511hard/0medium/0soft",
-        "matches": 35
+        "score": "-730hard/0medium/0soft",
+        "matches": 54
       },
       "block-hours-in-allowed": {
         "score": "0hard/0medium/0soft",
         "matches": 0
       },
       "block-no-underfill": {
-        "score": "-237480hard/0medium/0soft",
-        "matches": 181
+        "score": "-234280hard/0medium/0soft",
+        "matches": 176
       },
       "block-overfill-at-most-one-day": {
-        "score": "-9784hard/0medium/0soft",
-        "matches": 46
+        "score": "-12448hard/0medium/0soft",
+        "matches": 55
       },
       "block-recommend-headcount-range": {
         "score": "0hard/0medium/0soft",
         "matches": 0
       },
       "emp-annual-overtime-limit": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
+        "score": "-130hard/0medium/0soft",
+        "matches": 1
       },
       "emp-monthly-overtime-limit": {
-        "score": "-954hard/0medium/0soft",
-        "matches": 33
+        "score": "-1676hard/0medium/0soft",
+        "matches": 42
       },
       "emp-one-task-per-day": {
-        "score": "-783hard/0medium/0soft",
-        "matches": 541
+        "score": "-1070hard/0medium/0soft",
+        "matches": 699
       },
       "emp-region-annual-stay-max": {
         "score": "0hard/0medium/0soft",
@@ -143,55 +143,55 @@
         "matches": 0
       },
       "emp-region-transit-gap": {
-        "score": "-41hard/0medium/0soft",
-        "matches": 27
+        "score": "-34hard/0medium/0soft",
+        "matches": 24
       },
       "phase-order": {
-        "score": "-2098hard/0medium/0soft",
+        "score": "-2651hard/0medium/0soft",
         "matches": 138
       },
       "prefer-regular-over-spot": {
-        "score": "0hard/0medium/-2360soft",
-        "matches": 59
+        "score": "0hard/0medium/-2400soft",
+        "matches": 60
       },
       "seat-daily-cap-12h": {
-        "score": "-5784hard/0medium/0soft",
-        "matches": 556
+        "score": "-8738hard/0medium/0soft",
+        "matches": 726
       },
       "soft-affinity-penalty": {
-        "score": "0hard/0medium/-20soft",
-        "matches": 115
+        "score": "0hard/0medium/-10soft",
+        "matches": 103
       },
       "soft-affinity-reward": {
-        "score": "0hard/0medium/155soft",
-        "matches": 115
+        "score": "0hard/0medium/185soft",
+        "matches": 103
       },
       "soft-balance-block-avg-skill": {
-        "score": "0hard/0medium/-113244soft",
-        "matches": 189
+        "score": "0hard/0medium/-102663soft",
+        "matches": 175
       },
       "soft-balance-total-hours": {
-        "score": "0hard/0medium/-24554soft",
-        "matches": 76
+        "score": "0hard/0medium/-27164soft",
+        "matches": 71
       },
       "soft-earlier-start": {
-        "score": "0hard/0medium/-2743soft",
+        "score": "0hard/0medium/-2662soft",
         "matches": 241
       },
       "soft-encourage-skill-variety": {
-        "score": "0hard/0medium/-114soft",
-        "matches": 38
+        "score": "0hard/0medium/-135soft",
+        "matches": 40
       },
       "soft-fab-preference": {
-        "score": "0hard/0medium/2370soft",
-        "matches": 292
+        "score": "0hard/0medium/2260soft",
+        "matches": 270
       },
       "soft-minimize-region-transitions": {
-        "score": "0hard/0medium/-2035soft",
-        "matches": 407
+        "score": "0hard/0medium/-1910soft",
+        "matches": 382
       },
       "soft-smaller-hours": {
-        "score": "0hard/0medium/-90960soft",
+        "score": "0hard/0medium/-93920soft",
         "matches": 241
       }
     }
