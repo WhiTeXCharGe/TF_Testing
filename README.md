@@ -47,6 +47,36 @@ Change it like any parameter: `--misc_neutral_regions=r_other,r_x`, `TF_MISC_NEU
 Note: only pinned misc seats that have a region of their own take part in the region rules. In-horizon pinned module seats
 (Fixed rows of a module) still do not, as before; their history before the horizon is covered by the last-fixed-region.
 
+## trip_list input (validation only, not enforced yet)
+
+`Schedule.yaml` may carry a `trip_list` (next to `assignment_list`; the root may be `schedule:`-wrapped or bare). This step only
+reads and validates it. The solver ignores it: a Schedule.yaml with a `trip_list` solves exactly like one without.
+
+    trip_list:
+    - worker: w1
+      trips:
+      - {start_date: 2026/09/01, end_date: 2026/09/10, region: r1, plan_flexibility: Fixed, description: ...}
+      - {start_date: 2026/09/10, end_date: 2026/09/15, region: r2, plan_flexibility: Flexible}
+
+The flat form (`worker` on each trip, no `trips:` list) is read too. Dates are `YYYY/MM/DD` or `YYYY-MM-DD`. `flexibility` is an
+alias of `plan_flexibility` (Fixed or Flexible, any case). Any other key of a trip is kept (`Trip.extra`, and `TripEntry.raw` has
+the whole map as read).
+
+`trip/TripListParser.parse(raw, TripContext, strict)` returns one `TripEntry(trip, raw, enforced)` per trip in input order and a
+list of warnings. `enforced` is true only for a valid Fixed trip that survives the overlap check; a valid Flexible trip is listed
+with `enforced=false`. A broken Fixed trip keeps an entry (not enforced; `trip` is null when it cannot be built) so that it can be
+copied to the output unchanged; a broken Flexible trip is dropped. Broken means: worker not in EnvConfig, missing or unparseable
+`start_date` / `end_date` / `region`, region not in EnvConfig, `start > end`, or `start == end` inside one trip. An unknown or
+missing `plan_flexibility` is treated as Flexible. Two valid Fixed trips of one worker that overlap (touching at an end date is
+fine) keep the earlier one enforced. Exact duplicates are dropped silently. Trips outside the plan range are kept.
+
+Warnings are printed as `[trips] WARN <text>` and appended to `load_log.txt`; they are also in `ParsedSchedule.tripWarnings`
+(entries in `tripEntries`, both empty without a `trip_list`). `trip_validation: strict` (see the parameters) turns any warning
+into an `InvalidInputDataException` ("InvalidInputData: ..."), default `lenient`. The parser is called from
+`PlanBuilder.buildProblem` (via `ScheduleParser.parseTrips`) after the calendars are built, because the region ids come from them.
+`ScheduleParser.preprocessScheduleYaml` rewrites the schedule file in place for the cut-off rule: the `trip_list` is kept in it, but
+unquoted `YYYY-MM-DD` dates are rewritten as timestamps (`2026-09-01T00:00:00Z`); the parser reads those too.
+
 ## Upgrade notes
 
 ### Timefold Solver 1.35.0 -> 2.7.1, Java 17 -> 21 (2026-10-21)

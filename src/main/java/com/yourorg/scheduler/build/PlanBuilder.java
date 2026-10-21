@@ -14,6 +14,7 @@ import com.yourorg.scheduler.io.EnvConfigParser;
 import com.yourorg.scheduler.io.LoadLog;
 import com.yourorg.scheduler.io.ScheduleParser;
 import com.yourorg.scheduler.model.*;
+import com.yourorg.scheduler.trip.TripContext;
 
 /** Turns parsed env + schedule into the SinglePassPlan (blocks, seats, pinned seats, candidates, warm start). */
 public class PlanBuilder {
@@ -669,6 +670,17 @@ public class PlanBuilder {
         String schedFixedPath = ScheduleParser.preprocessScheduleYaml(schedPath);
         ParsedSchedule sch = ScheduleParser.parseSchedule(schedFixedPath, env.opdef);
         EnvConfigParser.buildCalendars(envPath, sch.planStart, sch.planEnd);
+        // trip_list: read and validated only (not enforced yet). Needs the region ids built just above.
+        {
+            Set<String> workerIds = new LinkedHashSet<>();
+            for (EmployeeFact ef : env.employees) if (ef != null && ef.id != 0) workerIds.add(ef.wid);
+            RegionIndex regions = SolveContext.current().regions;
+            Set<String> regionIds = new LinkedHashSet<>();
+            for (int i = 0; i < regions.size(); i++) regionIds.add(regions.idOf(i));
+            ScheduleParser.parseTrips(sch, schedFixedPath,
+                    new TripContext(workerIds, regionIds, sch.planStart, sch.planEnd),
+                    SolveContext.current().tripValidationStrict);
+        }
         // a misc row may name a region the environment does not know (no stay limit, no transit): index it as well
         {
             RegionIndex known = SolveContext.current().regions;

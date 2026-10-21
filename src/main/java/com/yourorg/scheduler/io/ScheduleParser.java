@@ -6,8 +6,12 @@ import java.time.LocalDate;
 import java.util.*;
 
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.config.InvalidInputDataException;
 import com.yourorg.scheduler.config.SolverConstants;
 import com.yourorg.scheduler.model.*;
+import com.yourorg.scheduler.trip.TripContext;
+import com.yourorg.scheduler.trip.TripListParser;
+import com.yourorg.scheduler.trip.TripParseResult;
 
 /** Schedule.yaml preprocessing and parsing (windows, fixed/flexible/initial rows, day slots). */
 public class ScheduleParser {
@@ -90,6 +94,40 @@ public class ScheduleParser {
         // Write to temp and return path
         YamlFiles.saveYaml(schedPath, root);
         return schedPath;
+    }
+
+    /**
+     * Reads {@code trip_list} of the schedule file (root may be {@code schedule:}-wrapped or bare, as for
+     * assignment_list), validates it against {@code ctx} and stores the result in {@code sch.tripEntries} /
+     * {@code sch.tripWarnings} (empty when the key is absent). Every warning is printed as {@code [trips] WARN <text>}
+     * and appended to the load log. In strict mode a warning makes this throw InvalidInputDataException (after the
+     * warnings were printed). Validation only: nothing else in {@code sch} is touched.
+     *
+     * <p>Not part of {@link #parseSchedule}: the region ids of the context come from the EnvConfig calendars, which are
+     * built from the plan range that parseSchedule reads.
+     */
+    public static void parseTrips(ParsedSchedule sch, String schedPath, TripContext ctx, boolean strict)
+            throws IOException {
+        Map<String,Object> root = YamlFiles.loadYaml(schedPath);
+        @SuppressWarnings("unchecked")
+        Map<String,Object> s = (Map<String,Object>) root.getOrDefault("schedule", root);
+        Object rawTripList = (s == null) ? null : s.get("trip_list");
+        try {
+            TripParseResult r = TripListParser.parse(rawTripList, ctx, strict);
+            sch.tripEntries = new ArrayList<>(r.entries());
+            sch.tripWarnings = new ArrayList<>(r.warnings());
+            reportTripWarnings(r.warnings());
+        } catch (InvalidInputDataException e) {
+            reportTripWarnings(e.details());
+            throw e;
+        }
+    }
+
+    private static void reportTripWarnings(List<String> warnings) {
+        for (String w : warnings) {
+            System.out.println("[trips] WARN " + w);
+            LoadLog.appendLoadLog("[trips] WARN " + w);
+        }
     }
 
     @SuppressWarnings("unchecked")

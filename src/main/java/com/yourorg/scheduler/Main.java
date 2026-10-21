@@ -82,6 +82,8 @@ public class Main {
         ScoreLogger.setWriteScoreFiles(params.writeScoreFiles());
         // misc rows whose region is listed here count as region-less (design section 7); read by the build step
         SolveContext.current().miscNeutralRegions = params.miscNeutralRegions();
+        // trip_list problems fail the run only in strict mode (read by the build step)
+        SolveContext.current().tripValidationStrict = "strict".equals(params.tripValidation());
 
         RunResult rr = solveFromYaml(envPath, schedPath, params.timers());
 

@@ -43,6 +43,13 @@ public class SolveContext {
      */
     public Set<String> miscNeutralRegions = Set.of("r_other");
 
+    /**
+     * trip_list validation mode (parameter {@code trip_validation}): true = any trip_list warning fails the build with
+     * InvalidInputDataException, false = warnings only. Set by Main from SolverParams before the build step, never
+     * touched by the build step.
+     */
+    public boolean tripValidationStrict = false;
+
     /** Average hours per real employee that soft-balance-total-hours aims for; set by PlanBuilder.buildProblem. */
     public double targetHoursPerEmp = 0.0;
     /** Affinity tag id -> weight; filled by EnvConfigParser.parseEnv. */

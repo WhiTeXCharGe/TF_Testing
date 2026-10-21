@@ -1,9 +1,12 @@
 package com.yourorg.scheduler.model;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import com.yourorg.scheduler.trip.TripEntry;
 
 public class ParsedSchedule {
     public LocalDate planStart;
@@ -23,6 +26,10 @@ public class ParsedSchedule {
     public Map<String,Integer> fixedHoursByKeyHorizon; // horizon only
     // flexible warm-start rows
     public List<InitialAssign> initialRows;
+
+    // trip_list (validation only, not enforced yet); filled by ScheduleParser.parseTrips, empty when absent
+    public List<TripEntry> tripEntries = new ArrayList<>();
+    public List<String> tripWarnings = new ArrayList<>();
 
     // for logging / debugging
     public int cutOffDayId;
