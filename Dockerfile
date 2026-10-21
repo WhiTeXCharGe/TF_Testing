@@ -1,6 +1,6 @@
 # ─── Stage 1: build the JAR + collect runtime deps ───────────────────────────
-# Maven image that already has JDK 17, so `mvn package` works out of the box.
-FROM maven:3.9-eclipse-temurin-17 AS builder
+# Maven image that already has JDK 21, so `mvn package` works out of the box.
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /build
 
@@ -18,7 +18,7 @@ COPY src ./src
 RUN mvn -B -ntp -DskipTests clean package
 
 # ─── Stage 2: tiny runtime image with just the JRE + our jars ────────────────
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 
 LABEL org.opencontainers.image.title="timefold-scheduler"
 LABEL org.opencontainers.image.description="Timefold employee scheduler — reads /work/input/{EnvConfig,Schedule}.yaml, writes /work/output/result_Schedule.yaml"

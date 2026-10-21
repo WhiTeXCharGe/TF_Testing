@@ -11,8 +11,8 @@ Produces `target/timefold-scheduler-0.1.0.jar` and the runtime dependency jars i
 
 Where Maven is not installed locally, run it in Docker instead:
 
-    docker run --rm -v "$(pwd):/w" -v tf-m2:/root/.m2 -w /w maven:3.9-eclipse-temurin-17 mvn -B -DskipTests package
-    docker run --rm -v "$(pwd):/w" -v tf-m2:/root/.m2 -w /w maven:3.9-eclipse-temurin-17 mvn -B test
+    docker run --rm -v "$(pwd):/w" -v tf-m2:/root/.m2 -w /w maven:3.9-eclipse-temurin-21 mvn -B -DskipTests package
+    docker run --rm -v "$(pwd):/w" -v tf-m2:/root/.m2 -w /w maven:3.9-eclipse-temurin-21 mvn -B test
 
 On Git Bash for Windows prefix the command with `MSYS_NO_PATHCONV=1` and use `$(pwd -W)` instead of `$(pwd)`.
 
