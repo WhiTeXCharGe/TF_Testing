@@ -41,10 +41,23 @@ public class CrewSeat {
         // Warm-start assignments are NOT pinned.
         return pinnedFixed;
     }
+    /**
+     * Employee taken over from the input schedule as the initial (warm-start) value, set by PlanBuilder. It may not
+     * pass the candidate gates (skill, preference, manager). Timefold 1.35 requires the initial value to be inside
+     * the value range, so {@link #eligibleEmployeesForSeat()} appends it when it is missing.
+     */
+    public EmployeeFact warmStartEmployee = null;
+
     // Computed candidates (filled once per solve stage)
     private List<EmployeeFact> candidateEmployees = List.of();
 
-    private static final EmployeeFact UNASSIGNED =
+    /**
+     * Shared "nobody" sentinel. Timefold 1.35 checks once, when the working solution is set, that every
+     * assigned planning value is contained in its entity's value range (contains = equals = identity here),
+     * so the initial value of an unassigned seat must be THIS instance (not a fresh copy) and must be
+     * part of the seat's range, including manager seats (see {@link #eligibleEmployeesForSeat()}).
+     */
+    public static final EmployeeFact UNASSIGNED =
         new EmployeeFact(0, "__UNASSIGNED__", "__UNASSIGNED__", Map.of(), false, "");
 
     public CrewSeat() {}
@@ -70,17 +83,27 @@ public class CrewSeat {
         List<EmployeeFact> base = (candidateEmployees == null) ? List.of() : candidateEmployees;
 
         if (needManager) {
-            // STRICT: manager-only, no UNASSIGNED fallback
-            base = base.stream().filter(emp -> emp != null && emp.isManager).toList();
-            // IMPORTANT: do NOT add UNASSIGNED here
-            return new ListValueRange<>(base);
+            // STRICT: manager-only candidates. The UNASSIGNED sentinel is in the range ONLY because every seat
+            // starts as UNASSIGNED and Timefold 1.35 rejects an initial value outside the range (it was not
+            // checked in 1.27). Appended last, so the order of the real candidates is unchanged.
+            List<EmployeeFact> mgr = new ArrayList<>(base.stream().filter(emp -> emp != null && emp.isManager).toList());
+            mgr.add(UNASSIGNED);
+            addWarmStart(mgr);
+            return new ListValueRange<>(mgr);
         } else {
             // Non-manager seat may keep UNASSIGNED as a legal value to ease feasibility
             // if (base.isEmpty()) base = List.of(UNASSIGNED);
             List<EmployeeFact> list = new ArrayList<>(base == null? List.of(): base);
             list.add(UNASSIGNED);
-            list = list.stream().distinct().toList();
+            list = new ArrayList<>(list.stream().distinct().toList());
+            addWarmStart(list);
             return new ListValueRange<>(list);
+        }
+    }
+
+    private void addWarmStart(List<EmployeeFact> range) {
+        if (warmStartEmployee != null && !range.contains(warmStartEmployee)) {
+            range.add(warmStartEmployee);
         }
     }
 

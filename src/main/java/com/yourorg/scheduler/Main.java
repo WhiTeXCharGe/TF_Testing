@@ -15,7 +15,7 @@ import com.yourorg.scheduler.solver.TimerConfig;
 import com.yourorg.scheduler.solver.TwoStageRunner;
 
 /**
- * SINGLE PASS scheduler (Timefold 1.27-compatible): reads EnvConfig.yaml + Schedule.yaml, solves in two stages
+ * SINGLE PASS scheduler (Timefold 1.x-compatible): reads EnvConfig.yaml + Schedule.yaml, solves in two stages
  * and writes the assignments back into the Schedule file.
  *
  * <pre>

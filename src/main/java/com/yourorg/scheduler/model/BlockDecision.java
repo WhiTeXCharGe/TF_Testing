@@ -91,10 +91,18 @@ public class BlockDecision {
 
     @ValueRangeProvider(id = "vrStartWithinWindow")
     public CountableValueRange<Integer> vrStartWithinWindow() {
+        // Timefold 1.35: an IntValueRange cannot be sorted by the variable's strengthComparatorClass
+        // (UnsupportedOperationException), a ListValueRange can. Same values, same ascending order as before.
         if (phaseNum == 1) {
-            return ValueRangeFactory.createIntValueRange(windowStart, windowStart + 1);
+            return ascendingRange(windowStart, windowStart + 1);
         }
-        return ValueRangeFactory.createIntValueRange(windowStart, windowEnd + 1);
+        return ascendingRange(windowStart, windowEnd + 1);
+    }
+    /** Integers {@code fromInclusive .. toExclusive-1}, ascending (what createIntValueRange(from, to) enumerates). */
+    private static CountableValueRange<Integer> ascendingRange(int fromInclusive, int toExclusive) {
+        List<Integer> l = new java.util.ArrayList<>(Math.max(0, toExclusive - fromInclusive));
+        for (int i = fromInclusive; i < toExclusive; i++) l.add(i);
+        return new ListValueRange<>(l);
     }
     @ValueRangeProvider(id = "vrDaysWithinWindow")
     public CountableValueRange<Integer> vrDaysWithinWindow() {
@@ -121,7 +129,7 @@ public class BlockDecision {
     // which removes the DaySlot-vs-CrewSeat cartesian-product joins that
     // previously dominated incremental score calculation.
     // "removal" is suppressed because the variableListenerClass form of
-    // @ShadowVariable is deprecated in Timefold 1.27. It still works on the
+    // @ShadowVariable is deprecated in Timefold 1.27+. It still works on the
     // Community Edition (the version this project pins) and is kept for
     // that reason; the warning is only relevant on a future major upgrade.
     @SuppressWarnings({"deprecation", "removal"})

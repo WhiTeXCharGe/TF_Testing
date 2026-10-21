@@ -11,7 +11,7 @@ import ai.timefold.solver.core.api.score.director.ScoreDirector;
 // single shadow variable means it is rebuilt once per block-span change,
 // rather than being recomputed inside every day-based constraint and for
 // every seat attached to the block.
-// VariableListener is deprecated in Timefold 1.27 but is a Community
+// VariableListener is deprecated in Timefold 1.27+ but is a Community
 // Edition feature and still fully functional; "removal" is suppressed for
 // the same reason as the @ShadowVariable annotation above.
 @SuppressWarnings({"deprecation", "removal"})
