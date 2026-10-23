@@ -93,13 +93,19 @@ public final class TripDeriver {
             }
         }
 
-        // 2. days inside a remaining Fixed window (inclusive) belong to that trip
+        // 2. days inside a remaining Fixed window (inclusive) belong to that trip. A worked day that the trip's calendar
+        // marks would have closed (FI/FO day, or another region strictly inside) is reported, the output is unchanged.
         List<Map.Entry<LocalDate, String>> free = new ArrayList<>();
         for (Map.Entry<LocalDate, String> e : dayRegion.entrySet()) {
             boolean inside = false;
             for (Trip t : remaining) {
                 if (!e.getKey().isBefore(t.start()) && !e.getKey().isAfter(t.end())) {
                     inside = true;
+                    boolean fiFo = e.getKey().equals(t.start()) || e.getKey().equals(t.end());
+                    if (fiFo || !e.getValue().equals(t.region())) {
+                        warnings.add("fixed_trip_conflict worker=" + worker + " date=" + e.getKey()
+                                + " region=" + e.getValue() + " trip_region=" + t.region());
+                    }
                     break;
                 }
             }

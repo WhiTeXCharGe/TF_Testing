@@ -1,6 +1,8 @@
 package com.yourorg.scheduler;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +10,7 @@ import java.util.Map;
 
 import com.yourorg.scheduler.build.PlanBuilder;
 import com.yourorg.scheduler.calendar.SolveContext;
+import com.yourorg.scheduler.config.InvalidInputDataException;
 import com.yourorg.scheduler.config.SolverParams;
 import com.yourorg.scheduler.export.ScheduleExporter;
 import com.yourorg.scheduler.solver.RunResult;
@@ -79,8 +82,36 @@ public class Main {
         return Path.of(inputDir == null || inputDir.isBlank() ? "/work/input" : inputDir, "SolverParams.yaml");
     }
 
+    /** Exit code of a run that stopped on invalid input (strict trip_list validation); entrypoint.sh maps it to InvalidInputData. */
+    public static final int EXIT_INVALID_INPUT = 5;
+
     public static void main(String[] args) throws Exception {
-        run(args, System.getenv());
+        int code = execute(args, System.getenv());
+        if (code != 0) System.exit(code);
+    }
+
+    /**
+     * {@link #run} with the exit code of {@link #main} and no {@code System.exit}: 0 when the run completed,
+     * {@link #EXIT_INVALID_INPUT} when it stopped on an {@link InvalidInputDataException} (the message is printed, the
+     * problems are written to {@code trip_warnings.txt} next to the result file). Other exceptions propagate.
+     */
+    public static int execute(String[] args, Map<String, String> env) throws Exception {
+        try {
+            run(args, env);
+            return 0;
+        } catch (InvalidInputDataException e) {
+            System.out.println(e.getMessage());
+            List<String> pos = splitArgs(args).positional();
+            String schedPath = pos.size() > 1 ? pos.get(1) : "Schedule.yaml";
+            Path warningsFile = Path.of(schedPath).toAbsolutePath().resolveSibling(ScheduleExporter.TRIP_WARNINGS_FILE);
+            try {
+                Files.write(warningsFile, e.details().isEmpty() ? List.of(e.getMessage()) : e.details(),
+                        StandardCharsets.UTF_8);
+            } catch (IOException io) {
+                System.out.println("[trips] WARN could not write " + warningsFile + ": " + io.getMessage());
+            }
+            return EXIT_INVALID_INPUT;
+        }
     }
 
     /**

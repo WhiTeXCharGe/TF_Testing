@@ -69,8 +69,15 @@ public final class ScoreLogger {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND)) {
 
-            // Per-constraint breakdown (Community replacement of SolutionManager.explain, see ConstraintBreakdown)
-            ConstraintBreakdown.Result breakdown = ConstraintBreakdown.of(factoryStage2).analyze(best2);
+            // Per-constraint breakdown (Community replacement of SolutionManager.explain, see ConstraintBreakdown).
+            // It uses Timefold internals and runs after the whole solve: a failure here must not skip the export.
+            ConstraintBreakdown.Result breakdown = null;
+            try {
+                breakdown = ConstraintBreakdown.of(factoryStage2).analyze(best2);
+            } catch (RuntimeException ex) {
+                reportFailure("solver_log.txt constraint breakdown", ex);
+                System.err.println("[WARN] solver_log.txt: per-constraint scores skipped (" + ex.getClass().getSimpleName() + ")");
+            }
 
             // Separator
             bw.write("============================================================");
@@ -171,11 +178,16 @@ public final class ScoreLogger {
             bw.newLine();
 
             // Per-constraint scores (sorted by constraint id; 2.x ids carry no package prefix)
-            for (Map.Entry<String, ConstraintBreakdown.Total> e : breakdown.totals().entrySet()) {
-                bw.write("  " + e.getKey()
-                        + " score=" + e.getValue().score()
-                        + " matches=" + e.getValue().matches());
+            if (breakdown == null) {
+                bw.write("  [unavailable: breakdown failed, see load_log.txt]");
                 bw.newLine();
+            } else {
+                for (Map.Entry<String, ConstraintBreakdown.Total> e : breakdown.totals().entrySet()) {
+                    bw.write("  " + e.getKey()
+                            + " score=" + e.getValue().score()
+                            + " matches=" + e.getValue().matches());
+                    bw.newLine();
+                }
             }
 
             bw.flush();

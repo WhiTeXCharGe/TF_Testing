@@ -34,6 +34,12 @@ import com.yourorg.scheduler.model.SinglePassPlan;
  * {@code phase-order} and {@code block-end-within-window} entries record 0 matches, which the new weights leave at 0,
  * so it is expected to still hold, but that is unverified: treat those two entries and the total as stale until
  * someone runs it with {@code -Dreal.sample=<dir>} (and {@code -Dgolden.write=true} if it reports a difference).
+ *
+ * <p>{@code real-1.27.json} was also EDITED BY HAND (not regenerated, not re-verified with {@code -Dreal.sample}) for the
+ * conditional stay rules (25547bd): the real EnvConfig files have unlimited stay limits (10000), so
+ * {@code emp-region-stay-max-on} and {@code emp-region-annual-stay-max} are no longer registered and were removed from
+ * its {@code initial} section (21 constraint ids instead of 23). Both entries had 0 matches and score 0, so the total
+ * and every other entry are unchanged.
  */
 class CharacterizationTest {
 

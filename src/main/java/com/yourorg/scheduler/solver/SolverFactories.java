@@ -10,7 +10,15 @@ import com.yourorg.scheduler.model.BlockDecision;
 import com.yourorg.scheduler.model.CrewSeat;
 import com.yourorg.scheduler.model.SinglePassPlan;
 
-/** Builds the Timefold solver factories for the production model. */
+/**
+ * Builds the Timefold solver factories for the production model.
+ *
+ * <p>Build a factory only AFTER {@code PlanBuilder.buildProblem} of the problem it will solve, and never reuse it for
+ * another problem: {@link SinglePassConstraints} decides at factory creation which constraints it registers (the two stay
+ * rules only when a loaded region has a finite {@code max_stay_on} / {@code max_annual_stay}, see
+ * {@code Calendars.UNLIMITED_STAY_DAYS}), and that depends on the calendars of the current {@code SolveContext}. A factory
+ * cached across problems would keep the constraint set of the first one.
+ */
 public final class SolverFactories {
     private SolverFactories() {}
 

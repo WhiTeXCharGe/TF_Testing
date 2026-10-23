@@ -390,4 +390,29 @@ class TripDeriverTest {
             }
         }
     }
+
+    @Test
+    void fixed_trip_conflict_is_warned_but_output_unchanged() {
+        Trip f = fixed("w1", "2026-09-01", "2026-09-10", "r1");
+        // 09-01 FI day (r1), 09-05 own region inside (fine), 09-06 other region inside, 09-10 FO day (r2), 09-12 outside
+        List<WorkedDay> days = List.of(wd("w1", "2026-09-01", "r1"), wd("w1", "2026-09-05", "r1"),
+                wd("w1", "2026-09-06", "r2"), wd("w1", "2026-09-10", "r2"), wd("w1", "2026-09-12", "r2"));
+        DeriveResult r = run(days, List.of(f), I3, false);
+        assertEquals(List.of(
+                "fixed_trip_conflict worker=w1 date=2026-09-01 region=r1 trip_region=r1",
+                "fixed_trip_conflict worker=w1 date=2026-09-06 region=r2 trip_region=r1",
+                "fixed_trip_conflict worker=w1 date=2026-09-10 region=r2 trip_region=r1"), r.warnings());
+        // the derived output is the same as without the conflicting days: only 09-12 makes a trip
+        DeriveResult clean = run(List.of(wd("w1", "2026-09-05", "r1"), wd("w1", "2026-09-12", "r2")),
+                List.of(f), I3, false);
+        assertTrue(clean.warnings().isEmpty());
+        assertEquals(clean.derived(), r.derived());
+        assertEquals(1, r.derived().size());
+        assertTrip(r.derived().get(0), "w1", "2026-09-11", "2026-09-13", "r2");
+
+        // another worker's days and days outside the window never warn
+        DeriveResult other = run(List.of(wd("w2", "2026-09-01", "r2"), wd("w1", "2026-08-31", "r2")),
+                List.of(f), I3, false);
+        assertTrue(other.warnings().isEmpty(), other.warnings().toString());
+    }
 }

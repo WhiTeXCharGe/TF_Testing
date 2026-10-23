@@ -35,14 +35,6 @@
         "score": "-286hard/0medium/0soft",
         "matches": 286
       },
-      "emp-region-annual-stay-max": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
-      },
-      "emp-region-stay-max-on": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
-      },
       "emp-region-transit-gap": {
         "score": "-4hard/0medium/0soft",
         "matches": 4

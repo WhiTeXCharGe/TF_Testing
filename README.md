@@ -62,8 +62,17 @@ The tests, including the end-to-end scenarios (`EndToEndTest`, about 30 s), run 
 | `/work/output/trip_warnings.txt` | only when there is something to report (see "trip_list output"); a file of an earlier run is deleted when there is none |
 | `/work/status/<RUN_ID>.json` | `runId`, `status` (`Running`, `Completed`, `Failed`, `Cancelled`), `stage`, `progress`, `startedAt`, `updatedAt`, `finishedAt`, `error`, `output` |
 
-Exit codes of the container: 0 done, 2 input file missing, 3 output file cannot be created, 4 result missing, 143 cancelled
-(SIGTERM), otherwise the exit code of the solver (status `Failed`).
+Exit codes of the container:
+
+| Code | Meaning | status.json |
+|---|---|---|
+| 0 | done | `Completed` |
+| 2 | `EnvConfig.yaml` or `Schedule.yaml` missing | `Failed`, `InvalidInputData` |
+| 3 | output file cannot be created | `Failed`, `OutputError` |
+| 4 | solver finished but the result is missing | `Failed`, `OutputError` |
+| 5 | `trip_validation: strict` and the `trip_list` has problems (the problems are in `/work/output/trip_warnings.txt`) | `Failed`, `InvalidInputData` |
+| 143 | cancelled (SIGTERM) | `Cancelled` |
+| other | the exit code of the solver | `Failed`, `SolverError` |
 
 ### Parameters
 
@@ -123,8 +132,10 @@ Why: a late block can only be fixed by shortening it and adding a worker. With 1
 costs more (missing hours x 10) than it gains, so both steps were rejected and the search stayed stuck (5-module sample:
 -98 hard for good). With 100 per day it reaches 0 hard in 13 to 30 s on 4 of 5 seeds.
 
-Underfill stays larger than the worker rules (1 per clash day or hour over the cap), so an infeasible plan still staffs
-every block and breaks worker rules instead of leaving blocks empty.
+Underfill stays larger than the worker rules (1 per clash day or hour over the cap), so a block is never left completely
+empty: an infeasible plan breaks worker rules first. A late block with few workers may still be partly underfilled, because
+shortening it can cost less than the phase-order violation it removes (for example 3 blocks / 68 hours on the
+`data_generator` sample).
 
 ## Misc task region
 
@@ -183,7 +194,9 @@ not a map, is dropped with a warning (it never reaches the output).
 
 Warnings are printed as `[trips] WARN <text>` and appended to `load_log.txt`; they are also in `ParsedSchedule.tripWarnings`
 (entries in `tripEntries`, both empty without a `trip_list`). `trip_validation: strict` (see the parameters) turns any warning
-into an `InvalidInputDataException` ("InvalidInputData: ..."), default `lenient`. The parser is called from
+into an `InvalidInputDataException` ("InvalidInputData: ..."), default `lenient`. `Main.execute` (what `main` calls) catches it,
+prints the message, writes the problems to `trip_warnings.txt` next to the result file and exits with code 5 (the result file
+stays as it was copied; the container reports `Failed` / `InvalidInputData`, see the exit code table). The parser is called from
 `PlanBuilder.buildProblem` (via `ScheduleParser.parseTrips`) after the calendars are built, because the region ids come from them.
 `ScheduleParser.preprocessScheduleYaml` rewrites the schedule file in place for the cut-off rule: the `trip_list` is kept in it, but
 unquoted `YYYY-MM-DD` dates are rewritten as timestamps (`2026-09-01T00:00:00Z`); the parser reads those too.
@@ -255,6 +268,17 @@ looks at FI/FO or trips.
 With the decoder's `10000` limits nothing changes; with a real limit the same plan shows two more stay days per stay than before.
 The `small` fixture has finite limits, so its golden stay entries changed (+2 days per stay); the datagen and real goldens did not.
 
+Conditional registration (25547bd): `SinglePassConstraints` registers a stay rule only if some region has that limit below
+`Calendars.UNLIMITED_STAY_DAYS` (10000): `emp-region-stay-max-on` needs a finite `max_stay_on`, `emp-region-annual-stay-max` a
+finite `max_annual_stay`. A rule with no finite limit can never fire, so leaving it out does not change any score, but it is
+faster (+31 to 38 percent steps/s on the unlimited samples, see `docs/perf.md`). The real EnvConfig files use 10000, so their score
+files list 21 constraint ids instead of 23 (the datagen and small fixtures have finite limits and list all 23). The decision is made
+when the solver factory is created, from the loaded calendars: build the factory after `PlanBuilder.buildProblem` and never reuse
+it for another problem.
+
+Fixed trips lying entirely outside the plan range (before the plan start, or after the plan end) are not in `TripCalendar` and are
+ignored by the stay limits: the annual limit does not see earlier trips of that year.
+
 Implementation (`constraints/RegionConstraints`: `longestStay`, `totalStay`): workers without a trip in the region take the old
 loop plus the `+2` arithmetic (`TripCalendar.tripsOf` returns one shared empty list). Only a (worker, region) with trips merges
 the trip intervals in. A problem-fact stream adds one marker row per (worker, trip region), so a trip without tasks still forms a
@@ -280,6 +304,11 @@ exporter calls it, see "trip_list output" below) that turns the final worked day
    (region to region, or right after a Fixed trip) but never before it; otherwise the start moves to that end date and
    `tight_transit` is warned (zero/missing transit days). Fixed trips are never modified.
 
+Step 3 also warns, without changing the result: a worked day on the FI or FO day of a remaining Fixed trip, or of another region
+strictly inside it, is reported as `fixed_trip_conflict worker=<w> date=<d> region=<day region> trip_region=<trip region>`. The solver
+does not plan such days for flexible work (see "Trip marks"), so the warning shows Fixed rows or history that already lie there; the
+day still belongs to the trip.
+
 Examples (interval 3): Fixed r1 09/01-09/10 with r1 days 09/03, 09/04, 09/09 and r2 days 09/12-09/14 gives one derived trip
 r2 09/11-09/15. r1 09/01-09/03 followed by r2 09/05-09/06 gives r1 08/31-09/04 and r2 09/04-09/07 (shared boundary day).
 r1 days 09/11-09/13 after the Fixed r1 trip give a separate r1 09/10-09/14 (Fixed trip kept). r1 09/01 and 09/05 (gap 3) split into
@@ -300,8 +329,9 @@ per-worker nested form (`- worker: w1`, `trips: [...]`), workers sorted, trips s
 - `trip_history_days` (N >= 0): derived trips with `end < plan start - N days` are dropped; negative (default) keeps all.
   Fixed entries are never trimmed.
 - `trip_warnings.txt` is written next to the result file only when there is at least one warning (parser warnings, Fixed rows vs.
-  Fixed trips, `cut_fixed_trip`, `tight_transit`, `region_conflict_day`, workerless Fixed trip). Without warnings the file is
-  not written and a file of an earlier run is deleted.
+  Fixed trips, `cut_fixed_trip`, `tight_transit`, `region_conflict_day`, `fixed_trip_conflict`, workerless Fixed trip). Without
+  warnings the file is not written and a file of an earlier run is deleted. Under `trip_validation: strict` a trip_list problem
+  stops the run before solving; `trip_warnings.txt` then holds those problems and the exit code is 5.
 - `solver_version` (last top-level key of `schedule`) is `SolverConstants.SOLVER_VERSION`, for example
   `timefold-scheduler 0.1.0 (timefold-solver 2.7.1)`; a test keeps the constants equal to `pom.xml`.
 - The dump uses non-pretty flow style, so an empty list is written `trip_list: []` (also `workflow_task_list: []` etc.).
@@ -342,7 +372,7 @@ goldens were regenerated later for the block weights change, see "Goldens" below
   is Enterprise-only, and on Community it throws `A commercial feature "Score analysis" was requested but it could not be loaded`.
   See "Internal-API dependency" below.
 - `ConstraintNamesTest` reads the registered ids through the public `ConstraintVerifier` API, with no internal casts.
-  The 2.x id rule is `^[a-zA-Z0-9]+[a-zA-Z0-9 _.'()-]*$`, and all 23 hyphenated ids pass.
+  The 2.x id rule is `^[a-zA-Z0-9]+[a-zA-Z0-9 _.'()-]*$`, and all 23 hyphenated ids pass (21 when both stay limits are unlimited, see "Stay limits count FI to FO").
 - Per-constraint lines in `solver_log.txt` and `score_progress.txt` show the 2.x ids without the 1.x `package/` prefix and
   are sorted by id. The `*_score.txt` files keep the layout of the 1.x summary: per constraint, its score, id and match
   count, followed by the worst matches.
@@ -400,7 +430,7 @@ breaks. Public fallback: a one-constraint provider (via `withConstraintProviderC
 `SolutionManager.update` gives a constraint's score, and a `ConstraintVerifier` assertion gives its match count. That
 route is slow, so it only suits tests.
 
-#### Goldens: proof that the 23 constraints evaluate identically
+#### Goldens: proof that the 23 constraints evaluate identically (21 on data with unlimited stay limits)
 
 - `small` and `datagen`: the `initial` sections were byte-identical to 1.35/1.27. The goldens were regenerated afterwards
   in the commit "fix: weigh phase-order and window violations 100 per day" (see "Block weights"): in the `initial`
@@ -411,7 +441,12 @@ route is slow, so it only suits tests.
 - `real-1.27.json` was not regenerated for that change (the real sample is not run in the normal workflow). Its
   `phase-order` and `block-end-within-window` entries have 0 matches, so they should still hold, but they are unverified
   until someone runs it with `-Dreal.sample=<dir>`. The statements about the real sample below are for 1.35/1.27.
-- Real sample (`-Dreal.sample=<dir>`): the total score and all 23 per-constraint scores are identical. The `initial` section
+- `real-1.27.json` was edited by hand for 25547bd (conditional stay rules): the real EnvConfig files use the unlimited limits
+  (10000), so `emp-region-stay-max-on` and `emp-region-annual-stay-max` are not registered there and their two entries (0 matches,
+  score 0) were deleted from its `initial` section. It was NOT re-verified with `-Dreal.sample=<dir>` (the heavy file is not
+  run in the normal workflow); the total and the other entries are unchanged.
+- Real sample (`-Dreal.sample=<dir>`): the total score and all 23 per-constraint scores were identical (at 1.35/1.27, before the
+  stay rules became conditional). The `initial` section
   was regenerated once, and only two match counts changed: `emp-one-task-per-day` and `seat-daily-cap-12h`, from 284 to 286.
   1.35 under-counted them:
   - 1.35 `DefaultConstraintJustification.compareTo` compares facts that are neither comparable nor equal by `hashCode`, and its

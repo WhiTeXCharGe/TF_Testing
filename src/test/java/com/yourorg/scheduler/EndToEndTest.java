@@ -319,6 +319,55 @@ class EndToEndTest {
         assertTrue(r.console().contains("[params]"), r.console());
     }
 
+    // ------------------------------------------------------------------ trip_validation
+
+    /** The firstrun fixture plus a Fixed trip of t1 in a region that does not exist. */
+    static Path malformedTripFixture(Path dir) throws Exception {
+        copyFixture(FIRSTRUN, dir);
+        String sched = Files.readString(dir.resolve("Schedule.yaml"), StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("Schedule.yaml"), sched + "  - worker: t1\n    trips:\n"
+                + "    - {start_date: '2027/01/20', end_date: '2027/01/22', region: nowhere, plan_flexibility: Fixed}\n",
+                StandardCharsets.UTF_8);
+        return dir;
+    }
+
+    @Test
+    void strict_trip_validation_exits_5_and_writes_trip_warnings() throws Exception {
+        Path dir = malformedTripFixture(tmp.resolve("strict"));
+        Path out = dir.resolve("Schedule.yaml");
+        String before = Files.readString(out, StandardCharsets.UTF_8);
+        PrintStream old = System.out;
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+        int code;
+        try {
+            code = Main.execute(new String[] {dir.resolve("EnvConfig.yaml").toString(), out.toString(),
+                    "--trip_validation=strict", "--stage1_unimproved_seconds=5", "--stage2_enabled=false",
+                    "--write_score_files=false"}, envOf(dir));
+        } finally {
+            System.setOut(old);
+        }
+        String console = buf.toString(StandardCharsets.UTF_8);
+        assertEquals(Main.EXIT_INVALID_INPUT, code, console);
+        assertEquals(5, code);
+        Path warnings = dir.resolve(ScheduleExporter.TRIP_WARNINGS_FILE);
+        assertTrue(Files.exists(warnings), "trip_warnings.txt next to the result file");
+        String text = Files.readString(warnings, StandardCharsets.UTF_8);
+        assertTrue(text.contains("nowhere"), text);
+        assertEquals(1, text.strip().lines().count(), "one problem, one line: " + text);
+        assertTrue(console.contains("InvalidInputData: trip_list has 1 problem(s)"), console);
+        assertEquals(before, Files.readString(out, StandardCharsets.UTF_8), "the result file is not touched");
+    }
+
+    @Test
+    void lenient_trip_validation_still_completes() throws Exception {
+        Path dir = malformedTripFixture(tmp.resolve("lenient"));
+        Result r = run(dir, envOf(dir), concat(SHORT, "--trip_validation=lenient"));
+        assertFalse(ScheduleExporterTest.assignments(r.sched()).isEmpty());
+        assertKeyOrder(r.sched());
+        assertTrue(r.warningsText().contains("nowhere"), r.warningsText());
+    }
+
     // ------------------------------------------------------------------ baseline fixture without a trip_list
 
     @Test

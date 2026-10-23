@@ -173,6 +173,11 @@ SOLVER_PID=$!
 # write_failed runs, so the status would stay Running. A trapped SIGTERM still interrupts the wait and runs on_term.
 wait "${SOLVER_PID}" && SOLVER_EXIT=0 || SOLVER_EXIT=$?
 
+if [[ "${SOLVER_EXIT}" -eq 5 ]]; then
+  # Main.EXIT_INVALID_INPUT: trip_validation=strict and the trip_list has problems; the solver wrote trip_warnings.txt
+  write_failed "InvalidInputData" "trip_list invalid, see ${OUTPUT_DIR}/trip_warnings.txt" "null"
+  exit 5
+fi
 if [[ "${SOLVER_EXIT}" -ne 0 ]]; then
   write_failed "SolverError" "solver exited with code ${SOLVER_EXIT}" "1"
   exit "${SOLVER_EXIT}"

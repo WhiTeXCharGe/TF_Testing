@@ -72,7 +72,7 @@ same budget is not worse; every candidate runs `CharacterizationTest` first (gol
 
 | | Change | Tests | B/A steps/s datagen (2 pairs) | B/A steps/s sample (2 pairs) | Final scores | Decision |
 |---|---|---|---|---|---|---|
-| (a) | register `regionStayMaxOn` / `regionAnnualStayMax` only when a region has a finite limit (limit below 10000) | `CharacterizationTest`, `ConstraintNamesTest`, `StayLimitTest` green, goldens unchanged | 0.998, 0.991 | 0.976, 1.007 | equal | **reverted** (no effect: both inputs have finite limits, so both rules are registered) |
+| (a) | register `regionStayMaxOn` / `regionAnnualStayMax` only when a region has a finite limit (limit below 10000) | `CharacterizationTest`, `ConstraintNamesTest`, `StayLimitTest` green, goldens unchanged | 0.998, 0.991 | 0.976, 1.007 | equal | no effect on these two inputs (both have finite limits, so both rules are registered); **merged afterwards as 25547bd**, because the real EnvConfig files use the unlimited 10000 limits (see the supplementary table below) |
 | (b) | compute the transit penalty and the two stay excesses once per group update (a `map` step) instead of in both `filter` and `penalize` | `CharacterizationTest`, `ConstraintNamesTest`, `StayLimitTest`, `MiscRegionTest`, `TripMarksSolverTest`, `ConstraintBreakdownTest` green, goldens unchanged | 1.028, 1.025 | 1.014, 0.998 | equal on sample, within noise on datagen | **reverted** (+2.5% and +0.8%, below 5%) |
 | (c) | build `eligibleEmployeesForSeat` and the start/days value ranges once | not implemented | n/a | n/a | n/a | **not applied**: 0 of 13331 samples are in these methods, so the possible gain is 0% |
 
@@ -91,10 +91,10 @@ each, same conditions):
 | sample | 394.4 | 542.6 | **1.376** | 1.447 | 0hard/-27558soft | 0hard/-27430soft |
 
 An earlier, unverified attempt (3-minute budget, older base) saw +34% and +24% on the datagen input with the limits at 10000, so
-the direction is consistent. The verified change is on the branch `perf-stay-unlimited` (one commit on top of `c505ced`, with its
-test updates); it is **not** merged because of the keep rule above. Whether to take it is a decision for the owner: it is
-behaviour-neutral for the score (a rule that cannot fire), it changes the registered constraint list only when no region has a
-finite limit, and it is a large win on data like the real samples.
+the direction is consistent. The change was first kept out by the keep rule above, then **merged as 25547bd** (it was
+verified on the branch `perf-stay-unlimited`, one commit on top of `c505ced`, with its test updates): it is behaviour-neutral
+for the score (a rule that cannot fire), it changes the registered constraint list only when no region has a finite limit
+(the score files then list 21 constraint ids instead of 23), and it is a large win on data like the real samples.
 
 ## Step 3: design section 11 items (d) to (f) and what to do next
 
@@ -107,7 +107,7 @@ finite limit, and it is a large win on data like the real samples.
 Follow-up plan: yes, a short one, in this order (all behaviour-neutral, each checked against the goldens and measured with the A/B
 scripts):
 
-1. Take `perf-stay-unlimited` (verified above: +31% and +38% when the limits are 10000).
+1. Take `perf-stay-unlimited` (verified above: +31% and +38% when the limits are 10000). Done: merged as 25547bd.
 2. `Calendars.isWorkingDay`: a per-fab, per-day `boolean` table built once (or at least no three `String` lookups per call). The call sits
    inside `producedHoursForBlock`, which loops seats times days and is itself evaluated twice (filter and penalty, the same
    duplication that (b) removes for the region rules). `BlockConstraints.noUnderfillByBlock` / `overfillAtMostOneDayByBlock`
