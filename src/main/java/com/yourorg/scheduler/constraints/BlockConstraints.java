@@ -24,7 +24,7 @@ final class BlockConstraints {
             .filter(b -> b.startDay != null && b.days != null
                     && (b.startDay + b.days - 1) > b.windowEnd)
             .penalize(HardMediumSoftScore.ONE_HARD,
-                b -> (b.startDay + b.days - 1) - b.windowEnd)
+                b -> ((b.startDay + b.days - 1) - b.windowEnd) * TIME_VIOLATION_MULT)
             .asConstraint("block-end-within-window");
     }
 
@@ -43,7 +43,7 @@ final class BlockConstraints {
                 Joiners.equal((BlockDecision a) -> a.phaseNum + 1, (BlockDecision b) -> b.phaseNum))
             .filter((a,b) -> a.startDay != null && a.days != null && b.startDay != null
                     && (a.startDay + a.days - 1) >= b.startDay)
-            .penalize(HardMediumSoftScore.ONE_HARD, (a,b) -> (a.startDay + a.days - 1) - b.startDay + 1)
+            .penalize(HardMediumSoftScore.ONE_HARD, (a,b) -> ((a.startDay + a.days - 1) - b.startDay + 1) * TIME_VIOLATION_MULT)
             .asConstraint("phase-order");
     }
 
@@ -76,7 +76,20 @@ final class BlockConstraints {
         return total;
     }
     // ---------- Production from staffed seats ----------
-    static final int UNDERFILL_MULT = 10; // huge so it dominates other hard constraints
+    /**
+     * Hard penalty per missing hour of production. Kept larger than the worker rules (1 per clash day / hour over the cap)
+     * so that, when a plan cannot be made feasible, the solver still staffs every block and breaks worker rules
+     * instead of leaving blocks empty.
+     */
+    static final int UNDERFILL_MULT = 10;
+    /**
+     * Hard penalty per day of a phase-order or window violation: 10 times the underfill weight, about one working day
+     * of hours. A late block can only be fixed by shortening it AND adding a worker. Shortening alone leaves hours
+     * missing, which costs hours x UNDERFILL_MULT; with a day weighing only 1 the solver never took that step and
+     * stayed on the violation for good (5-module sample: stuck at -98 hard, 0 hard in 13 to 30 s with this ratio).
+     * See Timefold_WeightFinding5Modules20261023.md.
+     */
+    static final int TIME_VIOLATION_MULT = 100;
     Constraint noUnderfillByBlock(ConstraintFactory f) {
         var perBlock = f.forEach(BlockDecision.class)
             .join(f.forEachIncludingUnassigned(CrewSeat.class),

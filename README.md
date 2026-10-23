@@ -109,6 +109,23 @@ The seconds-level keys are the ones to use for very short runs (`stage1_unimprov
 The trip_list (input, marks, output) is described in the sections "trip_list input", "Trip marks (calendar)", "Stay limits
 count FI to FO", "TripDeriver" and "trip_list output" below.
 
+## Block weights
+
+Three hard penalties of a block (named constants in `constraints/BlockConstraints`):
+
+| Constraint | Weight |
+|---|---|
+| underfill (`UNDERFILL_MULT`) | 10 per missing hour |
+| `phase-order` (`TIME_VIOLATION_MULT`) | 100 per day |
+| `block-end-within-window` (`TIME_VIOLATION_MULT`) | 100 per day |
+
+Why: a late block can only be fixed by shortening it and adding a worker. With 1 per day of violation, shortening alone
+costs more (missing hours x 10) than it gains, so both steps were rejected and the search stayed stuck (5-module sample:
+-98 hard for good). With 100 per day it reaches 0 hard in 13 to 30 s on 4 of 5 seeds.
+
+Underfill stays larger than the worker rules (1 per clash day or hour over the cap), so an infeasible plan still staffs
+every block and breaks worker rules instead of leaving blocks empty.
+
 ## Misc task region
 
 A misc task (an id in `misc_task_list`, for example training or a visa trip) has its own `region:`. A Fixed row of such a task now
@@ -293,7 +310,8 @@ per-worker nested form (`- worker: w1`, `trips: [...]`), workers sorted, trips s
 
 ### Timefold Solver 1.35.0 -> 2.7.1, Java 17 -> 21 (2026-10-21)
 
-The goldens keep their `golden/*-1.27.json` file names; the names record the 1.27.0 baseline.
+The goldens keep their `golden/*-1.27.json` file names; the names record the 1.27.0 baseline (the `small` and `datagen`
+goldens were regenerated later for the block weights change, see "Goldens" below).
 
 #### What changed for 2.x
 
@@ -384,7 +402,15 @@ route is slow, so it only suits tests.
 
 #### Goldens: proof that the 23 constraints evaluate identically
 
-- `small` and `datagen`: the `initial` sections are byte-identical to 1.35/1.27.
+- `small` and `datagen`: the `initial` sections were byte-identical to 1.35/1.27. The goldens were regenerated afterwards
+  in the commit "fix: weigh phase-order and window violations 100 per day" (see "Block weights"): in the `initial`
+  sections only `phase-order` and `block-end-within-window` (and so the total) may differ; in fact only `small`'s
+  `phase-order` changed (-2 to -200 hard, total -1208 to -1406 hard) and `datagen`'s `initial` is unchanged. The
+  `initial` sections of all other constraints are still the 1.27 values. The `seeded_run` sections follow the new search
+  trajectory.
+- `real-1.27.json` was not regenerated for that change (the real sample is not run in the normal workflow). Its
+  `phase-order` and `block-end-within-window` entries have 0 matches, so they should still hold, but they are unverified
+  until someone runs it with `-Dreal.sample=<dir>`. The statements about the real sample below are for 1.35/1.27.
 - Real sample (`-Dreal.sample=<dir>`): the total score and all 23 per-constraint scores are identical. The `initial` section
   was regenerated once, and only two match counts changed: `emp-one-task-per-day` and `seat-daily-cap-12h`, from 284 to 286.
   1.35 under-counted them:

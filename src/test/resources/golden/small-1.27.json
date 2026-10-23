@@ -1,7 +1,7 @@
 {
   "description": "Characterisation golden written by CharacterizationTest with -Dgolden.write=true. Do not edit by hand; regenerate only for an intended behaviour change.",
   "initial": {
-    "score": "-1208hard/-300medium/-8068soft",
+    "score": "-1406hard/-300medium/-8068soft",
     "constraints": {
       "block-end-within-window": {
         "score": "0hard/0medium/0soft",
@@ -48,7 +48,7 @@
         "matches": 2
       },
       "phase-order": {
-        "score": "-2hard/0medium/0soft",
+        "score": "-200hard/0medium/0soft",
         "matches": 1
       },
       "prefer-regular-over-spot": {
@@ -100,11 +100,11 @@
   "seeded_run": {
     "step_limit": 200,
     "seed": 42,
-    "score": "-43hard/0medium/-7138soft",
+    "score": "-133hard/0medium/-7293soft",
     "constraints": {
       "block-end-within-window": {
-        "score": "-7hard/0medium/0soft",
-        "matches": 1
+        "score": "0hard/0medium/0soft",
+        "matches": 0
       },
       "block-hours-in-allowed": {
         "score": "0hard/0medium/0soft",
@@ -123,72 +123,72 @@
         "matches": 4
       },
       "emp-annual-overtime-limit": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
+        "score": "-2hard/0medium/0soft",
+        "matches": 1
       },
       "emp-monthly-overtime-limit": {
         "score": "0hard/0medium/0soft",
         "matches": 0
       },
       "emp-one-task-per-day": {
-        "score": "-4hard/0medium/0soft",
-        "matches": 4
+        "score": "-13hard/0medium/0soft",
+        "matches": 12
       },
       "emp-region-annual-stay-max": {
-        "score": "-3hard/0medium/0soft",
-        "matches": 2
+        "score": "-24hard/0medium/0soft",
+        "matches": 4
       },
       "emp-region-stay-max-on": {
-        "score": "-5hard/0medium/0soft",
-        "matches": 3
+        "score": "-20hard/0medium/0soft",
+        "matches": 2
       },
       "emp-region-transit-gap": {
         "score": "-2hard/0medium/0soft",
-        "matches": 2
+        "matches": 1
       },
       "phase-order": {
-        "score": "-2hard/0medium/0soft",
-        "matches": 1
+        "score": "0hard/0medium/0soft",
+        "matches": 0
       },
       "prefer-regular-over-spot": {
         "score": "0hard/0medium/-40soft",
         "matches": 1
       },
       "seat-daily-cap-12h": {
-        "score": "-20hard/0medium/0soft",
-        "matches": 4
+        "score": "-72hard/0medium/0soft",
+        "matches": 12
       },
       "soft-affinity-penalty": {
         "score": "0hard/0medium/-30soft",
-        "matches": 5
+        "matches": 6
       },
       "soft-affinity-reward": {
-        "score": "0hard/0medium/20soft",
-        "matches": 5
+        "score": "0hard/0medium/30soft",
+        "matches": 6
       },
       "soft-balance-block-avg-skill": {
         "score": "0hard/0medium/-5165soft",
         "matches": 6
       },
       "soft-balance-total-hours": {
-        "score": "0hard/0medium/-276soft",
+        "score": "0hard/0medium/-444soft",
         "matches": 3
       },
       "soft-earlier-start": {
-        "score": "0hard/0medium/-17soft",
+        "score": "0hard/0medium/-6soft",
         "matches": 5
       },
       "soft-encourage-skill-variety": {
-        "score": "0hard/0medium/0soft",
-        "matches": 0
+        "score": "0hard/0medium/-3soft",
+        "matches": 1
       },
       "soft-fab-preference": {
         "score": "0hard/0medium/80soft",
-        "matches": 10
+        "matches": 11
       },
       "soft-minimize-region-transitions": {
-        "score": "0hard/0medium/-30soft",
-        "matches": 6
+        "score": "0hard/0medium/-35soft",
+        "matches": 7
       },
       "soft-smaller-hours": {
         "score": "0hard/0medium/-1680soft",

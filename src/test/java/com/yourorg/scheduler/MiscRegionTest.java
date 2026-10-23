@@ -168,7 +168,8 @@ class MiscRegionTest {
         assertEquals(Set.of("r_other"), SolveContext.current().miscNeutralRegions);
         SinglePassPlan p = Characterization.buildFrom(CharacterizationTest.SMALL_FIXTURE, tmp.resolve("small"));
         Snapshot initial = Characterization.analyze(p);
-        // throws with a per-constraint diff when any total differs from the 1.27 baseline
+        // throws with a per-constraint diff when any total differs from the golden (1.27 values, phase-order
+        // regenerated for the 100-per-day weight; see CharacterizationTest)
         Characterization.checkSection(CharacterizationTest.SMALL_GOLDEN, "initial", Map.of(), initial);
     }
 

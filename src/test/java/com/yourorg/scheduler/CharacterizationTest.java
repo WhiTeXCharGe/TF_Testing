@@ -24,6 +24,16 @@ import com.yourorg.scheduler.model.SinglePassPlan;
  *       initial totals, golden {@code golden/real-1.27.json}.</li>
  * </ul>
  * Regenerate goldens only for an intended behaviour change: {@code mvn test -Dgolden.write=true}.
+ *
+ * <p>The golden files keep their {@code -1.27} names. {@code small-1.27.json} and {@code datagen-1.27.json} were
+ * regenerated in the commit "fix: weigh phase-order and window violations 100 per day" (block weights change, see
+ * README "Block weights"): in their {@code initial} sections only {@code phase-order}, {@code block-end-within-window}
+ * and the total score may differ from the 1.27 values (in practice only {@code small}'s phase-order changed, -2 to
+ * -200 hard), all other constraints are still the 1.27 values; the {@code seeded_run} sections follow the new search
+ * trajectory. {@code real-1.27.json} was NOT regenerated (the real sample is not run in the normal workflow). Its
+ * {@code phase-order} and {@code block-end-within-window} entries record 0 matches, which the new weights leave at 0,
+ * so it is expected to still hold, but that is unverified: treat those two entries and the total as stale until
+ * someone runs it with {@code -Dreal.sample=<dir>} (and {@code -Dgolden.write=true} if it reports a difference).
  */
 class CharacterizationTest {
 

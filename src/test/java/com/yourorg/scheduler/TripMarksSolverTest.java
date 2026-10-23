@@ -33,21 +33,32 @@ import com.yourorg.scheduler.model.SinglePassPlan;
 
 /**
  * Trip marks end to end on the {@code small} fixture (design sections 5 and 5.2): seeded solve
- * ({@link SolverFactories#forTests}, {@value #STEPS} steps, seed 42) and export through {@link ScheduleExporter}.
+ * ({@link SolverFactories#forTests}, {@value #STEPS} steps, seed {@value #SEED}) and export through
+ * {@link ScheduleExporter}.
  *
  * <p>Main scenario: w2 gets two Fixed trips, r2 from 2026/03/23 (FI, day 0) to 03/27 (FO, day 4) and r1 from 03/30
  * (FI, day 7; also w2's personal unavailable date in the fixture) to 04/05 (FO, day 13). Without trips the solver
- * puts w2 on e2p1o1 (r2) 03/23..03/26 and on e1p2o1 (r1) from 04/05, i.e. on closed days. w2's Fixed rows conflict
- * with the first trip: e1p1o1 (r1) on 03/23 (FI) and 03/24 (r1 inside an r2 trip), the region-less misc row on 03/27
- * (FO); they are kept and reported.
+ * puts w2 on e2p1o1 (r2) 03/23..03/25, on e1p2o2 (r1) 03/25..03/27 and on e1p2o1 (r1) up to 04/05, i.e. on FI/FO days
+ * and on r1 work inside the r2 trip. With the trips it puts w2 on e2p1o1 (r2) 03/24 and 03/25, inside the r2 trip.
+ * w2's Fixed rows conflict with the first trip: e1p1o1 (r1) on 03/23 (FI) and 03/24 (r1 inside an r2 trip), the
+ * region-less misc row on 03/27 (FO); they are kept and reported.
  *
- * <p>Other-region scenario: one r1 trip 03/24..03/27; without it w2 works r2 (e2p1o1) on 03/25 and 03/26.
+ * <p>Other-region scenario: one r1 trip 03/24..03/27; without it w2 works r2 (e2p1o1) on 03/25 inside that window.
+ *
+ * <p>These descriptions are of the seeded trajectory (seed {@value #SEED}, 300 to 2000 steps) after the block weights
+ * change (README, "Block weights"); the assertions only rely on the preconditions named in their messages.
  */
 class TripMarksSolverTest {
 
     static final Path SMALL_FIXTURE = CharacterizationTest.SMALL_FIXTURE;
     static final int STEPS = 300;
-    static final long SEED = 42L;
+    /**
+     * Not 42: the scenario preconditions below depend on the seeded search trajectory. When phase-order and
+     * block-end-within-window were re-weighted to 100 per day (task 20) the trajectory of seed 42 changed and no
+     * longer put w2 on r2 work inside the r2 trip, at 300, 500, 1000 or 2000 steps (nor did seeds 1, 2, 7 at 1000 steps).
+     * Seed 3 satisfies every precondition at 300, 1000, 1500 and 2000 steps; 300 keeps the class at about 6 s.
+     */
+    static final long SEED = 3L;
 
     static final String WORKER = "w2";
 
@@ -193,9 +204,9 @@ class TripMarksSolverTest {
         // (a) + (b)
         assertMarksHonoured(run, TRIPS);
 
-        // (c) work of a trip's own region inside the trip is allowed, and the solver uses it in the r2 trip here.
-        // Until Task 15 it also did in the r1 trip; since the stay limits count a Fixed trip as a stay (FI..FO), the
-        // search (300..2000 steps, seed 42) puts w2's r1 block (e1p2o1) from 04/06, right after that trip's FO day.
+        // (c) work of a trip's own region inside the trip is allowed, and the solver uses it in the r2 trip here
+        // (300..2000 steps, seed 3: e2p1o1 on 03/24 and 03/25). Only the r2 trip is asserted: that the r1 trip also
+        // gets r1 work inside it (e1p2o1 03/31..04/04) is a property of this trajectory, not of the rules.
         for (String[] t : new String[][] {TRIPS[0]}) {
             boolean sameRegionInside = false;
             for (String[] td : workDays(run.output(), WORKER, false)) {
