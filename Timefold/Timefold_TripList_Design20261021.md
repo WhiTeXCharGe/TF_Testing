@@ -1,6 +1,6 @@
 # Timefold — `trip_list` (FI/FO), misc region, parameters, refactor and 2.x upgrade
 
-> **Status:** DESIGN FOR CONFIRMATION — nothing is implemented yet.
+> **Status:** IMPLEMENTED (branch `Timefold` of TF_Testing, see `Timefold_ChangesAndHowToRun20261022.md` for what changed and how to run). This document is the design that was confirmed.
 > **Target project:** new Maven project `web/Timefold` (copy of `web/TFDocker`; `TFDocker` stays untouched as the
 > baseline for comparison). **Language/build:** Java + Maven, like today.
 > **Date:** 2026-10-21

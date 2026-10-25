@@ -111,8 +111,11 @@ SchedulerWeb will fill this file later from a settings screen (not built yet).
 * **Short runs give infeasible plans**, so `trip_warnings.txt` may show `region_conflict_day` and `tight_transit`: expected for 5 to 10 second budgets.
 * **Not part of this work (later):** the decoder (SU_Others to `Schedule.yaml`), `fix_edited_modules.py`, GanttChartEditor, SchedulerWeb
   and the API controller (settings screen and passing `SolverParams.yaml`) still need their own changes.
-* **Speed:** see `docs/perf.md` in the code repository for what was measured; the larger ideas (cached `int` regions on fixed rows, a fixed-presence
-  calendar instead of pinned seats, packed keys) are not implemented.
+* **Speed (Task 19) was not finished:** no performance change is in this version and nothing was measured. A first draft
+  (register the stay rules only when a region has a finite limit) was started but not verified; it is kept only in the local
+  branch `perf-wip` and is not pushed. The other ideas (compute day-to-region maps once, build value ranges once, cached `int`
+  regions on fixed rows, a fixed-presence calendar instead of pinned seats, packed keys) are not implemented. Each needs a
+  measured before/after run with a fixed seed.
 * The real sample (`decoder7_out`, about 194k lines) was deliberately not run, and the long (300 minute) default budget was not run end to end.
 
 ## 6. Where things are (code repository)

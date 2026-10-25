@@ -11,6 +11,7 @@ Design lives in [SigmaI_Azure_DetailedDesign20261013.md](./SigmaI_Azure_Detailed
 | 03 | [Azure resources](./SigmaI-03-Azure-Resources.md) | step-by-step: containers, D-Wave key, ACR, pool + StartTask, test app |
 | 04 | [Local testing](./SigmaI-04-Local-Testing.md) | everything you can verify on your PC before/while Azure is being set up |
 | 05 | [Bridge & start-up scripts](./SigmaI-05-Bridge-And-Startup-Scripts.md) | what `start-sigmai.sh` / `bridge.sh` do, settings, troubleshooting |
+| 06 | [Diagnose `S1_INVALID`](./SigmaI-06-Diagnose-S1_INVALID.md) | analysis of job `20261013_01` and the step-by-step experiment to find the input to fix |
 
 ---
 
