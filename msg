@@ -1,37 +1,78 @@
-1. ハード制約違反なしなら、全 assignment はいずれかの trip の区間に含まれるか
+environment:
+  workflow_list:
+  - id: workflow
+    name: Weekend Test
+    phase_list:
+    - id: p1
+      name: Test Phase
+      operation_list:
+      - id: p1o1
+        name: Test Operation
+        work_hours: [10]
+        workload_hours: 70
+        min_worker_num: 1
+        max_worker_num: 1
+  fab_list:
+  - id: f1
+    name: Test Fab
+    region: r1
+    customer_company: c1
+  region_list:
+  - id: r1
+    name: Test Region
+    max_stay_on: 90
+    max_annual_stay: 270
+    stay_off_interval: 3
+    unavailable_dates: []
+  customer_company_list:
+  - id: c1
+    name: Test Customer
+  worker_company_list:
+  - id: wc1
+    name: Test Company
+    annual_overtime_limit: 360
+    monthly_overtime_limit: 40
+  transite_day_map: []
+  worker_list:
+  - id: w1
+    name: Test Worker
+    worker_company: wc1
+    is_manager: true
+    skill_map: {p1o1: 5}
+    worker_type_by_operation: {p1o1: regular}
+    fab_suitability_map:
+    - kind: region
+      suitability: {r1: 2}
+    - kind: customer_company
+      suitability: {c1: 2}
+    unavailable_dates: []
+    affinity: []
 
-はい。FI/FO が書かれていない期間でも、作業があればその期間の trip を生成します。作業日はすべて、いずれかの trip の中に入ります。例外は、地域なしの misc_task です(3 を参照)。
 
-2. Fixed の assignment しかない箇所も、trip の区間に含まれるか
 
-はい。trip は最終的な assignment 全体から作ります。この中には Fixed の行と、plan 開始前の Fixed 履歴も含まれます。そのため、Fixed しかない箇所にも trip を生成します。
-
-3. Fixed の misc_task しかない箇所も、trip の区間に含まれるか
-
-はい。ただし、その misc_task に地域がある場合だけです。region が空、または r_other などの中立地域の場合は、地域なしの作業として扱うため、trip は生成されません。
-
-4. plan_range の外にも trip は生成されるか
-
-はい。trip は plan_range で切り取りません。plan 開始日の直後に作業があれば FI が start_date より前になり、plan 終了日の直前に作業があれば FO が end_date より後になります。plan 開始前の Fixed 履歴にも trip を生成します。古い履歴の trip を出力から外したい場合は、trip_history_days で日数を指定できます。
-
-5. 移動日を確保できない場合、trip 生成結果はどうなるか
-
-例として、r1 が 9/1、r2 が 9/2 にあるとします。
-すると r1 の trip の FO は 9/2、r2 の trip の FI は 9/1 になり、重なってしまいます。
-この場合、r2 の FI を 9/2 に直します。r1 の FO と r2 の FI が、同じ日になります。
-
-作業が重なっている場合の例
-
-taskA が r1 で 09/01〜09/10、taskB が r2 で 09/05〜09/12 の場合を考えます。
-09/05〜09/10 は、同じ日に異なる地域の作業が重なっています。
-重なった日は、地域 ID が辞書順で小さい方の r1 だけを採用します。r2 の作業日は、09/11〜09/12 だけが残ります。
-結果は次のとおりです。
-r1 の trip は 08/31〜09/11 です。
-r2 の trip は、本来は 09/10〜09/13 ですが、r1 の FO(09/11)と重なるため、FI を 09/11 に直します。その結果、r2 の trip は 09/11〜09/13 です。
-09/05〜09/10 の taskB の assignment は、r1 の trip の中に入ります。
-
-r_other を地域として扱わない理由
-
-SU_OTHER では、同じ地域の作業が続く間に r_other の misc_task が入っていることが多くあります。r_other を地域として扱うと、その地域の滞在が分断され、trip が不要に分かれたり、移動日が余計に入ったりします。
-
-r_other は特定の地域ではないので、「地域なし」として扱います。
+schedule:
+  plan_range:
+    start_date: 2025/09/01
+    end_date: 2025/09/07
+  workflow_task_list:
+  - id: e1
+    name: Weekend Test Task
+    description:
+    workflow: workflow
+    fab: f1
+    phase_task_list:
+    - id: e1p1
+      name: Test Phase
+      description:
+      phase: p1
+      start_date: 2025/09/01
+      end_date: 2025/09/07
+      operation_task_list:
+      - id: e1p1o1
+        name: Test Operation
+        description:
+        operation: p1o1
+        workload_hours: 70
+        color_code: FFE599
+  misc_task_list: []
+  assignment_list: []
