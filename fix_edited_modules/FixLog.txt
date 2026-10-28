@@ -1,0 +1,41 @@
+prev: EnvConfig_saved_before_backup.yaml / Schedule_saved_before_backup.yaml
+new : EnvConfig_saved_before_backup2.yaml / Schedule_saved_before_backup2.yaml
+mode: (worker, date)
+
+EDITED -> Fixed (1):
+  SU 1119A
+      - AV 2025/11/17
+      - AV 2025/11/18
+      - AV 2025/11/24
+      - AV 2025/11/25
+      - BZ 2025/11/17
+      - BZ 2025/11/18
+      - BZ 2025/11/24
+      - BZ 2025/11/25
+      - ... (16 more)
+      + AV 2025/11/22
+      + AV 2025/11/23
+      + AV 2025/11/26
+      + AV 2025/11/27
+      + BZ 2025/11/22
+      + BZ 2025/11/23
+      + BZ 2025/11/28
+      + BZ 2025/11/29
+      + ... (16 more)
+
+NOT IN PREVIOUS OUTPUT, has assignments -> Fixed (0):
+
+WORKLOAD (fixed modules, workload_hours before -> after):
+  SU 1119A e119p1o1: 240 -> 240
+  SU 1119A e119p1o2: 160 -> 160
+  SU 1119A e119p1o3: 160 -> 160
+  SU 1119A e119p2o1: 240 -> 240
+  SU 1119A e119p2o2: 200 -> 200
+  SU 1119A e119p3o1: 120 -> 120
+  SU 1119A e119p4o1: 96 -> 96
+  SU 1119A e119p4o2: 64 -> 64
+
+IN PREVIOUS OUTPUT, missing now (info only) (0):
+
+unchanged: 254 modules
+assignments switched to Fixed: 20
