@@ -1,25 +1,40 @@
-I’d keep the current design: the API asks Batch directly while the task is active, and reads Blob once it’s done. Timefold doesn’t need to write its status to Blob during the run, and this doesn’t conflict with Sigma-I.
+I’ll preserve the macros, drawings, comments, and buttons by editing only the sheet’s XML cells directly in the zip rather than using openpyxl, keeping everything else byte-identical. Writing that tool now.
 
-The Sigma-I design already works this way. In documents/sigmaI §8.3, the Bridge writes its status every 10 s to the file on the node (wd/status/{runId}.json), not to Blob. Blob gets the status only once, when the task ends, through the same outputFiles upload Timefold uses. While the task runs, the API reads the live file the same way it does for Timefold. So both engines follow one rule. The only difference is which Batch job the API asks (BATCH_JOB_ID or BATCH_JOB_ID_SIGMAI).
+The cell-insertion logic in patch_sheet_xml is convoluted. I’m rewriting it cleanly.
 
-The idea that the Bridge writes Blob continuously comes from two loosely worded places in the Sigma-I docs. The Summary says “keeps status/{runId}.json up to date”, and the JP plan’s diagram shows BR->>BLOB: status = Completed. That arrow is really Batch’s end-of-task upload. Those two spots should be reworded; I haven’t edited the Sigma-I docs.
+Tests pass. Now the real run on the COPY of the 20260927 workbook: the decoder7 output as the flexible schedule, from 2026/09/27 on.
 
-About the “write only once” limit: that limit is on outputFiles, not on Blob. A script inside the task can write Blob as often as it wants by calling Blob itself with the pool identity’s token. I wouldn’t do that yet. It needs curl and a token inside the container, adds a new way to fail mid-solve, and puts three writers on one file. If you ever need it, do it the same way in both engines and the API rule stays the same.
+Identity check confirmed: only one cell differs, the one the decoder had cut. Next I’ll shift a module by +7 days, rewrite the copy, and compare every cell’s value and formatting before and after.
 
-Gaps worth closing in the API (Sigma-I design §7 already has these; Timefold doesn’t yet):
+The 3-3 tool is done, in tools/weekly_planning/write_su_others/ next to prepare_schedule. It writes the flexible schedule into a new copy of SU_Others and leaves the rest of the workbook byte-identical. I only ever used a copy of the real file. The result has not been opened in Excel yet, so please open it once.
 
-Task ends but no final status reaches Blob (upload error, timeout, lost node). Today /status says Submitted forever. Fix: if Batch says the task finished more than 2 minutes ago, return Failed.
-Creating the Batch task fails after Submitted was written. Fix: write Failed (SubmitFailed) in that case.
-Errors are swallowed. The live-read code drops errors without logging them, so a broken read looks like “still Submitted”. Log anything other than 404.
+How it works
 
-Doc changes: I rewrote Azure-Company-08-Running-Status-Check.md around your working server.js. It now covers:
+Inputs: a flexible schedule (the decoder7 Schedule.yaml works, and so will a Timefold result), its EnvConfig.yaml, and the old SU_Others. The EnvConfig is needed because the schedule only has worker ids, not names.
+Same format: the tool edits the sheet inside the .xlsm zip instead of loading it with openpyxl. openpyxl would drop the macros, buttons, drawings and comments from this file.
+Names and colours: a cell that must show a module copies the text and style of a real cell of that module, the same worker’s nearest cell first. So TSMCF21_SU3200_530N03370A_新規 and its colour are never invented.
+Cells that leave a module: they become empty, using the sheet’s usual empty-cell style.
+Cells that are never overwritten: cells with other tasks or text, red cells, empty grey cells, and cells before --from-date (default today). Blocked cells are listed as CONFLICT in the report.
 
-the hybrid status rule
-your four fixes (chmod, the --entrypoint override, running as root, the input mount path)
-a Timefold vs Sigma-I side-by-side table
-the three gaps above
-a short check procedure
+Run it
 
-It no longer mentions my URL-encoding and ?debug=1 changes, which your version replaced, and I removed the ?debug=1 mention from Phase 6 too.
+cd "C:/Users/PC_USER/OneDrive/Desktop/work/Timefold/web/tools/weekly_planning/write_su_others" && PYTHONUTF8=1 python -X utf8 write_su_others.py --schedule "<Schedule.yaml>" --env "<EnvConfig.yaml>" --su-others "<copy of 20260927 SU_Others.xlsm>" --out-dir out --from-date 2026/09/27 --report
 
-I haven’t touched server.js. Do you want me to add the three API fixes there?
+It writes <old name>_rewritten.xlsm, plus a .txt report with --report. It takes about 25 seconds. --dry-run prints the plan only.
+
+What I tested (copy of the 20260927 file, decoder7 output as the schedule)
+
+Same schedule as the sheet: 1 cell emptied, 0 filled. That cell is one the decoder had cut earlier, so the schedule does not contain it.
+One module moved +7 days: 15 cells emptied, 6 filled, and 8 left alone because other tasks sit on those days.
+Cell-by-cell comparison: across all 6 sheets (1.9 million cells), exactly those 21 cells differ. The new cells show NST533_530N03498A with the fill of the real bar. The macros, drawings, comments and other sheets are byte-identical.
+Unit tests: 14 new tests pass, and the 35 prepare_schedule tests still pass.
+
+Limits
+
+Modules with no assignment: a module with no assignment in the schedule is not rewritten.
+Modules with no cell: a module that has assignments but no cell in the old sheet is only reported, because its name and colour are unknown.
+Whole days only: hours are not written to the sheet.
+Empty style: an emptied cell gets the common empty style (style 4 in this file), so a blank cell that was coloured before is not restored.
+Not tested: a Timefold result as input.
+
+The rules and these numbers are in the folder’s README.md.
