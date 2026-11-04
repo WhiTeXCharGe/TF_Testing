@@ -1,0 +1,42 @@
+# ---- Excel files: SU_Others, 初期データ追加情報, skill level file ... (real worker / plan data, large binaries, macros)
+*.xlsm
+*.xlsx
+*.xls
+*.xlsb
+*.xltx
+*.xltm
+# Excel / LibreOffice lock and temp files
+~$*
+.~lock.*#
+
+# ---- Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# ---- generated data with real worker / plan information (decoder and tool outputs, backups, diagnose runs)
+decorder/*.yaml
+decorder/decoder7_out/
+decorder/TransformationLog.txt
+fix_edited_modules/*.yaml
+fix_edited_modules/FixLog.txt
+sigmai_diagnose/variants_*/
+# week folders and tool output written next to the tools (e.g. 20261106/, out/, chk/)
+weekly_planning/**/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/
+weekly_planning/**/out/
+weekly_planning/**/*_prepare_report.txt
+weekly_planning/**/*_rewritten.txt
+weekly_planning/**/*FlexibleSchedule_report.txt
+weekly_planning/**/03_plan_period_report.txt
+# any yaml inside weekly_planning is a tool input / output, not source
+weekly_planning/**/*.yaml
+
+# ---- editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
