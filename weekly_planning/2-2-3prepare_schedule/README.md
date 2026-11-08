@@ -7,8 +7,9 @@ Japanese explanation (how FI/FO is read, repaired and compared, step by step): [
 ## What it does
 
 * **2-2** looks at last week's flexible plan and at `SU_Others.xlsm` and decides what the planner has changed:
-  * a **module** is judged only by its work: if the (worker, date) cells of the module in the sheet differ from last week's assignments it becomes
-    **Fixed** (it turns into misc tasks). Hours are not compared;
+  * a **module** is judged only by its work and its text: if the (worker, date) cells of the module in the sheet differ from last week's
+    assignments, **or the text of its bar was changed** (the planner only renamed the cell), it becomes **Fixed** (it turns into misc tasks, with the
+    new text as the name). Hours are not compared;
   * a module whose work all ended before `--today` becomes **Fixed**;
   * a **trip** (FI/FO) is judged only by its FI and FO days: a flexible trip whose FI and FO are no longer on the same days in the sheet is no
     longer flexible, the sheet's FI/FO become a **Fixed trip**;
@@ -24,6 +25,12 @@ Japanese explanation (how FI/FO is read, repaired and compared, step by step): [
   * `EnvConfig`: workflows, fabs, regions, customers and companies of last week are kept (ids never change), new names from
     `初期データ追加情報` are added; `worker_list` is rebuilt from the sheet (ids of known workers are kept by name, skills and
     regular/spot are computed like decoder7).
+
+**`cell_name`.** Every assignment row of a flexible module that goes into `01_Schedule.yaml` gets two keys with the same text: `cell_name` (the text of the
+bar in SU_Others; the most common text of that worker's cells on the row's days) and, if it is empty, `description`. The solver keeps the `description` of a
+(worker, task) in its result but drops other new keys of the rows it rebuilds, so `description` is how the text reaches `04_Schedule.yaml`;
+tool 3-2 turns it into `cell_name` of `FlexibleSchedule.yaml`, tool 3-3 writes it into the cells, and next week this tool checks it. An existing non-empty
+`description` is never overwritten (then that row has no text to carry).
 
 `<today>_FlexibleWork.yaml` looks like this:
 
@@ -78,7 +85,7 @@ If Python prints Japanese file names wrongly on Windows, run it as `$env:PYTHONU
   (default `予定表_2026 (2)`). If the name is wrong the tool stops and lists the sheets that exist.
 
 Other options: `--seiban-start-row` (default 3 = whole list), `--default-trip-region <id>` (region of a Fixed trip whose region cannot be found; default `r_other`,
-`none` skips and lists such trips), `--no-fifo-repair` (do not repair FI/FO without a partner), `--max-gap-days` (default 14, see "FI/FO patterns"),
+`none` skips and lists such trips), `--no-fifo-repair` (do not repair FI/FO without a partner), `--max-gap-days` (default 14) and `--chain-days` (default 3), see "FI/FO patterns",
 `--decoder-dir` (folder of `decoder7.py`, default `tools/decorder`). Needs `pyyaml`, `openpyxl`, `pandas` (the same as decoder7).
 Reading the 7 MB workbook takes about 25 seconds.
 
@@ -91,6 +98,7 @@ treated as flexible, misc tasks in it are ignored.
 |---|---|
 | Module identity | the workflow task `name` (the module code such as `530N03359A`) is matched with the code in the sheet's bar text |
 | "Changed" module | the set of (worker, date) in the sheet differs from last week's rows (hours are not compared). A worker that is renamed or gone counts as a change. FI/FO are not looked at |
+| Changed text of a bar | every assignment row of `FlexibleSchedule.yaml` has a `cell_name` (see below). If the most common text of the worker's cells of that row in the sheet is not the `cell_name` (compared without case, width and spaces), the module is changed: reason `cell text changed in SU_Others (<worker>: 'old' -> 'new')`. One odd cell in a bar does not count. Rows without a `cell_name` are not checked |
 | Complete module | last assignment date `< --today` |
 | FI/FO pairing | per worker, every `FI` is paired with the next `FO`; marks without a partner are repaired, see "FI/FO patterns" below |
 | Flexible trip kept | last week's Flexible trip whose worker, FI day and FO day are all still in the sheet: kept as Flexible, copied unchanged (region included), listed in `FlexibleWork.trips` |
@@ -113,7 +121,9 @@ Marks without a partner: 97 workers start with an FO, 322 FO follow an FO, 103 F
 | typos / case / full width / `FI(仮)` | read as FI / FO (`F1`, `Fl`, `F0`, `Fi`, `ＦＩ` ...); the report lists every text that was not exactly FI / FO |
 | FI without FO (next mark is an FI, or the sheet ends) | the trip ends on the last day of the busy run after the FI (gaps up to `--max-gap-days`, default 14); nothing busy: a one-day trip |
 | FO without FI (first mark, or after an FO) | the trip starts on the first day of the busy run before the FO, after the previous mark; if the run reaches the start of the sheet the trip starts at the sheet start |
-| FI, FI / FO, FO on neighbouring days (<= 2 days) | one mark: the first FI, the last FO |
+| `FI \| TaskA ... \| FO \| TaskB ... \| FO` (FO after an FO, work in between) | **same date**: the second trip starts on the date of the first FO (FI = that FO date), not on the first TaskB day. Applies when the busy run starts within `--chain-days` (default 3, covers a weekend) after the first FO; otherwise the trip starts on the first busy day |
+| `FI \| TaskA ... \| FI \| TaskB ... \| FO` (FI before an FI) | same date: the first trip ends on the date of the second FI, if that FI is within `--chain-days` of the end of the busy run |
+| FI, FI / FO, FO on neighbouring days (<= 2 days, nothing busy between) | one mark: the first FI, the last FO |
 | FI, FI far apart / FO, FO far apart | the two rules above |
 | empty days inside FI..FO | kept: the trip is just FI to FO |
 | a very long gap inside a repaired trip | the busy run stops at a gap larger than `--max-gap-days` |
@@ -150,3 +160,13 @@ python -m unittest discover -s tests -v
   cells. With a real FlexibleSchedule (tool 3-2) written back to Excel by 3-3 this noise disappears.
 * 2-4 (adding new modules) is done in between by the planner; this tool does not add new modules, and a module that is not in last
   week's flexible plan always becomes misc.
+
+## Example with the `20261105Weeklyplanning` test folders (run from the `tools` folder, PowerShell)
+
+Reads `20261105Weeklyplanning/20261030Initialplan/2-2-3/input`, writes `20261105Weeklyplanning/20261030Initialplan/2-2-3/output` (`20261030_FlexibleWork.yaml`, `01_EnvConfig.yaml`, `01_Schedule.yaml`, `20261030_prepare_report.txt`).
+
+```powershell
+python -X utf8 weekly_planning/2-2-3prepare_schedule/prepare_schedule.py --prev-flexible 20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20261023_FlexibleSchedule.yaml --prev-env 20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20261023_04EnvConfig.yaml --su-others "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20260927 SU_Others.xlsm" --skill-file "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20260915 SU_Others_skill level有配布禁止_.xlsm" --seiban-info "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/初期データ追加情報 _20260930.rev1.xlsx" --out-dir 20261105Weeklyplanning/20261030Initialplan/2-2-3/output --today 2026/10/30 --report
+```
+
+(`python -X utf8` is enough for Japanese file names; do not put `PYTHONUTF8=1` in front in PowerShell, that is Git Bash syntax.)

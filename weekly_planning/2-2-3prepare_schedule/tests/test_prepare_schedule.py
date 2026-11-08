@@ -246,12 +246,40 @@ class FiFoPatterns(unittest.TestCase):
         trips, _ = ps.pair_fifo_repaired({"2026/01/07": "FO"}, days("2026/01/03", "2026/01/06"), self.WIN)
         self.assertEqual([("2026/01/01", "2026/01/07")], trips)
 
-    def test_fo_after_fo_starts_after_the_previous_trip(self):
+    def test_fo_after_fo_starts_on_the_date_of_the_previous_fo(self):
         busy = days("2026/10/04", "2027/01/27")
         marks = {"2026/10/03": "FO", "2027/01/28": "FO"}
         trips, _ = ps.pair_fifo_repaired(marks, busy, self.WIN)
-        # the first FO has nothing busy before it: a one-day trip; the second starts right after the first
-        self.assertEqual([("2026/10/03", "2026/10/03"), ("2026/10/04", "2027/01/28")], trips)
+        # the first FO has nothing busy before it: a one-day trip; the second trip starts on the same date as the first FO
+        self.assertEqual([("2026/10/03", "2026/10/03"), ("2026/10/03", "2027/01/28")], trips)
+
+    def test_fi_taska_fo_taskb_fo_chain_shares_the_fo_date(self):
+        """FI | TaskA ... | FO | TaskB ... | FO  ->  two trips, the second starts on the date of the first FO (not on the first TaskB day)."""
+        busy = days("2026/10/21", "2026/10/29") + days("2026/10/31", "2026/11/09")
+        marks = {"2026/10/20": "FI", "2026/10/30": "FO", "2026/11/10": "FO"}
+        trips, notes = ps.pair_fifo_repaired(marks, busy, self.WIN)
+        self.assertEqual([("2026/10/20", "2026/10/30"), ("2026/10/30", "2026/11/10")], trips)
+        self.assertTrue(any("same date as the previous FO" in n for n in notes))
+
+    def test_fo_chain_covers_a_weekend_between_the_fo_and_the_next_work(self):
+        busy = days("2026/11/02", "2026/11/09")                      # FO on a Friday, work starts on the Monday (3 days later)
+        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/10": "FO"}, busy, self.WIN)
+        self.assertEqual(("2026/10/30", "2026/11/10"), trips[-1])
+
+    def test_fo_chain_does_not_apply_when_the_work_starts_long_after_the_previous_fo(self):
+        busy = days("2026/11/06", "2026/11/09")                      # 6 days after the first FO
+        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/10": "FO"}, busy, self.WIN)
+        self.assertEqual(("2026/11/06", "2026/11/10"), trips[-1])
+
+    def test_fi_taska_fi_taskb_fo_chain_shares_the_fi_date(self):
+        busy = days("2026/10/21", "2026/10/29") + days("2026/11/01", "2026/11/09")
+        marks = {"2026/10/20": "FI", "2026/10/30": "FI", "2026/11/10": "FO"}
+        trips, _ = ps.pair_fifo_repaired(marks, busy, self.WIN)
+        self.assertEqual([("2026/10/20", "2026/10/30"), ("2026/10/30", "2026/11/10")], trips)
+
+    def test_a_one_day_trip_between_two_fo_is_not_taken_for_a_duplicate_mark(self):
+        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/01": "FO"}, ["2026/10/31"], self.WIN)
+        self.assertEqual(2, len(trips))
 
     def test_double_marks_on_neighbouring_days_are_one_mark(self):
         trips, notes = ps.pair_fifo_repaired(
@@ -275,6 +303,73 @@ class FiFoPatterns(unittest.TestCase):
         self.assertEqual("r_other", trips["2026/12/10"]["region"])
         self.assertEqual(0, out["stats"]["trips_skipped"])
         self.assertEqual(1, out["stats"]["trips_repaired"])
+
+
+class CellNames(unittest.TestCase):
+    """The text of a bar: a module whose bar was only renamed in SU_Others is changed too (becomes Fixed / misc)."""
+    K1 = ps.name_key("山田 太郎")
+
+    def prev_with_names(self, name="TSMC_" + CODE_A):
+        doc = prev_flexible()
+        doc["schedule"]["assignment_list"][0]["cell_name"] = name          # module A, w007, 10/20-10/22
+        return doc
+
+    def sheet_with_text(self, text):
+        s = sheet()
+        for d in ("2026/10/20", "2026/10/21", "2026/10/22"):
+            s["date_map"][(self.K1, d)] = text
+        return s
+
+    def test_same_text_keeps_the_module_flexible(self):
+        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("TSMC_" + CODE_A), SEIBAN, "2026/10/10")
+        self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
+
+    def test_only_the_text_changed_makes_the_module_fixed_and_the_misc_task_carries_the_new_text(self):
+        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("TSMC_" + CODE_A + "_renamed"), SEIBAN, "2026/10/10")
+        self.assertNotIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
+        reason = next(line for line in out["report"] if f"FIXED module {CODE_A}" in line)
+        self.assertIn("cell text changed", reason)
+        self.assertIn("_renamed", reason)
+        self.assertTrue(any(m["name"] == "TSMC_" + CODE_A + "_renamed" for m in out["schedule"]["schedule"]["misc_task_list"]))
+
+    def test_text_only_differing_in_case_width_or_spaces_is_not_a_change(self):
+        out = ps.prepare(self.prev_with_names("TSMC_" + CODE_A), prev_env(), self.sheet_with_text("ＴＳＭＣ _ " + CODE_A.lower()), SEIBAN, "2026/10/10")
+        self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
+
+    def test_rows_without_a_cell_name_are_not_checked(self):
+        out = ps.prepare(prev_flexible(), prev_env(), self.sheet_with_text("anything else " + CODE_A), SEIBAN, "2026/10/10")
+        self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
+
+    def test_one_odd_cell_in_a_bar_is_not_a_change_but_the_most_common_text_is_what_counts(self):
+        s = self.sheet_with_text("TSMC_" + CODE_A)
+        s["date_map"][(self.K1, "2026/10/22")] = "TSMC_" + CODE_A + " (note)"
+        out = ps.prepare(self.prev_with_names(), prev_env(), s, SEIBAN, "2026/10/10")
+        self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
+
+    def test_flexible_rows_get_their_cell_name_from_the_sheet_and_it_is_also_kept_in_description(self):
+        s = self.sheet_with_text("TSMC_" + CODE_A)
+        out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")      # previous rows have no cell_name yet
+        row = next(r for r in out["schedule"]["schedule"]["assignment_list"] if r["operation_task"] == "e1p2o1")
+        self.assertEqual("TSMC_" + CODE_A, row["cell_name"])
+        self.assertEqual("TSMC_" + CODE_A, row["description"])
+
+    def test_an_existing_description_is_not_overwritten(self):
+        doc = prev_flexible()
+        doc["schedule"]["assignment_list"][0]["description"] = "planner note"
+        out = ps.prepare(doc, prev_env(), self.sheet_with_text("TSMC_" + CODE_A), SEIBAN, "2026/10/10")
+        row = next(r for r in out["schedule"]["schedule"]["assignment_list"] if r["operation_task"] == "e1p2o1")
+        self.assertEqual(("TSMC_" + CODE_A, "planner note"), (row["cell_name"], row["description"]))
+
+    def test_read_prev_flexible_collects_the_names_per_worker_and_day(self):
+        prev = ps.read_prev_flexible(self.prev_with_names("N1"), {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        self.assertEqual({(self.K1, "2026/10/20"): "N1", (self.K1, "2026/10/21"): "N1", (self.K1, "2026/10/22"): "N1"},
+                         prev["modules"][CODE_A]["names"])
+
+    def test_default_name_is_made_from_customer_fab_and_code(self):
+        info = ps.module_name_info({"fab": "f1", "description": "d"}, prev_env()["environment"])
+        self.assertEqual({"fab": "F21", "customer": "TSMC", "description": "d"}, info)
+        self.assertEqual("TSMCF21_" + CODE_A + "_新規", ps.module_cell_name(CODE_A, info))
+        self.assertEqual(CODE_A + "_新規", ps.module_cell_name(CODE_A, {}))
 
 
 class FiFoDoesNotFixModules(unittest.TestCase):

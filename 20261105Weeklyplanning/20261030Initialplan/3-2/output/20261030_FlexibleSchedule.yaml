@@ -1,0 +1,1283 @@
+schedule:
+  plan_range:
+    start_date: 2026/11/02
+    end_date: 2027/02/15
+  workflow_task_list:
+  - id: e1
+    name: 530T90001A
+    description: Synthetic 2-4 flow test module; not a real seiban
+    workflow: wf_tool
+    fab: f1
+    phase_task_list:
+    - id: e1p2
+      name: Hardware Setup
+      description: null
+      phase: p2
+      start_date: 2026/11/09
+      end_date: 2026/11/28
+      operation_task_list:
+      - id: e1p2o1
+        name: Mech
+        description: null
+        operation: p2o1
+        workload_hours: 200
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: 99CCFF
+      - id: e1p2o2
+        name: Elec
+        description: null
+        operation: p2o2
+        workload_hours: 120
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFFF99
+    - id: e1p3
+      name: Function Setup
+      description: null
+      phase: p3
+      start_date: 2026/11/30
+      end_date: 2026/12/12
+      operation_task_list:
+      - id: e1p3o1
+        name: QC
+        description: null
+        operation: p3o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFCCFF
+    - id: e1p4
+      name: Acceptance Inspection
+      description: null
+      phase: p4
+      start_date: 2026/12/14
+      end_date: 2026/12/19
+      operation_task_list:
+      - id: e1p4o1
+        name: QC
+        description: null
+        operation: p4o1
+        workload_hours: 50
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: CCFFCC
+  - id: e2
+    name: 530T90002A
+    description: Synthetic 2-4 flow test module
+    workflow: wf_tool
+    fab: f2
+    phase_task_list:
+    - id: e2p2
+      name: Hardware Setup
+      description: null
+      phase: p2
+      start_date: 2026/11/16
+      end_date: 2026/12/05
+      operation_task_list:
+      - id: e2p2o1
+        name: Mech
+        description: null
+        operation: p2o1
+        workload_hours: 200
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: 99CCFF
+      - id: e2p2o2
+        name: Elec
+        description: null
+        operation: p2o2
+        workload_hours: 120
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFFF99
+    - id: e2p3
+      name: Function Setup
+      description: null
+      phase: p3
+      start_date: 2026/12/07
+      end_date: 2026/12/19
+      operation_task_list:
+      - id: e2p3o1
+        name: QC
+        description: null
+        operation: p3o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFCCFF
+    - id: e2p4
+      name: Acceptance Inspection
+      description: null
+      phase: p4
+      start_date: 2026/12/21
+      end_date: 2026/12/26
+      operation_task_list:
+      - id: e2p4o1
+        name: QC
+        description: null
+        operation: p4o1
+        workload_hours: 50
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: CCFFCC
+  - id: e3
+    name: 530T90003A
+    description: Synthetic 2-4 flow test module
+    workflow: wf_tool
+    fab: f3
+    phase_task_list:
+    - id: e3p2
+      name: Hardware Setup
+      description: null
+      phase: p2
+      start_date: 2026/11/23
+      end_date: 2026/12/12
+      operation_task_list:
+      - id: e3p2o1
+        name: Mech
+        description: null
+        operation: p2o1
+        workload_hours: 200
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: 99CCFF
+      - id: e3p2o2
+        name: Elec
+        description: null
+        operation: p2o2
+        workload_hours: 120
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFFF99
+    - id: e3p3
+      name: Function Setup
+      description: null
+      phase: p3
+      start_date: 2026/12/14
+      end_date: 2026/12/26
+      operation_task_list:
+      - id: e3p3o1
+        name: QC
+        description: null
+        operation: p3o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFCCFF
+    - id: e3p4
+      name: Acceptance Inspection
+      description: null
+      phase: p4
+      start_date: 2026/12/28
+      end_date: 2027/01/02
+      operation_task_list:
+      - id: e3p4o1
+        name: QC
+        description: null
+        operation: p4o1
+        workload_hours: 50
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: CCFFCC
+  - id: e4
+    name: 530T90004A
+    description: Synthetic 2-4 flow test module
+    workflow: wf_tool
+    fab: f4
+    phase_task_list:
+    - id: e4p2
+      name: Hardware Setup
+      description: null
+      phase: p2
+      start_date: 2026/11/30
+      end_date: 2026/12/19
+      operation_task_list:
+      - id: e4p2o1
+        name: Mech
+        description: null
+        operation: p2o1
+        workload_hours: 200
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: 99CCFF
+      - id: e4p2o2
+        name: Elec
+        description: null
+        operation: p2o2
+        workload_hours: 120
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFFF99
+    - id: e4p3
+      name: Function Setup
+      description: null
+      phase: p3
+      start_date: 2026/12/21
+      end_date: 2027/01/02
+      operation_task_list:
+      - id: e4p3o1
+        name: QC
+        description: null
+        operation: p3o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFCCFF
+    - id: e4p4
+      name: Acceptance Inspection
+      description: null
+      phase: p4
+      start_date: 2027/01/04
+      end_date: 2027/01/09
+      operation_task_list:
+      - id: e4p4o1
+        name: QC
+        description: null
+        operation: p4o1
+        workload_hours: 50
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: CCFFCC
+  - id: e5
+    name: 530T90005A
+    description: Synthetic 2-4 flow test module
+    workflow: wf_tool
+    fab: f5
+    phase_task_list:
+    - id: e5p2
+      name: Hardware Setup
+      description: null
+      phase: p2
+      start_date: 2026/12/07
+      end_date: 2026/12/26
+      operation_task_list:
+      - id: e5p2o1
+        name: Mech
+        description: null
+        operation: p2o1
+        workload_hours: 200
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: 99CCFF
+      - id: e5p2o2
+        name: Elec
+        description: null
+        operation: p2o2
+        workload_hours: 120
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFFF99
+    - id: e5p3
+      name: Function Setup
+      description: null
+      phase: p3
+      start_date: 2026/12/28
+      end_date: 2027/01/09
+      operation_task_list:
+      - id: e5p3o1
+        name: QC
+        description: null
+        operation: p3o1
+        workload_hours: 100
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: FFCCFF
+    - id: e5p4
+      name: Acceptance Inspection
+      description: null
+      phase: p4
+      start_date: 2027/01/11
+      end_date: 2027/01/16
+      operation_task_list:
+      - id: e5p4o1
+        name: QC
+        description: null
+        operation: p4o1
+        workload_hours: 50
+        recommends_worker_min: 1
+        recommends_worker_max: 2
+        color_code: CCFFCC
+  misc_task_list: []
+  assignment_list:
+  - worker: w034
+    operation_task: e1p2o1
+    start_date: 2026/11/09
+    end_date: 2026/11/28
+    work_date_list:
+    - date: 2026/11/09
+      hour: 10
+    - date: 2026/11/10
+      hour: 10
+    - date: 2026/11/11
+      hour: 10
+    - date: 2026/11/12
+      hour: 10
+    - date: 2026/11/13
+      hour: 10
+    - date: 2026/11/14
+      hour: 10
+    - date: 2026/11/15
+      hour: 10
+    - date: 2026/11/16
+      hour: 10
+    - date: 2026/11/17
+      hour: 10
+    - date: 2026/11/18
+      hour: 10
+    - date: 2026/11/19
+      hour: 10
+    - date: 2026/11/20
+      hour: 10
+    - date: 2026/11/21
+      hour: 10
+    - date: 2026/11/22
+      hour: 10
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    - date: 2026/11/28
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w461
+    operation_task: e1p2o2
+    start_date: 2026/11/09
+    end_date: 2026/11/14
+    work_date_list:
+    - date: 2026/11/09
+      hour: 10
+    - date: 2026/11/10
+      hour: 10
+    - date: 2026/11/11
+      hour: 10
+    - date: 2026/11/12
+      hour: 10
+    - date: 2026/11/13
+      hour: 10
+    - date: 2026/11/14
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w320
+    operation_task: e1p2o2
+    start_date: 2026/11/09
+    end_date: 2026/11/14
+    work_date_list:
+    - date: 2026/11/09
+      hour: 10
+    - date: 2026/11/10
+      hour: 10
+    - date: 2026/11/11
+      hour: 10
+    - date: 2026/11/12
+      hour: 10
+    - date: 2026/11/13
+      hour: 10
+    - date: 2026/11/14
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w160
+    operation_task: e1p3o1
+    start_date: 2026/12/01
+    end_date: 2026/12/03
+    work_date_list:
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w296
+    operation_task: e1p3o1
+    start_date: 2026/12/01
+    end_date: 2026/12/07
+    work_date_list:
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    - date: 2026/12/04
+      hour: 10
+    - date: 2026/12/05
+      hour: 10
+    - date: 2026/12/06
+      hour: 10
+    - date: 2026/12/07
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w101
+    operation_task: e1p4o1
+    start_date: 2026/12/14
+    end_date: 2026/12/16
+    work_date_list:
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w103
+    operation_task: e1p4o1
+    start_date: 2026/12/14
+    end_date: 2026/12/16
+    work_date_list:
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF21_530T90001A_新規
+  - worker: w309
+    operation_task: e2p2o1
+    start_date: 2026/11/16
+    end_date: 2026/11/25
+    work_date_list:
+    - date: 2026/11/16
+      hour: 10
+    - date: 2026/11/17
+      hour: 10
+    - date: 2026/11/18
+      hour: 10
+    - date: 2026/11/19
+      hour: 10
+    - date: 2026/11/20
+      hour: 10
+    - date: 2026/11/21
+      hour: 10
+    - date: 2026/11/22
+      hour: 10
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w391
+    operation_task: e2p2o1
+    start_date: 2026/11/16
+    end_date: 2026/11/25
+    work_date_list:
+    - date: 2026/11/16
+      hour: 10
+    - date: 2026/11/17
+      hour: 10
+    - date: 2026/11/18
+      hour: 10
+    - date: 2026/11/19
+      hour: 10
+    - date: 2026/11/20
+      hour: 10
+    - date: 2026/11/21
+      hour: 10
+    - date: 2026/11/22
+      hour: 10
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w192
+    operation_task: e2p2o2
+    start_date: 2026/11/16
+    end_date: 2026/11/27
+    work_date_list:
+    - date: 2026/11/16
+      hour: 10
+    - date: 2026/11/17
+      hour: 10
+    - date: 2026/11/18
+      hour: 10
+    - date: 2026/11/19
+      hour: 10
+    - date: 2026/11/20
+      hour: 10
+    - date: 2026/11/21
+      hour: 10
+    - date: 2026/11/22
+      hour: 10
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w213
+    operation_task: e2p3o1
+    start_date: 2026/12/16
+    end_date: 2026/12/17
+    work_date_list:
+    - date: 2026/12/16
+      hour: 10
+    - date: 2026/12/17
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w436
+    operation_task: e2p3o1
+    start_date: 2026/12/14
+    end_date: 2026/12/17
+    work_date_list:
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    - date: 2026/12/17
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w098
+    operation_task: e2p3o1
+    start_date: 2026/12/14
+    end_date: 2026/12/17
+    work_date_list:
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    - date: 2026/12/17
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w167
+    operation_task: e2p4o1
+    start_date: 2026/12/21
+    end_date: 2026/12/22
+    work_date_list:
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w180
+    operation_task: e2p4o1
+    start_date: 2026/12/21
+    end_date: 2026/12/22
+    work_date_list:
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w053
+    operation_task: e2p4o1
+    start_date: 2026/12/21
+    end_date: 2026/12/22
+    work_date_list:
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF20_530T90002A_新規
+  - worker: w100
+    operation_task: e3p2o1
+    start_date: 2026/11/23
+    end_date: 2026/12/02
+    work_date_list:
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    - date: 2026/11/28
+      hour: 10
+    - date: 2026/11/29
+      hour: 10
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w150
+    operation_task: e3p2o1
+    start_date: 2026/11/23
+    end_date: 2026/12/02
+    work_date_list:
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    - date: 2026/11/28
+      hour: 10
+    - date: 2026/11/29
+      hour: 10
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w461
+    operation_task: e3p2o2
+    start_date: 2026/11/23
+    end_date: 2026/11/28
+    work_date_list:
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    - date: 2026/11/28
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w320
+    operation_task: e3p2o2
+    start_date: 2026/11/23
+    end_date: 2026/11/28
+    work_date_list:
+    - date: 2026/11/23
+      hour: 10
+    - date: 2026/11/24
+      hour: 10
+    - date: 2026/11/25
+      hour: 10
+    - date: 2026/11/26
+      hour: 10
+    - date: 2026/11/27
+      hour: 10
+    - date: 2026/11/28
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w294
+    operation_task: e3p3o1
+    start_date: 2026/12/15
+    end_date: 2026/12/24
+    work_date_list:
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    - date: 2026/12/17
+      hour: 10
+    - date: 2026/12/18
+      hour: 10
+    - date: 2026/12/19
+      hour: 10
+    - date: 2026/12/20
+      hour: 10
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    - date: 2026/12/23
+      hour: 10
+    - date: 2026/12/24
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w064
+    operation_task: e3p4o1
+    start_date: 2026/12/28
+    end_date: 2026/12/30
+    work_date_list:
+    - date: 2026/12/28
+      hour: 10
+    - date: 2026/12/29
+      hour: 10
+    - date: 2026/12/30
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w280
+    operation_task: e3p4o1
+    start_date: 2026/12/28
+    end_date: 2026/12/30
+    work_date_list:
+    - date: 2026/12/28
+      hour: 10
+    - date: 2026/12/29
+      hour: 10
+    - date: 2026/12/30
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: Micron広島_530T90003A_新規
+  - worker: w167
+    operation_task: e4p2o1
+    start_date: 2026/11/30
+    end_date: 2026/12/09
+    work_date_list:
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    - date: 2026/12/04
+      hour: 10
+    - date: 2026/12/05
+      hour: 10
+    - date: 2026/12/06
+      hour: 10
+    - date: 2026/12/07
+      hour: 10
+    - date: 2026/12/08
+      hour: 10
+    - date: 2026/12/09
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w119
+    operation_task: e4p2o1
+    start_date: 2026/11/30
+    end_date: 2026/12/09
+    work_date_list:
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    - date: 2026/12/04
+      hour: 10
+    - date: 2026/12/05
+      hour: 10
+    - date: 2026/12/06
+      hour: 10
+    - date: 2026/12/07
+      hour: 10
+    - date: 2026/12/08
+      hour: 10
+    - date: 2026/12/09
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w461
+    operation_task: e4p2o2
+    start_date: 2026/11/30
+    end_date: 2026/12/05
+    work_date_list:
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    - date: 2026/12/04
+      hour: 10
+    - date: 2026/12/05
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w293
+    operation_task: e4p2o2
+    start_date: 2026/11/30
+    end_date: 2026/12/05
+    work_date_list:
+    - date: 2026/11/30
+      hour: 10
+    - date: 2026/12/01
+      hour: 10
+    - date: 2026/12/02
+      hour: 10
+    - date: 2026/12/03
+      hour: 10
+    - date: 2026/12/04
+      hour: 10
+    - date: 2026/12/05
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w101
+    operation_task: e4p3o1
+    start_date: 2026/12/21
+    end_date: 2026/12/25
+    work_date_list:
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    - date: 2026/12/23
+      hour: 10
+    - date: 2026/12/24
+      hour: 10
+    - date: 2026/12/25
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w103
+    operation_task: e4p3o1
+    start_date: 2026/12/21
+    end_date: 2026/12/25
+    work_date_list:
+    - date: 2026/12/21
+      hour: 10
+    - date: 2026/12/22
+      hour: 10
+    - date: 2026/12/23
+      hour: 10
+    - date: 2026/12/24
+      hour: 10
+    - date: 2026/12/25
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w224
+    operation_task: e4p4o1
+    start_date: 2027/01/04
+    end_date: 2027/01/08
+    work_date_list:
+    - date: 2027/01/04
+      hour: 10
+    - date: 2027/01/05
+      hour: 10
+    - date: 2027/01/06
+      hour: 10
+    - date: 2027/01/07
+      hour: 10
+    - date: 2027/01/08
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: IntelF32_530T90004A_新規
+  - worker: w082
+    operation_task: e5p2o1
+    start_date: 2026/12/07
+    end_date: 2026/12/16
+    work_date_list:
+    - date: 2026/12/07
+      hour: 10
+    - date: 2026/12/08
+      hour: 10
+    - date: 2026/12/09
+      hour: 10
+    - date: 2026/12/10
+      hour: 10
+    - date: 2026/12/11
+      hour: 10
+    - date: 2026/12/12
+      hour: 10
+    - date: 2026/12/13
+      hour: 10
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w247
+    operation_task: e5p2o1
+    start_date: 2026/12/07
+    end_date: 2026/12/16
+    work_date_list:
+    - date: 2026/12/07
+      hour: 10
+    - date: 2026/12/08
+      hour: 10
+    - date: 2026/12/09
+      hour: 10
+    - date: 2026/12/10
+      hour: 10
+    - date: 2026/12/11
+      hour: 10
+    - date: 2026/12/12
+      hour: 10
+    - date: 2026/12/13
+      hour: 10
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w461
+    operation_task: e5p2o2
+    start_date: 2026/12/07
+    end_date: 2026/12/18
+    work_date_list:
+    - date: 2026/12/07
+      hour: 10
+    - date: 2026/12/08
+      hour: 10
+    - date: 2026/12/09
+      hour: 10
+    - date: 2026/12/10
+      hour: 10
+    - date: 2026/12/11
+      hour: 10
+    - date: 2026/12/12
+      hour: 10
+    - date: 2026/12/13
+      hour: 10
+    - date: 2026/12/14
+      hour: 10
+    - date: 2026/12/15
+      hour: 10
+    - date: 2026/12/16
+      hour: 10
+    - date: 2026/12/17
+      hour: 10
+    - date: 2026/12/18
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w105
+    operation_task: e5p3o1
+    start_date: 2026/12/28
+    end_date: 2027/01/06
+    work_date_list:
+    - date: 2026/12/28
+      hour: 10
+    - date: 2026/12/29
+      hour: 10
+    - date: 2026/12/30
+      hour: 10
+    - date: 2026/12/31
+      hour: 10
+    - date: 2027/01/01
+      hour: 10
+    - date: 2027/01/02
+      hour: 10
+    - date: 2027/01/03
+      hour: 10
+    - date: 2027/01/04
+      hour: 10
+    - date: 2027/01/05
+      hour: 10
+    - date: 2027/01/06
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w167
+    operation_task: e5p4o1
+    start_date: 2027/01/11
+    end_date: 2027/01/12
+    work_date_list:
+    - date: 2027/01/11
+      hour: 10
+    - date: 2027/01/12
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w423
+    operation_task: e5p4o1
+    start_date: 2027/01/11
+    end_date: 2027/01/12
+    work_date_list:
+    - date: 2027/01/11
+      hour: 10
+    - date: 2027/01/12
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  - worker: w314
+    operation_task: e5p4o1
+    start_date: 2027/01/11
+    end_date: 2027/01/12
+    work_date_list:
+    - date: 2027/01/11
+      hour: 10
+    - date: 2027/01/12
+      hour: 10
+    plan_flexibility: Flexible
+    cell_name: TSMCF18_530T90005A_新規
+  trip_list:
+  - worker: w034
+    trips:
+    - start_date: 2026/11/08
+      end_date: 2026/11/29
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w053
+    trips:
+    - start_date: 2026/12/20
+      end_date: 2026/12/23
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w064
+    trips:
+    - start_date: 2026/12/27
+      end_date: 2026/12/31
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w082
+    trips:
+    - start_date: 2026/12/06
+      end_date: 2026/12/17
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w098
+    trips:
+    - start_date: 2026/12/13
+      end_date: 2026/12/18
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w100
+    trips:
+    - start_date: 2026/11/22
+      end_date: 2026/12/03
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w101
+    trips:
+    - start_date: 2026/12/13
+      end_date: 2026/12/17
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/12/20
+      end_date: 2026/12/26
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w103
+    trips:
+    - start_date: 2026/12/13
+      end_date: 2026/12/17
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/12/20
+      end_date: 2026/12/26
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w105
+    trips:
+    - start_date: 2026/12/27
+      end_date: 2027/01/07
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w119
+    trips:
+    - start_date: 2026/11/29
+      end_date: 2026/12/10
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w150
+    trips:
+    - start_date: 2026/11/22
+      end_date: 2026/12/03
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w160
+    trips:
+    - start_date: 2026/11/30
+      end_date: 2026/12/04
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w167
+    trips:
+    - start_date: 2026/11/29
+      end_date: 2026/12/10
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/12/20
+      end_date: 2026/12/23
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2027/01/10
+      end_date: 2027/01/13
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w180
+    trips:
+    - start_date: 2026/12/20
+      end_date: 2026/12/23
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w192
+    trips:
+    - start_date: 2026/11/15
+      end_date: 2026/11/28
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w213
+    trips:
+    - start_date: 2026/12/15
+      end_date: 2026/12/18
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w224
+    trips:
+    - start_date: 2027/01/03
+      end_date: 2027/01/09
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w247
+    trips:
+    - start_date: 2026/12/06
+      end_date: 2026/12/17
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w280
+    trips:
+    - start_date: 2026/12/27
+      end_date: 2026/12/31
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w293
+    trips:
+    - start_date: 2026/11/29
+      end_date: 2026/12/06
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w294
+    trips:
+    - start_date: 2026/12/14
+      end_date: 2026/12/25
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w296
+    trips:
+    - start_date: 2026/11/30
+      end_date: 2026/12/08
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w309
+    trips:
+    - start_date: 2026/11/15
+      end_date: 2026/11/26
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w314
+    trips:
+    - start_date: 2027/01/10
+      end_date: 2027/01/13
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w320
+    trips:
+    - start_date: 2026/11/08
+      end_date: 2026/11/15
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/11/22
+      end_date: 2026/11/29
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w391
+    trips:
+    - start_date: 2026/11/15
+      end_date: 2026/11/26
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w423
+    trips:
+    - start_date: 2027/01/10
+      end_date: 2027/01/13
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w436
+    trips:
+    - start_date: 2026/12/13
+      end_date: 2026/12/18
+      region: r2
+      plan_flexibility: Flexible
+      description: ''
+  - worker: w461
+    trips:
+    - start_date: 2026/11/08
+      end_date: 2026/11/15
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/11/22
+      end_date: 2026/11/29
+      region: r3
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/11/29
+      end_date: 2026/12/06
+      region: r1
+      plan_flexibility: Flexible
+      description: ''
+    - start_date: 2026/12/06
+      end_date: 2026/12/19
+      region: r2
+      plan_flexibility: Flexible
+      description: ''

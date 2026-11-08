@@ -163,5 +163,167 @@ class Zip(unittest.TestCase):
             self.assertTrue(any("vbaProject" in p for p in w.verify(str(src), str(tampered), "予定表_2026", new)))
 
 
+class NewModules(unittest.TestCase):
+    COLS = {f"2026/12/{n:02d}": 9 + n for n in range(1, 21)}
+    ROWS = {"yamada": [5], "sato": [6]}
+
+    def plan(self, old, want, new_modules, texts=()):
+        return w.plan_changes(old, want, self.ROWS, self.COLS, empty=lambda r, c: (r, c) not in set(texts),
+                              blocked=lambda r, c: False, from_date="2026/12/01", new_modules=new_modules)
+
+    def test_a_module_without_any_cell_is_written_with_the_given_name_and_style(self):
+        want = {"N1": {("yamada", "2026/12/03"), ("yamada", "2026/12/04"), ("sato", "2026/12/03")}}
+        clears, sets, report = self.plan({}, want, {"N1": ("TSMCF21_N1_新規", "115")})
+        self.assertEqual([], clears)
+        self.assertEqual(3, len(sets))
+        self.assertTrue(all(dn == ("new", "TSMCF21_N1_新規", "115") for _c, _r, _k, dn in sets))
+        self.assertTrue(any(r.startswith("NEW module N1") for r in report))
+
+    def test_without_a_new_module_entry_it_is_still_only_reported(self):
+        _c, sets, report = self.plan({}, {"N1": {("yamada", "2026/12/03")}}, None)
+        self.assertEqual([], sets)
+        self.assertTrue(any("has no cell in the sheet" in r for r in report))
+
+    def test_a_new_module_does_not_overwrite_a_cell_with_another_task(self):
+        _c, sets, report = self.plan({}, {"N1": {("yamada", "2026/12/03")}}, {"N1": ("N1", "115")}, texts={(5, 12)})
+        self.assertEqual([], sets)
+        self.assertTrue(any(r.startswith("CONFLICT") for r in report))
+
+    def test_text_template_and_styles(self):
+        info = {"fab": "F21", "customer": "TSMC", "description": "x"}
+        self.assertEqual("TSMCF21_530N03370A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N03370A", info))
+        self.assertEqual("530N03370A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N03370A", {}))   # no fab / customer
+        self.assertEqual("530N03370A", w.new_module_text("{fab}", "530N03370A", {}))                          # nothing left: the code
+        cells = {(5, 10): ("115", "", ""), (5, 11): ("115", "", ""), (6, 10): ("3", "", "")}
+        self.assertEqual("115", w.most_common_module_style({"A": {(5, 10), (5, 11)}, "B": {(6, 10)}}, cells))
+        self.assertEqual("3", w.most_common_module_style({"A": {(5, 10), (5, 11)}, "B": {(6, 10)}}, cells, style_from="B"))
+
+    def test_inline_string_cell_is_escaped_and_survives_rewrite_and_verify(self):
+        attrs, inner = w.inline_string_cell("A&B <x>", "115")
+        self.assertEqual(' s="115" t="inlineStr"', attrs)
+        self.assertEqual("<is><t>A&amp;B &lt;x&gt;</t></is>", inner)
+        with tempfile.TemporaryDirectory() as td:
+            src, out = Path(td) / "in.xlsm", Path(td) / "out.xlsm"
+            Zip().build(src)
+            rows, cells = w.index_sheet(SHEET)
+            new = w.rewrite(str(src), str(out), "予定表_2026", None, [], [("N1", 3, 4, ("new", "TSMC_N1_新規", "115"))], SHEET, rows, cells, "4")
+            self.assertEqual([], w.verify(str(src), str(out), "予定表_2026", new))
+            with zipfile.ZipFile(out) as z:
+                _r, c2 = w.index_sheet(z.read("xl/worksheets/sheet3.xml").decode("utf-8"))
+                self.assertEqual(("115", ' s="115" t="inlineStr"', "<is><t>TSMC_N1_新規</t></is>"), c2[(3, 4)])
+                self.assertIn('count="2"', z.read("xl/sharedStrings.xml").decode("utf-8"))      # no shared string touched
+
+
+class CellNames(unittest.TestCase):
+    """The text of a cell is the cell_name of the schedule row (written by 3-2); a real cell's text is only the fallback."""
+    COLS = {f"2026/12/{n:02d}": 9 + n for n in range(1, 21)}
+    ROWS = {"yamada": [5], "sato": [6]}
+    TEXTS = {(5, 10): "OLD_M1", (5, 11): "OLD_M1"}
+
+    def plan(self, old, want, names, new_modules=None):
+        return w.plan_changes(old, want, self.ROWS, self.COLS, empty=lambda r, c: (r, c) not in self.TEXTS,
+                              blocked=lambda r, c: False, from_date="2026/12/01", new_modules=new_modules, names=names,
+                              text_of=lambda r, c: self.TEXTS.get((r, c)))
+
+    def test_a_new_cell_gets_the_cell_name_with_the_style_of_the_nearest_real_cell(self):
+        old = {"M1": {(5, 10), (5, 11)}}
+        want = {"M1": {("yamada", "2026/12/01"), ("yamada", "2026/12/02"), ("yamada", "2026/12/03")}}
+        names = {"M1": {("yamada", "2026/12/03"): "CELL_NAME_M1"}}
+        _c, sets, _r = self.plan(old, want, names)
+        self.assertEqual([("M1", 5, 12, ("named", "CELL_NAME_M1", (5, 11)))], sets)
+
+    def test_when_the_real_cell_already_has_that_text_it_is_copied_as_it_is(self):
+        old = {"M1": {(5, 10), (5, 11)}}
+        want = {"M1": {("yamada", "2026/12/01"), ("yamada", "2026/12/02"), ("yamada", "2026/12/03")}}
+        _c, sets, _r = self.plan(old, want, {"M1": {("yamada", "2026/12/03"): "old_ m1"}})        # same text for the comparison key
+        self.assertEqual([("M1", 5, 12, (5, 11))], sets)
+
+    def test_without_a_cell_name_the_real_cell_is_copied(self):
+        old = {"M1": {(5, 10), (5, 11)}}
+        want = {"M1": {("yamada", "2026/12/01"), ("yamada", "2026/12/02"), ("yamada", "2026/12/03")}}
+        _c, sets, _r = self.plan(old, want, {"M1": {}})
+        self.assertEqual([("M1", 5, 12, (5, 11))], sets)
+
+    def test_a_new_module_uses_its_cell_name_and_falls_back_to_the_made_up_name(self):
+        want = {"N1": {("yamada", "2026/12/03"), ("sato", "2026/12/03")}}
+        names = {"N1": {("yamada", "2026/12/03"): "FROM_ROW"}}
+        _c, sets, _r = self.plan({}, want, names, new_modules={"N1": ("MADE_UP_N1_新規", "115")})
+        self.assertEqual({(5, 12): ("new", "FROM_ROW", "115"), (6, 12): ("new", "MADE_UP_N1_新規", "115")},
+                         {(r, c): dn for _code, r, c, dn in sets})
+
+    def test_named_cell_is_written_as_an_inline_string_with_the_style_of_the_real_cell(self):
+        with tempfile.TemporaryDirectory() as td:
+            src, out = Path(td) / "in.xlsm", Path(td) / "out.xlsm"
+            Zip().build(src)
+            rows, cells = w.index_sheet(SHEET)
+            new = w.rewrite(str(src), str(out), "予定表_2026", None, [], [("M1", 3, 4, ("named", "NAME & CO", (2, 2)))], SHEET, rows, cells, "4")
+            self.assertEqual([], w.verify(str(src), str(out), "予定表_2026", new))
+            with zipfile.ZipFile(out) as z:
+                _r, c2 = w.index_sheet(z.read("xl/worksheets/sheet3.xml").decode("utf-8"))
+                self.assertEqual(("9", ' s="9" t="inlineStr"', "<is><t>NAME &amp; CO</t></is>"), c2[(3, 4)])
+
+    def test_wanted_cells_reads_the_names_and_the_fab_customer_info(self):
+        doc = {"schedule": {"workflow_task_list": [{"id": "e1", "name": "530N00001A", "fab": "f1", "phase_task_list": [
+            {"id": "e1p1", "operation_task_list": [{"id": "e1p1o1"}]}]}],
+            "assignment_list": [{"worker": "w1", "operation_task": "e1p1o1", "start_date": "2026/12/03", "end_date": "2026/12/03",
+                                 "work_date_list": [{"date": "2026/12/03", "hour": 10}], "plan_flexibility": "Flexible",
+                                 "cell_name": "THE_NAME"}]}}
+        env = {"environment": {"worker_list": [{"id": "w1", "name": "山田 太郎"}],
+                               "fab_list": [{"id": "f1", "name": "F21", "customer_company": "c1"}],
+                               "customer_company_list": [{"id": "c1", "name": "TSMC"}]}}
+        want, _warn, info, _trips, names = w.wanted_cells(doc, env)
+        self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03")}}, want)
+        self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03"): "THE_NAME"}}, names)
+        self.assertEqual({"fab": "F21", "customer": "TSMC", "description": ""}, info["530N00001A"])
+
+
+class Trips(unittest.TestCase):
+    COLS = {f"2026/12/{n:02d}": 9 + n for n in range(1, 31)}
+    ROWS = {"yamada": [5]}
+
+    def plan(self, want, remove=None, marks=None, texts=None, blocked=()):
+        marks = marks or {}
+        by_row = {5: texts or {}}
+        return w.plan_trips({"yamada": want}, {"yamada": remove} if remove else {}, self.ROWS, self.COLS, marks, by_row,
+                            lambda r, c: (r, c) in set(blocked), "2026/12/01")
+
+    def test_fi_on_the_first_day_and_fo_on_the_last_day(self):
+        clears, sets, report = self.plan([("2026/12/05", "2026/12/10")])
+        self.assertEqual([], clears)
+        self.assertEqual({(5, 14, "FI"), (5, 19, "FO")}, set(sets))
+
+    def test_trips_that_touch_share_one_fo_mark(self):
+        clears, sets, _ = self.plan([("2026/12/05", "2026/12/10"), ("2026/12/10", "2026/12/18")])
+        self.assertEqual({(5, 14, "FI"), (5, 19, "FO"), (5, 27, "FO")}, set(sets))     # no FI on 12/10
+
+    def test_old_flexible_trip_marks_are_removed_unless_written_again(self):
+        marks = {(5, 14): "FI", (5, 19): "FO"}
+        clears, sets, _ = self.plan([("2026/12/05", "2026/12/12")], remove=[("2026/12/05", "2026/12/10")], marks=marks,
+                                    texts={"2026/12/05": "FI", "2026/12/10": "FO"})
+        self.assertEqual([(5, 19)], clears)                      # old FO on 12/10 goes, FI on 12/05 stays
+        self.assertEqual([(5, 21, "FO")], sets)
+
+    def test_a_mark_that_belongs_to_another_trip_of_the_sheet_is_protected(self):
+        # sheet: flexible trip 12/05-12/10 (to remove) and a Fixed trip 12/10-12/18 that starts on the same date (one FO mark)
+        marks = {(5, 14): "FI", (5, 19): "FO", (5, 27): "FO"}
+        texts = {"2026/12/05": "FI", "2026/12/10": "FO", "2026/12/18": "FO"}
+        texts.update({f"2026/12/{n:02d}": "task" for n in range(11, 18)})
+        clears, sets, _ = self.plan([], remove=[("2026/12/05", "2026/12/10")], marks=marks, texts=texts)
+        self.assertEqual([(5, 14)], clears)                      # the FO on 12/10 still ends one trip and starts the next
+
+    def test_cells_with_tasks_or_red_cells_are_conflicts(self):
+        clears, sets, report = self.plan([("2026/12/05", "2026/12/10")], texts={"2026/12/05": "task A"}, blocked={(5, 19)})
+        self.assertEqual([], sets)
+        self.assertEqual(2, sum(1 for r in report if r.startswith("CONFLICT")))
+
+    def test_one_day_trips_and_unknown_workers_are_reported_not_written(self):
+        _c, sets, report = self.plan([("2026/12/05", "2026/12/05")])
+        self.assertEqual([], sets)
+        self.assertTrue(any("one-day trip" in r for r in report))
+        _c, sets, report = w.plan_trips({"nobody": [("2026/12/05", "2026/12/10")]}, {}, self.ROWS, self.COLS, {}, {}, lambda r, c: False, "2026/12/01")
+        self.assertTrue(any("no row in the sheet" in r for r in report))
+
+
+
 if __name__ == "__main__":
     unittest.main()

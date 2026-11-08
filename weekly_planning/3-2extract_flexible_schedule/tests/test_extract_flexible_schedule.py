@@ -19,7 +19,7 @@ def trip(s, e, flex="Flexible", region="r1"):
 def result():
     return {"schedule": {
         "plan_range": {"start_date": "2026/10/17", "end_date": "2027/01/06"},
-        "workflow_task_list": [{"id": "e1", "name": "530N00001A", "phase_task_list": [
+        "workflow_task_list": [{"id": "e1", "name": "530N00001A", "fab": "f1", "phase_task_list": [
             {"id": "e1p1", "start_date": "2026/10/17", "end_date": "2026/11/10", "operation_task_list": [{"id": "e1p1o1"}]}]}],
         "misc_task_list": [{"id": "misc_other_1", "name": "x", "region": "r_other"}],
         "assignment_list": [row("w1", "e1p1o1", ["2026/10/20", "2026/10/21"]),
@@ -34,7 +34,9 @@ def result():
         "solver_version": "x"}}
 
 
-ENV = {"environment": {"worker_list": [{"id": "w1", "name": "A"}, {"id": "w2", "name": "B"}]}}
+ENV = {"environment": {"worker_list": [{"id": "w1", "name": "A"}, {"id": "w2", "name": "B"}],
+                       "fab_list": [{"id": "f1", "name": "F21", "customer_company": "c1"}],
+                       "customer_company_list": [{"id": "c1", "name": "TSMC"}]}}
 
 
 class Extract(unittest.TestCase):
@@ -45,7 +47,8 @@ class Extract(unittest.TestCase):
     def test_modules_and_module_assignments_are_kept_unchanged_and_misc_rows_are_left_out(self):
         src = result()["schedule"]
         self.assertEqual(src["workflow_task_list"], self.sch["workflow_task_list"])
-        self.assertEqual(src["assignment_list"][:2], self.sch["assignment_list"])     # both flexibilities, same order
+        rows = [{k: v for k, v in r.items() if k != "cell_name"} for r in self.sch["assignment_list"]]
+        self.assertEqual(src["assignment_list"][:2], rows)                           # both flexibilities, same order, only cell_name added
         self.assertEqual([], self.sch["misc_task_list"])
         self.assertEqual(1, self.stats["misc_or_other_rows_dropped"])
 
@@ -57,6 +60,19 @@ class Extract(unittest.TestCase):
     def test_plan_range_is_kept_and_solver_version_is_not(self):
         self.assertEqual({"start_date": "2026/10/17", "end_date": "2027/01/06"}, self.sch["plan_range"])
         self.assertNotIn("solver_version", self.sch)
+
+    def test_every_module_row_gets_a_cell_name_made_from_fab_and_customer_when_it_has_none(self):
+        self.assertEqual(["TSMCF21_530N00001A_新規"] * 2, [r["cell_name"] for r in self.sch["assignment_list"]])
+        self.assertEqual({"made from fab and customer": 2}, self.stats["cell_name"])
+
+    def test_the_name_of_the_row_is_kept_cell_name_first_then_description(self):
+        src = result()
+        src["schedule"]["assignment_list"][0]["cell_name"] = "KEEP_ME"
+        src["schedule"]["assignment_list"][1]["description"] = "TSMC_530N00001A_planner"        # carried by the solver
+        doc, _r, stats = ex.extract(src, ENV)
+        self.assertEqual(["KEEP_ME", "TSMC_530N00001A_planner"], [r["cell_name"] for r in doc["schedule"]["assignment_list"]])
+        self.assertEqual({"from the result": 2}, stats["cell_name"])
+        self.assertEqual("TSMC_530N00001A_planner", doc["schedule"]["assignment_list"][1]["description"])   # description untouched
 
     def test_input_is_not_modified(self):
         src = result()

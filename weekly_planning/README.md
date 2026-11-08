@@ -38,3 +38,15 @@ python write_su_others.py --schedule 20261106\FlexibleSchedule.yaml --env 202611
 ```
 
 The paths of the Excel files and the `20261106\...` folders are examples: use your own.
+
+## The same week with the `20261105Weeklyplanning` test folders (run from the `tools` folder, PowerShell)
+
+Every command reads the `input` folder of its step and writes the `output` folder of the same step (details and file names in each tool's README).
+Between the steps copy the output files into the next step's `input` folder yourself (renaming as you like); only 3-3 needs the new `FlexibleSchedule.yaml` of 3-2.
+
+```powershell
+python -X utf8 weekly_planning/2-2-3prepare_schedule/prepare_schedule.py --prev-flexible 20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20261023_FlexibleSchedule.yaml --prev-env 20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20261023_04EnvConfig.yaml --su-others "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20260927 SU_Others.xlsm" --skill-file "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/20260915 SU_Others_skill level有配布禁止_.xlsm" --seiban-info "20261105Weeklyplanning/20261030Initialplan/2-2-3/input/初期データ追加情報 _20260930.rev1.xlsx" --out-dir 20261105Weeklyplanning/20261030Initialplan/2-2-3/output --today 2026/10/30 --report
+python -X utf8 weekly_planning/2-5set_plan_period/set_plan_period.py --schedule 20261105Weeklyplanning/20261030Initialplan/2-5/input/20261030_02_Schedule.yaml --env 20261105Weeklyplanning/20261030Initialplan/2-5/input/20261030_02_EnvConfig.yaml --out-dir 20261105Weeklyplanning/20261030Initialplan/2-5/output --today 2026/10/30 --report
+python -X utf8 weekly_planning/3-2extract_flexible_schedule/extract_flexible_schedule.py --schedule 20261105Weeklyplanning/20261030Initialplan/3-2/input/20261030_04Schedule.yaml --env 20261105Weeklyplanning/20261030Initialplan/3-2/input/20261030_04_EnvConfig.yaml --out-dir 20261105Weeklyplanning/20261030Initialplan/3-2/output --report
+python -X utf8 weekly_planning/3-3write_su_others/write_su_others.py --schedule 20261105Weeklyplanning/20261030Initialplan/3-3/input/20261030_FlexibleSchedule.yaml --env 20261105Weeklyplanning/20261030Initialplan/3-3/input/20261030_04_EnvConfig.yaml --su-others "20261105Weeklyplanning/20261030Initialplan/3-3/input/20260927 SU_Others.xlsm" --flexible-work 20261105Weeklyplanning/20261030Initialplan/3-3/input/20261030_FlexibleWork.yaml --out-dir 20261105Weeklyplanning/20261030Initialplan/3-3/output --from-date 2026/10/30 --report
+```

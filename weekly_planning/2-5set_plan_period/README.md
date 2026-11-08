@@ -47,3 +47,11 @@ that file, so no row was split; the split logic is covered by unit tests (6 test
   (2027/06/05, 2027/03/31, ...). Check that the EnvConfig calendars (holidays, unavailable dates) are meant to cover that period.
 * The tool has not been run through the Timefold solver; the solver ignores assignment days before `start_date` anyway (it only keeps days inside the plan range).
 * Which phase dates count as "may start" / "due date" is an assumption: phase `start_date` / `end_date` of every phase of every module.
+
+## Example with the `20261105Weeklyplanning` test folders (run from the `tools` folder, PowerShell)
+
+Reads `20261105Weeklyplanning/20261030Initialplan/2-5/input`, writes `20261105Weeklyplanning/20261030Initialplan/2-5/output` (`03_Schedule.yaml`, `03_EnvConfig.yaml`, `03_plan_period_report.txt`).
+
+```powershell
+python -X utf8 weekly_planning/2-5set_plan_period/set_plan_period.py --schedule 20261105Weeklyplanning/20261030Initialplan/2-5/input/20261030_02_Schedule.yaml --env 20261105Weeklyplanning/20261030Initialplan/2-5/input/20261030_02_EnvConfig.yaml --out-dir 20261105Weeklyplanning/20261030Initialplan/2-5/output --today 2026/10/30 --report
+```

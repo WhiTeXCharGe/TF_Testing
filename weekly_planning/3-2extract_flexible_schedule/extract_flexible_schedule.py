@@ -7,7 +7,11 @@ Output  N/FlexibleSchedule.yaml
 
 FlexibleSchedule.yaml keeps what the solver planned and drops everything else:
   * workflow_task_list    unchanged (the modules that were optimised)
-  * assignment_list       only the assignments of those modules (normal tasks), unchanged; misc rows are left out
+  * assignment_list       only the assignments of those modules (normal tasks), unchanged; misc rows are left out.
+                          Every row gets one more key, `cell_name`: the text of that bar in SU_Others.  It is taken from the
+                          row (`cell_name`, else `description`, which is where the solver carries the text of the previous
+                          week) and, for a module that has none (a new module), made from its fab and customer
+                          ('{customer}{fab}_{code}_新規').  3-3 writes this text into the cells, 2-2 checks it next week.
   * trip_list             only the Flexible trips that have work of one of those modules inside; the solver also writes
                           Flexible trips without any module work (and the Fixed trips of the sheet): those are dropped
   * plan_range            unchanged
@@ -17,6 +21,7 @@ It has the same format as Schedule.yaml, so the next week's tools (prepare_sched
 from __future__ import annotations
 
 import argparse
+import copy
 import sys
 from collections import Counter
 from pathlib import Path
@@ -36,8 +41,23 @@ def extract(schedule_doc, env_doc):
     module_of = {op["id"]: t.get("name") or t.get("id") for t in tasks for ph in t.get("phase_task_list") or []
                  for op in ph.get("operation_task_list") or []}
 
-    rows = [a for a in sch.get("assignment_list") or [] if a.get("operation_task") in ops]
+    rows = [copy.deepcopy(a) for a in sch.get("assignment_list") or [] if a.get("operation_task") in ops]
     dropped_rows = len(sch.get("assignment_list") or []) - len(rows)
+    task_of = {op["id"]: t for t in tasks for ph in t.get("phase_task_list") or [] for op in ph.get("operation_task_list") or []}
+    infos = {}
+    named = Counter()
+    for a in rows:
+        task = task_of[a["operation_task"]]
+        code = ps.tool_code(task.get("name")) or str(task.get("name") or task.get("id"))
+        name = next((str(v).strip() for v in (a.get("cell_name"), a.get("description"))
+                     if isinstance(v, str) and v.strip()), None)
+        if name:
+            named["from the result"] += 1
+        else:
+            infos.setdefault(task["id"], ps.module_name_info(task, env))
+            name = ps.module_cell_name(code, infos[task["id"]])
+            named["made from fab and customer"] += 1
+        a["cell_name"] = name
     worker_ids = {w["id"] for w in env.get("worker_list") or []}
     unknown = sorted({a.get("worker") for a in rows if worker_ids and a.get("worker") not in worker_ids})
     if unknown:
@@ -75,7 +95,8 @@ def extract(schedule_doc, env_doc):
     out = {"schedule": {"plan_range": sch.get("plan_range"), "workflow_task_list": tasks,
                         "misc_task_list": [], "assignment_list": rows, "trip_list": trip_list}}
     stats = {"modules": len(tasks), "assignment_rows": len(rows), "misc_or_other_rows_dropped": dropped_rows,
-             "trips_kept": sum(len(e["trips"]) for e in trip_list), "trips_dropped": dict(dropped)}
+             "trips_kept": sum(len(e["trips"]) for e in trip_list), "trips_dropped": dict(dropped),
+             "cell_name": dict(named)}
     report.insert(0, f"stats: {stats}")
     return out, report, stats
 

@@ -70,6 +70,35 @@ def top_color(counter):
     return min(counter.items(), key=lambda kv: (-kv[1], kv[0]))[0] if counter else None
 
 
+# ---- the name written in the cells of a module ("cell name")
+# FlexibleSchedule.yaml has a `cell_name` in every assignment row of a module: the text of the bar in SU_Others.  It is
+# written by 3-2 (from the solver result), used by 3-3 to write the cells and checked by 2-2 to see whether the planner
+# changed the text of a bar (a changed text makes the module Fixed, like a moved bar).
+DEFAULT_CELL_NAME_TEMPLATE = "{customer}{fab}_{code}_新規"
+
+
+def cell_name_key(text):
+    """Comparison key of a cell text: NFKC, upper case, no whitespace (so only a real change of the text counts)."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(text or ""))).upper()
+
+
+def module_name_info(task, env):
+    """{"fab", "customer", "description"} names of a workflow task (task.fab id -> EnvConfig fab_list / customer_company_list)."""
+    fabs = {f["id"]: f for f in (env or {}).get("fab_list") or []}
+    customers = {c["id"]: c.get("name") for c in (env or {}).get("customer_company_list") or []}
+    fab = fabs.get(task.get("fab")) or {}
+    return {"fab": fab.get("name") or "", "customer": customers.get(fab.get("customer_company")) or "",
+            "description": task.get("description") or ""}
+
+
+def module_cell_name(code, info, template=DEFAULT_CELL_NAME_TEMPLATE):
+    """Name for the cells of a module that has none, e.g. '{customer}{fab}_{code}_新規' -> 'TSMCF21_530N03370A_新規'."""
+    text = template.format(code=code, fab=info.get("fab", ""), customer=info.get("customer", ""),
+                           description=info.get("description", ""))
+    text = re.sub(r"_{2,}", "_", text).strip("_ ")
+    return text or code
+
+
 def load_yaml(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -89,6 +118,7 @@ def read_prev_flexible(doc, env_worker_names):
     env_worker_names: prev worker id -> name (from the previous EnvConfig).
     Returns dict: plan_range, modules {code: {...}}, trips [{worker_key, worker_id, start, end, region, flex, raw}], warnings.
     A module is identified by its workflow task `name` (the module code, e.g. 530N03359A).
+    modules[code]["names"] = {(worker_key, date): cell_name} from the `cell_name` of the assignment rows (empty if the file has none).
     """
     sch = doc.get("schedule", doc) if isinstance(doc, dict) else {}
     warnings = []
@@ -102,7 +132,7 @@ def read_prev_flexible(doc, env_worker_names):
                 ops.add(op["id"])
         if code in modules:
             warnings.append(f"duplicate module name {code} in the previous schedule: the later one is used")
-        modules[code] = {"task": t, "ops": ops, "assign": set(), "rows": [], "last": None}
+        modules[code] = {"task": t, "ops": ops, "assign": set(), "rows": [], "last": None, "names": {}}
         for o in ops:
             op_to_code[o] = code
     misc_code = {}   # misc task id -> module code written in its name (decoder7 names converted cells after the module)
@@ -129,11 +159,15 @@ def read_prev_flexible(doc, env_worker_names):
             wname = str(wid)
         m = modules[code]
         m["rows"].append(a)
+        cn = a.get("cell_name")
+        cn = cn.strip() if isinstance(cn, str) else ""
         for item in a.get("work_date_list") or []:
             d = ymd(item.get("date"))
             if d:
                 m["assign"].add((name_key(wname), d))
                 m["last"] = d if m["last"] is None or d > m["last"] else m["last"]
+                if cn:
+                    m["names"][(name_key(wname), d)] = cn      # the text this cell had when the plan was made
     trips = []
     for entry in flatten_trips(sch.get("trip_list")):
         wid = entry["worker"]
@@ -164,15 +198,33 @@ def flatten_trips(trip_list):
     return out
 
 
+def put_cell_name(row, worker_key, sheet_texts):
+    """Gives an assignment row of a flexible module its `cell_name`: the one it already has, else the most common text of the
+    worker's cells on the row's days in the sheet.  The same text goes into `description` when that is empty, because the
+    solver keeps `description` of a (worker, task) in its result but drops other new keys of the rows it rebuilds."""
+    name = row.get("cell_name")
+    if not (isinstance(name, str) and name.strip()):
+        texts = Counter(sheet_texts[(worker_key, ymd(i.get("date")))] for i in row.get("work_date_list") or []
+                        if (worker_key, ymd(i.get("date"))) in sheet_texts)
+        name = texts.most_common(1)[0][0] if texts else None
+    if name:
+        row["cell_name"] = name
+        if row.get("description") in (None, ""):
+            row["description"] = name
+
+
 # ----------------------------------------------------------------------------- 2-2: decisions
 
-def decide_modules(prev_modules, sheet_module_cells, today, misc_cover=None):
+def decide_modules(prev_modules, sheet_module_cells, today, misc_cover=None, sheet_texts=None):
     """
     prev_modules: {code: {"assign": {(worker_key, 'YYYY/MM/DD')}, "last": 'YYYY/MM/DD' or None}}
     sheet_module_cells: {code: {(worker_key, date)}}  cells of SU_Others that carry the module code
     today: 'YYYY/MM/DD'
     misc_cover: {code: {(worker_key, date)}}  cells the previous schedule already holds as a misc task of that module
                 (decoder7 turns outlier cells into such tasks); a sheet cell found there is not a change.
+    sheet_texts: {(worker_key, date): text}  the text of the cells; with it the text of a bar is checked too: a module whose
+                cells now carry another text than the `cell_name` of the previous rows is changed (rows without a cell_name are
+                not checked).  The text of a bar is its most common text, so one odd cell is not a change.
     Returns (flexible [codes], fixed {code: reason}).
     """
     flexible, fixed = [], {}
@@ -182,14 +234,34 @@ def decide_modules(prev_modules, sheet_module_cells, today, misc_cover=None):
         sheet = sheet_module_cells.get(code, set())
         sheet_only = sheet - m["assign"] - misc_cover.get(code, set())
         planned_only = m["assign"] - sheet
+        text_change = changed_text(m, sheet, sheet_texts) if sheet_texts else None
         if sheet_only or planned_only:
             fixed[code] = (f"assignment changed in SU_Others (planned only: {len(planned_only)} worker-days, "
                            f"sheet only: {len(sheet_only)} worker-days)")
+        elif text_change:
+            fixed[code] = text_change
         elif m["last"] is not None and m["last"] < today:
             fixed[code] = f"all work finished before today ({m['last']})"
         else:
             flexible.append(code)
     return flexible, fixed
+
+
+def changed_text(module, sheet_cells, sheet_texts):
+    """Reason (str) if the text of a bar of the module in the sheet differs from its cell_name, else None.
+    Per (worker, row of the previous plan): the most common text of that worker's cells of the module on the row's days."""
+    by_name = {}
+    for key, name in module.get("names", {}).items():
+        by_name.setdefault((key[0], name), []).append(key)
+    for (wk, name), keys in sorted(by_name.items()):
+        texts = Counter(cell_name_key(sheet_texts[k]) for k in keys if k in sheet_cells and k in sheet_texts)
+        if not texts:
+            continue                                   # the cells are not there any more: the assignment check reports that
+        top, _n = texts.most_common(1)[0]
+        if top != cell_name_key(name):
+            now = next(sheet_texts[k] for k in sorted(keys) if k in sheet_texts and cell_name_key(sheet_texts[k]) == top)
+            return f"cell text changed in SU_Others ({wk}: {name!r} -> {now!r})"
+    return None
 
 
 def pair_fifo(marks):
@@ -258,14 +330,17 @@ def _run_start(end, lower, activity, max_gap, window_start):
     return cur
 
 
-def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_days=2):
+def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_days=2, chain_days=3):
     """
     Like pair_fifo, but every FI / FO that has no partner is repaired from the days the worker is busy in the sheet.
     marks: {date: 'FI'|'FO'} of one worker; activity: that worker's busy dates (any text in the sheet), window: first and
     last date of the sheet.  Returns ([(start, end)], [note]).
-      FI right after FI or FO right after FO (<= dup_days apart) .. one mark: the first FI, the last FO
+      FI right after FI or FO right after FO (<= dup_days apart, nothing busy between) .. one mark: the first FI, the last FO
       FI without FO (next FI or end of the sheet) .. ends on the last day of the busy run after the FI
       FO without FI (previous FO or start of the sheet) .. starts on the first day of the busy run before the FO
+      FI, work, FI / FO, work, FO in a chain: a trip may end and the next one start on the SAME date (FI = FO date).
+        FO after an FO: if the busy run starts within chain_days of the previous FO, the trip starts on the previous FO's date
+        FI before an FI: if the next FI is within chain_days of the end of the busy run, the trip ends on that FI's date
     A busy run may have gaps of up to max_gap days.  Repaired trips are listed in the notes as INFERRED.
     """
     activity = sorted(set(activity))
@@ -274,7 +349,8 @@ def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_day
     notes = []
     for d in sorted(marks):
         k = marks[d]
-        if seq and seq[-1][1] == k and (_day(d) - _day(seq[-1][0])).days <= dup_days:
+        if (seq and seq[-1][1] == k and (_day(d) - _day(seq[-1][0])).days <= dup_days
+                and not any(seq[-1][0] < x < d for x in activity)):
             if k == "FO":
                 notes.append(f"duplicate FO {seq[-1][0]} / {d}: trip ends {d}")
                 seq[-1] = (d, k)
@@ -282,23 +358,31 @@ def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_day
                 notes.append(f"duplicate FI {seq[-1][0]} / {d}: trip starts {seq[-1][0]}")
             continue
         seq.append((d, k))
-    trips, open_fi, boundary = [], None, None
+    trips, open_fi, boundary, boundary_is_fo = [], None, None, False
     for d, k in seq:
         if k == "FI":
             if open_fi is not None:
                 end = _run_end(open_fi, d, activity, max_gap, w_end)
+                if (_day(d) - _day(end)).days <= chain_days:
+                    end = d       # the next trip starts right after the busy run: same date for FO and FI
+                    notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (the next FI {d} is the same date)")
+                else:
+                    notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (no FO before the next FI {d})")
                 trips.append((open_fi, end))
-                notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (no FO before the next FI {d})")
-                boundary = end
+                boundary, boundary_is_fo = end, False
             open_fi = d
         elif open_fi is None:
             start = _run_start(d, boundary, activity, max_gap, w_start)
+            if boundary_is_fo and boundary is not None and (_day(start) - _day(boundary)).days <= chain_days:
+                start = boundary  # FO, work, FO: the second trip starts on the date of the first FO
+                notes.append(f"INFERRED start {start} of the trip to FO {d} (same date as the previous FO)")
+            else:
+                notes.append(f"INFERRED start {start} of the trip to FO {d} (no FI before it)")
             trips.append((start, d))
-            notes.append(f"INFERRED start {start} of the trip to FO {d} (no FI before it)")
-            boundary = d
+            boundary, boundary_is_fo = d, True
         else:
             trips.append((open_fi, d))
-            open_fi, boundary = None, d
+            open_fi, boundary, boundary_is_fo = None, d, True
     if open_fi is not None:
         end = _run_end(open_fi, None, activity, max_gap, w_end)
         trips.append((open_fi, end))
@@ -556,7 +640,7 @@ def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env
 # ----------------------------------------------------------------------------- the whole preparation (pure)
 
 def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip_region=None, plan_range=None,
-            repair_fifo=True, max_gap_days=14):
+            repair_fifo=True, max_gap_days=14, chain_days=3):
     """
     sheet: {"workers": [{name, company_name, is_manager, skill_map, worker_type_by_operation, unavailable, description}],
             "date_map", "personal_map", "color_map", "fifo": {worker_key: {date: 'FI'|'FO'}},
@@ -593,7 +677,7 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
     sheet_pairs, repaired = {}, 0
     for wk, marks in sheet["fifo"].items():
         if repair_fifo:
-            pairs, notes = pair_fifo_repaired(marks, activity[wk], window, max_gap_days)
+            pairs, notes = pair_fifo_repaired(marks, activity[wk], window, max_gap_days, chain_days=chain_days)
             repaired += sum(1 for n in notes if n.startswith("INFERRED"))
             report += [f"{'NOTE' if n.startswith('INFERRED') else 'INFO'}: FI/FO of {display.get(wk, wk)}: {n}" for n in notes]
         else:
@@ -602,7 +686,8 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
         sheet_pairs[wk] = pairs
 
     # --- 2-2: decisions
-    flexible, fixed_modules = decide_modules(prev["modules"], module_cells, today, prev.get("misc_cover"))
+    flexible, fixed_modules = decide_modules(prev["modules"], module_cells, today, prev.get("misc_cover"),
+                                             sheet_texts=sheet["date_map"])
     trip_dec = decide_trips(prev["trips"], sheet_pairs)
     report.append(f"MODULES: {len(flexible)} stay flexible, {len(fixed_modules)} become Fixed (misc)")
     for code, why in sorted(fixed_modules.items()):
@@ -636,6 +721,7 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
             r2 = copy.deepcopy(r)
             wname = prev_names.get(r2.get("worker"), str(r2.get("worker")))
             r2["worker"] = worker_id_by_key.get(name_key(wname), r2.get("worker"))
+            put_cell_name(r2, name_key(wname), sheet["date_map"])
             rows.append(r2)
     misc, misc_rows = build_misc(sheet, flexible_set, master["code_region"], worker_id_by_key)
     rows += misc_rows
@@ -788,6 +874,9 @@ def main(argv=None):
                          "'none' skips and reports such trips instead")
     ap.add_argument("--no-fifo-repair", action="store_true",
                     help="do not repair FI/FO without a partner (they are only reported and dropped)")
+    ap.add_argument("--chain-days", type=int, default=3,
+                    help="FI/FO repair: FO, work, FO (or FI, work, FI) that follow each other within this many days share the "
+                         "date of the mark between them, i.e. one trip ends and the next starts on the same date (default 3: covers a weekend)")
     ap.add_argument("--max-gap-days", type=int, default=14,
                     help="FI/FO repair: a busy run in the sheet may have gaps of up to this many days (default 14)")
     ap.add_argument("--decoder-dir", default=str(default_decoder), help="folder of decoder7.py")
@@ -804,7 +893,7 @@ def main(argv=None):
 
     out = prepare(load_yaml(args.prev_flexible), load_yaml(args.prev_env), sheet, seiban, today,
                   default_trip_region=None if args.default_trip_region.lower() == "none" else args.default_trip_region,
-                  repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days)
+                  repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days)
     od = Path(args.out_dir)
     stamp = today.replace("/", "")
     names = [f"{stamp}_FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]

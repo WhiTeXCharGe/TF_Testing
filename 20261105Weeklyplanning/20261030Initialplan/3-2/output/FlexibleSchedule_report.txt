@@ -1,0 +1,1 @@
+stats: {'modules': 5, 'assignment_rows': 37, 'misc_or_other_rows_dropped': 5692, 'trips_kept': 37, 'trips_dropped': {'fixed': 874, 'no module work inside': 71}, 'cell_name': {'made from fab and customer': 37}}
