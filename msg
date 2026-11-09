@@ -1,33 +1,26 @@
-I could not put this directly into 3-3, so I wrote the VBA first. It has not been run in Excel; I have no Excel here. I did run the same comparison logic in Python on your 20261105 test files (3-3 input against 3-3 output), and that works.
+I rewrote vba/CompareSuOthers.bas. It is still not tested in Excel, because I have no Excel here.
 
-Why it is not in 3-3
+Your CompareSuOthers2.bas is an empty file (0 bytes), so I could not see your edits or the compile error. I rebuilt the original from what you described. If an error remains, send me the message text. Every failure now names the step and the error number.
 
-Python cannot add a macro to your existing macro project safely.
-Writing the three comparison sheets straight into the file would also leave three copies of the 6 MB task sheet in the file that later overwrites the real SU_Others.
-If you prefer something without a macro, 3-3 could write a separate …_compare.xlsx instead. Say so if you want that.
+What I changed
 
-What I made: tools/weekly_planning/3-3write_su_others/vba/CompareSuOthers.bas. It is ASCII only, so it imports on a Japanese Excel. The Japanese sheet names are built from character codes.
+Press twice: the macro no longer copies the old sheet into your workbook, which is likely why the first click failed.
+Copying the sheet across workbooks merged the roughly 54,000 named styles of two files, and that step is likely what failed.
+Now both views are built from a copy of the new sheet inside the same workbook. Only the changed cells are taken over from the old file.
+If a step fails, the half-built Compare_* sheets are deleted, so no stray copy stays.
+Excel version: I could not see your compile error. I removed the things most likely to differ between versions: the user-defined type, the Office-typed constants, and a plain button macro name. The code uses only basic VBA now. This is a best guess without your error text.
+First column marker: Compare_Old and Compare_New get a new first column, “Changed”. A red circle (○) sits on every worker row that has a change, on the same rows in both sheets. The filter arrow is on that header, so you can filter to only the circles.
+Summary as a list: Compare_Summary is now one row per bar. The columns are Category (Add / Change / Delete, coloured), Seiban, Worker, When, Before, After, and the text before and after. It is sorted by category, seiban, date and worker. The pop-up message after the run only shows short counts.
+Add: a new bar.
+Change: a bar that moved, got longer or shorter, or was renamed.
+Delete: a bar that is gone.
 
-Install once
+Checked with the same logic in Python
 
-Open the real SU_Others, or one rewritten file. If you use the real one, 3-3 copies the macro project unchanged into every rewritten file made from it.
-Press Alt+F11, choose File → Import File, and pick CompareSuOthers.bas.
-Run CreateCompareButton once (Alt+F8). It makes a sheet Compare with a button, “Compare with old version”. Save as .xlsm.
+Moved, longer, renamed, new and deleted bars all give the right row.
+FI is never paired with FO.
+On your 3-3 input and output, it gives 104 list rows, one per red frame, all Add because it was the first week.
 
-Use: open the rewritten file and click the button. Pick the OLD SU_Others, which is the input of 3-3. The open file’s task sheet is treated as the new version. It adds three sheets to the open workbook and changes nothing else:
+Install: remove your old CompareSuOthers module first, then import this file and run CreateCompareButton once. The README section on the macro is updated.
 
-Sheet	Content
-Compare_Old	Copy of the old task sheet. A red frame goes around each whole continuous bar that will change.
-Compare_New	Copy of the new task sheet. A red frame goes around each added or changed bar.
-Compare_Summary	One row per worker and seiban that changed, with columns Date, Seiban, Worker, Status, Before, After, Text before, Text after.
-
-In the summary, Status Changed means the bar existed in the old file, so it shows Before and After date ranges. New shows only After. Removed shows only Before. A cell that was only renamed shows the old and new text.
-
-Preview on your data: 304 changed cells, 104 red frames on each sheet, and 66 summary rows. All 66 are New, because this was the first week. Three FI/FO rows list that worker’s mark dates. FI/FO marks are grouped per worker as the seiban FI/FO, not one row per mark.
-
-Cautions
-
-Cell-style limit: the workbook already has about 54,000 named cell styles. Copying sheets from an old file with different styles could hit Excel’s limit, and the sheets would not be built. Here, old and new share the same styles, so it should be fine.
-Excel behaviour: Excel will ask you to enable macros. The old file is opened read-only with its own macros switched off.
-
-I added the install and use steps to the 3-3 README. Please try it once and tell me what happens, so I can fix anything that behaves differently in Excel.
+I left CompareSuOthers2.bas alone; you can delete it.
