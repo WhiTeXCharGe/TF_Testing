@@ -1,40 +1,24 @@
-I’ll preserve the macros, drawings, comments, and buttons by editing only the sheet’s XML cells directly in the zip rather than using openpyxl, keeping everything else byte-identical. Writing that tool now.
+I read your version closely. It should run, but it brings back the problems from before. It is also missing the two things you asked for in the last round.
 
-The cell-insertion logic in patch_sheet_xml is convoluted. I’m rewriting it cleanly.
+Missing from your version
 
-Tests pass. Now the real run on the COPY of the 20260927 workbook: the decoder7 output as the flexible schedule, from 2026/09/27 on.
+The summary is counts only. WriteSummary(ws, nDiff, nOutlines) writes “Changed cells: n” and “Red bar outlines: n”. That is the “tells me there are x red cells” summary you rejected. There is no list of Add / Change / Delete with seiban, worker and date.
+There is no “Changed” column with a circle on the changed rows, so you cannot filter to the rows that changed.
 
-Identity check confirmed: only one cell differs, the one the decoder had cut. Next I’ll shift a module by +7 days, rewrite the copy, and compare every cell’s value and formatting before and after.
+Problems in the code
+3. The old sheet is still copied across workbooks (wsOldSrc.Copy After:=…). That is the heavy step, and I think it caused the “press twice” behaviour. If anything fails after the copy, the stray sheet stays, because ErrHandler does not delete the Compare_* sheets.
+4. A popup blocks the run. MsgBox "Copying sheets (please wait)..." stops the macro until you click OK.
+5. CompareCells can give wrong results.
 
-The 3-3 tool is done, in tools/weekly_planning/write_su_others/ next to prepare_schedule. It writes the flexible schedule into a new copy of SU_Others and leaves the rest of the workbook byte-identical. I only ever used a copy of the real file. The result has not been opened in Excel yet, so please open it once.
+Error cells: it uses On Error Resume Next around CStr(...). If a cell holds an error value such as #N/A, oldVal and newVal keep the previous cell’s text, so a difference can be reported or missed wrongly.
+Array bounds: it loops to Max(dOld.LastRow, dNew.LastRow) but chgOld and chgNew are sized by their own sheet. If the two sheets have different sizes, you get “Subscript out of range”.
+Cell-by-cell reads: it reads about 500,000 cells one at a time. The array read I used does the same in about a second.
+Position-based matching: it matches by row and column position. If a worker row is inserted anywhere, every row below it shows as changed. My version matches by company and name, and by date.
+It compares the whole sheet, including the header rows and columns A to N, not just the date cells.
+LoadSheetData takes the last row from column B (the ID column). I checked your real file: column B ends at row 507, the same as the name column, so it works here. It would break if the last workers had no ID.
+The If wsNewSrc Is Nothing check never runs. wbNew.Sheets(sheetName) raises an error when the sheet is missing, so you only see “ERROR: Subscript out of range”.
+A minor point: OnAction = "CompareWithOldVersion" works, but the workbook-qualified name is safer in newer Excel.
 
-How it works
+What I would keep from yours: the sheet picker (InputBox, default 3), if you want to compare sheets other than the task sheet. Also xlThick, if you prefer the thicker frame.
 
-Inputs: a flexible schedule (the decoder7 Schedule.yaml works, and so will a Timefold result), its EnvConfig.yaml, and the old SU_Others. The EnvConfig is needed because the schedule only has worker ids, not names.
-Same format: the tool edits the sheet inside the .xlsm zip instead of loading it with openpyxl. openpyxl would drop the macros, buttons, drawings and comments from this file.
-Names and colours: a cell that must show a module copies the text and style of a real cell of that module, the same worker’s nearest cell first. So TSMCF21_SU3200_530N03370A_新規 and its colour are never invented.
-Cells that leave a module: they become empty, using the sheet’s usual empty-cell style.
-Cells that are never overwritten: cells with other tasks or text, red cells, empty grey cells, and cells before --from-date (default today). Blocked cells are listed as CONFLICT in the report.
-
-Run it
-
-cd "C:/Users/PC_USER/OneDrive/Desktop/work/Timefold/web/tools/weekly_planning/write_su_others" && PYTHONUTF8=1 python -X utf8 write_su_others.py --schedule "<Schedule.yaml>" --env "<EnvConfig.yaml>" --su-others "<copy of 20260927 SU_Others.xlsm>" --out-dir out --from-date 2026/09/27 --report
-
-It writes <old name>_rewritten.xlsm, plus a .txt report with --report. It takes about 25 seconds. --dry-run prints the plan only.
-
-What I tested (copy of the 20260927 file, decoder7 output as the schedule)
-
-Same schedule as the sheet: 1 cell emptied, 0 filled. That cell is one the decoder had cut earlier, so the schedule does not contain it.
-One module moved +7 days: 15 cells emptied, 6 filled, and 8 left alone because other tasks sit on those days.
-Cell-by-cell comparison: across all 6 sheets (1.9 million cells), exactly those 21 cells differ. The new cells show NST533_530N03498A with the fill of the real bar. The macros, drawings, comments and other sheets are byte-identical.
-Unit tests: 14 new tests pass, and the 35 prepare_schedule tests still pass.
-
-Limits
-
-Modules with no assignment: a module with no assignment in the schedule is not rewritten.
-Modules with no cell: a module that has assignments but no cell in the old sheet is only reported, because its name and colour are unknown.
-Whole days only: hours are not written to the sheet.
-Empty style: an emptied cell gets the common empty style (style 4 in this file), so a blank cell that was coloured before is not restored.
-Not tested: a Timefold result as input.
-
-The rules and these numbers are in the folder’s README.md.
+What I can do: my vba/CompareSuOthers.bas already fixes items 1 to 9 and has the list summary and the Changed column. I can add your sheet picker and xlThick to it. Or I can add the list and the Changed column on top of your code, if your version runs fine in your Excel and mine failed. Which one do you want?
