@@ -107,19 +107,23 @@ to the existing macro project (`vbaProject.bin`) without damaging it, and three 
 
 **Install (once)**
 1. Open the workbook that should hold the macro: the real SU_Others (then every `…_rewritten.xlsm` made from it later has the macro already, because 3-3 keeps the macro project byte for byte) or one rewritten file.
-2. `Alt+F11` → File → Import File… → `vba/CompareSuOthers.bas`. (The file is ASCII with CRLF line ends so it imports on any Windows code page; the Japanese sheet and header names are built with `ChrW`.)
+2. `Alt+F11`. If an older `CompareSuOthers` module is there, right-click it → Remove (answer No to "export"). Then File → Import File… → `vba/CompareSuOthers.bas`.
+   (The file is ASCII with CRLF line ends so it imports on any Windows code page; the Japanese sheet and header names are built with `ChrW`.)
 3. Run `CreateCompareButton` once (Alt+F8). It makes a sheet `Compare` with a button "Compare with old version". Save as `.xlsm`.
 
-**Use**: open the rewritten file, click the button, choose the OLD SU_Others (the input of 3-3). The task sheet of the open workbook is the NEW version. Three sheets are added to the open workbook (nothing else is changed; run again to rebuild them):
+**Use**: open the rewritten file, click the button, choose the OLD SU_Others (the input of 3-3). The task sheet of the open workbook is the NEW version. Three sheets are added to the open workbook
+(nothing else is changed; clicking again rebuilds them). **One click is enough**: the old sheet is no longer copied across workbooks (that copy merged the ~54,000 named styles of two files, was heavy and failed the first time).
+Both views are built from a copy of the NEW sheet inside the workbook, and only the changed cells are taken over from the old file. If a step fails the message names the step and the half-built `Compare_*` sheets are deleted.
 
 | Sheet | Content |
 |---|---|
-| `Compare_Old` | copy of the old task sheet; a **red frame around every whole bar** that is going to change (one frame per run of neighbouring cells with the same old and new text; a place where something will be added is framed too) |
-| `Compare_New` | copy of the new task sheet; a red frame around every added or changed bar |
-| `Compare_Summary` | one row per worker + seiban that changed: **Date**, **Seiban**, **Worker**, **Status**, **Before**, **After**, Text before, Text after. `Changed` = the worker had that bar in the old version (Before and After date ranges, only the bars that differ), `New` = only After, `Removed` = only Before. FI/FO marks are one row per worker with the seiban `FI/FO`. A rename-only change shows the old and new text |
+| `Compare_Old` | the old task sheet; a **red frame around every whole bar** that is going to change (one frame per run of neighbouring cells with the same old and new text; a place where something will be added is framed too) |
+| `Compare_New` | the new task sheet; a red frame around every added or changed bar |
+| both | a new first column **Changed** with a circle on every worker row that has a change, on the same rows in both sheets, and the filter arrow on that header: filter the circle to see only the rows that changed |
+| `Compare_Summary` | a **list**, one row per bar: **Category** (`Add` green / `Change` yellow / `Delete` red), **Seiban**, **Worker**, **When**, **Before**, **After**, Text before, Text after. `Add` = a new bar (When = After), `Change` = a bar that moved, got longer or shorter, or was renamed (Before and After), `Delete` = a bar that is gone (When = Before). Sorted by category, seiban, date, worker; FI/FO marks (seiban `FI/FO`) come last; filter arrows on |
 
-Rows are matched by company + name, columns by date, so the two files need not have the same layout. Preview (same algorithm run in Python on the 20261105 test files, input vs output of 3-3):
-304 changed cells, 104 red frames per sheet, 66 summary rows (all `New`, it was the first week).
+Rows are matched by company + name, columns by date, so the two files need not have the same layout. Preview (the same logic run in Python on the 20261105 test files, input vs output of 3-3):
+304 changed cells, 104 red frames per sheet, 104 list rows (all `Add`, it was the first week). Moved, longer, renamed, new and deleted bars were checked on synthetic cases.
 
-Not tested in Excel (no Excel here); the logic was checked with the Python run above. Notes: Excel asks to enable macros for the file; the old file is opened read-only with its macros disabled;
-the workbook already has about 54,000 named cell styles, and copying sheets of a differently-styled old file can hit Excel's limit of cell formats (an error message appears and the sheets are not built).
+Not tested in Excel (no Excel here). Notes: Excel asks to enable macros for the file; the old file is opened read-only with its macros disabled.
+If it still fails, send the message text: it names the step and the error number.
