@@ -202,8 +202,9 @@ function findOutputYaml(runId) {
 // ── POST /runSolver ───────────────────────────────────────────────────────────
 //
 // Body: multipart/form-data
-//   env   (file) — EnvConfig.yaml
-//   sched (file) — Schedule.yaml
+//   env    (file) — EnvConfig.yaml
+//   sched  (file) — Schedule.yaml
+//   params (file, optional) — SolverParams.yaml
 //
 // Response 202: { runId, status: "Submitted" }
 // Response 400: { error: "..." }   — missing files or wrong format
@@ -212,8 +213,9 @@ function findOutputYaml(runId) {
 app.post(
   '/runSolver',
   upload.fields([
-    { name: 'env',   maxCount: 1 },
-    { name: 'sched', maxCount: 1 },
+    { name: 'env',    maxCount: 1 },
+    { name: 'sched',  maxCount: 1 },
+    { name: 'params', maxCount: 1 },   // optional SolverParams.yaml (stage times, seed, ...)
   ]),
   (req, res) => {
     try {
@@ -236,8 +238,12 @@ app.post(
       const envFile   = files.env[0];
       const schedFile = files.sched[0];
 
-      fs.writeFileSync(path.join(inputDir, envFile.originalname),   envFile.buffer);
-      fs.writeFileSync(path.join(inputDir, schedFile.originalname), schedFile.buffer);
+      // The solver container reads these exact names from /work/input, whatever the uploaded files were called.
+      fs.writeFileSync(path.join(inputDir, 'EnvConfig.yaml'), envFile.buffer);
+      fs.writeFileSync(path.join(inputDir, 'Schedule.yaml'),  schedFile.buffer);
+      if (files.params && files.params.length > 0) {
+        fs.writeFileSync(path.join(inputDir, 'SolverParams.yaml'), files.params[0].buffer);
+      }
 
       writeStatus(runId, {
         status:   'Submitted',
@@ -247,8 +253,9 @@ app.post(
       });
 
       console.log(`[runSolver] created run ${runId}`);
-      console.log(`  env  → ${envFile.originalname} (${envFile.size} bytes)`);
-      console.log(`  sched→ ${schedFile.originalname} (${schedFile.size} bytes)`);
+      console.log(`  env  → EnvConfig.yaml (${envFile.size} bytes)`);
+      console.log(`  sched→ Schedule.yaml (${schedFile.size} bytes)`);
+      if (files.params && files.params.length > 0) console.log(`  params→ SolverParams.yaml (${files.params[0].size} bytes)`);
 
       triggerDocker(runId, inputDir);
 
