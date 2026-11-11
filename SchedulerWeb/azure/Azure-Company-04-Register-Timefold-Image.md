@@ -119,6 +119,10 @@ docker pull "$ACR_LOGIN/timefold:$TAG"
 Next: [Azure-Company-05-Batch-Setup-And-Run.md](./Azure-Company-05-Batch-Setup-And-Run.md)
 — point the Batch pool at this image and run a real end-to-end solve.
 
+> **Updating the solver later** (new code in `web/Timefold`, new tag, rollback): see
+> [Azure-Company-09-Update-Timefold.md](./Azure-Company-09-Update-Timefold.md). The `docker/pom-standalone.xml`
+> mentioned in the troubleshooting table below is no longer used; the Dockerfile builds from `pom.xml`.
+
 ---
 
 ## Troubleshooting

@@ -208,6 +208,10 @@ Troubleshooting table below.
 Next: [Azure-Company-07-Webapp-Connect.md](./Azure-Company-07-Webapp-Connect.md)
 — point the webapp itself at `https://$APP_URL` and test the actual UI.
 
+> **Updating later:** the controller now also accepts an optional third upload, `params` (`SolverParams.yaml`), and stores the
+> uploads as `EnvConfig.yaml` / `Schedule.yaml` / `SolverParams.yaml`. How to deploy that change and a newer solver image:
+> [Azure-Company-09-Update-Timefold.md](./Azure-Company-09-Update-Timefold.md).
+
 ---
 
 ## Troubleshooting
