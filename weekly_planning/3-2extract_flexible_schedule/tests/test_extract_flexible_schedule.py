@@ -35,8 +35,8 @@ def result():
 
 
 ENV = {"environment": {"worker_list": [{"id": "w1", "name": "A"}, {"id": "w2", "name": "B"}],
-                       "fab_list": [{"id": "f1", "name": "F21", "customer_company": "c1"}],
-                       "customer_company_list": [{"id": "c1", "name": "TSMC"}]}}
+                       "fab_list": [{"id": "f1", "name": "FabA", "customer_company": "c1"}],
+                       "customer_company_list": [{"id": "c1", "name": "CustA"}]}}
 
 
 class Extract(unittest.TestCase):
@@ -62,17 +62,17 @@ class Extract(unittest.TestCase):
         self.assertNotIn("solver_version", self.sch)
 
     def test_every_module_row_gets_a_cell_name_made_from_fab_and_customer_when_it_has_none(self):
-        self.assertEqual(["TSMCF21_530N00001A_新規"] * 2, [r["cell_name"] for r in self.sch["assignment_list"]])
+        self.assertEqual(["CustAFabA_530N00001A_新規"] * 2, [r["cell_name"] for r in self.sch["assignment_list"]])
         self.assertEqual({"made from fab and customer": 2}, self.stats["cell_name"])
 
     def test_the_name_of_the_row_is_kept_cell_name_first_then_description(self):
         src = result()
         src["schedule"]["assignment_list"][0]["cell_name"] = "KEEP_ME"
-        src["schedule"]["assignment_list"][1]["description"] = "TSMC_530N00001A_planner"        # carried by the solver
+        src["schedule"]["assignment_list"][1]["description"] = "CustA_530N00001A_planner"        # carried by the solver
         doc, _r, stats = ex.extract(src, ENV)
-        self.assertEqual(["KEEP_ME", "TSMC_530N00001A_planner"], [r["cell_name"] for r in doc["schedule"]["assignment_list"]])
+        self.assertEqual(["KEEP_ME", "CustA_530N00001A_planner"], [r["cell_name"] for r in doc["schedule"]["assignment_list"]])
         self.assertEqual({"from the result": 2}, stats["cell_name"])
-        self.assertEqual("TSMC_530N00001A_planner", doc["schedule"]["assignment_list"][1]["description"])   # description untouched
+        self.assertEqual("CustA_530N00001A_planner", doc["schedule"]["assignment_list"][1]["description"])   # description untouched
 
     def test_input_is_not_modified(self):
         src = result()

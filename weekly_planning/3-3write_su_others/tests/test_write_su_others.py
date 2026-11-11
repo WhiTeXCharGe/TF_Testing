@@ -173,10 +173,10 @@ class NewModules(unittest.TestCase):
 
     def test_a_module_without_any_cell_is_written_with_the_given_name_and_style(self):
         want = {"N1": {("yamada", "2026/12/03"), ("yamada", "2026/12/04"), ("sato", "2026/12/03")}}
-        clears, sets, report = self.plan({}, want, {"N1": ("TSMCF21_N1_新規", "115")})
+        clears, sets, report = self.plan({}, want, {"N1": ("CustAFabA_N1_新規", "115")})
         self.assertEqual([], clears)
         self.assertEqual(3, len(sets))
-        self.assertTrue(all(dn == ("new", "TSMCF21_N1_新規", "115") for _c, _r, _k, dn in sets))
+        self.assertTrue(all(dn == ("new", "CustAFabA_N1_新規", "115") for _c, _r, _k, dn in sets))
         self.assertTrue(any(r.startswith("NEW module N1") for r in report))
 
     def test_without_a_new_module_entry_it_is_still_only_reported(self):
@@ -190,10 +190,10 @@ class NewModules(unittest.TestCase):
         self.assertTrue(any(r.startswith("CONFLICT") for r in report))
 
     def test_text_template_and_styles(self):
-        info = {"fab": "F21", "customer": "TSMC", "description": "x"}
-        self.assertEqual("TSMCF21_530N03370A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N03370A", info))
-        self.assertEqual("530N03370A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N03370A", {}))   # no fab / customer
-        self.assertEqual("530N03370A", w.new_module_text("{fab}", "530N03370A", {}))                          # nothing left: the code
+        info = {"fab": "FabA", "customer": "CustA", "description": "x"}
+        self.assertEqual("CustAFabA_530N00000A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N00000A", info))
+        self.assertEqual("530N00000A_新規", w.new_module_text("{customer}{fab}_{code}_新規", "530N00000A", {}))   # no fab / customer
+        self.assertEqual("530N00000A", w.new_module_text("{fab}", "530N00000A", {}))                          # nothing left: the code
         cells = {(5, 10): ("115", "", ""), (5, 11): ("115", "", ""), (6, 10): ("3", "", "")}
         self.assertEqual("115", w.most_common_module_style({"A": {(5, 10), (5, 11)}, "B": {(6, 10)}}, cells))
         self.assertEqual("3", w.most_common_module_style({"A": {(5, 10), (5, 11)}, "B": {(6, 10)}}, cells, style_from="B"))
@@ -206,11 +206,11 @@ class NewModules(unittest.TestCase):
             src, out = Path(td) / "in.xlsm", Path(td) / "out.xlsm"
             Zip().build(src)
             rows, cells = w.index_sheet(SHEET)
-            new = w.rewrite(str(src), str(out), "予定表_2026", None, [], [("N1", 3, 4, ("new", "TSMC_N1_新規", "115"))], SHEET, rows, cells, "4")
+            new = w.rewrite(str(src), str(out), "予定表_2026", None, [], [("N1", 3, 4, ("new", "CustA_N1_新規", "115"))], SHEET, rows, cells, "4")
             self.assertEqual([], w.verify(str(src), str(out), "予定表_2026", new))
             with zipfile.ZipFile(out) as z:
                 _r, c2 = w.index_sheet(z.read("xl/worksheets/sheet3.xml").decode("utf-8"))
-                self.assertEqual(("115", ' s="115" t="inlineStr"', "<is><t>TSMC_N1_新規</t></is>"), c2[(3, 4)])
+                self.assertEqual(("115", ' s="115" t="inlineStr"', "<is><t>CustA_N1_新規</t></is>"), c2[(3, 4)])
                 self.assertIn('count="2"', z.read("xl/sharedStrings.xml").decode("utf-8"))      # no shared string touched
 
 
@@ -269,12 +269,12 @@ class CellNames(unittest.TestCase):
                                  "work_date_list": [{"date": "2026/12/03", "hour": 10}], "plan_flexibility": "Flexible",
                                  "cell_name": "THE_NAME"}]}}
         env = {"environment": {"worker_list": [{"id": "w1", "name": "山田 太郎"}],
-                               "fab_list": [{"id": "f1", "name": "F21", "customer_company": "c1"}],
-                               "customer_company_list": [{"id": "c1", "name": "TSMC"}]}}
+                               "fab_list": [{"id": "f1", "name": "FabA", "customer_company": "c1"}],
+                               "customer_company_list": [{"id": "c1", "name": "CustA"}]}}
         want, _warn, info, _trips, names = w.wanted_cells(doc, env)
         self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03")}}, want)
         self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03"): "THE_NAME"}}, names)
-        self.assertEqual({"fab": "F21", "customer": "TSMC", "description": ""}, info["530N00001A"])
+        self.assertEqual({"fab": "FabA", "customer": "CustA", "description": ""}, info["530N00001A"])
 
 
 class Trips(unittest.TestCase):

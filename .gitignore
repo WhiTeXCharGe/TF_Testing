@@ -1,4 +1,4 @@
-# ---- Excel files: SU_Others, 初期データ追加情報, skill level file ... (real worker / plan data, large binaries, macros)
+# ---- Excel files: the SU_Others workbooks, the seiban info workbook, the skill-level workbook ... (real worker / plan data, large binaries, macros)
 *.xlsm
 *.xlsx
 *.xls
@@ -21,6 +21,9 @@ venv/
 decorder/*.yaml
 decorder/decoder7_out/
 decorder/TransformationLog.txt
+decoder/*.yaml
+decoder/decoder7_out/
+decoder/TransformationLog.txt
 fix_edited_modules/*.yaml
 fix_edited_modules/FixLog.txt
 sigmai_diagnose/variants_*/
@@ -31,6 +34,7 @@ weekly_planning/**/*_prepare_report.txt
 weekly_planning/**/*_rewritten.txt
 weekly_planning/**/*FlexibleSchedule_report.txt
 weekly_planning/**/03_plan_period_report.txt
+weekly_planning/**/run_info.json
 # any yaml inside weekly_planning is a tool input / output, not source
 weekly_planning/**/*.yaml
 

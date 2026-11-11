@@ -2,7 +2,7 @@
 """
 prepare_schedule.py  --  weekly planning tool "2-2 + 2-3" (one tool).
 
-  2-2  find the modules / FI-FO that a planner changed in SU_Others.xlsm (they become Fixed)
+  2-2  find the modules / FI-FO that a planner changed in the SU_Others workbook (they become Fixed)
   2-3  build the Timefold input (01_Schedule.yaml, 01_EnvConfig.yaml) where only the
        still-flexible modules and trips are optimisable and everything else is misc / Fixed trip
 
@@ -10,18 +10,18 @@ Inputs
   --prev-flexible   last week's FlexibleSchedule.yaml.  A Timefold result Schedule.yaml also works
                     (everything in it is treated as flexible; misc tasks in it are ignored).
   --prev-env        last week's EnvConfig.yaml (workflows, fabs, regions ... are carried over)
-  --su-others       dated SU_Others .xlsm (e.g. "20260726 SU_Others"): ongoing tasks and the worker list
-  --skill-file      "SU_Others_skill level..." .xlsm: skills / status only (optional; without it the
+  --su-others       the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list
+  --skill-file      the skill-level workbook (.xlsm): skills / status only (optional; without it the
                     skill sheet is looked up inside --su-others like decoder7 does)
-  --seiban-info     初期データ追加情報 .xlsx (sheet 製番: module -> customer / fab / region)
+  --seiban-info     the seiban info workbook (.xlsx, sheet 製番: module -> customer / fab / region)
 Output (in --out-dir)
-  <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (e.g. 20261028_FlexibleWork.yaml)
+  <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (file name starts with the --today date)
   01_EnvConfig.yaml           EnvConfig for the run
   01_Schedule.yaml            Schedule for the run (flexible modules + misc tasks + trip_list)
   <today>_prepare_report.txt  only with --report: what was decided and why, and everything that could not be resolved
 
 The decisions (changed / unchanged) are plain functions on plain data, so they can be tested
-without Excel files (see tests/).  Reading the workbook reuses decoder7.py of tools/decorder.
+without Excel files (see tests/).  Reading the workbook reuses decoder7.py of tools/decoder.
 """
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def module_name_info(task, env):
 
 
 def module_cell_name(code, info, template=DEFAULT_CELL_NAME_TEMPLATE):
-    """Name for the cells of a module that has none, e.g. '{customer}{fab}_{code}_新規' -> 'TSMCF21_530N03370A_新規'."""
+    """Name for the cells of a module that has none, e.g. '{customer}{fab}_{code}_新規' -> 'CustAFabA_530N00000A_新規'."""
     text = template.format(code=code, fab=info.get("fab", ""), customer=info.get("customer", ""),
                            description=info.get("description", ""))
     text = re.sub(r"_{2,}", "_", text).strip("_ ")
@@ -117,7 +117,7 @@ def read_prev_flexible(doc, env_worker_names):
     doc: parsed FlexibleSchedule.yaml / Timefold result Schedule.yaml.
     env_worker_names: prev worker id -> name (from the previous EnvConfig).
     Returns dict: plan_range, modules {code: {...}}, trips [{worker_key, worker_id, start, end, region, flex, raw}], warnings.
-    A module is identified by its workflow task `name` (the module code, e.g. 530N03359A).
+    A module is identified by its workflow task `name` (the module code, e.g. 530N00009A).
     modules[code]["names"] = {(worker_key, date): cell_name} from the `cell_name` of the assignment rows (empty if the file has none).
     """
     sch = doc.get("schedule", doc) if isinstance(doc, dict) else {}
@@ -448,7 +448,7 @@ def infer_trip_region(worker_key, start, end, worker_code_days, code_region, wor
 def build_master_lists(prev_env, seiban_rows, sheet_company_names):
     """
     prev_env: parsed previous EnvConfig 'environment' dict.
-    seiban_rows: {code: {"customer","fab","region"}} (names as in 初期データ追加情報)
+    seiban_rows: {code: {"customer","fab","region"}} (names as in the seiban info workbook)
     sheet_company_names: worker company names found in SU_Others (in order)
     Returns dict with the merged lists and name->id maps; ids of existing entries never change.
     """
@@ -778,7 +778,7 @@ def import_decoder(decoder_dir):
 
 
 def read_sheet(d, su_path, sheets, skill_sheet, skill_path=None):
-    """SU_Others.xlsm -> the `sheet` dict used by prepare().  One workbook load serves the decoder parser and the
+    """The SU_Others workbook -> the `sheet` dict used by prepare().  One workbook load serves the decoder parser and the
     FI/FO scan (decoder7 skips FI/FO cells, so they are read here).
     skill_path: the separate "skill level" workbook; skills / status are taken from its skill_sheet. Without it the
     skill sheet is looked up inside su_path (decoder7 behaviour)."""
@@ -855,14 +855,14 @@ def read_seiban(d, path, start_row):
 
 def main(argv=None):
     here = Path(__file__).resolve()
-    default_decoder = here.parents[2] / "decorder"
+    default_decoder = next((d for d in (here.parents[2] / "decoder", here.parents[2] / "decorder") if d.exists()), here.parents[2] / "decoder")
     ap = argparse.ArgumentParser(description="Weekly planning 2-2 + 2-3: detect Fixed modules / FI-FO and build the Timefold input.")
     ap.add_argument("--prev-flexible", required=True, help="last week's FlexibleSchedule.yaml (or a Timefold result Schedule.yaml)")
     ap.add_argument("--prev-env", required=True, help="last week's EnvConfig.yaml")
-    ap.add_argument("--su-others", required=True, help="dated SU_Others .xlsm (e.g. 20260726 SU_Others): ongoing tasks and the worker list")
+    ap.add_argument("--su-others", required=True, help="the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list")
     ap.add_argument("--skill-file", default=None,
-                    help="'SU_Others_skill level...' .xlsm: skills / status only (default: look for the skill sheet inside --su-others)")
-    ap.add_argument("--seiban-info", required=True, help="初期データ追加情報 .xlsx (sheet 製番)")
+                    help="the skill-level workbook (.xlsm): skills / status only (default: look for the skill sheet inside --su-others)")
+    ap.add_argument("--seiban-info", required=True, help="the seiban info workbook (.xlsx, sheet 製番)")
     ap.add_argument("--out-dir", required=True, help="folder for <today>_FlexibleWork.yaml, 01_EnvConfig.yaml, 01_Schedule.yaml")
     ap.add_argument("--report", action="store_true", help="also write <today>_prepare_report.txt (every decision and unresolved item)")
     ap.add_argument("--today", default=None, help="YYYY/MM/DD; modules whose work all ended before it become Fixed (default: today)")

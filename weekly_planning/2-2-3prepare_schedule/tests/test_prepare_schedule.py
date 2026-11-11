@@ -33,11 +33,11 @@ def prev_env():
         "workflow_list": [{"id": "wf_tool", "name": "Tool", "phase_list": [
             {"id": "p2", "name": "HW", "operation_list": [
                 {"id": "p2o1", "name": "Mech", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 8}]}]}],
-        "fab_list": [{"id": "f1", "name": "F21", "region": "r1", "customer_company": "c1", "unavailable_dates": []}],
-        "region_list": [{"id": "r1", "name": "USA", "max_stay_on": 80, "max_annual_stay": 240,
+        "fab_list": [{"id": "f1", "name": "FabA", "region": "r1", "customer_company": "c1", "unavailable_dates": []}],
+        "region_list": [{"id": "r1", "name": "RegionA", "max_stay_on": 80, "max_annual_stay": 240,
                          "stay_off_interval": 3, "unavailable_dates": []}],
-        "customer_company_list": [{"id": "c1", "name": "TSMC", "unavailable_dates": []}],
-        "worker_company_list": [{"id": "wc1", "name": "HumanEyes", "annual_overtime_limit": 10000,
+        "customer_company_list": [{"id": "c1", "name": "CustA", "unavailable_dates": []}],
+        "worker_company_list": [{"id": "wc1", "name": "CompanyA", "annual_overtime_limit": 10000,
                                  "monthly_overtime_limit": 10000, "unavailable_dates": []}],
         "transite_day_map": [], "affinity_tag": [{"id": "wct1", "weight": 2}],
         "worker_list": [
@@ -68,11 +68,11 @@ def sheet(**over):
     k1, k2 = ps.name_key("山田 太郎"), ps.name_key("佐藤 花子")
     s = {
         "workers": [
-            {"name": "山田 太郎", "company_name": "HumanEyes", "is_manager": True, "skill_map": {"p2o1": 3, "p2o2": 2},
+            {"name": "山田 太郎", "company_name": "CompanyA", "is_manager": True, "skill_map": {"p2o1": 3, "p2o2": 2},
              "worker_type_by_operation": {"p2o1": "regular", "p2o2": "regular"}, "unavailable": ["2026/10/30"], "description": None},
-            {"name": "佐藤 花子", "company_name": "HumanEyes", "is_manager": False, "skill_map": {"p2o1": 2},
+            {"name": "佐藤 花子", "company_name": "CompanyA", "is_manager": False, "skill_map": {"p2o1": 2},
              "worker_type_by_operation": {"p2o1": "spot"}, "unavailable": [], "description": None},
-            {"name": "鈴木 一郎", "company_name": "NewCo", "is_manager": False, "skill_map": {}, "worker_type_by_operation": {},
+            {"name": "鈴木 一郎", "company_name": "CompanyB", "is_manager": False, "skill_map": {}, "worker_type_by_operation": {},
              "unavailable": [], "description": None}],
         "date_map": {
             (k1, "2026/10/20"): CODE_A, (k1, "2026/10/21"): CODE_A, (k1, "2026/10/22"): CODE_A,   # unchanged
@@ -92,8 +92,8 @@ def sheet(**over):
     return s
 
 
-SEIBAN = {CODE_A: {"customer": "TSMC", "fab": "F21", "region": "USA"},
-          CODE_D: {"customer": "Micron", "fab": "F15", "region": "Taiwan"}}
+SEIBAN = {CODE_A: {"customer": "CustA", "fab": "FabA", "region": "RegionA"},
+          CODE_D: {"customer": "CustB", "fab": "FabB", "region": "RegionB"}}
 
 
 class Decisions(unittest.TestCase):
@@ -139,7 +139,7 @@ class Decisions(unittest.TestCase):
 
     def test_read_prev_flexible_collects_misc_cells_by_module_code(self):
         doc = prev_flexible()
-        doc["schedule"]["misc_task_list"] = [{"id": "misc_other_9", "name": f"TSMCF21_SU3200_{CODE_D}_新規", "region": "r_other"}]
+        doc["schedule"]["misc_task_list"] = [{"id": "misc_other_9", "name": f"CustAFabA_ModelA_{CODE_D}_新規", "region": "r_other"}]
         doc["schedule"]["assignment_list"].append(
             {"worker": "w007", "operation_task": "misc_other_9", "start_date": "2026/10/02", "end_date": "2026/10/02",
              "work_date_list": [{"date": "2026/10/02", "hour": 10}], "plan_flexibility": "Fixed"})
@@ -180,12 +180,12 @@ class Decisions(unittest.TestCase):
         self.assertEqual(None, ps.infer_trip_region("k", "2026/10/01", "2026/10/05", days, {})[0])
 
     def test_trip_region_falls_back_to_a_fab_name_in_the_label_and_never_guesses_between_regions(self):
-        texts = {"k": {"2026/10/02": "TSMCF22_P3A_新規", "2026/10/09": "F15 other"}}
-        fab_region = {"F22": "r2", "F15": "r3", "F2": "r9"}
+        texts = {"k": {"2026/10/02": "CustAFabC_P3A_新規", "2026/10/09": "FabB other"}}
+        fab_region = {"FABC": "r2", "FABB": "r3", "F2": "r9"}
         region, note = ps.infer_trip_region("k", "2026/10/01", "2026/10/05", {}, {}, texts, fab_region)
         self.assertEqual("r2", region)
         self.assertIn("fab name in the bar label", note)
-        # both F22 (r2) and F15 (r3) inside -> no guess
+        # both FabC (r2) and FabB (r3) inside -> no guess
         region, note = ps.infer_trip_region("k", "2026/10/01", "2026/10/12", {}, {}, texts, fab_region)
         self.assertIsNone(region)
         self.assertIn("several regions", note)
@@ -194,9 +194,9 @@ class Decisions(unittest.TestCase):
         self.assertEqual("r7", region)
 
     def test_fab_name_regions_skips_short_ambiguous_and_neutral_names(self):
-        env = {"fab_list": [{"name": "F22", "region": "r2"}, {"name": "F22", "region": "r3"}, {"name": "F21", "region": "r1"},
-                            {"name": "S3", "region": "r1"}, {"name": "Other", "region": "r_other"}, {"name": "Lehi", "region": "r1"}]}
-        self.assertEqual({"F21": "r1", "LEHI": "r1"}, ps.fab_name_regions(env))
+        env = {"fab_list": [{"name": "FabC", "region": "r2"}, {"name": "FabC", "region": "r3"}, {"name": "FabA", "region": "r1"},
+                            {"name": "S3", "region": "r1"}, {"name": "Other", "region": "r_other"}, {"name": "FabD", "region": "r1"}]}
+        self.assertEqual({"FABA": "r1", "FABD": "r1"}, ps.fab_name_regions(env))
 
 
 def days(first, last):
@@ -212,7 +212,7 @@ class FiFoPatterns(unittest.TestCase):
         for text, mark in [("FI", "FI"), ("Fi", "FI"), ("ＦＩ", "FI"), (" fi ", "FI"), ("F1", "FI"), ("Fl", "FI"), ("FI(仮)", "FI"),
                            ("FO", "FO"), ("Fo", "FO"), ("F0", "FO"), ("FO（仮）", "FO")]:
             self.assertEqual(mark, ps.read_mark(text), text)
-        for text in ["移動", "F22", "FC", "", None, 5, "FI 530N03359A"]:
+        for text in ["移動", "FabC", "FC", "", None, 5, "FI 530N00009A"]:
             self.assertIsNone(ps.read_mark(text), text)
 
     def test_complete_pair_is_unchanged(self):
@@ -309,7 +309,7 @@ class CellNames(unittest.TestCase):
     """The text of a bar: a module whose bar was only renamed in SU_Others is changed too (becomes Fixed / misc)."""
     K1 = ps.name_key("山田 太郎")
 
-    def prev_with_names(self, name="TSMC_" + CODE_A):
+    def prev_with_names(self, name="CustA_" + CODE_A):
         doc = prev_flexible()
         doc["schedule"]["assignment_list"][0]["cell_name"] = name          # module A, w007, 10/20-10/22
         return doc
@@ -321,19 +321,19 @@ class CellNames(unittest.TestCase):
         return s
 
     def test_same_text_keeps_the_module_flexible(self):
-        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("TSMC_" + CODE_A), SEIBAN, "2026/10/10")
+        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("CustA_" + CODE_A), SEIBAN, "2026/10/10")
         self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
 
     def test_only_the_text_changed_makes_the_module_fixed_and_the_misc_task_carries_the_new_text(self):
-        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("TSMC_" + CODE_A + "_renamed"), SEIBAN, "2026/10/10")
+        out = ps.prepare(self.prev_with_names(), prev_env(), self.sheet_with_text("CustA_" + CODE_A + "_renamed"), SEIBAN, "2026/10/10")
         self.assertNotIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
         reason = next(line for line in out["report"] if f"FIXED module {CODE_A}" in line)
         self.assertIn("cell text changed", reason)
         self.assertIn("_renamed", reason)
-        self.assertTrue(any(m["name"] == "TSMC_" + CODE_A + "_renamed" for m in out["schedule"]["schedule"]["misc_task_list"]))
+        self.assertTrue(any(m["name"] == "CustA_" + CODE_A + "_renamed" for m in out["schedule"]["schedule"]["misc_task_list"]))
 
     def test_text_only_differing_in_case_width_or_spaces_is_not_a_change(self):
-        out = ps.prepare(self.prev_with_names("TSMC_" + CODE_A), prev_env(), self.sheet_with_text("ＴＳＭＣ _ " + CODE_A.lower()), SEIBAN, "2026/10/10")
+        out = ps.prepare(self.prev_with_names("CustA_" + CODE_A), prev_env(), self.sheet_with_text("ＣＵＳＴＡ _ " + CODE_A.lower()), SEIBAN, "2026/10/10")
         self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
 
     def test_rows_without_a_cell_name_are_not_checked(self):
@@ -341,24 +341,24 @@ class CellNames(unittest.TestCase):
         self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
 
     def test_one_odd_cell_in_a_bar_is_not_a_change_but_the_most_common_text_is_what_counts(self):
-        s = self.sheet_with_text("TSMC_" + CODE_A)
-        s["date_map"][(self.K1, "2026/10/22")] = "TSMC_" + CODE_A + " (note)"
+        s = self.sheet_with_text("CustA_" + CODE_A)
+        s["date_map"][(self.K1, "2026/10/22")] = "CustA_" + CODE_A + " (note)"
         out = ps.prepare(self.prev_with_names(), prev_env(), s, SEIBAN, "2026/10/10")
         self.assertIn(CODE_A, out["flexible_work"]["flexible_work"]["modules"])
 
     def test_flexible_rows_get_their_cell_name_from_the_sheet_and_it_is_also_kept_in_description(self):
-        s = self.sheet_with_text("TSMC_" + CODE_A)
+        s = self.sheet_with_text("CustA_" + CODE_A)
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")      # previous rows have no cell_name yet
         row = next(r for r in out["schedule"]["schedule"]["assignment_list"] if r["operation_task"] == "e1p2o1")
-        self.assertEqual("TSMC_" + CODE_A, row["cell_name"])
-        self.assertEqual("TSMC_" + CODE_A, row["description"])
+        self.assertEqual("CustA_" + CODE_A, row["cell_name"])
+        self.assertEqual("CustA_" + CODE_A, row["description"])
 
     def test_an_existing_description_is_not_overwritten(self):
         doc = prev_flexible()
         doc["schedule"]["assignment_list"][0]["description"] = "planner note"
-        out = ps.prepare(doc, prev_env(), self.sheet_with_text("TSMC_" + CODE_A), SEIBAN, "2026/10/10")
+        out = ps.prepare(doc, prev_env(), self.sheet_with_text("CustA_" + CODE_A), SEIBAN, "2026/10/10")
         row = next(r for r in out["schedule"]["schedule"]["assignment_list"] if r["operation_task"] == "e1p2o1")
-        self.assertEqual(("TSMC_" + CODE_A, "planner note"), (row["cell_name"], row["description"]))
+        self.assertEqual(("CustA_" + CODE_A, "planner note"), (row["cell_name"], row["description"]))
 
     def test_read_prev_flexible_collects_the_names_per_worker_and_day(self):
         prev = ps.read_prev_flexible(self.prev_with_names("N1"), {"w007": "山田 太郎", "w008": "佐藤 花子"})
@@ -367,8 +367,8 @@ class CellNames(unittest.TestCase):
 
     def test_default_name_is_made_from_customer_fab_and_code(self):
         info = ps.module_name_info({"fab": "f1", "description": "d"}, prev_env()["environment"])
-        self.assertEqual({"fab": "F21", "customer": "TSMC", "description": "d"}, info)
-        self.assertEqual("TSMCF21_" + CODE_A + "_新規", ps.module_cell_name(CODE_A, info))
+        self.assertEqual({"fab": "FabA", "customer": "CustA", "description": "d"}, info)
+        self.assertEqual("CustAFabA_" + CODE_A + "_新規", ps.module_cell_name(CODE_A, info))
         self.assertEqual(CODE_A + "_新規", ps.module_cell_name(CODE_A, {}))
 
 
@@ -433,14 +433,14 @@ class Assembly(unittest.TestCase):
         self.assertTrue(any("not in the skill file" in line and "佐藤 花子" in line for line in out["report"]))
 
     def test_master_lists_keep_old_ids_and_add_new_ones(self):
-        self.assertEqual("r1", next(r["id"] for r in self.env["region_list"] if r["name"] == "USA"))
+        self.assertEqual("r1", next(r["id"] for r in self.env["region_list"] if r["name"] == "RegionA"))
         names = {r["name"]: r["id"] for r in self.env["region_list"]}
-        self.assertEqual({"USA", "Other", "Taiwan"}, set(names))
+        self.assertEqual({"RegionA", "Other", "RegionB"}, set(names))
         self.assertEqual("r_other", names["Other"])
-        self.assertEqual("r2", names["Taiwan"])
+        self.assertEqual("r2", names["RegionB"])
         self.assertEqual({"f1", "f2"}, {f["id"] for f in self.env["fab_list"]})
-        self.assertEqual("r2", next(f["region"] for f in self.env["fab_list"] if f["name"] == "F15"))
-        self.assertEqual(["HumanEyes", "NewCo"], [c["name"] for c in self.env["worker_company_list"]])
+        self.assertEqual("r2", next(f["region"] for f in self.env["fab_list"] if f["name"] == "FabB"))
+        self.assertEqual(["CompanyA", "CompanyB"], [c["name"] for c in self.env["worker_company_list"]])
         self.assertEqual("wc2", next(w["worker_company"] for w in self.env["worker_list"] if w["name"] == "鈴木 一郎"))
         pairs = {(t["from"], t["to"]) for t in self.env["transite_day_map"]}
         self.assertEqual(6, len(pairs))   # 3 regions, every ordered pair
@@ -493,7 +493,7 @@ class Assembly(unittest.TestCase):
     def test_fixed_trip_region_is_inferred_from_modules_between_fi_and_fo(self):
         s = sheet()
         k1 = ps.name_key("山田 太郎")
-        s["date_map"][(k1, "2026/11/12")] = CODE_A + " site work"   # Fixed trip 11/09..11/15 now has a USA module inside
+        s["date_map"][(k1, "2026/11/12")] = CODE_A + " site work"   # Fixed trip 11/09..11/15 now has a RegionA module inside
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")
         trips = out["schedule"]["schedule"]["trip_list"][0]["trips"]
         self.assertIn(("2026/11/09", "2026/11/15", "r1", "Fixed"),

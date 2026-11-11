@@ -457,7 +457,7 @@ def wanted_cells(schedule_doc, env_doc, only_modules=None):
 
 
 def new_module_text(template, code, info):
-    """Name written into the cells of a new module, e.g. '{customer}{fab}_{code}_新規' -> 'TSMCF21_530N03370A_新規'."""
+    """Name written into the cells of a new module, e.g. '{customer}{fab}_{code}_新規' -> 'CustAFabA_530N00000A_新規'."""
     return ps.module_cell_name(code, info, template)
 
 
@@ -487,7 +487,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Weekly planning 3-3: write the flexible schedule back into a copy of SU_Others.")
     ap.add_argument("--schedule", required=True, help="schedule of the flexible modules (FlexibleSchedule / decoder7 / Timefold result Schedule.yaml)")
     ap.add_argument("--env", required=True, help="EnvConfig.yaml that belongs to the schedule (worker names)")
-    ap.add_argument("--su-others", required=True, help="old SU_Others .xlsm (only read)")
+    ap.add_argument("--su-others", required=True, help="old SU_Others workbook (.xlsm) (only read)")
     ap.add_argument("--out-dir", required=True, help="folder for the new workbook")
     ap.add_argument("--flexible-work", default=None,
                     help="<date>_FlexibleWork.yaml: its flexible trips are removed from the sheet before the new FI/FO are written "
@@ -502,7 +502,7 @@ def main(argv=None):
     ap.add_argument("--from-date", default=None, help="YYYY/MM/DD; cells before it are never touched (default: today)")
     ap.add_argument("--report", action="store_true", help="also write <name>_rewritten.txt with every change and conflict")
     ap.add_argument("--dry-run", action="store_true", help="only print the plan, write nothing")
-    ap.add_argument("--decoder-dir", default=str(HERE.parents[1] / "decorder"), help="folder of decoder7.py")
+    ap.add_argument("--decoder-dir", default=str(next((d for d in (HERE.parents[1] / "decoder", HERE.parents[1] / "decorder") if d.exists()), HERE.parents[1] / "decoder")), help="folder of decoder7.py")
     args = ap.parse_args(argv)
 
     src = Path(args.su_others)
