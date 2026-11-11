@@ -6,7 +6,7 @@
  * Timefold container as a task) instead of local disk + `docker run`.
  *
  * Endpoints (must match webapp/src/services/runService.ts exactly):
- *   POST   /runSolver      — upload EnvConfig.yaml + Schedule.yaml, create a Batch task
+ *   POST   /runSolver      — upload EnvConfig.yaml + Schedule.yaml (+ optional SolverParams.yaml), create a Batch task
  *   GET    /status/:runId  — read status/{runId}.json from Blob
  *   GET    /download/:runId — stream output/{runId}/result_Schedule.yaml from Blob
  *   DELETE /run/:runId     — terminate the Batch task (if running) + delete all blobs for the run
@@ -31,6 +31,8 @@ const SOLVER_IMAGE        = process.env.SOLVER_IMAGE;         // <acr-name>.azur
 const ACR_LOGIN_SERVER    = process.env.ACR_LOGIN_SERVER;     // <acr-name>.azurecr.io
 const POOL_MI_RESOURCE_ID = process.env.POOL_MI_RESOURCE_ID;  // /subscriptions/.../userAssignedIdentities/<name>
 const PORT                = Number(process.env.PORT ?? 8080);
+// Java heap of the solver container (the image default is 6g; a full-size weekly input needs more). Optional.
+const SOLVER_JVM_MAX_HEAP = /^\d+[mMgG]$/.test(process.env.SOLVER_JVM_MAX_HEAP ?? '') ? process.env.SOLVER_JVM_MAX_HEAP : '12g';
 
 for (const [k, v] of Object.entries({
   STORAGE_ACCOUNT, BLOB_CONTAINER, BATCH_ACCOUNT_URL, BATCH_JOB_ID,
@@ -128,7 +130,7 @@ async function createBatchTask(runId) {
         `-v $AZ_BATCH_TASK_WORKING_DIR/input/input/${runId}:/work/input:ro ` +
         '-v $AZ_BATCH_TASK_WORKING_DIR/output:/work/output ' +
         '-v $AZ_BATCH_TASK_WORKING_DIR/status:/work/status ' +
-        `-e RUN_ID=${runId}`,
+        `-e RUN_ID=${runId} -e JVM_MAX_HEAP=${SOLVER_JVM_MAX_HEAP}`,
       registry: {
         registryServer: ACR_LOGIN_SERVER,
         identityReference: { resourceId: POOL_MI_RESOURCE_ID },
@@ -228,22 +230,27 @@ const upload = multer({
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-// POST /runSolver — multipart: env (file), sched (file), runId (optional)
+// POST /runSolver — multipart: env (file), sched (file), params (file, optional), runId (optional)
 app.post(
   '/runSolver',
-  upload.fields([{ name: 'env', maxCount: 1 }, { name: 'sched', maxCount: 1 }]),
+  upload.fields([{ name: 'env', maxCount: 1 }, { name: 'sched', maxCount: 1 }, { name: 'params', maxCount: 1 }]),
   async (req, res) => {
     try {
       const envFile   = req.files?.env?.[0];
       const schedFile = req.files?.sched?.[0];
+      const paramsFile = req.files?.params?.[0];   // optional SolverParams.yaml
       if (!envFile)   return res.status(400).json({ error: 'Missing required field: env (EnvConfig.yaml)' });
       if (!schedFile) return res.status(400).json({ error: 'Missing required field: sched (Schedule.yaml)' });
 
       const proposed = typeof req.body?.runId === 'string' ? req.body.runId.trim() : '';
       const runId = proposed && isValidRunId(proposed) ? proposed : makeRunId();
 
-      await container.getBlockBlobClient(`input/${runId}/${envFile.originalname}`).uploadData(envFile.buffer);
-      await container.getBlockBlobClient(`input/${runId}/${schedFile.originalname}`).uploadData(schedFile.buffer);
+      // The solver container reads these exact names from /work/input, whatever the uploaded files were called.
+      await container.getBlockBlobClient(`input/${runId}/EnvConfig.yaml`).uploadData(envFile.buffer);
+      await container.getBlockBlobClient(`input/${runId}/Schedule.yaml`).uploadData(schedFile.buffer);
+      if (paramsFile) {
+        await container.getBlockBlobClient(`input/${runId}/SolverParams.yaml`).uploadData(paramsFile.buffer);
+      }
 
       await writeJsonBlob(`status/${runId}.json`, {
         runId, status: 'Submitted', stage: null, progress: 0,
@@ -355,5 +362,5 @@ app.listen(PORT, () => {
   console.log(`API Controller listening on :${PORT}`);
   console.log(`  storage=${STORAGE_ACCOUNT}  container=${BLOB_CONTAINER}`);
   console.log(`  batch=${BATCH_ACCOUNT_URL}  job=${BATCH_JOB_ID}`);
-  console.log(`  solverImage=${SOLVER_IMAGE}`);
+  console.log(`  solverImage=${SOLVER_IMAGE}  jvmMaxHeap=${SOLVER_JVM_MAX_HEAP}`);
 });
