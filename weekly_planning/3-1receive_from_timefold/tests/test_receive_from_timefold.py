@@ -13,6 +13,8 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(TOOLS / "2-6submit_to_timefold"))
 sys.path.insert(0, str(TOOLS / "2-6submit_to_timefold" / "tests"))
 import receive_from_timefold as rcv   # noqa: E402
+import timefold_api as api             # noqa: E402
+import tf_config as tfc                # noqa: E402
 from fake_server import FakeApi       # noqa: E402
 
 RUNNING = {"runId": "r1", "status": "Running", "stage": 1, "progress": 0.35}
@@ -33,9 +35,19 @@ class Receive(unittest.TestCase):
         self.dir = Path(self.td.name)
         self.env = self.dir / "03_EnvConfig.yaml"
         self.env.write_text("environment:\n  worker_list: []\n", encoding="utf-8")
+        # never read the real config.txt of the tool in a test; do not wait between retries
+        patches = [mock.patch.object(rcv, "CONFIG_FILE", self.dir / "no_such_config.txt"), mock.patch.object(api, "RETRY_DELAYS", (0, 0))]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
 
     def tearDown(self):
         self.td.cleanup()
+
+    def config(self, text):
+        path = self.dir / "config.txt"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
 
     def info(self, url, mode="local"):
         path = self.dir / "run_info.json"
@@ -140,10 +152,10 @@ class Receive(unittest.TestCase):
         self.assertIn("Running (stage 1, 35%) ... checking again in 5 s", out)
         self.assertTrue((self.dir / "04_Schedule.yaml").is_file())
 
-    def test_real_mode_is_not_available_yet(self):
+    def test_no_mode_anywhere_is_a_clear_error(self):
         code, _out, err = run(["--run-id", "r1"])
-        self.assertEqual(4, code)
-        self.assertIn("not available yet", err)
+        self.assertEqual(5, code)
+        self.assertIn("mode is not set", err)
 
     def test_run_id_or_run_info_is_needed(self):
         with mock.patch("os.getcwd", return_value=str(self.dir)):
@@ -158,6 +170,96 @@ class Receive(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertTrue((self.dir / "04_Schedule.yaml").is_file())
         self.assertFalse((self.dir / "04_EnvConfig.yaml").exists())
+
+    # ---- config.txt
+
+    def test_with_no_options_the_run_record_and_the_server_come_from_config_txt(self):
+        with FakeApi() as srv:
+            srv.statuses = [COMPLETED]
+            self.info(srv.url)
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nrun_info={self.dir / 'run_info.json'}\ndownload=yes\n")
+            code, out, _ = run(["--config", cfg])
+        self.assertEqual(0, code)
+        self.assertIn("Done.", out)
+        self.assertTrue((self.dir / "04_Schedule.yaml").is_file())
+        self.assertTrue((self.dir / "04_EnvConfig.yaml").is_file())
+
+    def test_the_run_record_in_the_current_folder_is_used_when_config_txt_names_none(self):
+        with FakeApi() as srv:
+            srv.statuses = [COMPLETED]
+            self.info(srv.url)
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\ndownload=no\n")
+            with mock.patch.object(api, "RUN_INFO_NAME", str(self.dir / "run_info.json")):
+                code, out, _ = run(["--config", cfg])
+        self.assertEqual(0, code)
+        self.assertIn("Not downloaded", out)
+
+    def test_download_in_config_txt_can_be_overruled_on_the_command_line(self):
+        with FakeApi() as srv:
+            srv.statuses = [COMPLETED]
+            self.info(srv.url)
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nrun_info={self.dir / 'run_info.json'}\ndownload=yes\n")
+            code, _out, _ = run(["--config", cfg, "--no"])
+        self.assertEqual(0, code)
+        self.assertFalse((self.dir / "04_Schedule.yaml").exists())
+
+    def test_result_dir_and_watch_come_from_config_txt(self):
+        with FakeApi() as srv:
+            srv.statuses = [RUNNING, COMPLETED]
+            self.info(srv.url)
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nrun_info={self.dir / 'run_info.json'}\nresult_dir=got\nwatch=5\ndownload=yes\n")
+            with mock.patch("time.sleep") as sleep:
+                code, _out, _ = run(["--config", cfg])
+        self.assertEqual((0, 1), (code, sleep.call_count))
+        self.assertTrue((self.dir / "got" / "04_Schedule.yaml").is_file())
+
+    def test_run_id_of_config_txt_is_used_when_there_is_no_run_record(self):
+        with FakeApi() as srv:
+            srv.statuses = [COMPLETED]
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nrun_id=cfg_run\nresult_dir={self.dir}\ndownload=yes\n")
+            code, out, _ = run(["--config", cfg])
+        self.assertEqual(0, code)
+        self.assertIn("Run cfg_run on", out)
+
+    def test_a_bad_download_setting_is_reported(self):
+        with FakeApi() as srv:
+            self.info(srv.url)
+            code, _out, err = run(["--config", self.config(f"mode=local\nlocal_url={srv.url}\nrun_info={self.dir / 'run_info.json'}\ndownload=sometimes\n")])
+        self.assertEqual(5, code)
+        self.assertIn("download must be", err)
+
+    def test_online_mode_asks_the_azure_url_and_retries_while_the_app_wakes_up(self):
+        with FakeApi() as srv:
+            srv.statuses = [COMPLETED]
+            srv.flaky = {"/status/": [503, 502]}
+            self.info(srv.url, mode="online")
+            cfg = self.config(f"mode=online\nazure_url={srv.url}/\nrun_info={self.dir / 'run_info.json'}\ndownload=yes\n")
+            code, out, _ = run(["--config", cfg])
+        self.assertEqual(0, code)
+        self.assertIn("(online mode)", out)
+        self.assertTrue((self.dir / "04_Schedule.yaml").is_file())
+
+    def test_online_mode_that_is_down_points_at_the_settings(self):
+        self.info("http://127.0.0.1:9", mode="online")
+        code, _out, err = run(["--config", self.config(f"mode=online\nazure_url=http://127.0.0.1:9\nrun_info={self.dir / 'run_info.json'}\n")])
+        self.assertEqual(4, code)
+        self.assertIn("azure_url", err)
+
+    def test_a_run_sent_to_another_server_than_the_settings_point_to_is_pointed_out(self):
+        with FakeApi() as srv:
+            srv.status_code = 404
+            srv.statuses = [{}]
+            self.info("http://localhost:3001")                                  # the run was sent to the local server ...
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nrun_info={self.dir / 'run_info.json'}\n")  # ... but the settings point elsewhere
+            code, out, err = run(["--config", cfg])
+        self.assertEqual(4, code)
+        self.assertIn("the run record says it was sent to http://localhost:3001", out)
+        self.assertIn("was not found", err)
+
+    def test_missing_config_that_was_asked_for_is_an_error(self):
+        code, _out, err = run(["--config", str(self.dir / "nope.txt"), "--run-id", "r1"])
+        self.assertEqual(5, code)
+        self.assertIn("config file not found", err)
 
 
 if __name__ == "__main__":

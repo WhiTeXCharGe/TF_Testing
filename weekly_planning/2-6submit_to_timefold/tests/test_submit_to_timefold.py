@@ -5,12 +5,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import submit_to_timefold as sub   # noqa: E402
 import timefold_api as api         # noqa: E402
+import tf_config as tfc            # noqa: E402
 from fake_server import FakeApi    # noqa: E402
 
 SCHEDULE = "schedule:\n  plan_range: {start_date: 2026/01/01, end_date: 2026/02/01}\n  workflow_task_list: []\n"
@@ -61,12 +63,24 @@ class Submit(unittest.TestCase):
         self.env = self.dir / "03_EnvConfig.yaml"
         self.sched.write_text(SCHEDULE, encoding="utf-8")
         self.env.write_text(ENV, encoding="utf-8")
+        # never read the real config.txt of the tool in a test
+        patches = [mock.patch.object(sub, "CONFIG_FILE", self.dir / "no_such_config.txt"), mock.patch.object(api, "RETRY_DELAYS", (0, 0))]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
 
     def tearDown(self):
         self.td.cleanup()
 
+    def config(self, text):
+        path = self.dir / "config.txt"
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
     def args(self, url, *extra):
         return ["--schedule", str(self.sched), "--env", str(self.env), "--mode", "local", "--api-url", url, *extra]
+
+    # ---- command line only (no config.txt)
 
     def test_the_three_inputs_are_sent_under_the_names_the_solver_reads(self):
         with FakeApi() as srv:
@@ -81,6 +95,7 @@ class Submit(unittest.TestCase):
         self.assertEqual(self.sched.read_bytes(), up["files"]["sched"][1])       # the file is sent byte for byte
         self.assertIn(b"stage2_enabled: true", up["files"]["params"][1])
         self.assertIn("up to 60 minutes", out)
+        self.assertEqual(["/runSolver"], srv.paths)                                # local mode: no health check
 
     def test_run_record_and_params_copy_are_written_next_to_the_schedule(self):
         with FakeApi() as srv:
@@ -104,10 +119,10 @@ class Submit(unittest.TestCase):
         self.assertIn("Nothing sent", out)
         self.assertFalse((self.dir / "run_info.json").exists())
 
-    def test_real_mode_is_not_available_yet(self):
-        code, _out, err = run(["--schedule", str(self.sched), "--env", str(self.env)])          # mode defaults to real
-        self.assertEqual(2, code)
-        self.assertIn("not available yet", err)
+    def test_no_mode_anywhere_is_a_clear_error(self):
+        code, _out, err = run(["--schedule", str(self.sched), "--env", str(self.env)])
+        self.assertEqual(1, code)
+        self.assertIn("mode is not set", err)
 
     def test_swapped_files_are_caught_before_anything_is_sent(self):
         with FakeApi() as srv:
@@ -119,6 +134,7 @@ class Submit(unittest.TestCase):
         code, _out, err = run(self.args("http://127.0.0.1:9"))
         self.assertEqual(1, code)
         self.assertIn("cannot reach", err)
+        self.assertIn("MockServer", err)
         self.assertFalse((self.dir / "run_info.json").exists())
 
     def test_a_refused_run_is_reported_and_not_recorded(self):
@@ -129,6 +145,120 @@ class Submit(unittest.TestCase):
         self.assertIn("Missing required field", err)
         self.assertFalse((self.dir / "run_info.json").exists())
 
+    def test_a_run_id_the_server_would_replace_is_refused_up_front(self):
+        with FakeApi() as srv:
+            code, _out, err = run(self.args(srv.url, "--run-id", "week 45/final"))
+        self.assertEqual((1, []), (code, srv.uploads))
+        self.assertIn("run_id", err)
+
+    # ---- config.txt
+
+    def full_config(self, url, mode="local", extra=""):
+        key = "local_url" if mode == "local" else "azure_url"
+        return self.config(
+            f"mode = {mode}\n{key} = {url}\nschedule = {self.sched}\nenv = {self.env}\nrun_id = cfg_run\n"
+            f"stage1_minutes = 12\nstage2_enabled = false\nrandom_seed = 4   # fixed\n{extra}")
+
+    def test_with_no_options_everything_comes_from_config_txt(self):
+        with FakeApi() as srv:
+            code, out, _ = run(["--config", self.full_config(srv.url)])
+        self.assertEqual(0, code)
+        up = srv.uploads[0]
+        self.assertEqual("cfg_run", up["runId"])
+        sent = up["files"]["params"][1].decode("utf-8")
+        self.assertIn("stage1_minutes: 12", sent)
+        self.assertIn("stage2_enabled: false", sent)
+        self.assertIn("random_seed: 4", sent)
+        self.assertIn("up to 12 minutes", out)
+        info = json.loads((self.dir / "run_info.json").read_text(encoding="utf-8"))
+        self.assertEqual(("cfg_run", "local"), (info["runId"], info["mode"]))
+
+    def test_command_line_replaces_config_txt(self):
+        with FakeApi() as srv:
+            run(["--config", self.full_config(srv.url), "--run-id", "cli_run", "--stage1-minutes", "7", "--seed", "9"])
+        up = srv.uploads[0]
+        self.assertEqual("cli_run", up["runId"])
+        self.assertIn(b"stage1_minutes: 7", up["files"]["params"][1])
+        self.assertIn(b"random_seed: 9", up["files"]["params"][1])
+
+    def test_relative_paths_in_config_txt_are_relative_to_the_config_folder(self):
+        with FakeApi() as srv:
+            cfg = self.config(f"mode=local\nlocal_url={srv.url}\nschedule=03_Schedule.yaml\nenv=03_EnvConfig.yaml\nout_dir=sent\n")
+            with mock.patch("os.getcwd", return_value=str(self.dir.parent)):
+                code, _out, _ = run(["--config", cfg])
+        self.assertEqual(0, code)
+        self.assertTrue((self.dir / "sent" / "run_info.json").is_file())
+
+    def test_a_missing_schedule_names_the_setting(self):
+        code, _out, err = run(["--config", self.config("mode=local\n")])
+        self.assertEqual(1, code)
+        self.assertIn("schedule", err)
+        self.assertIn("config", err)
+
+    def test_a_bad_value_in_config_txt_is_reported(self):
+        code, _out, err = run(["--config", self.full_config("http://x", extra="stage2_minutes = soon\n")])
+        self.assertEqual(1, code)
+        self.assertIn("stage2_minutes", err)
+
+    def test_an_unknown_setting_is_mentioned_and_ignored(self):
+        with FakeApi() as srv:
+            code, _out, err = run(["--config", self.full_config(srv.url, extra="stage_1_minutes = 3\n"), "--dry-run"])
+        self.assertEqual(0, code)
+        self.assertIn("stage_1_minutes", err)
+
+    # ---- online mode (Azure API controller; the fake server speaks the same contract)
+
+    def test_online_mode_checks_the_server_first_and_sends_to_azure_url(self):
+        with FakeApi() as srv:
+            code, out, _ = run(["--config", self.full_config(srv.url + "/", mode="online")])
+            self.assertEqual(["/health", "/runSolver"], srv.paths)
+            self.assertEqual(1, len(srv.uploads))
+        self.assertEqual(0, code)
+        self.assertIn("(online mode)", out)
+        info = json.loads((self.dir / "run_info.json").read_text(encoding="utf-8"))
+        self.assertEqual(("online", srv.url), (info["mode"], info["apiUrl"]))
+
+    def test_online_mode_waits_for_a_server_that_is_still_starting(self):
+        with FakeApi() as srv:
+            srv.flaky = {"/health": [503, 502]}                      # an idle Container App answers like this while it wakes up
+            code, _out, _ = run(["--config", self.full_config(srv.url, mode="online")])
+            self.assertEqual((0, 1), (code, srv.health_calls))
+            self.assertEqual(1, len(srv.uploads))
+
+    def test_online_mode_gives_up_after_the_last_retry(self):
+        with FakeApi() as srv:
+            srv.flaky = {"/health": [503, 503, 503, 503]}
+            code, _out, err = run(["--config", self.full_config(srv.url, mode="online")])
+            self.assertEqual((1, []), (code, srv.uploads))
+        self.assertIn("503", err)
+
+    def test_local_mode_does_not_retry(self):
+        with FakeApi() as srv:
+            srv.flaky = {"/status/": [503]}
+            with self.assertRaises(api.ApiError):
+                api.get_status(api.Connection("local", srv.url), "r1")
+
+    def test_online_mode_without_azure_url_or_with_the_placeholder_is_refused(self):
+        code, _out, err = run(["--config", self.config(f"mode=online\nschedule={self.sched}\nenv={self.env}\n")])
+        self.assertEqual(1, code)
+        self.assertIn("azure_url is not set", err)
+        code, _out, err = run(["--config", self.config(f"mode=online\nazure_url=https://<your-solver-api>.azurecontainerapps.io\nschedule={self.sched}\nenv={self.env}\n")])
+        self.assertEqual(1, code)
+        self.assertIn("placeholder", err)
+
+    def test_online_mode_unreachable_points_at_the_settings_and_the_network(self):
+        code, _out, err = run(["--config", self.full_config("http://127.0.0.1:9", mode="online")])
+        self.assertEqual(1, code)
+        self.assertIn("azure_url", err)
+        self.assertIn("network", err)
+        self.assertFalse((self.dir / "run_info.json").exists())
+
+    def test_online_mode_does_not_send_when_the_address_is_not_the_api(self):
+        with FakeApi() as srv:
+            srv.flaky = {"/health": [404] * 4}
+            code, _out, err = run(["--config", self.full_config(srv.url, mode="online")])
+            self.assertEqual((1, []), (code, srv.uploads))
+        self.assertIn("/health", err)
 
 if __name__ == "__main__":
     unittest.main()

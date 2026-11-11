@@ -1,0 +1,29 @@
+# Settings of tool 3-1 (receive_from_timefold)
+#
+# Edit this file, then just run  python receive_from_timefold.py  with no options.
+# A command line option replaces the same setting for that one run.  Lines starting with # are comments.
+# A setting that is left empty is not set (the default is used).  A relative path is relative to the folder of this file.
+# mode and the addresses must match the config.txt of tool 2-6 (the run has to be asked where it was sent).
+
+# ---------------------------------------------------------------------------------------------------- server
+# mode
+#   local  : the solver server on this PC (MockServer). Address: local_url.
+#   online : the API controller on Azure. Address: azure_url. Same server and same behaviour as SchedulerWeb.
+mode = local
+azure_url = https://<your-solver-api>.azurecontainerapps.io
+local_url = http://localhost:3001
+
+# ---------------------------------------------------------------------------------------------------- which run
+# run_info: the run record (run_info.json) that tool 2-6 wrote, in its out_dir or next to its schedule file.
+# Empty: run_info.json in the folder you run the tool from.
+run_info =
+# run_id: used only when there is no run record.
+run_id =
+
+# ---------------------------------------------------------------------------------------------------- what to do
+# Folder for 04_Schedule.yaml and 04_EnvConfig.yaml (empty: the folder of the run record).
+result_dir =
+# Seconds between two checks until the run has ended (0 or empty: check once and stop).
+watch =
+# ask: ask  Download the result? [Y/N]    yes: download without asking    no: never download
+download = ask

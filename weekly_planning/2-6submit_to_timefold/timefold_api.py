@@ -1,28 +1,34 @@
 """
 timefold_api.py -- the small HTTP client shared by tool 2-6 (submit) and tool 3-1 (receive).  Standard library only.
 
-It speaks the contract of the API controller (and of the local MockServer, which has the same one):
+It speaks the contract of the API controller on Azure ("online" mode, the same one SchedulerWeb uses) and of the local MockServer
+("local" mode), which has the same one:
   POST   /runSolver        multipart: env, sched, params (optional), runId (optional)  ->  202 {runId, status}
   GET    /status/<runId>   ->  {status: Submitted | Running | Completed | Failed | Cancelled, stage, progress, error, ...}
   GET    /download/<runId> ->  the result Schedule (only when Completed)
+  GET    /health           ->  {ok: true}   (online mode: asked first, it also wakes the app up if it was idle)
 The solver container reads its input under fixed names, so the files are always sent as EnvConfig.yaml, Schedule.yaml and
 SolverParams.yaml, whatever the files on disk are called.
 """
 from __future__ import annotations
 
 import json
-import os
+import re
+import time
 import urllib.error
 import urllib.request
 import uuid
+from collections import namedtuple
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 
-MODES = ("real", "local")
-DEFAULT_MODE = "real"
+MODES = ("local", "online")
 DEFAULT_LOCAL_URL = "http://localhost:3001"      # the local MockServer, which runs the solver in Docker
+RUN_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"        # the API controller replaces any other run id by its own, so check it here
+RETRY_DELAYS = (3, 8, 20)                        # online mode: seconds to wait before trying a GET again (the app may be waking up)
+RETRY_STATUS = (502, 503, 504)
 RUN_INFO_NAME = "run_info.json"
 
 # Parameters the tool sets unless told otherwise (they go into SolverParams.yaml). Everything else keeps the solver default.
@@ -40,18 +46,21 @@ class ApiError(Exception):
     """Something the user can act on: wrong URL, server down, rejected input, ..."""
 
 
-class NotAvailable(ApiError):
-    """The requested mode cannot be used yet."""
+# ----------------------------------------------------------------------------- connection
+
+Connection = namedtuple("Connection", "mode url")         # mode: local | online
 
 
-# ----------------------------------------------------------------------------- mode / url
+def check_run_id(run_id):
+    if not re.match(RUN_ID_PATTERN, run_id or ""):
+        raise ApiError(f'run_id "{run_id}" cannot be used: only letters, digits, "_" and "-", at most 64 characters')
+    return run_id
 
-def resolve_base_url(mode, api_url=None):
-    if mode not in MODES:
-        raise ApiError(f"unknown mode {mode!r} (use {' or '.join(MODES)})")
-    if mode == "real":
-        raise NotAvailable("real mode (the Azure API controller) is not available yet. Use --mode local for now.")
-    return (api_url or os.environ.get("TF_API_URL_LOCAL") or DEFAULT_LOCAL_URL).rstrip("/")
+
+def _unreachable_hint(conn):
+    if conn.mode == "online":
+        return "Check azure_url in config.txt, that you are on the company network, and that the API controller is running."
+    return "Is the local server running? (MockServer: node server.js)"
 
 
 # ----------------------------------------------------------------------------- http
@@ -70,18 +79,28 @@ def encode_multipart(fields, files):
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
-def _request(method, url, body=None, content_type=None, timeout=60):
-    req = urllib.request.Request(url, data=body, method=method)
-    if content_type:
-        req.add_header("Content-Type", content_type)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read()
-    except urllib.error.HTTPError as e:                    # the server answered with an error status
-        return e.code, e.read()
-    except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-        reason = getattr(e, "reason", e)
-        raise ApiError(f"cannot reach {url} ({reason}). Is the local server running? (MockServer: node server.js)") from None
+def _request(conn, method, path, body=None, content_type=None, timeout=60, retry=False):
+    """One HTTP call. With retry (online GETs) a gateway error or a connection failure is tried again after RETRY_DELAYS."""
+    url = f"{conn.url}{path}"
+    delays = list(RETRY_DELAYS) if (retry and conn.mode == "online") else []
+    while True:
+        req = urllib.request.Request(url, data=body, method=method)
+        if content_type:
+            req.add_header("Content-Type", content_type)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as e:                    # the server answered with an error status
+            if e.code in RETRY_STATUS and delays:
+                time.sleep(delays.pop(0))
+                continue
+            return e.code, e.read()
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            if delays:
+                time.sleep(delays.pop(0))
+                continue
+            reason = getattr(e, "reason", e)
+            raise ApiError(f"cannot reach {url} ({reason}). {_unreachable_hint(conn)}") from None
 
 
 def _json(raw):
@@ -91,32 +110,39 @@ def _json(raw):
         return {}
 
 
-def submit(base_url, env_path, schedule_path, params_text=None, run_id=None):
+def health(conn):
+    """Online mode: is the API there? (also wakes it up when it was idle)."""
+    status, raw = _request(conn, "GET", "/health", retry=True)
+    if status != 200:
+        raise ApiError(f"{conn.url} answered {status} to /health. Is azure_url the address of the API controller?")
+
+
+def submit(conn, env_path, schedule_path, params_text=None, run_id=None):
     """Uploads the run; returns the answer {runId, status}."""
     files = [("env", "EnvConfig.yaml", Path(env_path).read_bytes()),
              ("sched", "Schedule.yaml", Path(schedule_path).read_bytes())]
     if params_text:
         files.append(("params", "SolverParams.yaml", params_text.encode("utf-8")))
     body, ctype = encode_multipart({"runId": run_id} if run_id else {}, files)
-    status, raw = _request("POST", f"{base_url}/runSolver", body, ctype, timeout=300)
+    status, raw = _request(conn, "POST", "/runSolver", body, ctype, timeout=300)
     answer = _json(raw)
     if status != 202:
         raise ApiError(f"the server refused the run ({status}): {answer.get('error') or raw[:200]!r}")
     return answer
 
 
-def get_status(base_url, run_id):
-    status, raw = _request("GET", f"{base_url}/status/{run_id}")
+def get_status(conn, run_id):
+    status, raw = _request(conn, "GET", f"/status/{run_id}", retry=True)
     answer = _json(raw)
     if status == 404:
-        raise ApiError(f'run "{run_id}" was not found on {base_url}')
+        raise ApiError(f'run "{run_id}" was not found on {conn.url}')
     if status != 200:
         raise ApiError(f"status request failed ({status}): {answer.get('error') or raw[:200]!r}")
     return answer
 
 
-def download(base_url, run_id):
-    status, raw = _request("GET", f"{base_url}/download/{run_id}", timeout=300)
+def download(conn, run_id):
+    status, raw = _request(conn, "GET", f"/download/{run_id}", timeout=300, retry=True)
     if status != 200:
         raise ApiError(f"download failed ({status}): {_json(raw).get('error') or raw[:200]!r}")
     return raw

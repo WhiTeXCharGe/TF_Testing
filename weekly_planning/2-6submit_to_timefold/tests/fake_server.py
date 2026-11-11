@@ -13,6 +13,9 @@ class FakeApi:
         self.result = b"schedule:\n  result: true\n"
         self.refuse_with = None           # e.g. (400, {"error": "..."}) to refuse /runSolver
         self.status_code = 200            # of /status (404 = run not found)
+        self.flaky = {}                   # path prefix -> status codes answered first (one per GET), e.g. {"/health": [503, 503]}
+        self.health_calls = 0
+        self.paths = []                   # every request path, in order
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -28,6 +31,7 @@ class FakeApi:
                 self.wfile.write(data)
 
             def do_POST(self):
+                outer.paths.append(self.path)
                 length = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(length)
                 if outer.refuse_with:
@@ -46,6 +50,13 @@ class FakeApi:
                 self._send(202, {"runId": run_id, "status": "Submitted"})
 
             def do_GET(self):
+                outer.paths.append(self.path)
+                for prefix, codes in outer.flaky.items():
+                    if self.path.startswith(prefix) and codes:
+                        return self._send(codes.pop(0), {"error": "starting"})
+                if self.path == "/health":
+                    outer.health_calls += 1
+                    return self._send(200, {"ok": True})
                 if self.path.startswith("/status/"):
                     if outer.status_code != 200:
                         return self._send(outer.status_code, {"error": "not found"})

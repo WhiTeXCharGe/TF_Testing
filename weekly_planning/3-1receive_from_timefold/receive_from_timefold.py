@@ -2,8 +2,11 @@
 """
 receive_from_timefold.py  --  weekly planning tool "3-1": ask Timefold how the run is going and fetch the result.
 
-Input   run_info.json (written by tool 2-6) or --run-id
-Output  N/04_Schedule.yaml, N/04_EnvConfig.yaml   (only if you answer Y)
+Run it with no options: the server and the run are taken from the config.txt next to this script and from the run record that tool 2-6 wrote.
+Any command line option replaces the same setting of config.txt for that run.
+
+Input   run_info.json (written by tool 2-6) or a run id
+Output  04_Schedule.yaml, 04_EnvConfig.yaml   (only if you answer Y, or download=yes in config.txt)
 
   * not finished  -> prints that it is still running (stage and progress) and ends; run it again later, or use --watch
   * finished      -> prints that it is done and asks whether to download:  Y downloads, N ends
@@ -11,7 +14,7 @@ Output  N/04_Schedule.yaml, N/04_EnvConfig.yaml   (only if you answer Y)
 04_Schedule.yaml is the result of the solver. The solver does not change the EnvConfig, so 04_EnvConfig.yaml is the 03_EnvConfig.yaml
 that was sent (taken from the run record).
 
-Exit codes: 0 done (downloaded or not), 1 not finished yet, 2 failed, 3 cancelled, 4 cannot reach the server / not available, 5 bad arguments.
+Exit codes: 0 done (downloaded or not), 1 not finished yet, 2 failed, 3 cancelled, 4 cannot reach the server, 5 bad arguments or settings.
 """
 from __future__ import annotations
 
@@ -24,6 +27,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "2-6submit_to_timefold"))
 import timefold_api as api   # noqa: E402
+import tf_config as tfc      # noqa: E402
+
+CONFIG_FILE = HERE / tfc.CONFIG_NAME        # the settings of this tool
 
 EXIT_DONE, EXIT_RUNNING, EXIT_FAILED, EXIT_CANCELLED, EXIT_UNREACHABLE, EXIT_ARGS = 0, 1, 2, 3, 4, 5
 TERMINAL = ("Completed", "Failed", "Cancelled")
@@ -48,45 +54,71 @@ def ask_download():
         return False
 
 
+def find_run_record(arg, cfg):
+    """The run record to use: --run-info, else run_info of config.txt, else run_info.json in the current folder.
+    None when there is none."""
+    if arg:
+        return Path(arg)
+    for c in (cfg.file("run_info"), api.RUN_INFO_NAME):
+        if c and Path(c).is_file():
+            return Path(c)
+    return None
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Weekly planning 3-1: show the state of a Timefold run and download the result.")
-    ap.add_argument("--run-info", default=None, help=f"the {api.RUN_INFO_NAME} written by tool 2-6 (default: ./{api.RUN_INFO_NAME} if it exists)")
-    ap.add_argument("--run-id", default=None, help="the run id (instead of --run-info)")
-    ap.add_argument("--mode", choices=api.MODES, default=None, help="real (default, not available yet) or local (default: the mode of the run record)")
-    ap.add_argument("--api-url", default=None, help="address of the local server (default: the one of the run record)")
-    ap.add_argument("--out-dir", default=None, help="folder for 04_Schedule.yaml and 04_EnvConfig.yaml (default: the folder of the run record)")
-    ap.add_argument("--yes", action="store_true", help="download without asking")
-    ap.add_argument("--no", action="store_true", help="never download, only show the state")
-    ap.add_argument("--watch", type=int, default=0, metavar="SECONDS", help="check again every SECONDS until the run has ended")
+    ap = argparse.ArgumentParser(description="Weekly planning 3-1: show the state of a Timefold run and download the result. "
+                                             "Settings come from config.txt; the options below replace them for one run.")
+    ap.add_argument("--config", default=None, help=f"settings file (default: {tfc.CONFIG_NAME} next to this script)")
+    ap.add_argument("--run-info", default=None, help=f"the {api.RUN_INFO_NAME} written by tool 2-6 (config: run_info; default: ./run_info.json)")
+    ap.add_argument("--run-id", default=None, help="the run id (instead of the run record; config: run_id)")
+    ap.add_argument("--mode", choices=api.MODES, default=None, help="local or online (config: mode)")
+    ap.add_argument("--api-url", default=None, help="address of the server, replaces local_url / azure_url")
+    ap.add_argument("--out-dir", default=None, help="folder for 04_Schedule.yaml and 04_EnvConfig.yaml (config: result_dir; default: the folder of the run record)")
+    ap.add_argument("--yes", action="store_true", help="download without asking (config: download=yes)")
+    ap.add_argument("--no", action="store_true", help="never download, only show the state (config: download=no)")
+    ap.add_argument("--watch", type=int, default=None, metavar="SECONDS", help="check again every SECONDS until the run has ended (config: watch)")
     args = ap.parse_args(argv)
     if args.yes and args.no:
         ap.error("--yes and --no cannot be used together")
 
     try:
-        info, info_path = {}, None
-        run_info_arg = args.run_info or (api.RUN_INFO_NAME if not args.run_id and Path(api.RUN_INFO_NAME).is_file() else None)
-        if run_info_arg:
-            info_path = Path(run_info_arg)
-            info = api.read_run_info(info_path)
-        run_id = args.run_id or info.get("runId")
+        cfg = tfc.load(args.config, CONFIG_FILE, tfc.RECEIVE_KEYS)
+        for key in cfg.unknown:
+            print(f"Note: {cfg.path.name}: unknown setting '{key}' is ignored.", file=sys.stderr)
+        # an explicit run id is not mixed with a record that was found by itself
+        record_path = None if (args.run_id and not args.run_info) else find_run_record(args.run_info, cfg)
+        info = api.read_run_info(record_path) if record_path else {}
+        run_id = args.run_id or info.get("runId") or cfg.text("run_id")
         if not run_id:
-            print("Error: give --run-info (written by tool 2-6) or --run-id.", file=sys.stderr)
+            print("Error: no run to look at. Run tool 2-6 first (it writes run_info.json), or give --run-id / --run-info.", file=sys.stderr)
             return EXIT_ARGS
-        mode = args.mode or info.get("mode") or api.DEFAULT_MODE
-        base_url = api.resolve_base_url(mode, args.api_url or (info.get("apiUrl") if mode == "local" else None))
-        out_dir = Path(args.out_dir) if args.out_dir else (info_path.resolve().parent if info_path else Path.cwd())
+        api.check_run_id(run_id)
+        conn = tfc.connection(cfg, args.mode, args.api_url, record=info)
+        watch = args.watch if args.watch is not None else (cfg.int("watch") or 0)
+        choice = (cfg.text("download", "ask") or "ask").lower()
+        if choice not in ("ask", "yes", "no"):
+            raise tfc.ConfigError(f"download must be ask, yes or no (got {choice!r})")
+        want = "yes" if args.yes else "no" if args.no else choice
+        result_arg = args.out_dir or cfg.file("result_dir")
+        out_dir = Path(result_arg) if result_arg else (record_path.resolve().parent if record_path else Path.cwd())
 
-        print(f"Run {run_id} on {base_url} ({mode} mode)")
+        print(f"Settings: {cfg.path or 'no config file, command line only'}")
+        if record_path:
+            print(f"Run record: {record_path}")
+        print(f"Run {run_id} on {conn.url} ({conn.mode} mode)")
+        if info.get("apiUrl") and (info.get("mode"), info["apiUrl"].rstrip("/")) != (conn.mode, conn.url):
+            print(f"Note: the run record says it was sent to {info['apiUrl']} ({info.get('mode')} mode), "
+                  f"but the settings point to {conn.url}. If the run is not found, check mode and the address in config.txt.")
         while True:
-            status = api.get_status(base_url, run_id)
+            status = api.get_status(conn, run_id)
             state = status.get("status")
-            if state in TERMINAL or args.watch <= 0:
+            if state in TERMINAL or watch <= 0:
                 break
-            print(f"  {describe(status)} ... checking again in {args.watch} s")
-            time.sleep(args.watch)
-    except api.NotAvailable as e:
-        print(f"Not available: {e}", file=sys.stderr)
-        return EXIT_UNREACHABLE
+            print(f"  {describe(status)} ... checking again in {watch} s")
+            time.sleep(watch)
+    except tfc.ConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return EXIT_ARGS
     except api.ApiError as e:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_UNREACHABLE
@@ -104,11 +136,11 @@ def main(argv=None):
         return EXIT_RUNNING
 
     print("Done. The run has finished.")
-    if args.no or not (args.yes or ask_download()):
+    if want == "no" or (want == "ask" and not ask_download()):
         print("Not downloaded.")
         return EXIT_DONE
     try:
-        result = api.download(base_url, run_id)
+        result = api.download(conn, run_id)
     except api.ApiError as e:
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_UNREACHABLE
