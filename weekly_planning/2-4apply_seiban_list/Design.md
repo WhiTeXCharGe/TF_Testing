@@ -121,7 +121,7 @@ A valid row creates one workflow task:
 | module id | next free `e<n>` |
 | `name` | the seiban |
 | `workflow`, `fab` | the ids of 5 and 4 |
-| phase task | id `<module><pP>` (for example `e57p1`), `phase` = the phase id, name `p<P>`, start / end = process P start-available / end-deadline |
+| phase task | id `<module><pP>` (for example `e57p1`), `phase` = the phase id, name = the phase name of the workflow (`p<P>` for a new workflow), start / end = process P start-available / end-deadline |
 | operation task | id `<module><pP>o<K>`, `operation` = the operation id, `workload_hours` = man-hours of the template |
 | not written | `recommends_worker_min/max` (the solver treats an empty value as no recommendation) |
 
