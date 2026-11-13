@@ -1,26 +1,28 @@
-Tools 2-6 and 3-1 now read one shared config.txt and run with no options. The online mode is written but untested against real Azure. I only tried it against a fake server. The 2-6 suite (42 tests) and the 3-1 suite (25 tests) pass.
+お疲れ様です。
 
-What changed
-config.txt is in weekly_planning/. It uses the same key=value style as the SchedulerWeb config.txt, and the tools run from any folder. It holds:
-the connection: mode = local or online, azure_url, and local_url (default http://localhost:3001);
-for 2-6: schedule, env, out_dir, run_id (the job id), params_file, stage1_minutes, stage2_enabled, stage2_minutes, stage1_unimproved_seconds, stage2_unimproved_seconds, random_seed and allow_cut_fixed_trip;
-for 3-1: run_info, result_dir, watch and download (ask, yes or no).
-Priority is command line, then config.txt, then the built-in default. Relative paths are relative to the folder of config.txt. An empty value counts as not set, and an unknown key gives a warning, so a typo is not silently ignored.
-mode = local works as before.
-mode = online sends to azure_url, using the same four requests and no sign-in, like SchedulerWeb.
-2-6 calls /health first, which also wakes an idle Container App.
-Status, download and health requests are retried on 502/503/504 and connection failures (after 3, 8 and 20 seconds).
-A bad address, the placeholder URL or an unreachable server gives a message pointing at azure_url and the network.
-A run_id the controller would silently replace is refused before sending.
-3-1 takes the server from config.txt. It uses the server in the run record only when neither the command line nor the config says which. It prints a note if the record says the run went somewhere else, for example you submitted locally and then switched to online.
-I removed --mode real and the “not available yet” stop. The two modes are now local and online.
-The READMEs, the weekly_planning README and the Phase 9 Azure doc describe config.txt, and the doc has a short “after this phase” test. I added a tests file for the config loader.
-Notes for tomorrow
-Set mode = online and azure_url to the Container App address, with https:// and no trailing path. Then run 2-6 with stage1_minutes = 2 and stage2_enabled = false as a short test.
-Leave run_id empty. A run id can be used only once on Azure, and the Batch task would collide on a repeat.
-The PC running the tools needs a network path to the Container App. SchedulerWeb has the same requirement.
-The new params field and fixed file names only work once the updated controller is deployed. The old controller answers “Unexpected field”.
-If a full-size run fails with exit 137, add JVM_MAX_HEAP=12g to the Batch task options in the controller. It is not done yet and is listed in the Phase 9 doc.
-config.txt is committed with a placeholder URL, like the SchedulerWeb one. If you put the real Azure address in it, check before you commit it.
+共通処理を集約する変更を行い(影響は各ツールの import のパスのみと考えています)、ver0.1 向けに Pull Request を作成しました。ご確認をお願いします。
 
-I did not re-run the Docker solve through MockServer after this change. The tests cover the request format, and the endpoints are the same as before.
+これまでヘルパー処理は 2-2-3(計画用データー変換ツール)にまとまっており、さらに実データ変換ツールから取り込んだ便利な処理も使っていました。今後実装する 2-5 や 3-2 などのツールでも同じ処理を使えると考え、weekly_planning 配下に common フォルダを新しく作り、ヘルパー処理をそこに集約しました。ツール同士の import はなくし、共通処理はすべて common から読み込む形にしています。
+
+実データの SU_Others と製番リストで、変更前後の読み取り結果が一致することを確認しています。
+
+お手数ですが、ご確認をお願いいたします。
+Pull Request の説明文
+
+## 概要
+weekly_planning の各ツールで使う共通処理を、新しい common フォルダに集約しました。あわせて、既存の各ツールの import を common から読み込む形に変更しています。
+
+## 背景
+ヘルパー処理は 2-2-3(計画用データー変換ツール)にまとまっていました。また、実データ変換ツール(decoder7)から取り込んだ便利な処理も使っていました。今後実装する 2-5 や 3-2 などのツールでも同じ処理を使えるため、ツール間や旧コードへの依存をなくし、共通処理を別フォルダの common にまとめました。
+
+## 変更内容
+common に入れたものは、API クライアントと config.txt の読み込み、YAML・日付・文字列の処理、FI/FO の処理、Excel(SU_Others、製番リスト)の読み込みです。decoder7 から必要な部分をコピーして整理しています。ツール同士の import はなくしました。--decoder-dir オプションも不要になったため削除しています。
+
+動作は変えていません。ただ一つ、parse_su_others に省略可能な引数 workbook と skill_reference を追加しました。これで、読み込み済みのブックやスキル表を直接渡せます。
+
+## 影響範囲
+既存の各ツールの import のパスが変わります(影響は import のパスのみと考えています)。
+
+## 確認内容
+- 実データの SU_Others と製番リストで、変更前後の読み取り結果が一致
+- 各ツールのスクリプトが、別のフォルダからも起動できることを確認
