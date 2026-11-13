@@ -1,6 +1,6 @@
 # weekly_planning tools
 
-One folder per tool, named after its step in the weekly flow. Run them in this order.
+One folder per tool, named after its step in the weekly flow. Run them in this order. The `common` folder is shared code, not a tool.
 
 | Step | Folder | In | Out |
 |---|---|---|---|
@@ -17,4 +17,4 @@ One folder per tool, named after its step in the weekly flow. Run them in this o
 - Tools 2-6 and 3-1 each have a `config.txt` in their own folder (local or online mode, the Azure address, input and output, run id, solver parameters), so they run with no options. A command line option replaces a setting for one run.
 - Run a tool from the `tools` folder as `python -X utf8 weekly_planning/<folder>/<script>.py <options>`; `--help` lists the options.
 - Every tool has its own tests: `python -m unittest discover -s tests` inside its folder.
-- Some tools import `prepare_schedule.py` (2-2-3) and 3-1 imports `timefold_api.py` (2-6); `2-2-3` and `3-3` read `decoder7.py` from `tools/decoder`. Keep the folders where they are.
+- Code that several tools need (API client, config reader, yaml and date helpers, FI / FO, Excel readers) is in the `common` folder next to the tools ([README](common/README.md)). A tool never imports from another tool.

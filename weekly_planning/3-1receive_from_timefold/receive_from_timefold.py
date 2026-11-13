@@ -25,9 +25,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "2-6submit_to_timefold"))
-import timefold_api as api   # noqa: E402
-import tf_config as tfc      # noqa: E402
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common import tf_config as tfc, timefold_api as api   # noqa: E402
 
 CONFIG_FILE = HERE / tfc.CONFIG_NAME        # the settings of this tool
 

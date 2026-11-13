@@ -15,7 +15,7 @@ Writes the flexible schedule back into a **copy** of the SU_Others workbook. The
 ```
 python write_su_others.py --schedule <FlexibleSchedule.yaml> --env <04_EnvConfig.yaml> --su-others <workbook copy> --out-dir <folder> --from-date YYYY/MM/DD [--flexible-work <FlexibleWork.yaml>] [--report]
 ```
-Other options: `--sheet`, `--new-module-text`, `--new-module-style-from`, `--no-trips`, `--dry-run`, `--decoder-dir`. Reading the workbook takes about 25 seconds. In Excel the changes are far from where the file opens: use the cell list of the report.
+Other options: `--sheet`, `--new-module-text`, `--new-module-style-from`, `--no-trips`, `--dry-run`. Reading the workbook takes about 25 seconds. In Excel the changes are far from where the file opens: use the cell list of the report.
 
 ## Compare old and new (VBA, `vba/CompareSuOthers.bas`)
 A macro for reviewing the result before it replaces the real workbook.

@@ -8,14 +8,11 @@ from pathlib import Path
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
-TOOLS = HERE.parents[1]
 sys.path.insert(0, str(HERE.parent))
-sys.path.insert(0, str(TOOLS / "2-6submit_to_timefold"))
-sys.path.insert(0, str(TOOLS / "2-6submit_to_timefold" / "tests"))
+sys.path.insert(0, str(HERE.parents[1]))      # weekly_planning/ (the folder of common)
 import receive_from_timefold as rcv   # noqa: E402
-import timefold_api as api             # noqa: E402
-import tf_config as tfc                # noqa: E402
-from fake_server import FakeApi       # noqa: E402
+from common import tf_config as tfc, timefold_api as api   # noqa: E402
+from common.testing.fake_server import FakeApi   # noqa: E402
 
 RUNNING = {"runId": "r1", "status": "Running", "stage": 1, "progress": 0.35}
 COMPLETED = {"runId": "r1", "status": "Completed", "stage": 2, "progress": 1}
@@ -27,6 +24,15 @@ def run(args, answer=None):
     with patch, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = rcv.main(args)
     return code, out.getvalue(), err.getvalue()
+
+
+class DeliveredConfig(unittest.TestCase):
+    def test_the_config_txt_of_the_tool_is_valid_and_lists_every_setting(self):
+        cfg = tfc.load(str(HERE.parent / "config.txt"), None, tfc.RECEIVE_KEYS)
+        self.assertEqual([], cfg.unknown)
+        self.assertEqual(set(tfc.RECEIVE_KEYS), set(cfg.values))
+        self.assertIn(cfg.text("mode"), api.MODES)
+        self.assertIn(cfg.text("download"), ("ask", "yes", "no"))
 
 
 class Receive(unittest.TestCase):

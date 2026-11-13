@@ -25,9 +25,8 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-import timefold_api as api   # noqa: E402
-import tf_config as tfc      # noqa: E402
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common import tf_config as tfc, timefold_api as api   # noqa: E402
 
 CONFIG_FILE = HERE / tfc.CONFIG_NAME        # the settings of this tool
 
@@ -91,6 +90,7 @@ def main(argv=None):
             stage2_minutes=first(args.stage2_minutes, cfg.int("stage2_minutes")),
             stage2_enabled=False if args.no_stage2 else cfg.bool("stage2_enabled"),
             stage1_unimproved_seconds=first(args.stage1_unimproved_seconds, cfg.int("stage1_unimproved_seconds")),
+            stage1_stop_when_feasible=cfg.bool("stage1_stop_when_feasible"),
             stage2_unimproved_seconds=first(args.stage2_unimproved_seconds, cfg.int("stage2_unimproved_seconds")),
             random_seed=first(args.seed, cfg.int("random_seed")),
             allow_cut_fixed_trip=True if args.allow_cut_fixed_trip else cfg.bool("allow_cut_fixed_trip"))

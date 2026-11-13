@@ -25,8 +25,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "2-2-3prepare_schedule"))
-import prepare_schedule as ps   # noqa: E402  (ymd, load_yaml, dump_yaml)
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common.dates import ymd   # noqa: E402
+from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 
 DEFAULT_K = 7     # days of the plan that are frozen: the run is on the weekend, the planner reviews the result in the week
 DEFAULT_L = 30    # days of slack after the latest due date
@@ -51,7 +52,7 @@ def plan_period(schedule_doc, today, k=DEFAULT_K, l=DEFAULT_L):
     starts, ends = [], []
     for task in sch.get("workflow_task_list") or []:
         for ph in task.get("phase_task_list") or []:
-            s, e = ps.ymd(ph.get("start_date")), ps.ymd(ph.get("end_date"))
+            s, e = ymd(ph.get("start_date")), ymd(ph.get("end_date"))
             if s:
                 starts.append(s)
             if e:
@@ -75,7 +76,7 @@ def plan_period(schedule_doc, today, k=DEFAULT_K, l=DEFAULT_L):
     for a in sch.get("assignment_list") or []:
         flex = str(a.get("plan_flexibility") or "Flexible")
         items = a.get("work_date_list") or []
-        before = [it for it in items if (ps.ymd(it.get("date")) or "9999/99/99") < start]
+        before = [it for it in items if (ymd(it.get("date")) or "9999/99/99") < start]
         if flex == "Fixed" or not before:
             rows.append(a)
             continue
@@ -83,15 +84,15 @@ def plan_period(schedule_doc, today, k=DEFAULT_K, l=DEFAULT_L):
         fixed_row = copy.deepcopy(a)
         fixed_row["plan_flexibility"] = "Fixed"
         fixed_row["work_date_list"] = before
-        fixed_row["start_date"] = min(ps.ymd(it["date"]) for it in before)
-        fixed_row["end_date"] = max(ps.ymd(it["date"]) for it in before)
+        fixed_row["start_date"] = min(ymd(it["date"]) for it in before)
+        fixed_row["end_date"] = max(ymd(it["date"]) for it in before)
         rows.append(fixed_row)
         fixed_days += len(before)
         if after:
             rest = copy.deepcopy(a)
             rest["work_date_list"] = after
-            rest["start_date"] = min(ps.ymd(it["date"]) for it in after)
-            rest["end_date"] = max(ps.ymd(it["date"]) for it in after)
+            rest["start_date"] = min(ymd(it["date"]) for it in after)
+            rest["end_date"] = max(ymd(it["date"]) for it in after)
             rows.append(rest)
             split_rows += 1
         else:
@@ -100,10 +101,10 @@ def plan_period(schedule_doc, today, k=DEFAULT_K, l=DEFAULT_L):
     report.append(f"ASSIGNMENTS before {start}: {fixed_days} worker-days made Fixed "
                   f"({whole_rows} rows completely, {split_rows} rows split at the start date)")
 
-    beyond = sum(1 for a in rows for it in a.get("work_date_list") or [] if (ps.ymd(it.get("date")) or "") > end)
+    beyond = sum(1 for a in rows for it in a.get("work_date_list") or [] if (ymd(it.get("date")) or "") > end)
     if beyond:
         report.append(f"WARN: {beyond} worker-days of existing assignments lie after end_date {end}")
-    trips_beyond = sum(1 for e in sch.get("trip_list") or [] for t in e.get("trips") or [] if (ps.ymd(t.get("end_date")) or "") > end)
+    trips_beyond = sum(1 for e in sch.get("trip_list") or [] for t in e.get("trips") or [] if (ymd(t.get("end_date")) or "") > end)
     if trips_beyond:
         report.append(f"WARN: {trips_beyond} trips end after end_date {end}")
     return doc, report, {"start_date": start, "end_date": end, "fixed_days": fixed_days, "split_rows": split_rows}
@@ -120,15 +121,15 @@ def main(argv=None):
     ap.add_argument("--report", action="store_true", help="also write 03_plan_period_report.txt")
     args = ap.parse_args(argv)
 
-    today = ps.ymd(args.today) if args.today else date.today().strftime("%Y/%m/%d")
+    today = ymd(args.today) if args.today else date.today().strftime("%Y/%m/%d")
     if today is None:
         ap.error("--today must look like 2026/10/01")
     if args.k < 0 or args.l < 0:
         ap.error("--k and --l must not be negative")
-    doc, report, info = plan_period(ps.load_yaml(args.schedule), today, args.k, args.l)
+    doc, report, info = plan_period(load_yaml(args.schedule), today, args.k, args.l)
     od = Path(args.out_dir)
     od.mkdir(parents=True, exist_ok=True)
-    ps.dump_yaml(od / "03_Schedule.yaml", doc)
+    dump_yaml(od / "03_Schedule.yaml", doc)
     shutil.copyfile(args.env, od / "03_EnvConfig.yaml")
     print(f"set_plan_period (today = {today}, K = {args.k}, L = {args.l})")
     print("\n".join(report))

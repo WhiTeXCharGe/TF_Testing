@@ -2,7 +2,7 @@
 """
 write_su_others.py  --  weekly planning tool "3-3": write the flexible schedule back into SU_Others.
 
-Takes the schedule of the flexible modules (a FlexibleSchedule.yaml, a decoder7 Schedule.yaml or a Timefold result
+Takes the schedule of the flexible modules (a FlexibleSchedule.yaml, a SU_Others-parser Schedule.yaml or a Timefold result
 Schedule.yaml) and the old SU_Others workbook and writes a NEW workbook in which the cells of those modules follow the
 schedule.  Nothing else changes:
 
@@ -37,15 +37,21 @@ import argparse
 import hashlib
 import re
 import sys
-import unicodedata
 import zipfile
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "2-2-3prepare_schedule"))
-import prepare_schedule as ps   # noqa: E402  (name_key, tool_code, ymd, load_yaml, import_decoder, read_prev_flexible)
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common import su_others   # noqa: E402
+from common.cell_names import DEFAULT_CELL_NAME_TEMPLATE, cell_name_key, module_cell_name, module_name_info   # noqa: E402
+from common.dates import ymd   # noqa: E402
+from common.excel_colors import is_grey_cell, is_red_cell   # noqa: E402
+from common.flexible_schedule import read_prev_flexible   # noqa: E402
+from common.text import extract_tool_code, name_key, normalize_tool_code_in_text   # noqa: E402
+from common.trips import pair_fifo_repaired, read_mark   # noqa: E402
+from common.yaml_io import load_yaml   # noqa: E402
 
 DEFAULT_BLANK_STYLE = "4"       # style of an empty day cell in the real sheet; the tool uses the most common one it finds
 
@@ -221,7 +227,7 @@ def plan_changes(old_cells, want, rows_by_worker, col_by_date, empty, blocked, f
                 donor = ("new", name or new_modules[code][0], new_modules[code][1])
             else:
                 donor = min(old, key=lambda rc: (rc[0] != r, abs(rc[1] - c), rc[0]))   # same worker row first, then nearest day
-                if name and ps.cell_name_key(name) != ps.cell_name_key((text_of(*donor) if text_of else None) or ""):
+                if name and cell_name_key(name) != cell_name_key((text_of(*donor) if text_of else None) or ""):
                     donor = ("named", name, donor)       # the style of the real cell, the text of the cell_name
             claimed[(r, c)] = code
             sets.append((code, r, c, donor))
@@ -270,7 +276,7 @@ def plan_trips(want_trips, remove_trips, rows_by_worker, col_by_date, marks, tex
 
         protected = set()
         if remove_trips.get(wk):
-            pairs, _n = ps.pair_fifo_repaired(row_marks, list(texts_by_row.get(row, {})), window)
+            pairs, _n = pair_fifo_repaired(row_marks, list(texts_by_row.get(row, {})), window)
             old = set(remove_trips[wk])
             for s, e in pairs:
                 if (s, e) not in old:
@@ -308,7 +314,7 @@ def plan_trips(want_trips, remove_trips, rows_by_worker, col_by_date, marks, tex
     return clears, sets, report
 
 
-# ----------------------------------------------------------------------------- reading the sheet (decoder7 helpers)
+# ----------------------------------------------------------------------------- reading the sheet
 
 def sheet_part_name(zin, sheet_name):
     wb = zin.read("xl/workbook.xml").decode("utf-8")
@@ -322,14 +328,14 @@ def sheet_part_name(zin, sheet_name):
     return "xl/" + t.group(1).lstrip("/").replace("xl/", "", 1)
 
 
-def read_layout(d, su_path, sheet_name):
-    """Day cells, worker rows and module cells of the sheet, read the way decoder7 reads them."""
+def read_layout(su_path, sheet_name):
+    """Day cells, worker rows and module cells of the sheet, read the way the SU_Others parser reads them."""
     from openpyxl import load_workbook
     wb = load_workbook(su_path, data_only=True, read_only=False)
     ws = wb[sheet_name]
-    date_row_idx, date_cols, dt_by_col = d._find_date_header_ws(ws)
-    cols = d._detect_su_columns(ws, date_row_idx + 1, stamp_row_idx=date_row_idx)
-    col_by_date = {ps.ymd(dt_by_col[c]): c for c in date_cols}
+    date_row_idx, date_cols, dt_by_col = su_others.find_date_header_ws(ws)
+    cols = su_others.detect_su_columns(ws, date_row_idx + 1, stamp_row_idx=date_row_idx)
+    col_by_date = {ymd(dt_by_col[c]): c for c in date_cols}
     rows_by_worker, old_cells, texts, red_grey = defaultdict(list), defaultdict(set), {}, set()
     marks, texts_by_row = {}, defaultdict(dict)
     for r in range(date_row_idx + 2, ws.max_row + 1):
@@ -337,23 +343,23 @@ def read_layout(d, su_path, sheet_name):
         company = ws.cell(r, cols["company"] + 1).value
         if name is None or not str(name).strip() or not str(company or "").strip():
             continue
-        rows_by_worker[ps.name_key(name)].append(r)
+        rows_by_worker[name_key(name)].append(r)
         for c in date_cols:
             cell = ws.cell(r, c)
             v = cell.value
             has_value = v is not None and str(v).strip() != ""
             if has_value:
                 texts[(r, c)] = str(v)          # numbers count as "something written" too: never overwritten
-                texts_by_row[r][ps.ymd(dt_by_col[c])] = str(v)
-                if isinstance(v, str) and ps.read_mark(v):
-                    marks[(r, c)] = ps.read_mark(v)
-            # decoder7: a red cell is an unavailable day whatever it says; a grey cell is personal business unless it
+                texts_by_row[r][ymd(dt_by_col[c])] = str(v)
+                if isinstance(v, str) and read_mark(v):
+                    marks[(r, c)] = read_mark(v)
+            # SU_Others parser: a red cell is an unavailable day whatever it says; a grey cell is personal business unless it
             # carries a module code, then it is a module cell like any other
-            if d._is_red_cell(cell):
+            if is_red_cell(cell):
                 red_grey.add((r, c))
-            elif has_value and isinstance(v, str) and d.extract_tool_code(d._normalize_tool_code_in_text(v.strip())):
-                old_cells[d.extract_tool_code(d._normalize_tool_code_in_text(v.strip()))].add((r, c))
-            elif d._is_grey_cell(cell) and not has_value:
+            elif has_value and isinstance(v, str) and extract_tool_code(normalize_tool_code_in_text(v.strip())):
+                old_cells[extract_tool_code(normalize_tool_code_in_text(v.strip()))].add((r, c))
+            elif is_grey_cell(cell) and not has_value:
                 red_grey.add((r, c))
     return {"col_by_date": col_by_date, "rows_by_worker": dict(rows_by_worker), "old_cells": dict(old_cells),
             "texts": texts, "red_grey": red_grey, "date_cols": sorted(date_cols), "marks": marks,
@@ -439,7 +445,7 @@ def wanted_cells(schedule_doc, env_doc, only_modules=None):
     Every module with assignments is wanted (only_modules, if given, limits it); trips are the Flexible ones of the schedule."""
     env = env_doc.get("environment", env_doc)
     names = {w["id"]: w["name"] for w in env.get("worker_list") or []}
-    prev = ps.read_prev_flexible(schedule_doc, names)
+    prev = read_prev_flexible(schedule_doc, names)
     want, info, cell_names = {}, {}, {}
     for code, m in prev["modules"].items():
         if not m["assign"]:
@@ -447,7 +453,7 @@ def wanted_cells(schedule_doc, env_doc, only_modules=None):
         if only_modules is not None and code not in only_modules:
             continue
         want[code] = set(m["assign"])
-        info[code] = ps.module_name_info(m["task"], env)
+        info[code] = module_name_info(m["task"], env)
         cell_names[code] = dict(m["names"])
     trips = defaultdict(list)
     for t in prev["trips"]:
@@ -458,7 +464,7 @@ def wanted_cells(schedule_doc, env_doc, only_modules=None):
 
 def new_module_text(template, code, info):
     """Name written into the cells of a new module, e.g. '{customer}{fab}_{code}_新規' -> 'CustAFabA_530N00000A_新規'."""
-    return ps.module_cell_name(code, info, template)
+    return module_cell_name(code, info, template)
 
 
 def most_common_module_style(old_cells, cells, style_from=None):
@@ -485,14 +491,14 @@ def mark_donors(layout, cells):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Weekly planning 3-3: write the flexible schedule back into a copy of SU_Others.")
-    ap.add_argument("--schedule", required=True, help="schedule of the flexible modules (FlexibleSchedule / decoder7 / Timefold result Schedule.yaml)")
+    ap.add_argument("--schedule", required=True, help="schedule of the flexible modules (FlexibleSchedule / Timefold result Schedule.yaml)")
     ap.add_argument("--env", required=True, help="EnvConfig.yaml that belongs to the schedule (worker names)")
     ap.add_argument("--su-others", required=True, help="old SU_Others workbook (.xlsm) (only read)")
     ap.add_argument("--out-dir", required=True, help="folder for the new workbook")
     ap.add_argument("--flexible-work", default=None,
                     help="<date>_FlexibleWork.yaml: its flexible trips are removed from the sheet before the new FI/FO are written "
                          "(it does not limit the modules)")
-    ap.add_argument("--new-module-text", default=ps.DEFAULT_CELL_NAME_TEMPLATE,
+    ap.add_argument("--new-module-text", default=DEFAULT_CELL_NAME_TEMPLATE,
                     help="text of the cells of a module that has no cell in the sheet and no cell_name in the schedule rows; "
                          "{customer} {fab} {code} {description} (default '{customer}{fab}_{code}_新規')")
     ap.add_argument("--new-module-style-from", default=None,
@@ -502,33 +508,31 @@ def main(argv=None):
     ap.add_argument("--from-date", default=None, help="YYYY/MM/DD; cells before it are never touched (default: today)")
     ap.add_argument("--report", action="store_true", help="also write <name>_rewritten.txt with every change and conflict")
     ap.add_argument("--dry-run", action="store_true", help="only print the plan, write nothing")
-    ap.add_argument("--decoder-dir", default=str(next((d for d in (HERE.parents[1] / "decoder", HERE.parents[1] / "decorder") if d.exists()), HERE.parents[1] / "decoder")), help="folder of decoder7.py")
     args = ap.parse_args(argv)
 
     src = Path(args.su_others)
     out = Path(args.out_dir) / f"{src.stem}_rewritten{src.suffix}"
     if out.resolve() == src.resolve():
         ap.error("the output would overwrite the input")
-    from_date = ps.ymd(args.from_date) if args.from_date else date.today().strftime("%Y/%m/%d")
+    from_date = ymd(args.from_date) if args.from_date else date.today().strftime("%Y/%m/%d")
     if from_date is None:
         ap.error("--from-date must look like 2026/10/01")
 
-    env_doc = ps.load_yaml(args.env)
+    env_doc = load_yaml(args.env)
     want_names = [w["name"] for w in env_doc.get("environment", env_doc).get("worker_list") or []]
-    want, warns, info, want_trips, cell_names = wanted_cells(ps.load_yaml(args.schedule), env_doc)
+    want, warns, info, want_trips, cell_names = wanted_cells(load_yaml(args.schedule), env_doc)
     remove_trips, listed_modules = {}, set()
     if args.flexible_work:
         names = {w["id"]: w["name"] for w in (env_doc.get("environment", env_doc).get("worker_list") or [])}
-        fw = ps.load_yaml(args.flexible_work).get("flexible_work") or {}
+        fw = load_yaml(args.flexible_work).get("flexible_work") or {}
         listed_modules = set(fw.get("modules") or [])
         for t in fw.get("trips") or []:
-            s, e = ps.ymd(t.get("start_date")), ps.ymd(t.get("end_date"))
+            s, e = ymd(t.get("start_date")), ymd(t.get("end_date"))
             if s and e and t.get("worker") in names:
-                remove_trips.setdefault(ps.name_key(names[t["worker"]]), []).append((s, e))
+                remove_trips.setdefault(name_key(names[t["worker"]]), []).append((s, e))
     print(f"{len(want)} modules with assignments and {sum(len(v) for v in want_trips.values())} flexible trips in the schedule; "
           f"reading SU_Others (this takes a while) ...", flush=True)
-    d = ps.import_decoder(args.decoder_dir)
-    layout = read_layout(d, str(src), args.sheet)
+    layout = read_layout(str(src), args.sheet)
 
     with zipfile.ZipFile(src) as z:
         part = sheet_part_name(z, args.sheet)
@@ -582,7 +586,7 @@ def main(argv=None):
     # every cell that is written or emptied, with the worker and the date, to find the changes in Excel (Ctrl+G, cell address)
     name_of_row = {r: wk for wk, rs in layout["rows_by_worker"].items() for r in rs}
     date_of_col = {c: dt for dt, c in layout["col_by_date"].items()}
-    display = {ps.name_key(n): n for n in want_names}
+    display = {name_key(n): n for n in want_names}
     lines += ["", "CELLS (cell, worker, date, what)"]
     for code, r, c in clears:
         lines.append(f"EMPTIED {col_letters(c)}{r}\t{display.get(name_of_row.get(r), name_of_row.get(r))}\t{date_of_col.get(c)}\t{code}")

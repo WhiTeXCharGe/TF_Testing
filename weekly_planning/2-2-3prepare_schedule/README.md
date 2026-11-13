@@ -18,7 +18,7 @@ Japanese explanation (how FI/FO is read, repaired and compared): [README_ja.md](
 ```
 python prepare_schedule.py --prev-flexible <FlexibleSchedule.yaml> --prev-env <EnvConfig.yaml> --su-others <workbook> --seiban-info <workbook> --out-dir <folder> --today YYYY/MM/DD [--skill-file <workbook>] [--report]
 ```
-Other options: `--su-sheets`, `--skill-sheet`, `--default-trip-region` (default `r_other`, `none` skips such trips), `--no-fifo-repair`, `--max-gap-days` (14), `--chain-days` (3), `--decoder-dir`.
+Other options: `--su-sheets`, `--skill-sheet`, `--default-trip-region` (default `r_other`, `none` skips such trips), `--no-fifo-repair`, `--max-gap-days` (14), `--chain-days` (3).
 Reading the workbook takes about 25 seconds.
 
 ## Notes

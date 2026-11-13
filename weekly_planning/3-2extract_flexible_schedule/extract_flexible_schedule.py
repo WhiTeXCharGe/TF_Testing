@@ -27,8 +27,12 @@ from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "2-2-3prepare_schedule"))
-import prepare_schedule as ps   # noqa: E402  (ymd, load_yaml, dump_yaml, flatten_trips)
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common.cell_names import module_cell_name, module_name_info   # noqa: E402
+from common.dates import ymd   # noqa: E402
+from common.text import tool_code   # noqa: E402
+from common.trips import flatten_trips   # noqa: E402
+from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 
 
 def extract(schedule_doc, env_doc):
@@ -48,14 +52,14 @@ def extract(schedule_doc, env_doc):
     named = Counter()
     for a in rows:
         task = task_of[a["operation_task"]]
-        code = ps.tool_code(task.get("name")) or str(task.get("name") or task.get("id"))
+        code = tool_code(task.get("name")) or str(task.get("name") or task.get("id"))
         name = next((str(v).strip() for v in (a.get("cell_name"), a.get("description"))
                      if isinstance(v, str) and v.strip()), None)
         if name:
             named["from the result"] += 1
         else:
-            infos.setdefault(task["id"], ps.module_name_info(task, env))
-            name = ps.module_cell_name(code, infos[task["id"]])
+            infos.setdefault(task["id"], module_name_info(task, env))
+            name = module_cell_name(code, infos[task["id"]])
             named["made from fab and customer"] += 1
         a["cell_name"] = name
     worker_ids = {w["id"] for w in env.get("worker_list") or []}
@@ -71,14 +75,14 @@ def extract(schedule_doc, env_doc):
     days_by_worker = {}
     for a in rows:
         for it in a.get("work_date_list") or []:
-            d = ps.ymd(it.get("date"))
+            d = ymd(it.get("date"))
             if d:
                 days_by_worker.setdefault(a.get("worker"), set()).add(d)
 
     kept_trips, dropped = {}, Counter()
-    for entry in ps.flatten_trips(sch.get("trip_list")):
+    for entry in flatten_trips(sch.get("trip_list")):
         wid, trip = entry["worker"], entry["trip"]
-        s, e = ps.ymd(trip.get("start_date")), ps.ymd(trip.get("end_date"))
+        s, e = ymd(trip.get("start_date")), ymd(trip.get("end_date"))
         flex = str(trip.get("plan_flexibility") or "Flexible")
         if flex == "Fixed":
             dropped["fixed"] += 1
@@ -108,9 +112,9 @@ def main(argv=None):
     ap.add_argument("--out-dir", required=True, help="folder for FlexibleSchedule.yaml")
     ap.add_argument("--report", action="store_true", help="also write FlexibleSchedule_report.txt")
     args = ap.parse_args(argv)
-    doc, report, _stats = extract(ps.load_yaml(args.schedule), ps.load_yaml(args.env))
+    doc, report, _stats = extract(load_yaml(args.schedule), load_yaml(args.env))
     od = Path(args.out_dir)
-    ps.dump_yaml(od / "FlexibleSchedule.yaml", doc)
+    dump_yaml(od / "FlexibleSchedule.yaml", doc)
     print("\n".join(report))
     names = ["FlexibleSchedule.yaml"]
     if args.report:

@@ -22,7 +22,7 @@ The settings file of this tool (tool 3-1 has its own `config.txt` in its folder)
 | `schedule`, `env` | the two input files |
 | `out_dir` | folder for `run_info.json` and `SolverParams.yaml` |
 | `run_id` | name of the run (the job id): letters, digits, `_`, `-`, up to 64. Empty: date and time |
-| `params_file`, `stage1_minutes`, `stage2_enabled`, `stage2_minutes`, `stage1_unimproved_seconds`, `stage2_unimproved_seconds`, `random_seed`, `allow_cut_fixed_trip` | solver parameters |
+| `params_file`, `stage1_minutes`, `stage2_enabled`, `stage2_minutes`, `stage1_unimproved_seconds`, `stage1_stop_when_feasible`, `stage2_unimproved_seconds`, `random_seed`, `allow_cut_fixed_trip` | solver parameters |
 
 Tool 3-1 reads `run_info.json` from `out_dir` (or next to the schedule); its own `config.txt` must use the same `mode` and address.
 

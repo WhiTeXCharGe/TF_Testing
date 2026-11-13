@@ -7,7 +7,12 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (common)
 import prepare_schedule as ps   # noqa: E402
+from common.cell_names import module_cell_name, module_name_info   # noqa: E402
+from common.flexible_schedule import read_prev_flexible   # noqa: E402
+from common.text import name_key, tool_code   # noqa: E402
+from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 
 CODE_A = "530N00001A"   # stays flexible
 CODE_B = "530N00002A"   # planner moved a bar
@@ -65,7 +70,7 @@ def prev_flexible():
 
 
 def sheet(**over):
-    k1, k2 = ps.name_key("山田 太郎"), ps.name_key("佐藤 花子")
+    k1, k2 = name_key("山田 太郎"), name_key("佐藤 花子")
     s = {
         "workers": [
             {"name": "山田 太郎", "company_name": "CompanyA", "is_manager": True, "skill_map": {"p2o1": 3, "p2o2": 2},
@@ -98,10 +103,10 @@ SEIBAN = {CODE_A: {"customer": "CustA", "fab": "FabA", "region": "RegionA"},
 
 class Decisions(unittest.TestCase):
     def test_unchanged_module_stays_flexible_changed_and_finished_become_fixed(self):
-        prev = ps.read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        prev = read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
         cells = {}
         for (wk, d), t in sheet()["date_map"].items():
-            c = ps.tool_code(t)
+            c = tool_code(t)
             if c:
                 cells.setdefault(c, set()).add((wk, d))
         flexible, fixed = ps.decide_modules(prev["modules"], cells, "2026/10/10")
@@ -113,7 +118,7 @@ class Decisions(unittest.TestCase):
         self.assertIn("finished before today", fixed[CODE_C])
 
     def test_module_removed_from_the_sheet_is_fixed(self):
-        prev = ps.read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        prev = read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
         flexible, fixed = ps.decide_modules(prev["modules"], {}, "2026/10/10")
         self.assertEqual([], flexible)
         self.assertEqual({CODE_A, CODE_B, CODE_C}, set(fixed))
@@ -130,7 +135,7 @@ class Decisions(unittest.TestCase):
 
     def test_sheet_cells_already_held_as_misc_task_of_the_module_are_not_a_change(self):
         # decoder7 turns outlier cells of a module into a misc task named after the module: same data must stay flexible
-        cell = {(ps.name_key("山田 太郎"), "2026/10/20")}
+        cell = {(name_key("山田 太郎"), "2026/10/20")}
         prev = {CODE_A: {"assign": set(), "last": None}}
         flexible, fixed = ps.decide_modules(prev, {CODE_A: cell}, "2026/10/10", {CODE_A: cell})
         self.assertEqual([CODE_A], flexible)
@@ -143,21 +148,12 @@ class Decisions(unittest.TestCase):
         doc["schedule"]["assignment_list"].append(
             {"worker": "w007", "operation_task": "misc_other_9", "start_date": "2026/10/02", "end_date": "2026/10/02",
              "work_date_list": [{"date": "2026/10/02", "hour": 10}], "plan_flexibility": "Fixed"})
-        prev = ps.read_prev_flexible(doc, {"w007": "山田 太郎", "w008": "佐藤 花子"})
-        self.assertEqual({CODE_D: {(ps.name_key("山田 太郎"), "2026/10/02")}}, prev["misc_cover"])
-
-    def test_pair_fifo_and_orphans(self):
-        pairs, warns = ps.pair_fifo({"2026/10/01": "FI", "2026/10/05": "FO", "2026/10/09": "FI", "2026/10/12": "FI",
-                                     "2026/10/15": "FO", "2026/10/20": "FO", "2026/10/25": "FI"})
-        self.assertEqual([("2026/10/01", "2026/10/05"), ("2026/10/12", "2026/10/15")], pairs)
-        self.assertEqual(3, len(warns))
-        self.assertTrue(any("10/09" in w and "next FI" in w for w in warns))
-        self.assertTrue(any("FO 2026/10/20" in w for w in warns))
-        self.assertTrue(any("FI 2026/10/25" in w for w in warns))
+        prev = read_prev_flexible(doc, {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        self.assertEqual({CODE_D: {(name_key("山田 太郎"), "2026/10/02")}}, prev["misc_cover"])
 
     def test_trips_kept_changed_and_fixed(self):
-        prev = ps.read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
-        k1 = ps.name_key("山田 太郎")
+        prev = read_prev_flexible(prev_flexible(), {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        k1 = name_key("山田 太郎")
         dec = ps.decide_trips(prev["trips"], {k1: [("2026/10/19", "2026/10/23"), ("2026/11/09", "2026/11/15"),
                                                    ("2026/12/01", "2026/12/03")]})
         self.assertEqual([("2026/10/19", "2026/10/23")], [(t["start"], t["end"]) for t in dec["kept"]])
@@ -205,96 +201,10 @@ def days(first, last):
     return [(a + timedelta(n)).strftime("%Y/%m/%d") for n in range((b - a).days + 1)]
 
 
-class FiFoPatterns(unittest.TestCase):
-    WIN = ("2026/01/01", "2027/03/31")
-
-    def test_read_mark_accepts_typos_case_and_notes_but_not_other_words(self):
-        for text, mark in [("FI", "FI"), ("Fi", "FI"), ("ＦＩ", "FI"), (" fi ", "FI"), ("F1", "FI"), ("Fl", "FI"), ("FI(仮)", "FI"),
-                           ("FO", "FO"), ("Fo", "FO"), ("F0", "FO"), ("FO（仮）", "FO")]:
-            self.assertEqual(mark, ps.read_mark(text), text)
-        for text in ["移動", "FabC", "FC", "", None, 5, "FI 530N00009A"]:
-            self.assertIsNone(ps.read_mark(text), text)
-
-    def test_complete_pair_is_unchanged(self):
-        trips, notes = ps.pair_fifo_repaired({"2026/03/01": "FI", "2026/03/20": "FO"}, [], self.WIN)
-        self.assertEqual([("2026/03/01", "2026/03/20")], trips)
-        self.assertEqual([], notes)
-
-    def test_fi_without_fo_ends_on_the_last_busy_day_of_the_run(self):
-        busy = days("2026/10/20", "2026/12/18") + days("2027/02/01", "2027/02/03")     # a long gap after 12/18
-        trips, notes = ps.pair_fifo_repaired({"2026/10/19": "FI"}, busy, self.WIN)
-        self.assertEqual([("2026/10/19", "2026/12/18")], trips)
-        self.assertTrue(notes[0].startswith("INFERRED end 2026/12/18"))
-
-    def test_fi_without_fo_and_nothing_busy_is_a_one_day_trip(self):
-        trips, _ = ps.pair_fifo_repaired({"2026/10/19": "FI"}, [], self.WIN)
-        self.assertEqual([("2026/10/19", "2026/10/19")], trips)
-
-    def test_fi_followed_by_another_fi_is_closed_before_the_next_fi(self):
-        busy = days("2026/10/21", "2026/11/18") + days("2026/11/26", "2026/12/23")
-        marks = {"2026/10/20": "FI", "2026/11/25": "FI", "2026/12/30": "FI"}
-        trips, _ = ps.pair_fifo_repaired(marks, busy, self.WIN, max_gap=14)
-        self.assertEqual([("2026/10/20", "2026/11/18"), ("2026/11/25", "2026/12/23"), ("2026/12/30", "2026/12/30")], trips)
-
-    def test_fo_without_fi_starts_on_the_first_busy_day_of_the_run(self):
-        busy = days("2026/05/02", "2026/06/27")
-        trips, notes = ps.pair_fifo_repaired({"2026/06/28": "FO"}, busy, self.WIN)
-        self.assertEqual([("2026/05/02", "2026/06/28")], trips)
-        self.assertTrue(notes[0].startswith("INFERRED start 2026/05/02"))
-
-    def test_first_fo_of_the_sheet_means_the_trip_began_before_the_sheet(self):
-        trips, _ = ps.pair_fifo_repaired({"2026/01/07": "FO"}, days("2026/01/03", "2026/01/06"), self.WIN)
-        self.assertEqual([("2026/01/01", "2026/01/07")], trips)
-
-    def test_fo_after_fo_starts_on_the_date_of_the_previous_fo(self):
-        busy = days("2026/10/04", "2027/01/27")
-        marks = {"2026/10/03": "FO", "2027/01/28": "FO"}
-        trips, _ = ps.pair_fifo_repaired(marks, busy, self.WIN)
-        # the first FO has nothing busy before it: a one-day trip; the second trip starts on the same date as the first FO
-        self.assertEqual([("2026/10/03", "2026/10/03"), ("2026/10/03", "2027/01/28")], trips)
-
-    def test_fi_taska_fo_taskb_fo_chain_shares_the_fo_date(self):
-        """FI | TaskA ... | FO | TaskB ... | FO  ->  two trips, the second starts on the date of the first FO (not on the first TaskB day)."""
-        busy = days("2026/10/21", "2026/10/29") + days("2026/10/31", "2026/11/09")
-        marks = {"2026/10/20": "FI", "2026/10/30": "FO", "2026/11/10": "FO"}
-        trips, notes = ps.pair_fifo_repaired(marks, busy, self.WIN)
-        self.assertEqual([("2026/10/20", "2026/10/30"), ("2026/10/30", "2026/11/10")], trips)
-        self.assertTrue(any("same date as the previous FO" in n for n in notes))
-
-    def test_fo_chain_covers_a_weekend_between_the_fo_and_the_next_work(self):
-        busy = days("2026/11/02", "2026/11/09")                      # FO on a Friday, work starts on the Monday (3 days later)
-        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/10": "FO"}, busy, self.WIN)
-        self.assertEqual(("2026/10/30", "2026/11/10"), trips[-1])
-
-    def test_fo_chain_does_not_apply_when_the_work_starts_long_after_the_previous_fo(self):
-        busy = days("2026/11/06", "2026/11/09")                      # 6 days after the first FO
-        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/10": "FO"}, busy, self.WIN)
-        self.assertEqual(("2026/11/06", "2026/11/10"), trips[-1])
-
-    def test_fi_taska_fi_taskb_fo_chain_shares_the_fi_date(self):
-        busy = days("2026/10/21", "2026/10/29") + days("2026/11/01", "2026/11/09")
-        marks = {"2026/10/20": "FI", "2026/10/30": "FI", "2026/11/10": "FO"}
-        trips, _ = ps.pair_fifo_repaired(marks, busy, self.WIN)
-        self.assertEqual([("2026/10/20", "2026/10/30"), ("2026/10/30", "2026/11/10")], trips)
-
-    def test_a_one_day_trip_between_two_fo_is_not_taken_for_a_duplicate_mark(self):
-        trips, _ = ps.pair_fifo_repaired({"2026/10/30": "FO", "2026/11/01": "FO"}, ["2026/10/31"], self.WIN)
-        self.assertEqual(2, len(trips))
-
-    def test_double_marks_on_neighbouring_days_are_one_mark(self):
-        trips, notes = ps.pair_fifo_repaired(
-            {"2026/05/01": "FI", "2026/05/02": "FI", "2026/05/22": "FO", "2026/05/23": "FO"}, [], self.WIN)
-        self.assertEqual([("2026/05/01", "2026/05/23")], trips)
-        self.assertEqual(2, sum(1 for n in notes if n.startswith("duplicate")))
-
-    def test_a_gap_larger_than_max_gap_stops_the_run(self):
-        busy = days("2026/10/20", "2026/10/25") + days("2026/12/01", "2026/12/05")
-        trips, _ = ps.pair_fifo_repaired({"2026/10/19": "FI"}, busy, self.WIN, max_gap=14)
-        self.assertEqual([("2026/10/19", "2026/10/25")], trips)
-
+class FiFoRepairInPrepare(unittest.TestCase):
     def test_prepare_keeps_every_trip_even_without_a_region_and_repairs_orphans(self):
         s = sheet()
-        k1 = ps.name_key("山田 太郎")
+        k1 = name_key("山田 太郎")
         s["fifo"] = {k1: {"2026/12/10": "FI"}}                # no FO at all
         s["date_map"].update({(k1, d): "training" for d in days("2026/12/11", "2026/12/14")})
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10", default_trip_region="r_other")
@@ -307,7 +217,7 @@ class FiFoPatterns(unittest.TestCase):
 
 class CellNames(unittest.TestCase):
     """The text of a bar: a module whose bar was only renamed in SU_Others is changed too (becomes Fixed / misc)."""
-    K1 = ps.name_key("山田 太郎")
+    K1 = name_key("山田 太郎")
 
     def prev_with_names(self, name="CustA_" + CODE_A):
         doc = prev_flexible()
@@ -361,15 +271,15 @@ class CellNames(unittest.TestCase):
         self.assertEqual(("CustA_" + CODE_A, "planner note"), (row["cell_name"], row["description"]))
 
     def test_read_prev_flexible_collects_the_names_per_worker_and_day(self):
-        prev = ps.read_prev_flexible(self.prev_with_names("N1"), {"w007": "山田 太郎", "w008": "佐藤 花子"})
+        prev = read_prev_flexible(self.prev_with_names("N1"), {"w007": "山田 太郎", "w008": "佐藤 花子"})
         self.assertEqual({(self.K1, "2026/10/20"): "N1", (self.K1, "2026/10/21"): "N1", (self.K1, "2026/10/22"): "N1"},
                          prev["modules"][CODE_A]["names"])
 
     def test_default_name_is_made_from_customer_fab_and_code(self):
-        info = ps.module_name_info({"fab": "f1", "description": "d"}, prev_env()["environment"])
+        info = module_name_info({"fab": "f1", "description": "d"}, prev_env()["environment"])
         self.assertEqual({"fab": "FabA", "customer": "CustA", "description": "d"}, info)
-        self.assertEqual("CustAFabA_" + CODE_A + "_新規", ps.module_cell_name(CODE_A, info))
-        self.assertEqual(CODE_A + "_新規", ps.module_cell_name(CODE_A, {}))
+        self.assertEqual("CustAFabA_" + CODE_A + "_新規", module_cell_name(CODE_A, info))
+        self.assertEqual(CODE_A + "_新規", module_cell_name(CODE_A, {}))
 
 
 class FiFoDoesNotFixModules(unittest.TestCase):
@@ -377,7 +287,7 @@ class FiFoDoesNotFixModules(unittest.TestCase):
 
     def test_moved_fi_fo_makes_a_fixed_trip_but_the_modules_inside_stay_flexible(self):
         s = sheet()
-        k1 = ps.name_key("山田 太郎")
+        k1 = name_key("山田 太郎")
         # module A (unchanged work 10/20-10/22) lies inside last week's flexible trip 10/19-10/23; both FI and FO are moved now
         s["fifo"] = {k1: {"2026/10/17": "FI", "2026/10/26": "FO"}}
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")
@@ -492,7 +402,7 @@ class Assembly(unittest.TestCase):
 
     def test_fixed_trip_region_is_inferred_from_modules_between_fi_and_fo(self):
         s = sheet()
-        k1 = ps.name_key("山田 太郎")
+        k1 = name_key("山田 太郎")
         s["date_map"][(k1, "2026/11/12")] = CODE_A + " site work"   # Fixed trip 11/09..11/15 now has a RegionA module inside
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")
         trips = out["schedule"]["schedule"]["trip_list"][0]["trips"]
@@ -509,8 +419,8 @@ class Assembly(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "01_Schedule.yaml"
-            ps.dump_yaml(p, self.out["schedule"])
-            back = ps.load_yaml(p)
+            dump_yaml(p, self.out["schedule"])
+            back = load_yaml(p)
             self.assertEqual(self.out["schedule"], back)
             self.assertIn("trip_list", back["schedule"])
 

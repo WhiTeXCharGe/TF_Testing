@@ -12,7 +12,7 @@ Inputs
   --prev-env        last week's EnvConfig.yaml (workflows, fabs, regions ... are carried over)
   --su-others       the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list
   --skill-file      the skill-level workbook (.xlsm): skills / status only (optional; without it the
-                    skill sheet is looked up inside --su-others like decoder7 does)
+                    skill sheet is looked up inside --su-others)
   --seiban-info     the seiban info workbook (.xlsx, sheet 製番: module -> customer / fab / region)
 Output (in --out-dir)
   <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (file name starts with the --today date)
@@ -21,7 +21,7 @@ Output (in --out-dir)
   <today>_prepare_report.txt  only with --report: what was decided and why, and everything that could not be resolved
 
 The decisions (changed / unchanged) are plain functions on plain data, so they can be tested
-without Excel files (see tests/).  Reading the workbook reuses decoder7.py of tools/decoder.
+without Excel files (see tests/).  Reading the workbooks and the small shared functions come from the `common` folder of weekly_planning.
 """
 from __future__ import annotations
 
@@ -31,172 +31,33 @@ import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
-import yaml
+from openpyxl import load_workbook
 
-HOURS_PER_WORKDAY = 10          # same value the decoder writes for every work day
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common import seiban_sheet, su_others   # noqa: E402
+from common.cell_names import cell_name_key   # noqa: E402
+from common.dates import ymd   # noqa: E402
+from common.flexible_schedule import read_prev_flexible   # noqa: E402
+from common.text import name_key, tool_code   # noqa: E402
+from common.trips import pair_fifo, pair_fifo_repaired, read_mark   # noqa: E402
+from common.worker_skills import STATUS_TO_TYPE, parse_worker_skills   # noqa: E402
+from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
+
+HOURS_PER_WORKDAY = 10          # hours of every work day (the same value as in the SU_Others parser)
 NEUTRAL_REGION_ID = "r_other"   # region of misc tasks that have no place (Timefold treats it as "no region")
-TOOLCODE_RE = re.compile(r"\d{3}[A-Z0-9]\d{5}A")   # same pattern as decoder7.TOOLCODE_RE
 
 
 # ----------------------------------------------------------------------------- small helpers
-
-def ymd(v):
-    """'YYYY/MM/DD' for a date-like value (str with - or /, date, datetime, Timestamp); None if unreadable."""
-    if v is None:
-        return None
-    if hasattr(v, "strftime"):
-        return v.strftime("%Y/%m/%d")
-    s = str(v).strip().replace("-", "/")[:10]
-    try:
-        return datetime.strptime(s, "%Y/%m/%d").strftime("%Y/%m/%d")
-    except ValueError:
-        return None
-
-
-def name_key(s) -> str:
-    """Stable key of a worker name: NFKC, no whitespace (worker ids are renumbered by the decoder, names are not)."""
-    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(s or "")))
-
-
-def tool_code(text):
-    m = TOOLCODE_RE.search(unicodedata.normalize("NFKC", str(text or "")).upper())
-    return m.group(0) if m else None
-
 
 def top_color(counter):
     return min(counter.items(), key=lambda kv: (-kv[1], kv[0]))[0] if counter else None
 
 
-# ---- the name written in the cells of a module ("cell name")
-# FlexibleSchedule.yaml has a `cell_name` in every assignment row of a module: the text of the bar in SU_Others.  It is
-# written by 3-2 (from the solver result), used by 3-3 to write the cells and checked by 2-2 to see whether the planner
-# changed the text of a bar (a changed text makes the module Fixed, like a moved bar).
-DEFAULT_CELL_NAME_TEMPLATE = "{customer}{fab}_{code}_新規"
-
-
-def cell_name_key(text):
-    """Comparison key of a cell text: NFKC, upper case, no whitespace (so only a real change of the text counts)."""
-    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(text or ""))).upper()
-
-
-def module_name_info(task, env):
-    """{"fab", "customer", "description"} names of a workflow task (task.fab id -> EnvConfig fab_list / customer_company_list)."""
-    fabs = {f["id"]: f for f in (env or {}).get("fab_list") or []}
-    customers = {c["id"]: c.get("name") for c in (env or {}).get("customer_company_list") or []}
-    fab = fabs.get(task.get("fab")) or {}
-    return {"fab": fab.get("name") or "", "customer": customers.get(fab.get("customer_company")) or "",
-            "description": task.get("description") or ""}
-
-
-def module_cell_name(code, info, template=DEFAULT_CELL_NAME_TEMPLATE):
-    """Name for the cells of a module that has none, e.g. '{customer}{fab}_{code}_新規' -> 'CustAFabA_530N00000A_新規'."""
-    text = template.format(code=code, fab=info.get("fab", ""), customer=info.get("customer", ""),
-                           description=info.get("description", ""))
-    text = re.sub(r"_{2,}", "_", text).strip("_ ")
-    return text or code
-
-
-def load_yaml(path):
-    with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def dump_yaml(path, doc):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(doc, f, sort_keys=False, allow_unicode=True, default_flow_style=False, width=1000)
-
-
-# ----------------------------------------------------------------------------- previous week
-
-def read_prev_flexible(doc, env_worker_names):
-    """
-    doc: parsed FlexibleSchedule.yaml / Timefold result Schedule.yaml.
-    env_worker_names: prev worker id -> name (from the previous EnvConfig).
-    Returns dict: plan_range, modules {code: {...}}, trips [{worker_key, worker_id, start, end, region, flex, raw}], warnings.
-    A module is identified by its workflow task `name` (the module code, e.g. 530N00009A).
-    modules[code]["names"] = {(worker_key, date): cell_name} from the `cell_name` of the assignment rows (empty if the file has none).
-    """
-    sch = doc.get("schedule", doc) if isinstance(doc, dict) else {}
-    warnings = []
-    tasks = sch.get("workflow_task_list") or []
-    modules, op_to_code = {}, {}
-    for t in tasks:
-        code = tool_code(t.get("name")) or str(t.get("name") or t.get("id"))
-        ops = set()
-        for ph in t.get("phase_task_list") or []:
-            for op in ph.get("operation_task_list") or []:
-                ops.add(op["id"])
-        if code in modules:
-            warnings.append(f"duplicate module name {code} in the previous schedule: the later one is used")
-        modules[code] = {"task": t, "ops": ops, "assign": set(), "rows": [], "last": None, "names": {}}
-        for o in ops:
-            op_to_code[o] = code
-    misc_code = {}   # misc task id -> module code written in its name (decoder7 names converted cells after the module)
-    for mt in sch.get("misc_task_list") or []:
-        c = tool_code(mt.get("name"))
-        if c:
-            misc_code[mt.get("id")] = c
-    misc_cover = defaultdict(set)   # module code -> {(worker_key, date)} already held by a misc task of that module
-    for a in sch.get("assignment_list") or []:
-        code = op_to_code.get(a.get("operation_task"))
-        if code is None:
-            c = misc_code.get(a.get("operation_task"))
-            if c:
-                wk = name_key(env_worker_names.get(a.get("worker"), a.get("worker")))
-                for item in a.get("work_date_list") or []:
-                    d = ymd(item.get("date"))
-                    if d:
-                        misc_cover[c].add((wk, d))
-            continue   # misc row (or unknown task): not part of a flexible module
-        wid = a.get("worker")
-        wname = env_worker_names.get(wid)
-        if wname is None:
-            warnings.append(f"assignment of module {code}: worker id {wid!r} is not in the previous EnvConfig")
-            wname = str(wid)
-        m = modules[code]
-        m["rows"].append(a)
-        cn = a.get("cell_name")
-        cn = cn.strip() if isinstance(cn, str) else ""
-        for item in a.get("work_date_list") or []:
-            d = ymd(item.get("date"))
-            if d:
-                m["assign"].add((name_key(wname), d))
-                m["last"] = d if m["last"] is None or d > m["last"] else m["last"]
-                if cn:
-                    m["names"][(name_key(wname), d)] = cn      # the text this cell had when the plan was made
-    trips = []
-    for entry in flatten_trips(sch.get("trip_list")):
-        wid = entry["worker"]
-        wname = env_worker_names.get(wid, wid)
-        s, e = ymd(entry["trip"].get("start_date")), ymd(entry["trip"].get("end_date"))
-        if not (s and e):
-            warnings.append(f"previous trip of {wid} has an unreadable date and is ignored: {entry['trip']}")
-            continue
-        flex = str(entry["trip"].get("plan_flexibility") or "Flexible")
-        trips.append({"worker_key": name_key(wname), "worker_id": wid, "start": s, "end": e,
-                      "region": entry["trip"].get("region"), "flex": flex})
-    pr = sch.get("plan_range") or {}
-    return {"plan_range": pr, "modules": modules, "trips": trips, "warnings": warnings, "misc_cover": dict(misc_cover)}
-
-
-def flatten_trips(trip_list):
-    """[{worker, trip}] from the nested form ({worker, trips:[...]}) and the flat form ({worker, start_date, ...})."""
-    out = []
-    for item in trip_list or []:
-        if not isinstance(item, dict) or not item.get("worker"):
-            continue
-        if isinstance(item.get("trips"), list):
-            for t in item["trips"]:
-                if isinstance(t, dict):
-                    out.append({"worker": item["worker"], "trip": t})
-        elif "start_date" in item:
-            out.append({"worker": item["worker"], "trip": item})
-    return out
-
+# ----------------------------------------------------------------------------- cell names of the flexible modules
 
 def put_cell_name(row, worker_key, sheet_texts):
     """Gives an assignment row of a flexible module its `cell_name`: the one it already has, else the most common text of the
@@ -221,7 +82,7 @@ def decide_modules(prev_modules, sheet_module_cells, today, misc_cover=None, she
     sheet_module_cells: {code: {(worker_key, date)}}  cells of SU_Others that carry the module code
     today: 'YYYY/MM/DD'
     misc_cover: {code: {(worker_key, date)}}  cells the previous schedule already holds as a misc task of that module
-                (decoder7 turns outlier cells into such tasks); a sheet cell found there is not a change.
+                (the SU_Others parser turns outlier cells into such tasks); a sheet cell found there is not a change.
     sheet_texts: {(worker_key, date): text}  the text of the cells; with it the text of a bar is checked too: a module whose
                 cells now carry another text than the `cell_name` of the previous rows is changed (rows without a cell_name are
                 not checked).  The text of a bar is its most common text, so one odd cell is not a change.
@@ -262,132 +123,6 @@ def changed_text(module, sheet_cells, sheet_texts):
             now = next(sheet_texts[k] for k in sorted(keys) if k in sheet_texts and cell_name_key(sheet_texts[k]) == top)
             return f"cell text changed in SU_Others ({wk}: {name!r} -> {now!r})"
     return None
-
-
-def pair_fifo(marks):
-    """
-    marks: {date: 'FI' | 'FO'} of one worker.  Pairs every FI with the next FO.
-    Returns ([(start, end)], [warning]).  Orphans (FI without FO, FO without FI, FI FI, FO FO) are reported, not guessed.
-    """
-    pairs, warnings, open_fi = [], [], None
-    for d in sorted(marks):
-        kind = marks[d]
-        if kind == "FI":
-            if open_fi is not None:
-                warnings.append(f"FI {open_fi} has no FO before the next FI {d}")
-            open_fi = d
-        else:
-            if open_fi is None:
-                warnings.append(f"FO {d} has no FI before it")
-            else:
-                pairs.append((open_fi, d))
-                open_fi = None
-    if open_fi is not None:
-        warnings.append(f"FI {open_fi} has no FO after it")
-    return pairs, warnings
-
-
-def read_mark(text):
-    """'FI' / 'FO' / None for one cell text.  Tolerates case, full-width letters, spaces, the typos F1 / Fl / F0
-    and a trailing note such as FI(仮).  Anything else (including 移動) is not a mark."""
-    if not isinstance(text, str):
-        return None
-    t = re.sub(r"[\(\[【].*$", "", unicodedata.normalize("NFKC", text).strip().upper().replace(" ", "")).strip()
-    if t in ("FI", "F1", "FL", "F|", "F!"):
-        return "FI"
-    if t in ("FO", "F0"):
-        return "FO"
-    return None
-
-
-def _day(s):
-    return datetime.strptime(s, "%Y/%m/%d").date()
-
-
-def _run_end(start, upto, activity, max_gap, window_end):
-    """Last day of the run of busy days that continues after `start` (gaps up to max_gap days), before `upto`."""
-    cur = start
-    for x in activity:
-        if x <= start or (upto is not None and x >= upto):
-            continue
-        if (_day(x) - _day(cur)).days > max_gap:
-            break
-        cur = x
-    return cur
-
-
-def _run_start(end, lower, activity, max_gap, window_start):
-    """First day of the run of busy days that leads up to `end` (gaps up to max_gap days), after `lower`."""
-    cur = end
-    for x in reversed(activity):
-        if x >= end or (lower is not None and x <= lower):
-            continue
-        if (_day(cur) - _day(x)).days > max_gap:
-            break
-        cur = x
-    if lower is None and window_start and (_day(cur) - _day(window_start)).days <= max_gap:
-        cur = window_start        # the sheet starts while the worker is already away: the trip began before it
-    return cur
-
-
-def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_days=2, chain_days=3):
-    """
-    Like pair_fifo, but every FI / FO that has no partner is repaired from the days the worker is busy in the sheet.
-    marks: {date: 'FI'|'FO'} of one worker; activity: that worker's busy dates (any text in the sheet), window: first and
-    last date of the sheet.  Returns ([(start, end)], [note]).
-      FI right after FI or FO right after FO (<= dup_days apart, nothing busy between) .. one mark: the first FI, the last FO
-      FI without FO (next FI or end of the sheet) .. ends on the last day of the busy run after the FI
-      FO without FI (previous FO or start of the sheet) .. starts on the first day of the busy run before the FO
-      FI, work, FI / FO, work, FO in a chain: a trip may end and the next one start on the SAME date (FI = FO date).
-        FO after an FO: if the busy run starts within chain_days of the previous FO, the trip starts on the previous FO's date
-        FI before an FI: if the next FI is within chain_days of the end of the busy run, the trip ends on that FI's date
-    A busy run may have gaps of up to max_gap days.  Repaired trips are listed in the notes as INFERRED.
-    """
-    activity = sorted(set(activity))
-    w_start, w_end = window
-    seq = []
-    notes = []
-    for d in sorted(marks):
-        k = marks[d]
-        if (seq and seq[-1][1] == k and (_day(d) - _day(seq[-1][0])).days <= dup_days
-                and not any(seq[-1][0] < x < d for x in activity)):
-            if k == "FO":
-                notes.append(f"duplicate FO {seq[-1][0]} / {d}: trip ends {d}")
-                seq[-1] = (d, k)
-            else:
-                notes.append(f"duplicate FI {seq[-1][0]} / {d}: trip starts {seq[-1][0]}")
-            continue
-        seq.append((d, k))
-    trips, open_fi, boundary, boundary_is_fo = [], None, None, False
-    for d, k in seq:
-        if k == "FI":
-            if open_fi is not None:
-                end = _run_end(open_fi, d, activity, max_gap, w_end)
-                if (_day(d) - _day(end)).days <= chain_days:
-                    end = d       # the next trip starts right after the busy run: same date for FO and FI
-                    notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (the next FI {d} is the same date)")
-                else:
-                    notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (no FO before the next FI {d})")
-                trips.append((open_fi, end))
-                boundary, boundary_is_fo = end, False
-            open_fi = d
-        elif open_fi is None:
-            start = _run_start(d, boundary, activity, max_gap, w_start)
-            if boundary_is_fo and boundary is not None and (_day(start) - _day(boundary)).days <= chain_days:
-                start = boundary  # FO, work, FO: the second trip starts on the date of the first FO
-                notes.append(f"INFERRED start {start} of the trip to FO {d} (same date as the previous FO)")
-            else:
-                notes.append(f"INFERRED start {start} of the trip to FO {d} (no FI before it)")
-            trips.append((start, d))
-            boundary, boundary_is_fo = d, True
-        else:
-            trips.append((open_fi, d))
-            open_fi, boundary, boundary_is_fo = None, d, True
-    if open_fi is not None:
-        end = _run_end(open_fi, None, activity, max_gap, w_end)
-        trips.append((open_fi, end))
-        notes.append(f"INFERRED end {end} of the trip from FI {open_fi} (no FO after it)")
-    return trips, notes
 
 
 def decide_trips(prev_trips, sheet_pairs):
@@ -769,35 +504,24 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
             "report": report, "stats": stats}
 
 
-# ----------------------------------------------------------------------------- Excel reading (decoder7)
-
-def import_decoder(decoder_dir):
-    sys.path.insert(0, str(decoder_dir))
-    import decoder7 as d   # noqa: E402
-    return d
+# ----------------------------------------------------------------------------- Excel reading
 
 
-def read_sheet(d, su_path, sheets, skill_sheet, skill_path=None):
-    """The SU_Others workbook -> the `sheet` dict used by prepare().  One workbook load serves the decoder parser and the
-    FI/FO scan (decoder7 skips FI/FO cells, so they are read here).
+def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
+    """The SU_Others workbook -> the `sheet` dict used by prepare().  One workbook load serves the SU_Others parser and the
+    FI/FO scan (the parser skips FI/FO cells, so they are read here).
     skill_path: the separate "skill level" workbook; skills / status are taken from its skill_sheet. Without it the
-    skill sheet is looked up inside su_path (decoder7 behaviour)."""
-    from openpyxl import load_workbook
+    skill sheet is looked up inside su_path."""
     wb = load_workbook(su_path, data_only=True, read_only=False)
-    original, original_ref = d.load_workbook, d._read_skill_reference
-    d.load_workbook = lambda *a, **k: wb     # parse_su_others gets the already loaded workbook
+    skill_ref = None
     if skill_path:
         skill_wb = load_workbook(skill_path, data_only=True, read_only=False)
         if skill_sheet not in skill_wb.sheetnames:
             raise ValueError(f"sheet {skill_sheet!r} not found in {skill_path}; available: {skill_wb.sheetnames} (use --skill-sheet)")
-        skill_ref = original_ref(skill_wb, skill_sheet)
+        skill_ref = su_others.read_skill_reference(skill_wb, skill_sheet)
         if not skill_ref:
             raise ValueError(f"no skill rows found in sheet {skill_sheet!r} of {skill_path}")
-        d._read_skill_reference = lambda *a, **k: skill_ref
-    try:
-        su = d.parse_su_others(su_path, sheet_names=sheets, skill_sheet=skill_sheet)
-    finally:
-        d.load_workbook, d._read_skill_reference = original, original_ref
+    su = su_others.parse_su_others(su_path, sheet_names=sheets, skill_sheet=skill_sheet, workbook=wb, skill_reference=skill_ref)
 
     wid_to_key = {w["id"]: name_key(w["name"]) for w in su["worker_list"]}
     company_name = {c["id"]: c["name"] for c in su["worker_company_list"]}
@@ -805,10 +529,10 @@ def read_sheet(d, su_path, sheets, skill_sheet, skill_path=None):
     for w in su["worker_list"]:
         wid = w["id"]
         if su["worker_in_skill_sheet"].get(wid):
-            skill_map, _why = d.parse_worker_skills(su["worker_skill_role"].get(wid, ""), su["worker_skill_raw"].get(wid, ""))
+            skill_map, _why = parse_worker_skills(su["worker_skill_role"].get(wid, ""), su["worker_skill_raw"].get(wid, ""))
         else:
             skill_map = {}
-        wtype = d.STATUS_TO_TYPE.get(str(su["worker_status"].get(wid, "")).strip().upper(), "spot")
+        wtype = STATUS_TO_TYPE.get(str(su["worker_status"].get(wid, "")).strip().upper(), "spot")
         workers.append({
             "name": w["name"], "company_name": company_name[w["worker_company"]], "is_manager": w["is_manager"],
             "has_skill_ref": bool(su["worker_in_skill_sheet"].get(wid)),
@@ -823,8 +547,8 @@ def read_sheet(d, su_path, sheets, skill_sheet, skill_path=None):
     variants = {}
     for sheet_name in [s for s in sheets if s in wb.sheetnames]:
         ws = wb[sheet_name]
-        date_row_idx, date_cols, dt_by_col = d._find_date_header_ws(ws)
-        cols = d._detect_su_columns(ws, date_row_idx + 1, stamp_row_idx=date_row_idx)
+        date_row_idx, date_cols, dt_by_col = su_others.find_date_header_ws(ws)
+        cols = su_others.detect_su_columns(ws, date_row_idx + 1, stamp_row_idx=date_row_idx)
         start = date_row_idx + 2
         for row in ws.iter_rows(min_row=start, min_col=1, max_col=max(date_cols)):
             name = row[cols["name"]].value if cols["name"] < len(row) else None
@@ -847,15 +571,13 @@ def read_sheet(d, su_path, sheets, skill_sheet, skill_path=None):
     }
 
 
-def read_seiban(d, path, start_row):
-    return d._read_seiban_sheet(path, start_row)
+def read_seiban(path, start_row):
+    return seiban_sheet.read_seiban_sheet(path, start_row)
 
 
 # ----------------------------------------------------------------------------- CLI
 
 def main(argv=None):
-    here = Path(__file__).resolve()
-    default_decoder = next((d for d in (here.parents[2] / "decoder", here.parents[2] / "decorder") if d.exists()), here.parents[2] / "decoder")
     ap = argparse.ArgumentParser(description="Weekly planning 2-2 + 2-3: detect Fixed modules / FI-FO and build the Timefold input.")
     ap.add_argument("--prev-flexible", required=True, help="last week's FlexibleSchedule.yaml (or a Timefold result Schedule.yaml)")
     ap.add_argument("--prev-env", required=True, help="last week's EnvConfig.yaml")
@@ -879,17 +601,15 @@ def main(argv=None):
                          "date of the mark between them, i.e. one trip ends and the next starts on the same date (default 3: covers a weekend)")
     ap.add_argument("--max-gap-days", type=int, default=14,
                     help="FI/FO repair: a busy run in the sheet may have gaps of up to this many days (default 14)")
-    ap.add_argument("--decoder-dir", default=str(default_decoder), help="folder of decoder7.py")
     args = ap.parse_args(argv)
 
     today = ymd(args.today) if args.today else date.today().strftime("%Y/%m/%d")
     if today is None:
         ap.error("--today must look like 2026/10/01")
-    d = import_decoder(args.decoder_dir)
     sheets = tuple(s.strip() for s in args.su_sheets.split(",") if s.strip())
     print("reading SU_Others (this takes a while) ...", flush=True)
-    sheet = read_sheet(d, args.su_others, sheets, args.skill_sheet, args.skill_file)
-    seiban = read_seiban(d, args.seiban_info, args.seiban_start_row)
+    sheet = read_sheet(args.su_others, sheets, args.skill_sheet, args.skill_file)
+    seiban = read_seiban(args.seiban_info, args.seiban_start_row)
 
     out = prepare(load_yaml(args.prev_flexible), load_yaml(args.prev_env), sheet, seiban, today,
                   default_trip_region=None if args.default_trip_region.lower() == "none" else args.default_trip_region,

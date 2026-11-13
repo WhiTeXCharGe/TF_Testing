@@ -4,12 +4,8 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
-import timefold_api as api   # noqa: E402
-import tf_config as tfc      # noqa: E402
-
-SUBMIT_CONFIG = HERE.parent / "config.txt"                                   # the config.txt delivered with tool 2-6
-RECEIVE_CONFIG = HERE.parents[1] / "3-1receive_from_timefold" / "config.txt"   # ... and with tool 3-1
+sys.path.insert(0, str(HERE.parents[1]))      # weekly_planning/ (the folder of common)
+from common import tf_config as tfc, timefold_api as api   # noqa: E402
 
 
 class Parse(unittest.TestCase):
@@ -80,17 +76,6 @@ class Load(unittest.TestCase):
             cfg.int("watch")
         with self.assertRaisesRegex(tfc.ConfigError, "stage2_enabled"):
             cfg.bool("stage2_enabled")
-
-    def test_the_delivered_config_files_are_valid_and_complete(self):
-        for path, keys in ((SUBMIT_CONFIG, tfc.SUBMIT_KEYS), (RECEIVE_CONFIG, tfc.RECEIVE_KEYS)):
-            cfg = tfc.load(str(path), None, keys)
-            self.assertEqual([], cfg.unknown, path)
-            self.assertEqual(set(keys), set(cfg.values), path)                  # every setting of the tool is listed in its file
-            self.assertEqual("local", cfg.text("mode"))
-            self.assertEqual("local", tfc.connection(cfg).mode)                 # works as delivered
-            with self.assertRaisesRegex(tfc.ConfigError, "placeholder"):        # online needs a real address first
-                tfc.connection(cfg, mode="online")
-        self.assertEqual("ask", tfc.load(str(RECEIVE_CONFIG), None, tfc.RECEIVE_KEYS).text("download"))
 
 
 class Connection(unittest.TestCase):

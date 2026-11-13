@@ -5,7 +5,9 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (common)
 import write_su_others as w   # noqa: E402
+from common.text import name_key   # noqa: E402
 
 SHEET = (
     '<?xml version="1.0"?><worksheet><sheetPr/><dimension ref="A1:E3"/><sheetData>'
@@ -272,8 +274,8 @@ class CellNames(unittest.TestCase):
                                "fab_list": [{"id": "f1", "name": "FabA", "customer_company": "c1"}],
                                "customer_company_list": [{"id": "c1", "name": "CustA"}]}}
         want, _warn, info, _trips, names = w.wanted_cells(doc, env)
-        self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03")}}, want)
-        self.assertEqual({"530N00001A": {(w.ps.name_key("山田 太郎"), "2026/12/03"): "THE_NAME"}}, names)
+        self.assertEqual({"530N00001A": {(name_key("山田 太郎"), "2026/12/03")}}, want)
+        self.assertEqual({"530N00001A": {(name_key("山田 太郎"), "2026/12/03"): "THE_NAME"}}, names)
         self.assertEqual({"fab": "FabA", "customer": "CustA", "description": ""}, info["530N00001A"])
 
 

@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-import timefold_api as api
+from . import timefold_api as api
 
 CONFIG_NAME = "config.txt"
 
@@ -22,7 +22,8 @@ CONFIG_NAME = "config.txt"
 CONNECTION_KEYS = ("mode", "azure_url", "local_url")
 SUBMIT_KEYS = CONNECTION_KEYS + (
     "schedule", "env", "out_dir", "run_id", "params_file",
-    "stage1_minutes", "stage2_minutes", "stage2_enabled", "stage1_unimproved_seconds", "stage2_unimproved_seconds",
+    "stage1_minutes", "stage2_minutes", "stage2_enabled", "stage1_unimproved_seconds", "stage1_stop_when_feasible",
+    "stage2_unimproved_seconds",
     "random_seed", "allow_cut_fixed_trip")
 RECEIVE_KEYS = CONNECTION_KEYS + ("run_info", "run_id", "result_dir", "watch", "download")
 ALIASES = {"url": "azure_url", "azure": "azure_url", "jobid": "run_id", "job_id": "run_id", "output_dir": "out_dir"}
