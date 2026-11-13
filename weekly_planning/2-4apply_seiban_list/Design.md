@@ -1,7 +1,5 @@
 # 2-4 apply_seiban_list — Design
 
-Status: design for review (no code yet). Japanese version: [設計書.md](設計書.md).
-
 ## 1. Purpose
 
 2-4 adds the **new seiban (modules)** of the week to the plan. It replaces the "add new modules" part of the planner step (until now done by hand in the planner tool).

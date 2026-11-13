@@ -37,6 +37,12 @@ def name_key(s) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(s or "")))
 
 
+def match_key(s) -> str:
+    """Key to compare names of customers, fabs, regions and work names: NFKC, no whitespace, upper case
+    (so stray spaces, full-width letters and case do not make a second entry)."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(s or ""))).upper()
+
+
 def tool_code(text):
     m = TOOLCODE_RE.search(unicodedata.normalize("NFKC", str(text or "")).upper())
     return m.group(0) if m else None
