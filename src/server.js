@@ -254,13 +254,14 @@ app.get('/health', (_req, res) => {
 
 app.post(
   '/runSolver',
-  upload.fields([{ name: 'env', maxCount: 1 }, { name: 'sched', maxCount: 1 }]),
+  upload.fields([{ name: 'env', maxCount: 1 }, { name: 'sched', maxCount: 1 }, { name: 'params', maxCount: 1 }]),
   async (req, res) => {
     let runId = null;
     let parsed = null;
     try {
-      const envFile   = req.files?.env?.[0];
-      const schedFile = req.files?.sched?.[0];
+      const envFile    = req.files?.env?.[0];
+      const schedFile  = req.files?.sched?.[0];
+      const paramsFile = req.files?.params?.[0];     // optional SolverParams.yaml (Timefold engine only)
       if (!envFile)   return res.status(400).json({ error: 'Missing required field: env (EnvConfig.yaml)' });
       if (!schedFile) return res.status(400).json({ error: 'Missing required field: sched (Schedule.yaml)' });
 
@@ -272,11 +273,14 @@ app.post(
       runId = proposed && isValidRunId(proposed) ? proposed : makeRunId();
       const nowIso = new Date().toISOString();
 
-      // Timefold keeps v1 behaviour (original file names); Sigma-I uses fixed names.
-      const envName   = parsed.engine === 'sigmai' ? 'EnvConfig.yaml' : envFile.originalname;
-      const schedName = parsed.engine === 'sigmai' ? 'Schedule.yaml'  : schedFile.originalname;
+      // Both engines read fixed names from /work/input, whatever the uploaded files were called.
+      const envName   = 'EnvConfig.yaml';
+      const schedName = 'Schedule.yaml';
       await container.getBlockBlobClient(`input/${runId}/${envName}`).uploadData(envFile.buffer);
       await container.getBlockBlobClient(`input/${runId}/${schedName}`).uploadData(schedFile.buffer);
+      if (paramsFile && parsed.engine === 'timefold') {
+        await container.getBlockBlobClient(`input/${runId}/SolverParams.yaml`).uploadData(paramsFile.buffer);
+      }
       if (parsed.engine === 'sigmai') {
         await writeJsonBlob(`input/${runId}/sigmai_options.json`, buildSigmaiOptionsFile(parsed));
       }
