@@ -140,15 +140,16 @@ A seiban that is both white and pink: both rows are skipped and listed.
 ## 7. Output and options
 
 - `02_EnvConfig.yaml` and `02_Schedule.yaml` in `--out-dir` (the number may change). Inputs are never overwritten.
-- The terminal shows only counts (rows added / deleted / skipped, masters and workflows created, number of warnings). **Every warning goes to the report**, written only with `--report` (`<name>_apply_report.txt`), as in 2-2-3.
-- Options: `--schedule`, `--env`, `--seiban-list`, `--out-dir`, `--sheet` (default `計画対象`), `--report`. A `config.txt` like 2-6 / 3-1 can be added later.
+- The terminal shows only counts (rows added / deleted / skipped, masters and workflows created, number of warnings). **Every warning goes to the report**, written only with `--report` / `report = true` (`02_apply_report.txt`), as in 2-2-3.
+- Options: `--schedule`, `--env`, `--seiban-list`, `--out-dir`, `--sheet` (default `計画対象`), `--report` / `--no-report`, `--config`, `--dry-run`.
+- `config.txt` in the tool folder, like 2-6 / 3-1, with the same keys (`schedule`, `env`, `seiban_list`, `out_dir`, `sheet`, `report`), so the tool runs with no options. Priority: command line, then `config.txt`, then the default. `out_dir` defaults to the folder of the schedule file; the tool refuses to overwrite an input file. A file that did not change is copied unchanged.
 
 ## 8. Code layout and review steps
 
 - `common/` gets the shared reading code the other tools can also use (the Excel reading of the seiban list and templates). Code used only by 2-4 stays in the tool folder. Tools never import from each other.
 - Step A: read the workbook (rows with colours, templates, delivery sites) into plain data, with tests on small generated workbooks.
 - Step B: EnvConfig changes (masters, workflow matching and creation, skills), pure functions on plain data.
-- Step C: Schedule changes (add / delete), command line, report, README.
+- Step C: Schedule changes (add / delete: `schedule_modules.py`), the command line with `config.txt`, report, README (`apply_seiban_list.py`).
 
 ## 9. Effects on other tools and open points
 

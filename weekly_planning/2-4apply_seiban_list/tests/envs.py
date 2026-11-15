@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))          # the tool folder (env_*.py)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))          # weekly_planning/ (the folder of common)
 
-from common.seiban_list import Template, TemplateOp   # noqa: E402
+from common import seiban_list as sl   # noqa: E402
+from common.seiban_list import PlanRow, SeibanList, Template, TemplateOp   # noqa: E402
 
 
 def region(rid, name):
@@ -57,4 +58,46 @@ TEMPLATE_LIKE_WF_TOOL = [(2, 1, "Mech", 576, 1, 8), (2, 2, "Elec", 144, 1, 8), (
 TEMPLATE_WITH_P1 = [(1, 1, "Mech", 160, 2, 4), (1, 2, "Elec", 40, 1, 1), (2, 1, "Mech", 576, 2, 4), (4, 1, "QC", 288, 1, 2)]
 
 
-__all__ = ["make_env", "template", "TEMPLATE_LIKE_WF_TOOL", "TEMPLATE_WITH_P1"]
+def _task(module, code, fab, phases):
+    """A workflow task of workflow wf_tool; phases = {P: [(K, hours)]}."""
+    names = {2: "Hardware Setup", 3: "Function Setup", 4: "Acceptance Inspection"}
+    ops = {(2, 1): "Mech", (2, 2): "Elec", (3, 1): "QC", (4, 1): "QC"}
+    return {"id": module, "name": code, "description": None, "workflow": "wf_tool", "fab": fab, "phase_task_list": [
+        {"id": f"{module}p{p}", "name": names[p], "description": None, "phase": f"p{p}", "start_date": "2026/12/01", "end_date": "2026/12/10",
+         "operation_task_list": [{"id": f"{module}p{p}o{k}", "name": ops[(p, k)], "description": None, "operation": f"p{p}o{k}",
+                                  "workload_hours": h, "recommends_worker_min": 1, "recommends_worker_max": 2, "color_code": None}
+                                 for k, h in items]} for p, items in phases.items()]}
+
+
+def _assignment(worker, op_task, flexibility="Flexible", day="2026/12/02"):
+    return {"worker": worker, "operation_task": op_task, "start_date": day, "end_date": day,
+            "work_date_list": [{"date": day, "hour": 10}], "plan_flexibility": flexibility, "description": None}
+
+
+def make_schedule():
+    """Two flexible modules (e1 = 530N00001A, e2 = 530N00002A), a misc task and their assignments.  e1 has a Fixed row."""
+    phases = {2: [(1, 576), (2, 144)], 3: [(1, 64)], 4: [(1, 288)]}
+    return {"schedule": {
+        "plan_range": {"start_date": "2026/12/01", "end_date": "2027/03/31"},
+        "workflow_task_list": [_task("e1", "530N00001A", "f1", phases), _task("e2", "530N00002A", "f2", phases)],
+        "misc_task_list": [{"id": "misc_other_1", "name": "Other", "description": None, "workflow": None, "region": "r1"}],
+        "assignment_list": [_assignment("w001", "e1p2o1"), _assignment("w002", "e1p2o1", "Fixed"), _assignment("w001", "e1p3o1"),
+                            _assignment("w001", "e2p2o1"), _assignment("w002", "misc_other_1")]}}
+
+
+DATES = {1: ("2026/12/01", "2026/12/10"), 2: ("2026/12/05", "2026/12/20"), 3: ("2026/12/15", "2026/12/25"), 4: ("2026/12/22", "2027/01/10")}
+
+
+def plan_row(excel_row=2, kind=sl.ADD, code="530N00005A", customer="Cust A", fab="Fab A", region="Region X", template=1, phases=None, problems=None):
+    """A row of 計画対象 as the reader gives it (a white row of template 1 by default)."""
+    return PlanRow(excel_row, kind, "none" if kind == sl.ADD else "FFDCE6", code, code or "", customer, fab, region, template,
+                   f"工程テンプレート{template}", dict(DATES if phases is None else phases), list(problems or []))
+
+
+def seiban_data(rows, templates=None, warnings=None):
+    """A SeibanList; template 1 = the operations of wf_tool, template 2 = TEMPLATE_WITH_P1 unless `templates` is given."""
+    templates = templates or {1: template(1, TEMPLATE_LIKE_WF_TOOL), 2: template(2, TEMPLATE_WITH_P1)}
+    return SeibanList(rows, [], templates, list(warnings or []))
+
+
+__all__ = ["make_env", "make_schedule", "template", "plan_row", "seiban_data", "DATES", "TEMPLATE_LIKE_WF_TOOL", "TEMPLATE_WITH_P1"]

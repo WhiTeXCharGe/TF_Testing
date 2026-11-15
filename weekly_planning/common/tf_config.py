@@ -1,5 +1,6 @@
 """
-tf_config.py -- reads config.txt, the settings file of tools 2-6 (submit) and 3-1 (receive).  Standard library only.
+tf_config.py -- reads config.txt, the settings file of tools 2-4 (apply seiban list), 2-6 (submit) and 3-1 (receive).
+Standard library only.
 Each tool has its own config.txt in its own folder; this module is the shared reader.
 
 Same plain `key=value` format as the config.txt of the SchedulerWeb app: blank lines and lines starting with # or ; are ignored,
@@ -26,6 +27,7 @@ SUBMIT_KEYS = CONNECTION_KEYS + (
     "stage2_unimproved_seconds",
     "random_seed", "allow_cut_fixed_trip")
 RECEIVE_KEYS = CONNECTION_KEYS + ("run_info", "run_id", "result_dir", "watch", "download")
+APPLY_SEIBAN_KEYS = ("schedule", "env", "seiban_list", "out_dir", "sheet", "report")          # tool 2-4 (no server)
 ALIASES = {"url": "azure_url", "azure": "azure_url", "jobid": "run_id", "job_id": "run_id", "output_dir": "out_dir"}
 TRUE, FALSE = ("true", "yes", "on", "1"), ("false", "no", "off", "0")
 

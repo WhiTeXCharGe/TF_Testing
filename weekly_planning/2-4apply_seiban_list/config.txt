@@ -1,0 +1,24 @@
+# Settings of tool 2-4 (apply_seiban_list)
+#
+# Edit this file, then just run  python apply_seiban_list.py  with no options.
+# A command line option replaces the same setting for that one run.  Lines starting with # are comments.
+# A setting that is left empty is not set (the default is used).  A relative path is relative to the folder of this file.
+
+# ---------------------------------------------------------------------------------------------------- input
+# The two files of the week made by tool 2-2-3 (01_*.yaml).
+#   schedule = C:\path\to\01_Schedule.yaml
+#   env = C:\path\to\01_EnvConfig.yaml
+schedule =
+env =
+# The seiban list workbook. White rows are added, pink rows are deleted, grey rows are ignored.
+#   seiban_list = C:\path\to\製番リスト.xlsm
+seiban_list =
+# Sheet with the rows to handle (empty: 計画対象).
+sheet =
+
+# ---------------------------------------------------------------------------------------------------- output
+# Folder for 02_Schedule.yaml, 02_EnvConfig.yaml (and the report). Empty: the folder of the schedule file.
+# The input files are never changed.
+out_dir =
+# true: also write 02_apply_report.txt (every change and every warning). The terminal shows only counts.
+report = true
