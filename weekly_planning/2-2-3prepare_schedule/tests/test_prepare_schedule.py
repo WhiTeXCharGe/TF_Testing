@@ -37,7 +37,11 @@ def prev_env():
     return {"environment": {
         "workflow_list": [{"id": "wf_tool", "name": "Tool", "phase_list": [
             {"id": "p2", "name": "HW", "operation_list": [
-                {"id": "p2o1", "name": "Mech", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 8}]}]}],
+                {"id": "p2o1", "name": "Mech", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 8}]}]},
+            {"id": "wf1", "name": "wf1", "phase_list": [        # a workflow made by tool 2-4: skills follow the work NAME
+                {"id": "wf1p1", "name": "p1", "operation_list": [
+                    {"id": "wf1p1o1", "name": "Mech", "work_hours": [10], "min_worker_num": 2, "max_worker_num": 4},
+                    {"id": "wf1p1o2", "name": "QC", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 2}]}]}],
         "fab_list": [{"id": "f1", "name": "FabA", "region": "r1", "customer_company": "c1", "unavailable_dates": []}],
         "region_list": [{"id": "r1", "name": "RegionA", "max_stay_on": 80, "max_annual_stay": 240,
                          "stay_off_interval": 3, "unavailable_dates": []}],
@@ -73,11 +77,11 @@ def sheet(**over):
     k1, k2 = name_key("山田 太郎"), name_key("佐藤 花子")
     s = {
         "workers": [
-            {"name": "山田 太郎", "company_name": "CompanyA", "is_manager": True, "skill_map": {"p2o1": 3, "p2o2": 2},
-             "worker_type_by_operation": {"p2o1": "regular", "p2o2": "regular"}, "unavailable": ["2026/10/30"], "description": None},
-            {"name": "佐藤 花子", "company_name": "CompanyA", "is_manager": False, "skill_map": {"p2o1": 2},
-             "worker_type_by_operation": {"p2o1": "spot"}, "unavailable": [], "description": None},
-            {"name": "鈴木 一郎", "company_name": "CompanyB", "is_manager": False, "skill_map": {}, "worker_type_by_operation": {},
+            {"name": "山田 太郎", "company_name": "CompanyA", "is_manager": True, "work_skills": {"Mech": 3, "Elec": 2, "QC": 1},
+             "worker_type": "regular", "unavailable": ["2026/10/30"], "description": None},
+            {"name": "佐藤 花子", "company_name": "CompanyA", "is_manager": False, "work_skills": {"Mech": 2},
+             "worker_type": "spot", "unavailable": [], "description": None},
+            {"name": "鈴木 一郎", "company_name": "CompanyB", "is_manager": False, "work_skills": {}, "worker_type": "spot",
              "unavailable": [], "description": None}],
         "date_map": {
             (k1, "2026/10/20"): CODE_A, (k1, "2026/10/21"): CODE_A, (k1, "2026/10/22"): CODE_A,   # unchanged
@@ -322,18 +326,41 @@ class Assembly(unittest.TestCase):
         self.assertEqual("w008", ids["佐藤 花子"])
         self.assertEqual("w001", ids["鈴木 一郎"])
 
-    def test_skills_for_unknown_operations_are_dropped_and_reported(self):
+    def test_a_skill_goes_to_every_operation_with_that_work_name_in_any_workflow(self):
         w = next(w for w in self.env["worker_list"] if w["id"] == "w007")
-        self.assertEqual({"p2o1": 3}, w["skill_map"])
-        self.assertEqual({"p2o1": "regular"}, w["worker_type_by_operation"])
-        self.assertTrue(any("operation p2o2" in line for line in self.out["report"]))
+        # Mech 3 -> both Mech operations (wf_tool and wf1), QC 1 -> the QC operation of wf1
+        self.assertEqual({"p2o1": 3, "wf1p1o1": 3, "wf1p1o2": 1}, w["skill_map"])
+        self.assertEqual({"p2o1": "regular", "wf1p1o1": "regular", "wf1p1o2": "regular"}, w["worker_type_by_operation"])
+        v = next(w for w in self.env["worker_list"] if w["id"] == "w008")
+        self.assertEqual({"p2o1": 2, "wf1p1o1": 2}, v["skill_map"])
+        self.assertEqual({"p2o1": "spot", "wf1p1o1": "spot"}, v["worker_type_by_operation"])
+
+    def test_a_work_name_without_any_operation_is_reported_once_with_the_worker_count(self):
+        lines = [line for line in self.out["report"] if "skill Elec" in line]
+        self.assertEqual(1, len(lines))
+        self.assertIn("1 workers dropped", lines[0])
+        w = next(w for w in self.env["worker_list"] if w["id"] == "w007")
+        self.assertNotIn("Elec", str(w["skill_map"]))
+        # unavailable dates come from the sheet, fab suitability from last week's EnvConfig
+        self.assertEqual([{"single": {"days": ["2026/10/30"]}}], w["unavailable_dates"])
+        self.assertEqual([{"kind": "region", "suitability": {"r1": 2}}], w["fab_suitability_map"])
+
+    def test_skills_work_with_a_workflow_that_has_no_name_in_common_with_the_old_ids(self):
+        env = prev_env()
+        env["environment"]["workflow_list"] = [{"id": "wf7", "name": "wf7", "phase_list": [
+            {"id": "wf7p1", "name": "p1", "operation_list": [
+                {"id": "wf7p1o1", "name": "elec", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 2}]}]}]
+        out = ps.prepare(prev_flexible(), env, sheet(), SEIBAN, "2026/10/10")
+        w = next(w for w in out["env"]["environment"]["worker_list"] if w["id"] == "w007")
+        self.assertEqual({"wf7p1o1": 2}, w["skill_map"])          # the name is compared without case
+        self.assertTrue(any("skill Mech" in line for line in out["report"]))
         # unavailable dates come from the sheet, fab suitability from last week's EnvConfig
         self.assertEqual([{"single": {"days": ["2026/10/30"]}}], w["unavailable_dates"])
         self.assertEqual([{"kind": "region", "suitability": {"r1": 2}}], w["fab_suitability_map"])
 
     def test_worker_missing_from_the_skill_file_keeps_last_weeks_skills(self):
         s = sheet()
-        s["workers"][1].update(skill_map={}, worker_type_by_operation={}, has_skill_ref=False)   # 佐藤: not in the skill file
+        s["workers"][1].update(work_skills={}, has_skill_ref=False)                                # 佐藤: not in the skill file
         s["workers"][2].update(has_skill_ref=False)                                                # 鈴木: new, no skills anywhere
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")
         by_name = {w["name"]: w for w in out["env"]["environment"]["worker_list"]}
@@ -392,6 +419,12 @@ class Assembly(unittest.TestCase):
         self.assertEqual([("2026/10/19", "2026/10/23", "r1", "Flexible")], got)
         self.assertEqual(2, self.out["stats"]["trips_skipped"])
         self.assertTrue(any("Fixed trip" in line and "region could not be determined" in line for line in self.out["report"]))
+
+    def test_warnings_of_the_seiban_list_go_into_the_report(self):
+        out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10",
+                         seiban_warnings=["sheet 製番リスト row 9: seiban 'x' is not a module code; row skipped"])
+        self.assertIn("WARN: seiban list: sheet 製番リスト row 9: seiban 'x' is not a module code; row skipped", out["report"])
+        self.assertFalse(any("seiban list" in line for line in self.out["report"]))
 
     def test_default_trip_region_keeps_unresolvable_trips(self):
         out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10", default_trip_region="r1")

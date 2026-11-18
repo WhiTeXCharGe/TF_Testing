@@ -1,13 +1,14 @@
 """
-The seiban list workbook (read by tool 2-4).  Nothing is decided here: the workbook is turned into plain data, and everything
-that looks wrong is kept as text in `problems`, so the caller can skip a row and put the reason into its report.
+The seiban list workbook (read by tools 2-4 and 2-2-3).  Nothing is decided here: the workbook is turned into plain data, and
+everything that looks wrong is kept as text in `problems`, so the caller can skip a row and put the reason into its report.
 
 Sheets (names are the defaults of the constants below):
+  製番リスト         every module with customer / Fab / Region (tool 2-2-3 only, read_module_sites)
   計画対象          the rows to handle (one seiban per row; the colour of the seiban cell says add / keep / delete)
   搬入先テーブル     delivery sites: customer, Fab, Region (used to fill an empty Region)
   工程テンプレート<N> one sheet per process template: process number, work number, work name, man-hours, min / max workers
 
-The workbook is opened read-only, so the big master-list sheet of the file is never loaded.
+The workbook is opened read-only and a sheet stops after a run of empty rows, so the long (formatted) sheets are cheap to read.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from .dates import as_timestamp
 from .text import match_key, tool_code
 
 PLAN_SHEET = "計画対象"
+MASTER_SHEET = "製番リスト"       # every module with customer / Fab / Region (read by tool 2-2-3, see read_module_sites)
 SITE_SHEET = "搬入先テーブル"
 TEMPLATE_PREFIX = "工程テンプレート"
 
@@ -323,7 +325,48 @@ def _read_template(ws, number):
     return t
 
 
-# ----------------------------------------------------------------------------- entry point
+# ----------------------------------------------------------------------------- entry points
+
+def read_module_sites(path, sheet=MASTER_SHEET, blank_run_limit=BLANK_RUN_LIMIT):
+    """Customer / Fab / Region of every module of the master list sheet (used by tool 2-2-3).
+
+    Returns ({code: {"customer", "fab", "region"}}, warnings).  The colour of a row and the 計画対象 flag are not looked at:
+    the sheet is only used to find where a module is.  An empty Region is taken from the delivery site table (same customer
+    and Fab).  The first row of a module wins.  Raises SeibanListError when the sheet or one of its columns is missing."""
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        if sheet not in wb.sheetnames:
+            raise SeibanListError(f"sheet {sheet!r} not found in {path}; available: {wb.sheetnames}")
+        rows = wb[sheet].iter_rows()
+        first = next(rows, None)
+        if first is None:
+            raise SeibanListError(f"sheet {sheet}: empty")
+        col = _need(_headers(first), ["製番", "顧客", "Fab", "Region"], f"sheet {sheet}")
+        warnings = []
+        sites = SeibanList([], _read_sites(wb[SITE_SHEET], warnings) if SITE_SHEET in wb.sheetnames else [], {}, [])
+        out, blank_run = {}, 0
+        for excel_row, row in enumerate(rows, start=2):
+            raw = _text(_value(row, col["製番"]))
+            customer, fab, region = (_text(_value(row, col[k])) for k in ("顧客", "Fab", "Region"))
+            if not (raw or customer or fab or region):       # empty (other cells, such as the 計画対象 flag, may be filled in)
+                blank_run += 1
+                if blank_run >= blank_run_limit:
+                    break
+                continue
+            blank_run = 0
+            code = tool_code(raw)
+            if not code:
+                warnings.append(f"sheet {sheet} row {excel_row}: seiban {raw!r} is " + ("not a module code" if raw else "empty") + "; row skipped")
+                continue
+            found = {"customer": customer, "fab": fab, "region": region or sites.site_region(customer, fab)}
+            if code not in out:
+                out[code] = found
+            elif [match_key(found[k]) for k in found] != [match_key(out[code][k]) for k in out[code]]:
+                warnings.append(f"sheet {sheet} row {excel_row}: {code} appears twice with different customer / Fab / Region; the first is used")
+        return out, warnings
+    finally:
+        wb.close()
+
 
 def read_seiban_list(path, plan_sheet=PLAN_SHEET, blank_run_limit=BLANK_RUN_LIMIT):
     """Reads the workbook.  Raises SeibanListError when the plan sheet or one of its columns is missing."""

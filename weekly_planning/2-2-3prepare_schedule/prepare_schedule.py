@@ -13,7 +13,7 @@ Inputs
   --su-others       the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list
   --skill-file      the skill-level workbook (.xlsm): skills / status only (optional; without it the
                     skill sheet is looked up inside --su-others)
-  --seiban-info     the seiban info workbook (.xlsx, sheet 製番: module -> customer / fab / region)
+  --seiban-list     the seiban list workbook (the file of tool 2-4; sheet 製番リスト: module -> customer / fab / region)
 Output (in --out-dir)
   <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (file name starts with the --today date)
   01_EnvConfig.yaml           EnvConfig for the run
@@ -38,11 +38,11 @@ from openpyxl import load_workbook
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
-from common import seiban_sheet, su_others   # noqa: E402
+from common import seiban_list as sl, su_others   # noqa: E402
 from common.cell_names import cell_name_key   # noqa: E402
 from common.dates import ymd   # noqa: E402
 from common.flexible_schedule import read_prev_flexible   # noqa: E402
-from common.text import name_key, tool_code   # noqa: E402
+from common.text import match_key, name_key, tool_code   # noqa: E402
 from common.trips import pair_fifo, pair_fifo_repaired, read_mark   # noqa: E402
 from common.worker_skills import STATUS_TO_TYPE, parse_worker_skills   # noqa: E402
 from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
@@ -183,7 +183,7 @@ def infer_trip_region(worker_key, start, end, worker_code_days, code_region, wor
 def build_master_lists(prev_env, seiban_rows, sheet_company_names):
     """
     prev_env: parsed previous EnvConfig 'environment' dict.
-    seiban_rows: {code: {"customer","fab","region"}} (names as in the seiban info workbook)
+    seiban_rows: {code: {"customer","fab","region"}} of every module of the seiban list (common.seiban_list.read_module_sites)
     sheet_company_names: worker company names found in SU_Others (in order)
     Returns dict with the merged lists and name->id maps; ids of existing entries never change.
     """
@@ -338,25 +338,48 @@ def build_misc(sheet, flexible_codes, code_region, worker_id_by_key):
     return misc, rows
 
 
-def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env_workers, valid_ops):
-    """EnvConfig worker_list from the SU_Others workers (skills etc. are computed by the reader).
-    Skills for operations that do not exist in the workflow are dropped (and reported by the caller)."""
+def operations_by_work(env):
+    """[(operation id, work name key)] of every operation of every workflow, in EnvConfig order.
+    The work name key is `match_key` of the operation name (Mech, Elec, QC ...)."""
+    return [(op["id"], match_key(op.get("name")))
+            for wf in env.get("workflow_list") or [] for ph in wf.get("phase_list") or []
+            for op in ph.get("operation_list") or []]
+
+
+def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env_workers, operations):
+    """EnvConfig worker_list from the SU_Others workers.
+
+    A worker's skill is a level per work name (`work_skills`: Mech / Elec / QC, from the skill sheet).  Every operation of
+    that name, in any workflow of the EnvConfig, gets the level; `worker_type` (regular / spot) goes with it.
+    operations: operations_by_work(env).
+    Returns (workers, missing_work, dropped_ops, kept_prev): work names without any operation (count of workers),
+    operations of last week's skills that no longer exist, and the workers whose skills of last week were kept."""
     prev_by_key = {name_key(w["name"]): w for w in prev_env_workers}
-    out, dropped, kept_prev = [], Counter(), []
+    valid_ops = {op for op, _ in operations}
+    known_work = {key for _, key in operations}
+    out, missing_work, dropped, kept_prev = [], Counter(), Counter(), []
     for w in sheet_workers:
         k = name_key(w["name"])
-        skill_map = w.get("skill_map") or {}
-        type_map = w.get("worker_type_by_operation") or {}
+        work_skills = w.get("work_skills") or {}
         prev_w = prev_by_key.get(k) or {}
-        if not skill_map and not w.get("has_skill_ref", True) and prev_w.get("skill_map"):
+        if work_skills:
+            level = {match_key(work): lv for work, lv in work_skills.items()}
+            skill = {op: level[key] for op, key in operations if key in level}
+            wtype = {op: w.get("worker_type") or "spot" for op in skill}
+            for work in work_skills:
+                if match_key(work) not in known_work:
+                    missing_work[work] += 1
+        elif not w.get("has_skill_ref", True) and prev_w.get("skill_map"):
             # not in the skill file: keep the skills of last week instead of erasing them
-            skill_map, type_map = prev_w["skill_map"], prev_w.get("worker_type_by_operation") or {}
+            skill = {op: lv for op, lv in prev_w["skill_map"].items() if op in valid_ops}
+            for op in prev_w["skill_map"]:
+                if op not in valid_ops:
+                    dropped[op] += 1
+            type_map = prev_w.get("worker_type_by_operation") or {}
+            wtype = {op: t for op, t in type_map.items() if op in skill}
             kept_prev.append(w["name"])
-        skill = {op: lv for op, lv in skill_map.items() if op in valid_ops}
-        for op in skill_map:
-            if op not in valid_ops:
-                dropped[op] += 1
-        wtype = {op: t for op, t in type_map.items() if op in skill}
+        else:
+            skill, wtype = {}, {}
         item = {
             "id": worker_id_by_key[k], "name": w["name"],
             "worker_company": company_by_name[w["company_name"]],
@@ -369,21 +392,21 @@ def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env
         if w.get("description"):
             item["description"] = w["description"]
         out.append(item)
-    return out, dropped, kept_prev
+    return out, missing_work, dropped, kept_prev
 
 
 # ----------------------------------------------------------------------------- the whole preparation (pure)
 
 def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip_region=None, plan_range=None,
-            repair_fifo=True, max_gap_days=14, chain_days=3):
+            repair_fifo=True, max_gap_days=14, chain_days=3, seiban_warnings=()):
     """
-    sheet: {"workers": [{name, company_name, is_manager, skill_map, worker_type_by_operation, unavailable, description}],
+    sheet: {"workers": [{name, company_name, is_manager, work_skills {Mech/Elec/QC: level}, worker_type, unavailable, description}],
             "date_map", "personal_map", "color_map", "fifo": {worker_key: {date: 'FI'|'FO'}},
             "fifo_variants": {raw text: (mark, count)}, "plan_range": {...}}
     repair_fifo: FI/FO without a partner are repaired from the busy days (pair_fifo_repaired); False reports and drops them.
     Returns dict(flexible_work, env, schedule, report [lines], stats).
     """
-    report = []
+    report = [f"WARN: seiban list: {w}" for w in seiban_warnings]
     prev_env = (prev_env_doc.get("environment") if isinstance(prev_env_doc, dict) and "environment" in prev_env_doc
                 else prev_env_doc) or {}
     prev_workers = prev_env.get("worker_list") or []
@@ -436,13 +459,13 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
     master = build_master_lists(prev_env, seiban_rows, [w["company_name"] for w in sheet["workers"]])
     env = master["env"]
     worker_id_by_key = final_worker_ids(sheet["workers"], prev_workers)
-    valid_ops = {op["id"] for wf in env.get("workflow_list") or [] for ph in wf.get("phase_list") or []
-                 for op in ph.get("operation_list") or []}
-    env["worker_list"], dropped_ops, kept_prev = build_worker_list(sheet["workers"], worker_id_by_key,
-                                                                   master["company_by_name"], prev_workers, valid_ops)
+    env["worker_list"], missing_work, dropped_ops, kept_prev = build_worker_list(
+        sheet["workers"], worker_id_by_key, master["company_by_name"], prev_workers, operations_by_work(env))
     if kept_prev:
         report.append(f"INFO: {len(kept_prev)} workers are not in the skill file; skills of the previous EnvConfig kept: "
                       + ", ".join(kept_prev[:20]) + (" ..." if len(kept_prev) > 20 else ""))
+    for work, n in sorted(missing_work.items()):
+        report.append(f"WARN: skill {work} of {n} workers dropped (no operation named {work} in any workflow of the previous EnvConfig)")
     for op, n in sorted(dropped_ops.items()):
         report.append(f"WARN: skill for operation {op} of {n} workers dropped (not in the workflow of the previous EnvConfig)")
 
@@ -529,14 +552,14 @@ def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
     for w in su["worker_list"]:
         wid = w["id"]
         if su["worker_in_skill_sheet"].get(wid):
-            skill_map, _why = parse_worker_skills(su["worker_skill_role"].get(wid, ""), su["worker_skill_raw"].get(wid, ""))
+            work_skills, _why = parse_worker_skills(su["worker_skill_role"].get(wid, ""), su["worker_skill_raw"].get(wid, ""))
         else:
-            skill_map = {}
+            work_skills = {}
         wtype = STATUS_TO_TYPE.get(str(su["worker_status"].get(wid, "")).strip().upper(), "spot")
         workers.append({
             "name": w["name"], "company_name": company_name[w["worker_company"]], "is_manager": w["is_manager"],
             "has_skill_ref": bool(su["worker_in_skill_sheet"].get(wid)),
-            "skill_map": skill_map, "worker_type_by_operation": {op: wtype for op in skill_map},
+            "work_skills": work_skills, "worker_type": wtype,
             "unavailable": [u["date"] for u in w["unavailable_dates"]], "description": w.get("description"),
         })
 
@@ -571,8 +594,9 @@ def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
     }
 
 
-def read_seiban(path, start_row):
-    return seiban_sheet.read_seiban_sheet(path, start_row)
+def read_seiban(path, sheet=sl.MASTER_SHEET):
+    """The master list sheet of the seiban list workbook -> ({code: {customer, fab, region}}, warnings)."""
+    return sl.read_module_sites(path, sheet=sheet)
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -584,13 +608,14 @@ def main(argv=None):
     ap.add_argument("--su-others", required=True, help="the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list")
     ap.add_argument("--skill-file", default=None,
                     help="the skill-level workbook (.xlsm): skills / status only (default: look for the skill sheet inside --su-others)")
-    ap.add_argument("--seiban-info", required=True, help="the seiban info workbook (.xlsx, sheet 製番)")
+    ap.add_argument("--seiban-list", required=True, help="the seiban list workbook (.xlsx, the file of tool 2-4)")
     ap.add_argument("--out-dir", required=True, help="folder for <today>_FlexibleWork.yaml, 01_EnvConfig.yaml, 01_Schedule.yaml")
     ap.add_argument("--report", action="store_true", help="also write <today>_prepare_report.txt (every decision and unresolved item)")
     ap.add_argument("--today", default=None, help="YYYY/MM/DD; modules whose work all ended before it become Fixed (default: today)")
     ap.add_argument("--su-sheets", default="予定表_2026")
     ap.add_argument("--skill-sheet", default="予定表_2026 (2)")
-    ap.add_argument("--seiban-start-row", type=int, default=3, help="first 製番 row to read (default 3: the whole list)")
+    ap.add_argument("--seiban-sheet", default=sl.MASTER_SHEET,
+                    help=f"sheet of the seiban list with every module and its customer / Fab / Region (default {sl.MASTER_SHEET})")
     ap.add_argument("--default-trip-region", default=NEUTRAL_REGION_ID,
                     help="region id for Fixed trips whose region cannot be found (default r_other = away, place unknown); "
                          "'none' skips and reports such trips instead")
@@ -607,13 +632,18 @@ def main(argv=None):
     if today is None:
         ap.error("--today must look like 2026/10/01")
     sheets = tuple(s.strip() for s in args.su_sheets.split(",") if s.strip())
+    try:       # the small workbook first, so a wrong file is found before the slow SU_Others read
+        seiban, seiban_warnings = read_seiban(args.seiban_list, args.seiban_sheet)
+    except sl.SeibanListError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     print("reading SU_Others (this takes a while) ...", flush=True)
     sheet = read_sheet(args.su_others, sheets, args.skill_sheet, args.skill_file)
-    seiban = read_seiban(args.seiban_info, args.seiban_start_row)
 
     out = prepare(load_yaml(args.prev_flexible), load_yaml(args.prev_env), sheet, seiban, today,
                   default_trip_region=None if args.default_trip_region.lower() == "none" else args.default_trip_region,
-                  repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days)
+                  repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days,
+                  seiban_warnings=seiban_warnings)
     od = Path(args.out_dir)
     stamp = today.replace("/", "")
     names = [f"{stamp}_FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]

@@ -18,7 +18,7 @@
 | 入力 | 前週の EnvConfig（workflow・fab・region・会社などの定義を引き継ぐ） |
 | 入力 | SU_Others（進行中の作業バー、FI/FO、作業者一覧） |
 | 入力（任意） | スキルレベルのファイル（スキルと Regular/Spot だけを読む） |
-| 入力 | 製番情報ファイル（製番ごとの顧客・fab・region） |
+| 入力 | 製番リストのブック（ツール 2-4 と同じファイル。シート `製番リスト` の製番ごとの顧客・fab・region） |
 | 出力 | `<日付>_FlexibleWork.yaml`（Flexible な製番のリストと Flexible な trip のリスト） |
 | 出力 | `01_EnvConfig.yaml`、`01_Schedule.yaml` |
 | 出力（`--report`） | 判断の理由と、解決できなかった項目のレポート |
@@ -80,7 +80,7 @@ trip の終わりと次の trip の始まりが同じ日付になることは、
 つまり `FlexibleWork.yaml` の trips は「前週のソルバー出力のうち、担当者が変更しなかった FI/FO」。trip が変更されても製番は Fixed にならない。
 
 ### 4.5 Fixed の trip の region
-次の順で決める。(1) 前週に同じ trip があればその region。(2) FI と FO の間にある製番のバーの region（製番情報ファイルから。複数なら一番多いもの）。(3) バーのラベルに含まれる fab 名（3 文字以上で 1 つの region にだけ属するもの）。(4) 決まらなければ `r_other`（場所不明）。`--default-trip-region none` なら出力せずレポートに列挙する。
+次の順で決める。(1) 前週に同じ trip があればその region。(2) FI と FO の間にある製番のバーの region（製番リストの `製番リスト` シートから。複数なら一番多いもの。シートに無い製番は region 不明として扱い、警告は出さない）。(3) バーのラベルに含まれる fab 名（3 文字以上で 1 つの region にだけ属するもの）。(4) 決まらなければ `r_other`（場所不明）。`--default-trip-region none` なら出力せずレポートに列挙する。
 ソルバーは、同じ region の作業が中に無い Fixed trip を結果から消すことがある。週次運用では `allow_cut_fixed_trip: false` にする（ツール 2-6 の既定値）。
 
 ### 4.6 出力される trip
@@ -88,14 +88,15 @@ trip の終わりと次の trip の始まりが同じ日付になることは、
 
 ## 5. Schedule / EnvConfig の作り方
 - Flexible な製番: workflow_task と作業割り当てを前週の FlexibleSchedule からそのままコピー（作業者 id だけ付け替え）。
-- それ以外のバー: 同じ文字のセルを 1 つの misc タスクにまとめ、作業者・日付ごとの Fixed の割り当て（1 日 10 時間）にする。region は製番コードがあればその製番の region、無ければ `r_other`。灰色セルの個人予定は個人予定の misc、赤いセルは休み（unavailable）として EnvConfig に入れる。
+- それ以外のバー: 同じ文字のセルを 1 つの misc タスクにまとめ、作業者・日付ごとの Fixed の割り当て（1 日 10 時間）にする。region は製番コードがあれば製番リストにあるその製番の region、無ければ `r_other`。灰色セルの個人予定は個人予定の misc、赤いセルは休み（unavailable）として EnvConfig に入れる。
 - EnvConfig: workflow・fab・region・顧客・会社・移動日数は前週のものを引き継ぐ（既存の id は変えない）。新しい region / 顧客 / fab / 会社は末尾に追加する。`worker_list` は SU_Others から作り直す（前週にいた作業者は名前で対応付けて id を引き継ぐ）。スキルのファイルに居ない作業者は前週のスキルを引き継ぐ。
+- **スキルは作業名で対応づける。** スキルのファイルの担当職種（`M` = Mech、`E` = Elec、`QC` = QC）とスキルレベルから、作業名ごとのレベルを作る。EnvConfig の**すべての workflow**（ツール 2-4 が作る `wf<n>` を含む）の、同じ名前の作業すべてにそのレベルを設定する（大文字小文字・全角半角・空白は無視）。同じ名前の作業が無い職種は、作業者の数とともにレポートの `WARN` に 1 行出す。Status が `Primary` なら regular、それ以外（`Secondary`・空欄）は spot。
 
 ## 6. 実行方法
 ```
-python prepare_schedule.py --prev-flexible <FlexibleSchedule.yaml> --prev-env <EnvConfig.yaml> --su-others <ファイル> --seiban-info <ファイル> --out-dir <フォルダ> --today YYYY/MM/DD [--skill-file <ファイル>] [--report]
+python prepare_schedule.py --prev-flexible <FlexibleSchedule.yaml> --prev-env <EnvConfig.yaml> --su-others <ファイル> --seiban-list <ファイル> --out-dir <フォルダ> --today YYYY/MM/DD [--skill-file <ファイル>] [--report]
 ```
-Excel の読み込みに約 25 秒かかる。日本語のファイル名が文字化けする場合は `python -X utf8` で実行する。
+`--seiban-sheet` で製番リストのシート名を変えられる（既定は `製番リスト`）。Excel の読み込みに約 25 秒かかる。日本語のファイル名が文字化けする場合は `python -X utf8` で実行する。
 
 ## 7. レポートの見方
 `MODULES:` Flexible のまま残った製番数と Fixed になった数 / `FIXED module …` Fixed の理由 / `TRIPS:` trip の内訳 / `CHANGED flexible trip` 動いた trip / `NOTE … INFERRED` 補正した trip / `WARN` 要確認。

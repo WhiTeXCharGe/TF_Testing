@@ -4,7 +4,7 @@ One folder per tool, named after its step in the weekly flow. Run them in this o
 
 | Step | Folder | In | Out |
 |---|---|---|---|
-| 2-2 + 2-3 | `2-2-3prepare_schedule` ([日本語](2-2-3prepare_schedule/README_ja.md)) | previous `FlexibleSchedule.yaml` + previous EnvConfig, SU_Others workbook (+ skill workbook), seiban info workbook | `<date>_FlexibleWork.yaml`, `01_EnvConfig.yaml`, `01_Schedule.yaml` |
+| 2-2 + 2-3 | `2-2-3prepare_schedule` ([日本語](2-2-3prepare_schedule/README_ja.md)) | previous `FlexibleSchedule.yaml` + previous EnvConfig, SU_Others workbook (+ skill workbook), seiban list workbook | `<date>_FlexibleWork.yaml`, `01_EnvConfig.yaml`, `01_Schedule.yaml` |
 | 2-4 | `2-4apply_seiban_list` | `01_*`, the seiban list workbook | `02_*` |
 | 2-5 | `2-5set_plan_period` | `02_*` | `03_*` |
 | 2-6 | `2-6submit_to_timefold` | `03_*` | run record (`run_info.json`) |

@@ -153,7 +153,7 @@ A seiban that is both white and pink: both rows are skipped and listed.
 
 ## 9. Effects on other tools and open points
 
-- **2-2-3 (needed later):** `common/worker_skills.py` maps the role letters to the fixed ids `p2o1 ... p4o1`. After 2-4 creates `wf<n>...` operations, next week's 2-2-3 would drop the skills of those operations. It has to map by operation **name** using the EnvConfig.
+- **2-2-3 (done):** it now gives the skills of the skill workbook (`M` = Mech, `E` = Elec, `QC` = QC) to **every operation with that name** in every workflow of the EnvConfig, so the `wf<n>...` operations made by 2-4 keep their skills in the next run. It also reads the customer / fab / region of every module from the sheet `製番リスト` of the seiban list workbook (the file 2-4 reads) instead of the old seiban info workbook. Modules missing from that sheet get region `r_other` without a warning.
 - **Cell name:** a fab named after the customer would repeat the name in the cell name of 3-2 / 3-3 (`<customer><fab>_...`); the template can skip the fab when it equals the customer.
 - **Matching includes min / max workers** (5.2): confirm with the team that this is wanted.
 - **Rows with a missing date are skipped** (6.1): confirm.

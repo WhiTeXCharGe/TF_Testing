@@ -1,5 +1,8 @@
 """
-Skill text of a worker (role + skill level) -> the operations the worker can do, and the worker status -> worker type.
+Skill text of a worker (role + skill level) -> the kinds of work the worker can do, and the worker status -> worker type.
+
+The skill is kept per WORK NAME (Mech, Elec, QC), not per operation id: the caller gives the level to every operation of that
+name in the workflows of the EnvConfig (see tool 2-2-3).
 """
 from __future__ import annotations
 
@@ -8,11 +11,11 @@ import re
 from .text import clean_text
 
 
-# role token -> operations it qualifies for ("Q" is a lone-Q typo of QC seen once)
-ROLE_TOKEN_OPS = {"M": ("p2o1",), "E": ("p2o2",), "QC": ("p3o1", "p4o1"), "Q": ("p3o1", "p4o1")}
+# role token of the skill sheet -> work name of the workflows ("Q" is a lone-Q typo of QC seen once)
+ROLE_TOKEN_WORK = {"M": "Mech", "E": "Elec", "QC": "QC", "Q": "QC"}
 
 
-TASK_OPS = ("p2o1", "p2o2", "p3o1", "p4o1")
+WORK_NAMES = ("Mech", "Elec", "QC")
 
 
 STATUS_TO_TYPE = {"PRIMARY": "regular"}  # everything else (Secondary / blank) -> spot
@@ -24,7 +27,7 @@ def split_slash(s: str):
 
 def parse_worker_skills(role_text: str, skill_raw: str):
     """
-    Returns (skill_map, excluded_reason). skill_map is {op: level} with only
+    Returns (skill_map, excluded_reason). skill_map is {work name: level} (Mech / Elec / QC) with only
     nonzero levels; excluded_reason is None for planning targets.
 
       - 担当職種 blank                       -> excluded
@@ -62,7 +65,8 @@ def parse_worker_skills(role_text: str, skill_raw: str):
     for role, lv in zip(roles, per_role):
         if not lv or lv <= 0:
             continue
-        for op in ROLE_TOKEN_OPS.get(role, ()):
-            skill_map[op] = max(skill_map.get(op, 0), lv)
-    skill_map = {op: skill_map[op] for op in TASK_OPS if op in skill_map}
+        work = ROLE_TOKEN_WORK.get(role)
+        if work:
+            skill_map[work] = max(skill_map.get(work, 0), lv)
+    skill_map = {work: skill_map[work] for work in WORK_NAMES if work in skill_map}
     return skill_map, None

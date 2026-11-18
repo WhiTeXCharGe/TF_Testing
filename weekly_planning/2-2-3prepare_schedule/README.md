@@ -3,7 +3,7 @@
 Steps 2-2 and 2-3 in one tool: find what the planner changed in SU_Others, then build the solver input.
 Japanese explanation (how FI/FO is read, repaired and compared): [README_ja.md](README_ja.md).
 
-**In** previous `FlexibleSchedule.yaml`, previous EnvConfig, the SU_Others workbook (optional separate skill-level workbook), the seiban info workbook.
+**In** previous `FlexibleSchedule.yaml`, previous EnvConfig, the SU_Others workbook (optional separate skill-level workbook), the seiban list workbook (the file of tool 2-4; its sheet `製番リスト` gives the customer, fab and region of every module).
 **Out** `<date>_FlexibleWork.yaml` (flexible modules and flexible trips), `01_EnvConfig.yaml`, `01_Schedule.yaml` (and a report with `--report`).
 
 ## What it does
@@ -13,12 +13,13 @@ Japanese explanation (how FI/FO is read, repaired and compared): [README_ja.md](
 - FI/FO is read tolerantly (typos, notes), marks without a partner are repaired from the worker's busy days, and one trip may end on the date the next starts. Trips without a known region get `r_other`.
 - Every flexible assignment row gets a `cell_name` (the text of its bar), also written to `description` when that is empty. 3-2 / 3-3 / the next run of this tool use it.
 - EnvConfig: last week's lists are kept (ids never change), new names are added, `worker_list` is rebuilt from the workbook.
+- **Skills follow the work name.** The skill workbook gives a level per kind of work (`M` = Mech, `E` = Elec, `QC` = QC) and a status (`Primary` = regular, anything else = spot). Every operation with that name, in every workflow of the EnvConfig (also the `wf<n>` workflows made by tool 2-4), gets the level. A name that no operation has is reported as a warning; a worker who is not in the skill workbook keeps last week's skills.
 
 ## Run
 ```
-python prepare_schedule.py --prev-flexible <FlexibleSchedule.yaml> --prev-env <EnvConfig.yaml> --su-others <workbook> --seiban-info <workbook> --out-dir <folder> --today YYYY/MM/DD [--skill-file <workbook>] [--report]
+python prepare_schedule.py --prev-flexible <FlexibleSchedule.yaml> --prev-env <EnvConfig.yaml> --su-others <workbook> --seiban-list <workbook> --out-dir <folder> --today YYYY/MM/DD [--skill-file <workbook>] [--report]
 ```
-Other options: `--su-sheets`, `--skill-sheet`, `--default-trip-region` (default `r_other`, `none` skips such trips), `--no-fifo-repair`, `--max-gap-days` (14), `--chain-days` (3).
+Other options: `--su-sheets`, `--skill-sheet`, `--seiban-sheet` (default `製番リスト`), `--default-trip-region` (default `r_other`, `none` skips such trips), `--no-fifo-repair`, `--max-gap-days` (14), `--chain-days` (3).
 Reading the workbook takes about 25 seconds.
 
 ## Notes

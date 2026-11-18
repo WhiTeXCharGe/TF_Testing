@@ -225,6 +225,96 @@ class Templates(Book):
             self.assertEqual(name, sl.normalise_work_name(text), text)
 
 
+MASTER_HEADER = ["計画対象", "製番", "装置名称", "顧客", "Fab", "Region", "開始可能日", "希望納期", "工程選択"]
+
+
+def master_row(code="530N00001A", customer="Cust A", fab="Fab A", region="Region X", flag=True):
+    return [flag, code, "Tool_X", customer, fab, region, None, None, "工程テンプレート1"]
+
+
+class ModuleSites(unittest.TestCase):
+    """read_module_sites: customer / Fab / Region of every module of the master sheet 製番リスト (tool 2-2-3)."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.path = Path(self.td.name) / "list.xlsx"
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def make(self, rows, sites=None, header=None, sheet="製番リスト", fills=None):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = sheet
+        ws.append(header or MASTER_HEADER)
+        for r in rows:
+            ws.append(r)
+        for row_no, fill in (fills or {}).items():
+            ws.cell(row_no, 2).fill = fill
+        if sites is not None:
+            s = wb.create_sheet("搬入先テーブル")
+            s.append(["搬入先", "顧客", "Fab", "Region"])
+            for r in sites:
+                s.append(r)
+        wb.save(self.path)
+        return sl.read_module_sites(self.path)
+
+    def test_every_module_is_read_whatever_its_flag_or_colour(self):
+        rows = [master_row("530N00001A", flag=True), master_row("530N00002A", "Cust B", "Fab B", "Region Y", flag=False),
+                master_row("530N00003A")]
+        got, warnings = self.make(rows, fills={3: solid("FFFFDCE6"), 4: solid("FFFFFF00")})
+        self.assertEqual({"530N00001A", "530N00002A", "530N00003A"}, set(got))
+        self.assertEqual({"customer": "Cust B", "fab": "Fab B", "region": "Region Y"}, got["530N00002A"])
+        self.assertEqual([], warnings)
+
+    def test_columns_are_found_by_header_and_the_code_is_normalised(self):
+        header = list(reversed(MASTER_HEADER))
+        got, _ = self.make([list(reversed(master_row("５３０ｎ００００１ａ")))], header=header)
+        self.assertEqual({"530N00001A": {"customer": "Cust A", "fab": "Fab A", "region": "Region X"}}, got)
+
+    def test_an_empty_region_comes_from_the_delivery_site_table(self):
+        got, _ = self.make([master_row(region=None), master_row("530N00002A", "Cust Z", "Fab Z", None)],
+                           sites=[["site", "cust　a", "FAB A", "Region S"]])
+        self.assertEqual("Region S", got["530N00001A"]["region"])          # same customer and Fab by name key
+        self.assertIsNone(got["530N00002A"]["region"])                       # no site for this customer / Fab
+
+    def test_a_row_that_is_not_a_module_is_skipped_with_a_warning(self):
+        got, warnings = self.make([master_row("530N00001A"), master_row("TOOL-1"), master_row(None, "Cust B")])
+        self.assertEqual(["530N00001A"], list(got))
+        self.assertEqual(2, len(warnings))
+        self.assertIn("row 3", warnings[0])
+        self.assertIn("not a module code", warnings[0])
+        self.assertIn("row 4", warnings[1])
+        self.assertIn("empty", warnings[1])
+
+    def test_a_module_twice_the_first_row_wins_and_a_difference_is_reported(self):
+        got, warnings = self.make([master_row(region="Region X"), master_row(region="Region Y"), master_row(region="region x")])
+        self.assertEqual("Region X", got["530N00001A"]["region"])
+        self.assertEqual(1, len(warnings))
+        self.assertIn("row 3", warnings[0])
+
+    def test_the_sheet_stops_after_a_run_of_empty_rows(self):
+        self.make([master_row("530N00001A")] + [[None] * 9] * 4 + [master_row("530N00002A")])
+        got, _ = sl.read_module_sites(self.path, blank_run_limit=3)
+        self.assertEqual(["530N00001A"], list(got))
+
+    def test_a_row_with_only_the_flag_filled_in_is_empty_and_gets_no_warning(self):
+        flag_only = [False] + [None] * 8
+        got, warnings = self.make([master_row("530N00001A"), flag_only, flag_only, master_row("530N00002A")])
+        self.assertEqual(["530N00001A", "530N00002A"], list(got))
+        self.assertEqual([], warnings)
+        got, _ = sl.read_module_sites(self.path, blank_run_limit=2)         # and such rows count as empty rows for the stop
+        self.assertEqual(["530N00001A"], list(got))
+
+    def test_a_missing_sheet_or_column_stops_with_a_clear_message(self):
+        with self.assertRaises(sl.SeibanListError) as cm:
+            self.make([master_row()], sheet="other")
+        self.assertIn("製番リスト", str(cm.exception))
+        with self.assertRaises(sl.SeibanListError) as cm:
+            self.make([master_row()], header=[h for h in MASTER_HEADER if h != "Region"])
+        self.assertIn("Region", str(cm.exception))
+
+
 class MatchKey(unittest.TestCase):
     def test_key_ignores_spaces_width_and_case(self):
         self.assertEqual(match_key("Cust"), match_key("Cust "))
