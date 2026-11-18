@@ -83,7 +83,20 @@ def create_workflow(env, template):
         phases.append({"id": f"{wf_id}p{p}", "name": f"p{p}", "operation_list": ops})
     wf = {"id": wf_id, "name": wf_id, "phase_list": phases}
     env.setdefault("workflow_list", []).append(wf)
+    put_workflows_first(env)
     return wf, new_ops
+
+
+def put_workflows_first(env):
+    """Moves workflow_list to the top of the EnvConfig (in place); the other keys keep their order."""
+    if "workflow_list" not in env or next(iter(env)) == "workflow_list":
+        return env
+    rest = {k: v for k, v in env.items() if k != "workflow_list"}
+    workflows = env["workflow_list"]
+    env.clear()
+    env["workflow_list"] = workflows
+    env.update(rest)
+    return env
 
 
 def ensure_workflow(env, template, report):

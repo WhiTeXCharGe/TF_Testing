@@ -436,6 +436,21 @@ class Assembly(unittest.TestCase):
         self.assertFalse(any(line.startswith("WARN: skill") for line in out["report"]))
         self.assertTrue(any("new workflow wf1 created" in line for line in out["report"]))
 
+    def test_workflow_list_is_the_first_key_of_the_env_also_when_the_previous_env_had_it_later(self):
+        env = prev_env()
+        e = env["environment"]
+        e["workflow_list"] = e.pop("workflow_list")                     # now after the master lists
+        self.assertNotEqual("workflow_list", next(iter(e)))
+        out = ps.prepare(prev_flexible(), env, sheet(), SEIBAN, "2026/10/10")
+        keys = list(out["env"]["environment"])
+        self.assertEqual("workflow_list", keys[0])
+        self.assertEqual("worker_list", keys[-1])
+        first_week = prev_env()
+        first_week["environment"]["workflow_list"] = []
+        t = Template(1, "工程テンプレート1", [TemplateOp(1, 1, "Mech", 160, 2, 4)])
+        out = ps.prepare(prev_flexible(), first_week, sheet(), SEIBAN, "2026/10/10", templates={1: t})
+        self.assertEqual("workflow_list", next(iter(out["env"]["environment"])))
+
     def test_a_template_that_matches_a_workflow_makes_no_new_one_and_a_second_run_finds_its_own_workflow(self):
         same = Template(2, "工程テンプレート2", [TemplateOp(2, 1, "Mech", 100, 1, 8)])      # = the Mech operation of wf_tool
         out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10", templates={2: same})

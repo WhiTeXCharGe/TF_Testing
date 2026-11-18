@@ -467,6 +467,7 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
         else:
             report.append(f"WARN: template {number} ({template.sheet}) cannot be used, so it gets no workflow: "
                           + "; ".join(template.problems[:3]))
+    wfs.put_workflows_first(env)    # workflow_list on top, as in the other EnvConfig files
     worker_id_by_key = final_worker_ids(sheet["workers"], prev_workers)
     env["worker_list"], missing_work, dropped_ops, kept_prev = build_worker_list(
         sheet["workers"], worker_id_by_key, master["company_by_name"], prev_workers, operations_by_work(env))

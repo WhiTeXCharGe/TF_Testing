@@ -84,6 +84,16 @@ class Creating(unittest.TestCase):
         self.assertEqual({"id": "wf1p1o2", "name": "Elec"}, ref.ops[(1, 2)])
         self.assertEqual(["wf1p1o1", "wf1p1o2", "wf1p2o1", "wf1p4o1"], [o["id"] for o in ref.new_ops])
 
+    def test_workflow_list_is_put_on_top_when_it_is_created_or_moved(self):
+        env = {"region_list": [], "worker_list": []}                           # no workflow_list yet
+        wfs.ensure_workflow(env, template(1, TEMPLATE_WITH_P1), [])
+        self.assertEqual(["workflow_list", "region_list", "worker_list"], list(env))
+        late = {"region_list": [], "workflow_list": [{"id": "wf_tool"}], "worker_list": []}
+        wfs.put_workflows_first(late)
+        self.assertEqual(["workflow_list", "region_list", "worker_list"], list(late))
+        self.assertEqual([{"id": "wf_tool"}], late["workflow_list"])
+        wfs.put_workflows_first({})                                           # nothing to move, no error
+
     def test_the_work_hours_list_is_not_shared_between_operations(self):
         env = make_env()
         wfs.ensure_workflow(env, template(1, TEMPLATE_WITH_P1), [])
