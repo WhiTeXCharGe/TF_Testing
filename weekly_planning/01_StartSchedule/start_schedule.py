@@ -9,6 +9,7 @@ window:
     python start_schedule.py --su-others <SU_Others.xlsm> --seiban-list <seiban list.xlsm> [--no-submit] [--yes]
 
 Settings (folders, solver address, sheet names) are in plan_assist.config.txt next to this program.
+The program finds the tools of weekly_planning above this folder (the repository) or in a Weekly_planning folder next to it (the exe).
 """
 from __future__ import annotations
 
@@ -17,10 +18,20 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+
+def program_dir():
+    """The folder of the exe, or of this script."""
+    return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+
+
+HERE = program_dir()
+for _root in (HERE.parent, HERE / "Weekly_planning"):        # the repository layout, then the layout of the exe
+    if (_root / "common").is_dir():
+        sys.path.insert(0, str(_root))
+        break
 sys.path.insert(0, str(HERE))
-from pa import settings as st   # noqa: E402
-from pa.start import run_start  # noqa: E402
+from common import plan_settings as st   # noqa: E402
+from start_run import run_start   # noqa: E402
 
 
 def parse_day(text):
@@ -44,7 +55,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     try:
-        settings = st.load(args.config)
+        settings = st.load(args.config, HERE)
     except st.SettingsError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -62,7 +73,7 @@ def main(argv=None):
 
         result = run_start(settings, args.su_others, args.seiban_list, day, log=show, submit=submit, overwrite=args.yes)
         return 0 if result.ok else 1
-    from pa.ui import run_window     # tkinter is only needed for the window
+    from start_window import run_window     # tkinter is only needed for the window
     run_window(settings, day, args.su_others or "", args.seiban_list or "", submit=submit)
     return 0
 

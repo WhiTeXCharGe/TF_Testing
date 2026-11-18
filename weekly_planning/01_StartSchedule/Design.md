@@ -1,6 +1,7 @@
 # plan_assist — Design (part 1: 01_StartSchedule)
 
-`plan_assist` is the layer the weekly user works with. It runs the tools of `weekly_planning` in order, so the user gives only two files.
+`plan_assist` is the layer the weekly user works with. It lives inside `weekly_planning`: one folder per program (`01_StartSchedule`,
+later `02_UpdateSchedule`, which another person writes), and the code both need is in `common` (settings, week folders, tool runner). It runs the tools of `weekly_planning` in order, so the user gives only two files.
 It contains **no planning logic**: it finds the files, writes a small settings file for each tool, calls the tool, checks the result and
 keeps one folder per week. Every tool of `weekly_planning` still runs on its own, unchanged.
 

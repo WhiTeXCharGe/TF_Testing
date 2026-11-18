@@ -1,19 +1,22 @@
 """01_StartSchedule: tools 2-2-3, 2-4, 2-5 and 2-6 in one run, from two files of the user.
 
 run_start() has no window and no command line: it takes the two files and the date, works in Work/<YYYYMMDD>/ and reports every line
-through `log`.  The window (ui.py) and the command line (start_schedule.py) both call it.
+through `log`.  The window (start_window.py) and the command line (start_schedule.py) both call it.
 """
 from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import weeks
-from .settings import SOLVER_KEYS, SettingsError
-from .tools import ToolRunner
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+from common import week_folders as weeks   # noqa: E402
+from common.plan_settings import SOLVER_KEYS, SettingsError   # noqa: E402
+from common.tool_runner import ToolRunner   # noqa: E402
 
 STEPS = ("2-2-3", "2-4", "2-5", "2-6")
 EXCEL = (".xlsm", ".xlsx")

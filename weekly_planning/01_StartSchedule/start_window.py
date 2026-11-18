@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import weeks
-from .start import run_start
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
+sys.path.insert(0, str(HERE))
+from common import week_folders as weeks   # noqa: E402
+from start_run import run_start   # noqa: E402
 
 EXCEL_TYPES = [("Excel", "*.xlsm *.xlsx"), ("All files", "*.*")]
 

@@ -6,12 +6,13 @@ import unittest
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (the folder of common)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # 01_StartSchedule/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import week_folders as weeks   # noqa: E402
+from common.plan_settings import Settings   # noqa: E402
 from fake_tools import calls, make_tools   # noqa: E402
-from pa import weeks   # noqa: E402
-from pa.settings import Settings   # noqa: E402
-from pa.start import run_start   # noqa: E402
+from start_run import run_start   # noqa: E402
 
 DAY = date(2026, 11, 17)
 WEEK = "20261117"

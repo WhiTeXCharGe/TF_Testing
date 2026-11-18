@@ -1,4 +1,4 @@
-"""The week folders of plan_assist: Work/<YYYYMMDD>/ with input/, steps/, logs/ and the files of the next week.
+"""The week folders of the programs the weekly user runs (plan_assist): Work/<YYYYMMDD>/ with input/, steps/, logs/ and the files of the next week.
 
 No state is kept outside the week folders: the previous week is found by looking at them.
 """

@@ -7,15 +7,16 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (the folder of common)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # 01_StartSchedule/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import week_folders as weeks   # noqa: E402
+from common.plan_settings import Settings   # noqa: E402
 from fake_tools import make_tools   # noqa: E402
-from pa import weeks   # noqa: E402
-from pa.settings import Settings   # noqa: E402
 
 try:
     import tkinter
-    from pa import ui
+    import start_window as ui
     tkinter.Tk().destroy()
     HAS_SCREEN = True
 except Exception:          # no tkinter or no display

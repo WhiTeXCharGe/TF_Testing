@@ -1,12 +1,15 @@
-# plan_assist
+# 01_StartSchedule
 
-The programs the weekly user runs, on top of the tools of `weekly_planning`. The user gives two files; everything else is automatic.
-Design and reasons: [Design.md](Design.md).
+Part 1 of `plan_assist`, the programs the weekly user runs on top of the tools of `weekly_planning`: it runs 2-2-3, 2-4, 2-5 and 2-6 in
+one go. The user gives two files; everything else is automatic. Design and reasons: [Design.md](Design.md).
 
-| Program | Runs | Status |
-|---|---|---|
-| `01_StartSchedule` (`start_schedule.py`) | 2-2-3, 2-4, 2-5, 2-6 | done (runs as a Python script; the `.exe` is not built yet) |
-| `02_UpdateSchedule` | 3-1, 3-2, 3-3 | part 2, not written yet |
+| Program | Folder | Runs | Status |
+|---|---|---|---|
+| `01_StartSchedule` | `01_StartSchedule` (this folder) | 2-2-3, 2-4, 2-5, 2-6 | done (runs as a Python script; the `.exe` is not built yet) |
+| `02_UpdateSchedule` | `02_UpdateSchedule` (by someone else) | 3-1, 3-2, 3-3 | not here yet |
+
+Code shared with part 2 is in `common`: `plan_settings.py` (plan_assist.config.txt), `week_folders.py` (the week folders and their status),
+`tool_runner.py` (runs a tool from its file). Here: `start_schedule.py` (entry), `start_run.py` (the steps), `start_window.py` (the window).
 
 ## 01_StartSchedule
 
@@ -19,10 +22,13 @@ python start_schedule.py --su-others <file> --seiban-list <file> [--no-submit] [
 - It stops at the first tool that fails and says which one and why.
 
 ### Folders
+On the user's PC (the exe next to a copy of `weekly_planning`); in the repository the program runs from this folder and the tools are the
+folders above it.
 ```
 plan_assist/
+├─ 01_StartSchedule.exe        (in the repository: this folder, with start_schedule.py)
 ├─ plan_assist.config.txt      settings (see the comments in the file)
-├─ Weekly_planning/            the scripts of weekly_planning (next to the program; in the repository: ../weekly_planning)
+├─ Weekly_planning/            a copy of weekly_planning (common/, 2-2-3..., 2-4..., 2-5..., 2-6...)
 ├─ Master/                     first week only: EnvConfig_start.yaml and the skill workbook ("*skill*")
 └─ Work/<YYYYMMDD>/            one folder per week
    ├─ week_status.json         started / ready / submitted / failed, the step, the run id
@@ -37,5 +43,5 @@ plan_assist/
 - The tools never read their own `config.txt` here: the program writes `steps/config_2-4.txt` and `steps/config_2-6.txt` for them.
 
 ## Tests
-`python -m unittest discover -s tests` inside this folder. They use small fake tools, so no Excel file and no solver are needed
-(`test_ui.py` opens the window and is skipped when there is no screen).
+`python -m unittest discover -s tests` inside this folder (and in `common` for the shared code). They use small fake tools, so no Excel
+file and no solver are needed (`test_ui.py` opens the window and is skipped when there is no screen).

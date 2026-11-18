@@ -1,4 +1,5 @@
-"""plan_assist.config.txt: the settings of 01_StartSchedule / 02_UpdateSchedule.  Standard library only.
+"""plan_assist.config.txt: the settings of the programs the weekly user runs (01_StartSchedule, 02_UpdateSchedule).
+Standard library only.
 
 Same plain `key = value` format as the config.txt of the tools: blank lines and lines starting with # or ; are ignored, keys are not
 case sensitive ("-" and "_" are the same), a value that is left empty counts as "not set", relative paths are relative to the
@@ -7,7 +8,6 @@ folder of the file.  A missing default file gives the defaults (folders next to 
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 CONFIG_NAME = "plan_assist.config.txt"
@@ -23,13 +23,6 @@ TRUE, FALSE = ("true", "yes", "on", "1"), ("false", "no", "off", "0")
 
 class SettingsError(Exception):
     """The settings file is missing (when asked for), unreadable or has a value that cannot be used."""
-
-
-def app_dir():
-    """The folder of the exe, or of the plan_assist folder when the scripts are run."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
 
 
 def parse_text(text):
@@ -58,7 +51,7 @@ class Settings:
     def __init__(self, values=None, path=None, base_dir=None, unknown=()):
         self.values = dict(values or {})
         self.path = Path(path) if path else None
-        self.base_dir = Path(base_dir) if base_dir else (self.path.resolve().parent if self.path else app_dir())
+        self.base_dir = Path(base_dir) if base_dir else (self.path.resolve().parent if self.path else Path.cwd())
         self.unknown = list(unknown)
 
     def has(self, key):
@@ -107,12 +100,12 @@ class Settings:
 
     @property
     def tools_dir(self):
-        """The folder of the weekly_planning scripts: tools_dir, else Weekly_planning next to the program, else (running the
-        scripts from the repository) the weekly_planning folder next to plan_assist."""
+        """The folder of the weekly_planning scripts: tools_dir, else Weekly_planning next to the settings / program, else (the
+        scripts run from the repository, the program folder is inside weekly_planning) the folder above."""
         explicit = self.folder("tools_dir")
         if explicit:
             return explicit
-        candidates = [self.base_dir / "Weekly_planning", self.base_dir.parent / "weekly_planning"]
+        candidates = [self.base_dir / "Weekly_planning", self.base_dir.parent]
         return next((c for c in candidates if (c / "common").is_dir()), candidates[0])
 
     def master_skill_file(self):
@@ -130,14 +123,16 @@ class Settings:
         return p if p.is_file() else None
 
 
-def load(path=None):
-    """The Settings of `path`, else of plan_assist.config.txt next to the program (a missing default file: defaults)."""
+def load(path=None, program_dir=None):
+    """The Settings of `path`, else of plan_assist.config.txt in `program_dir`, the folder of the program (a missing default file
+    gives the defaults, with the folders next to the program)."""
     explicit = path is not None
-    p = Path(path) if explicit else app_dir() / CONFIG_NAME
+    program_dir = Path(program_dir) if program_dir else Path.cwd()
+    p = Path(path) if explicit else program_dir / CONFIG_NAME
     if not p.is_file():
         if explicit:
             raise SettingsError(f"settings file not found: {p}")
-        return Settings(base_dir=app_dir())
+        return Settings(base_dir=program_dir)
     try:
         text = p.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
