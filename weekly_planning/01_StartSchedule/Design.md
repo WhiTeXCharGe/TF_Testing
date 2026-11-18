@@ -53,5 +53,5 @@ plan_assist/
 ## Not in this part
 
 - 02_UpdateSchedule (3-1, 3-2, 3-3), the top-level result files of the week.
-- Building the `.exe` (PyInstaller) — the program runs as `python start_schedule.py` first.
+- (Done afterwards) the `.exe`: `build_exe.py` builds a one-folder PyInstaller exe; the tools stay outside it, in `Weekly_planning/`.
 - Locking for several people using the same `Work` folder.

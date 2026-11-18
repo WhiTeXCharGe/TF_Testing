@@ -14,9 +14,17 @@ The program finds the tools of weekly_planning above this folder (the repository
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import traceback
 from datetime import date, datetime
 from pathlib import Path
+
+# A windowed exe has no console: sys.stdout / sys.stderr are None. Remember that, and give the program something to write to.
+NO_CONSOLE = sys.stdout is None or sys.stderr is None
+for _name in ("stdout", "stderr"):
+    if getattr(sys, _name) is None:
+        setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
 
 
 def program_dir():
@@ -32,6 +40,26 @@ for _root in (HERE.parent, HERE / "Weekly_planning"):        # the repository la
 sys.path.insert(0, str(HERE))
 from common import plan_settings as st   # noqa: E402
 from start_run import run_start   # noqa: E402
+
+
+def fail_visibly(text, title="01 Start Schedule"):
+    """An error message the user can see: on stderr, and (windowed exe: nobody sees stderr) in plan_assist_error.txt and a message box."""
+    print(text, file=sys.stderr)
+    if not NO_CONSOLE:
+        return
+    try:
+        (HERE / "plan_assist_error.txt").write_text(text + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    try:
+        import tkinter
+        from tkinter import messagebox
+        root = tkinter.Tk()
+        root.withdraw()
+        messagebox.showerror(title, text)
+        root.destroy()
+    except Exception:
+        pass
 
 
 def parse_day(text):
@@ -57,7 +85,7 @@ def main(argv=None):
     try:
         settings = st.load(args.config, HERE)
     except st.SettingsError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        fail_visibly(f"Error: {e}")
         return 1
     day = args.date or date.today()
     submit = False if args.no_submit else None
@@ -73,8 +101,12 @@ def main(argv=None):
 
         result = run_start(settings, args.su_others, args.seiban_list, day, log=show, submit=submit, overwrite=args.yes)
         return 0 if result.ok else 1
-    from start_window import run_window     # tkinter is only needed for the window
-    run_window(settings, day, args.su_others or "", args.seiban_list or "", submit=submit)
+    try:
+        from start_window import run_window     # tkinter is only needed for the window
+        run_window(settings, day, args.su_others or "", args.seiban_list or "", submit=submit)
+    except Exception:
+        fail_visibly("The program stopped because of an unexpected error:\n\n" + traceback.format_exc())
+        return 1
     return 0
 
 

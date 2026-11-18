@@ -3,9 +3,11 @@ import contextlib
 import io
 import sys
 import tempfile
+import types
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (the folder of common)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # 01_StartSchedule/
@@ -77,6 +79,32 @@ class CommandLine(TempCase):
             rc = start_schedule.main(["--config", str(self.root / "none.txt"), "--no-ui"])
         self.assertEqual(1, rc)
         self.assertIn("settings file not found", err.getvalue())
+
+    def test_without_a_console_an_error_is_kept_in_a_file_and_shown(self):
+        # the windowed exe has no console: the message must reach the user another way
+        with mock.patch.object(start_schedule, "NO_CONSOLE", True), mock.patch.object(start_schedule, "HERE", self.root), \
+                mock.patch("tkinter.messagebox.showerror") as box, mock.patch("tkinter.Tk"), contextlib.redirect_stderr(io.StringIO()):
+            rc = start_schedule.main(["--config", str(self.root / "none.txt"), "--no-ui"])
+        self.assertEqual(1, rc)
+        self.assertIn("settings file not found", (self.root / "plan_assist_error.txt").read_text(encoding="utf-8"))
+        self.assertIn("settings file not found", box.call_args[0][1])
+
+    def test_with_a_console_nothing_is_written_and_no_box_is_shown(self):
+        with mock.patch.object(start_schedule, "HERE", self.root), mock.patch("tkinter.messagebox.showerror") as box, \
+                contextlib.redirect_stderr(io.StringIO()):
+            start_schedule.main(["--config", str(self.root / "none.txt"), "--no-ui"])
+        box.assert_not_called()
+        self.assertFalse((self.root / "plan_assist_error.txt").exists())
+
+    def test_a_crash_of_the_window_is_reported_not_raised(self):
+        fake = types.ModuleType("start_window")
+        fake.run_window = mock.Mock(side_effect=RuntimeError("window broke"))
+        err = io.StringIO()
+        with mock.patch.dict(sys.modules, {"start_window": fake}), contextlib.redirect_stderr(err):
+            rc = start_schedule.main(["--config", str(self.root / "plan_assist.config.txt")])
+        self.assertEqual(1, rc)
+        self.assertIn("unexpected error", err.getvalue())
+        self.assertIn("window broke", err.getvalue())
 
     def test_the_date_formats(self):
         self.assertEqual(date(2026, 11, 17), start_schedule.parse_day("20261117"))

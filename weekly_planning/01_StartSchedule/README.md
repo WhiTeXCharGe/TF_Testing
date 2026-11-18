@@ -5,7 +5,7 @@ one go. The user gives two files; everything else is automatic. Design and reaso
 
 | Program | Folder | Runs | Status |
 |---|---|---|---|
-| `01_StartSchedule` | `01_StartSchedule` (this folder) | 2-2-3, 2-4, 2-5, 2-6 | done (runs as a Python script; the `.exe` is not built yet) |
+| `01_StartSchedule` | `01_StartSchedule` (this folder) | 2-2-3, 2-4, 2-5, 2-6 | done: runs as a Python script and as an `.exe` (`build_exe.py`) |
 | `02_UpdateSchedule` | `02_UpdateSchedule` (by someone else) | 3-1, 3-2, 3-3 | not here yet |
 
 Code shared with part 2 is in `common`: `plan_settings.py` (plan_assist.config.txt), `week_folders.py` (the week folders and their status),
@@ -41,6 +41,20 @@ plan_assist/
 - **Running a week again:** the old `steps/` and `logs/` are renamed `steps_old_<time>` / `logs_old_<time>`, never deleted. A week that was
   already sent to the solver asks first (window) or needs `--yes`.
 - The tools never read their own `config.txt` here: the program writes `steps/config_2-4.txt` and `steps/config_2-6.txt` for them.
+
+## Build the exe
+```
+python -m pip install pyinstaller          # once
+python build_exe.py [--out <folder>] [--console]
+```
+Result: `dist/plan_assist/` (about 80 MB, one folder), the layout shown above: `01_StartSchedule.exe` with `_internal/`, `plan_assist.config.txt`,
+`Weekly_planning/` (a copy of the tools without tests and without their `config.txt`), `Master/` and `Work/`. Copy that folder to the user's PC.
+- The tools are **not** inside the exe: it loads them from `Weekly_planning/`, so a tool can be updated by replacing its folder. What is inside
+  the exe is Python, tkinter and the libraries the tools import (the script finds them by reading the tools). A tool that starts to import a
+  new library needs a new build. `common` is left out of the exe on purpose, so the exe and the tools use the same `common`.
+- The exe has no console. A start-up error is shown in a message box and written to `plan_assist_error.txt` next to the exe; the log of a run
+  is `Work/<week>/logs/start_log.txt`. `--console` builds a version with a console window for finding problems.
+- `dist/` is build output: do not commit it.
 
 ## Tests
 `python -m unittest discover -s tests` inside this folder (and in `common` for the shared code). They use small fake tools, so no Excel
