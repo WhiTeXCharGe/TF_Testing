@@ -13,6 +13,7 @@ One folder per tool, named after its step in the weekly flow. Run them in this o
 | 3-2 | `3-2extract_flexible_schedule` | `04_*` | `FlexibleSchedule.yaml` |
 | 3-3 | `3-3write_su_others` | `FlexibleSchedule.yaml`, `04_EnvConfig.yaml`, SU_Others workbook (a copy) | rewritten SU_Others workbook |
 
+- `plan_assist` (the folder next to this one) runs these tools in one go for the weekly user, with a window for the two input files.
 - Python 3.12 with `pyyaml`, `openpyxl`, `pandas`. Tools 2-6 and 3-1 need only `pyyaml`.
 - Tools 2-4, 2-6 and 3-1 each have a `config.txt` in their own folder (2-6 and 3-1: local or online mode, the Azure address, input and output, run id, solver parameters; 2-4: input files, seiban list, output), so they run with no options. A command line option replaces a setting for one run.
 - Run a tool from the `tools` folder as `python -X utf8 weekly_planning/<folder>/<script>.py <options>`; `--help` lists the options.
