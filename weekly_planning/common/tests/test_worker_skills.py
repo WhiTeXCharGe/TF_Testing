@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (the folder of common)
-from common.worker_skills import STATUS_TO_TYPE, parse_worker_skills   # noqa: E402
+from common.worker_skills import DEFAULT_ROLE_LEVEL, STATUS_TO_TYPE, parse_worker_skills, role_skills   # noqa: E402
 
 
 class ParseWorkerSkills(unittest.TestCase):
@@ -39,6 +39,26 @@ class ParseWorkerSkills(unittest.TestCase):
 
     def test_an_unknown_role_gives_no_skill(self):
         self.assertEqual(({}, None), parse_worker_skills("X", "2"))
+
+
+class RoleSkills(unittest.TestCase):
+    def test_every_work_of_the_role_gets_the_level_in_the_order_mech_elec_qc(self):
+        self.assertEqual({"Mech": 1, "QC": 1}, role_skills("M/QC"))
+        self.assertEqual({"Mech": 2, "Elec": 2, "QC": 2}, role_skills("QC／E/M", 2))
+        self.assertEqual(["Mech", "Elec", "QC"], list(role_skills("QC/E/M")))
+
+    def test_case_spaces_and_the_lone_q_typo_are_read_like_the_skill_sheet(self):
+        self.assertEqual({"Mech": 1, "QC": 1}, role_skills(" m / q "))
+
+    def test_roles_that_are_no_kind_of_work_and_empty_roles_give_nothing(self):
+        self.assertEqual({}, role_skills("搬送"))
+        self.assertEqual({}, role_skills(""))
+        self.assertEqual({}, role_skills(None))
+        self.assertEqual({"Mech": 1}, role_skills("M/通訳"))
+
+    def test_a_level_of_zero_gives_nothing(self):
+        self.assertEqual({}, role_skills("M", 0))
+        self.assertEqual(DEFAULT_ROLE_LEVEL, 1)
 
 
 class StatusToType(unittest.TestCase):

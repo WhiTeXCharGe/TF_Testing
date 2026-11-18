@@ -1,144 +1,212 @@
 #!/usr/bin/env python3
-"""
-set_plan_period.py  --  weekly planning tool "2-5": decide the plan period of the solver input.
-
-Input   N/02_Schedule.yaml, N/02_EnvConfig.yaml   (after the planner added the new modules, step 2-4)
-Output  N/03_Schedule.yaml, N/03_EnvConfig.yaml
-
-  start_date = the later of (a) the earliest day any module to be optimised may start (earliest phase start_date) and
-                            (b) today + K days
-  end_date   = the latest due date of the modules to be optimised (latest phase end_date) + L days
-  K and L are constants (--k, --l) to be tuned for the operation.
-  Assignments earlier than start_date (only those) become Fixed; a row that crosses start_date is split in two rows.
-
-The modules to be optimised are the workflow tasks of the schedule: in the weekly flow the Schedule of step 2-3 only
-contains the flexible modules (everything else is a misc task), plus the modules added in step 2-4.
-03_EnvConfig.yaml is a byte-for-byte copy of 02_EnvConfig.yaml (the period does not change it).
-"""
+"""最適化の計画期間を設定し、開始日前のassignmentを固定する。"""
 from __future__ import annotations
 
 import argparse
-import copy
-import shutil
+import os
 import sys
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
 from common.dates import ymd   # noqa: E402
 from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 
-DEFAULT_K = 7     # days of the plan that are frozen: the run is on the weekend, the planner reviews the result in the week
-DEFAULT_L = 30    # days of slack after the latest due date
+
+PLAN_FLEXIBILITIES = {"Flexible", "Reluctant", "Fixed"}
+PLAN_START_DAYS = 7
+PLAN_END_DAYS = 30
 
 
-def _day(s):
-    return datetime.strptime(s, "%Y/%m/%d").date()
+def _date(value: Any, location: str) -> date:
+    """日付値を ``date`` に変換し、不正な場合は項目位置付きでエラーにする。"""
+    normalized = ymd(value)
+    if normalized is None:
+        raise ValueError(f"{location}: invalid or missing date {value!r}")
+    return datetime.strptime(normalized, "%Y/%m/%d").date()
 
 
-def _plus(s, n):
-    return (_day(s) + timedelta(days=n)).strftime("%Y/%m/%d")
+def _mapping(value: Any, location: str) -> dict[Any, Any]:
+    """Scheduleの値がマッピング形式であることを検証する。"""
+    if not isinstance(value, dict):
+        raise ValueError(f"{location}: expected a mapping")
+    return value
 
 
-def plan_period(schedule_doc, today, k=DEFAULT_K, l=DEFAULT_L):
-    """
-    schedule_doc: parsed 02_Schedule.yaml ({"schedule": {...}}).  today: 'YYYY/MM/DD'.
-    Returns (new schedule doc, report [str], info dict).  The input is not modified.
-    """
-    doc = copy.deepcopy(schedule_doc)
-    sch = doc["schedule"]
-    report = []
-    starts, ends = [], []
-    for task in sch.get("workflow_task_list") or []:
-        for ph in task.get("phase_task_list") or []:
-            s, e = ymd(ph.get("start_date")), ymd(ph.get("end_date"))
-            if s:
-                starts.append(s)
-            if e:
-                ends.append(e)
-    if not starts or not ends:
-        raise ValueError("the schedule has no workflow task with phase start_date / end_date: nothing to optimise")
-    earliest, latest = min(starts), max(ends)
-    start = max(earliest, _plus(today, k))
-    end = _plus(latest, l)
-    if end < start:
-        report.append(f"WARN: latest due date + L ({end}) is before start_date ({start}): end_date set to start_date + L")
-        end = _plus(start, l)
-    old = sch.get("plan_range") or {}
-    report.append(f"earliest start of the modules {earliest}, today + K ({k}) {_plus(today, k)} -> start_date {start}")
-    report.append(f"latest due date of the modules {latest}, + L ({l}) -> end_date {end}")
-    report.append(f"plan_range {old.get('start_date')}..{old.get('end_date')} -> {start}..{end}")
-    sch["plan_range"] = {"start_date": start, "end_date": end}
-
-    # assignments before start_date are Fixed (only those days)
-    rows, fixed_days, split_rows, whole_rows = [], 0, 0, 0
-    for a in sch.get("assignment_list") or []:
-        flex = str(a.get("plan_flexibility") or "Flexible")
-        items = a.get("work_date_list") or []
-        before = [it for it in items if (ymd(it.get("date")) or "9999/99/99") < start]
-        if flex == "Fixed" or not before:
-            rows.append(a)
-            continue
-        after = [it for it in items if it not in before]
-        fixed_row = copy.deepcopy(a)
-        fixed_row["plan_flexibility"] = "Fixed"
-        fixed_row["work_date_list"] = before
-        fixed_row["start_date"] = min(ymd(it["date"]) for it in before)
-        fixed_row["end_date"] = max(ymd(it["date"]) for it in before)
-        rows.append(fixed_row)
-        fixed_days += len(before)
-        if after:
-            rest = copy.deepcopy(a)
-            rest["work_date_list"] = after
-            rest["start_date"] = min(ymd(it["date"]) for it in after)
-            rest["end_date"] = max(ymd(it["date"]) for it in after)
-            rows.append(rest)
-            split_rows += 1
-        else:
-            whole_rows += 1
-    sch["assignment_list"] = rows
-    report.append(f"ASSIGNMENTS before {start}: {fixed_days} worker-days made Fixed "
-                  f"({whole_rows} rows completely, {split_rows} rows split at the start date)")
-
-    beyond = sum(1 for a in rows for it in a.get("work_date_list") or [] if (ymd(it.get("date")) or "") > end)
-    if beyond:
-        report.append(f"WARN: {beyond} worker-days of existing assignments lie after end_date {end}")
-    trips_beyond = sum(1 for e in sch.get("trip_list") or [] for t in e.get("trips") or [] if (ymd(t.get("end_date")) or "") > end)
-    if trips_beyond:
-        report.append(f"WARN: {trips_beyond} trips end after end_date {end}")
-    return doc, report, {"start_date": start, "end_date": end, "fixed_days": fixed_days, "split_rows": split_rows}
+def _list(value: Any, location: str) -> list[Any]:
+    """Scheduleの値がリスト形式であることを検証する。"""
+    if not isinstance(value, list):
+        raise ValueError(f"{location}: expected a list")
+    return value
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="Weekly planning 2-5: decide the plan period of the solver input.")
-    ap.add_argument("--schedule", required=True, help="N/02_Schedule.yaml")
-    ap.add_argument("--env", required=True, help="N/02_EnvConfig.yaml")
-    ap.add_argument("--out-dir", required=True, help="folder for 03_Schedule.yaml and 03_EnvConfig.yaml")
-    ap.add_argument("--today", default=None, help="YYYY/MM/DD (default: today)")
-    ap.add_argument("--k", type=int, default=DEFAULT_K, help=f"start_date is at least today + K days (default {DEFAULT_K})")
-    ap.add_argument("--l", type=int, default=DEFAULT_L, help=f"end_date = latest due date + L days (default {DEFAULT_L})")
-    ap.add_argument("--report", action="store_true", help="also write 03_plan_period_report.txt")
-    args = ap.parse_args(argv)
+def _validated_schedule(
+    document: Any,
+) -> tuple[
+    dict[Any, Any],
+    dict[Any, Any],
+    bool,
+    list[tuple[date, date]],
+    list[dict[Any, Any]],
+]:
+    """Scheduleの構造と日付を検証し、ルート・Schedule・phase情報を返す。"""
+    root = _mapping(document, "Schedule")
+    wrapped = "schedule" in root
+    schedule = _mapping(root["schedule"], "schedule") if wrapped else root
 
-    today = ymd(args.today) if args.today else date.today().strftime("%Y/%m/%d")
-    if today is None:
-        ap.error("--today must look like 2026/10/01")
-    if args.k < 0 or args.l < 0:
-        ap.error("--k and --l must not be negative")
-    doc, report, info = plan_period(load_yaml(args.schedule), today, args.k, args.l)
-    od = Path(args.out_dir)
-    od.mkdir(parents=True, exist_ok=True)
-    dump_yaml(od / "03_Schedule.yaml", doc)
-    shutil.copyfile(args.env, od / "03_EnvConfig.yaml")
-    print(f"set_plan_period (today = {today}, K = {args.k}, L = {args.l})")
-    print("\n".join(report))
-    names = ["03_Schedule.yaml", "03_EnvConfig.yaml"]
-    if args.report:
-        (od / "03_plan_period_report.txt").write_text(f"today = {today}, K = {args.k}, L = {args.l}\n" + "\n".join(report) + "\n",
-                                                      encoding="utf-8")
-        names.append("03_plan_period_report.txt")
-    print(f"written to {od}: " + ", ".join(names))
+    required = ("plan_range", "workflow_task_list", "assignment_list")
+    missing = [key for key in required if key not in schedule]
+    if missing:
+        raise ValueError(f"Schedule is missing required keys: {', '.join(missing)}")
+
+    plan_range = _mapping(schedule["plan_range"], "plan_range")
+    for key in ("start_date", "end_date"):
+        if key not in plan_range:
+            raise ValueError(f"plan_range is missing required key: {key}")
+
+    phases = []
+    workflows = _list(schedule["workflow_task_list"], "workflow_task_list")
+    for workflow_index, workflow in enumerate(workflows):
+        workflow = _mapping(workflow, f"workflow_task_list[{workflow_index}]")
+        if "phase_task_list" not in workflow:
+            raise ValueError(f"workflow_task_list[{workflow_index}] is missing phase_task_list")
+        phase_list = _list(workflow["phase_task_list"],
+                           f"workflow_task_list[{workflow_index}].phase_task_list")
+        for phase_index, phase in enumerate(phase_list):
+            location = f"workflow_task_list[{workflow_index}].phase_task_list[{phase_index}]"
+            phase = _mapping(phase, location)
+            start = _date(phase.get("start_date"), f"{location}.start_date")
+            end = _date(phase.get("end_date"), f"{location}.end_date")
+            if start > end:
+                raise ValueError(f"{location}: start_date is after end_date")
+            phases.append((start, end))
+
+    assignments = _list(schedule["assignment_list"], "assignment_list")
+    for assignment_index, assignment in enumerate(assignments):
+        location = f"assignment_list[{assignment_index}]"
+        assignment = _mapping(assignment, location)
+        if "start_date" not in assignment or "end_date" not in assignment:
+            raise ValueError(f"{location}: start_date and end_date are required")
+        start = _date(assignment["start_date"], f"{location}.start_date")
+        end = _date(assignment["end_date"], f"{location}.end_date")
+        if start > end:
+            raise ValueError(f"{location}: start_date is after end_date")
+
+        if "plan_flexibility" in assignment:
+            flexibility = assignment["plan_flexibility"]
+            if not isinstance(flexibility, str) or flexibility not in PLAN_FLEXIBILITIES:
+                raise ValueError(
+                    f"{location}.plan_flexibility: expected one of "
+                    f"{', '.join(sorted(PLAN_FLEXIBILITIES))}"
+                )
+
+        work_dates = _list(assignment.get("work_date_list"),
+                           f"{location}.work_date_list")
+        if not work_dates:
+            raise ValueError(f"{location}.work_date_list: must not be empty")
+        for work_index, work in enumerate(work_dates):
+            work_location = f"{location}.work_date_list[{work_index}]"
+            work = _mapping(work, work_location)
+            work_date = _date(work.get("date"), f"{work_location}.date")
+            if not start <= work_date <= end:
+                raise ValueError(f"{work_location}.date: outside assignment start_date/end_date")
+
+    return root, schedule, wrapped, phases, assignments
+
+
+def _calculate_plan_period(
+    phases: Sequence[tuple[date, date]],
+    today: date,
+    plan_start_override: date | None = None,
+) -> tuple[date, date]:
+    """phaseの日付または既定値を使って計画期間を算出する。"""
+    if plan_start_override is not None:
+        plan_start = plan_start_override
+    elif phases:
+        plan_start = max(min(start for start, _ in phases),
+                         today + timedelta(days=PLAN_START_DAYS))
+    else:
+        plan_start = today + timedelta(days=PLAN_START_DAYS)
+
+    if phases:
+        plan_end = max(max(end for _, end in phases) + timedelta(days=PLAN_END_DAYS),
+                       plan_start + timedelta(days=PLAN_END_DAYS))
+    else:
+        plan_end = plan_start + timedelta(days=PLAN_END_DAYS)
+    return plan_start, plan_end
+
+
+def _distinct_paths(paths: Sequence[str | Path]) -> None:
+    """正規化後に同一ファイルを指すパスがあればエラーにする。"""
+    resolved = [Path(path).resolve() for path in paths]
+    keys = [os.path.normcase(str(path)) for path in resolved]
+    if len(set(keys)) != len(keys):
+        raise ValueError("input and output paths must refer to four distinct files")
+
+
+def _set_plan_start(value: str) -> date:
+    """CLIの計画開始日を ``date`` に変換する。"""
+    normalized = ymd(value)
+    if normalized is None:
+        raise argparse.ArgumentTypeError("must be a valid date in YYYY/MM/DD format")
+    return datetime.strptime(normalized, "%Y/%m/%d").date()
+
+
+def set_plan_period(
+    input_schedule: str | Path,
+    input_env_config: str | Path,
+    output_schedule: str | Path,
+    output_env_config: str | Path,
+    plan_start: date | None = None,
+) -> None:
+    """ScheduleとEnvConfigを読み込み、計画期間を設定して出力する。"""
+    paths = (input_schedule, input_env_config, output_schedule, output_env_config)
+    _distinct_paths(paths)
+
+    document = load_yaml(input_schedule)
+    root, schedule, wrapped, phases, assignments = _validated_schedule(document)
+    env_config = Path(input_env_config).read_bytes()
+
+    plan_start, plan_end = _calculate_plan_period(phases, date.today(), plan_start)
+    schedule["plan_range"]["start_date"] = plan_start.strftime("%Y/%m/%d")
+    schedule["plan_range"]["end_date"] = plan_end.strftime("%Y/%m/%d")
+    for assignment in assignments:
+        has_earlier_work = any(
+            _date(work["date"], "assignment_list.work_date_list.date") < plan_start
+            for work in assignment["work_date_list"]
+        )
+        if has_earlier_work:
+            assignment["plan_flexibility"] = "Fixed"
+
+    if wrapped:
+        root["schedule"] = schedule
+    dump_yaml(output_schedule, root)
+    output_env = Path(output_env_config)
+    output_env.parent.mkdir(parents=True, exist_ok=True)
+    output_env.write_bytes(env_config)
+    print(f"written {output_schedule} and {output_env_config}")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI引数を解析し、計画期間を設定する。"""
+    parser = argparse.ArgumentParser(description="Set the weekly planning optimization period.")
+    parser.add_argument("--input-schedule", required=True, help="input Schedule YAML path")
+    parser.add_argument("--input-env-config", required=True, help="input EnvConfig path")
+    parser.add_argument("--output-schedule", required=True, help="output Schedule YAML path")
+    parser.add_argument("--output-env-config", required=True, help="output EnvConfig path")
+    parser.add_argument("--plan-start", type=_set_plan_start, help="override plan start date (YYYY/MM/DD)")
+    args = parser.parse_args(argv)
+
+    set_plan_period(
+        args.input_schedule,
+        args.input_env_config,
+        args.output_schedule,
+        args.output_env_config,
+        args.plan_start,
+    )
     return 0
 
 

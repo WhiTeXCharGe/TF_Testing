@@ -365,8 +365,8 @@ class Assembly(unittest.TestCase):
         s["workers"][2].update(has_skill_ref=False)                                                # 鈴木: new, no skills anywhere
         out = ps.prepare(prev_flexible(), prev_env(), s, SEIBAN, "2026/10/10")
         by_name = {w["name"]: w for w in out["env"]["environment"]["worker_list"]}
-        self.assertEqual({"p2o1": 2}, by_name["佐藤 花子"]["skill_map"])
-        self.assertEqual({"p2o1": "spot"}, by_name["佐藤 花子"]["worker_type_by_operation"])
+        self.assertEqual({"p2o1": 2, "wf1p1o1": 2}, by_name["佐藤 花子"]["skill_map"])     # wf1p1o1: the other Mech operation
+        self.assertEqual({"p2o1": "spot", "wf1p1o1": "spot"}, by_name["佐藤 花子"]["worker_type_by_operation"])
         self.assertEqual({}, by_name["鈴木 一郎"]["skill_map"])
         self.assertTrue(any("not in the skill file" in line and "佐藤 花子" in line for line in out["report"]))
 
@@ -504,6 +504,159 @@ class Assembly(unittest.TestCase):
             back = load_yaml(p)
             self.assertEqual(self.out["schedule"], back)
             self.assertIn("trip_list", back["schedule"])
+
+
+def worker(name, **over):
+    w = {"name": name, "company_name": "CompanyA", "is_manager": False, "work_skills": {}, "worker_type": "spot",
+         "has_skill_ref": False, "role": "", "unavailable": [], "description": None}
+    w.update(over)
+    return w
+
+
+class WorkersFollowSuOthers(unittest.TestCase):
+    """New workers, workers who left, skills without the skill file (every week except the first)."""
+
+    def run_with(self, workers, env=None, **kw):
+        s = sheet()
+        s["workers"] = workers
+        keys = {name_key(w["name"]) for w in workers}               # the sheet has cells only for workers it lists
+        for m in ("date_map", "personal_map", "color_map"):
+            s[m] = {k: v for k, v in s[m].items() if k[0] in keys}
+        s["fifo"] = {k: v for k, v in s["fifo"].items() if k in keys}
+        out = ps.prepare(prev_flexible(), env or prev_env(), s, SEIBAN, "2026/10/10", **kw)
+        by_name = {w["name"]: w for w in out["env"]["environment"]["worker_list"]}
+        return out, by_name
+
+    YAMADA = ("山田 太郎", "佐藤 花子")
+
+    def test_a_new_worker_gets_the_skills_of_the_role_at_the_default_level_as_spot(self):
+        out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子"), worker("鈴木 一郎", role="M/QC")])
+        new = by["鈴木 一郎"]
+        self.assertEqual({"p2o1": 1, "wf1p1o1": 1, "wf1p1o2": 1}, new["skill_map"])      # Mech: 2 operations, QC: 1
+        self.assertEqual({"spot"}, set(new["worker_type_by_operation"].values()))
+        line = next(line for line in out["report"] if "from their 担当職種" in line)
+        self.assertIn("level 1", line)
+        self.assertIn("鈴木 一郎", line)
+
+    def test_the_default_level_can_be_changed_and_zero_gives_nothing(self):
+        _out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子"), worker("鈴木 一郎", role="E")],
+                                 env=self.env_with_elec(), default_skill_level=2)
+        self.assertEqual({"wf2p1o1": 2}, by["鈴木 一郎"]["skill_map"])
+        _out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子"), worker("鈴木 一郎", role="M")], default_skill_level=0)
+        self.assertEqual({}, by["鈴木 一郎"]["skill_map"])
+
+    @staticmethod
+    def env_with_elec():
+        env = prev_env()
+        env["environment"]["workflow_list"].append({"id": "wf2", "name": "wf2", "phase_list": [
+            {"id": "wf2p1", "name": "p1", "operation_list": [
+                {"id": "wf2p1o1", "name": "Elec", "work_hours": [10], "min_worker_num": 1, "max_worker_num": 2}]}]})
+        return env
+
+    def test_a_role_that_is_no_kind_of_work_or_an_empty_role_gives_no_skill_and_is_counted(self):
+        out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子"), worker("鈴木 一郎", role="搬送"),
+                                 worker("高橋 次郎", role="")])
+        self.assertEqual({}, by["鈴木 一郎"]["skill_map"])
+        self.assertEqual({}, by["高橋 次郎"]["skill_map"])
+        self.assertTrue(any("2 workers have no skill" in line for line in out["report"]))
+        self.assertFalse(any("from their 担当職種" in line for line in out["report"]))
+
+    def test_the_role_is_not_used_for_a_worker_who_has_skills_or_a_level_in_the_skill_file(self):
+        out, by = self.run_with([
+            worker("山田 太郎", role="QC"),                                                    # has skills of last week
+            worker("佐藤 花子", role="E", work_skills={}, has_skill_ref=True),                  # in the skill file with level 0: on purpose
+            worker("鈴木 一郎", role="E", work_skills={"Mech": 3}, has_skill_ref=True, worker_type="regular")])
+        self.assertEqual({"p2o1": 3, "wf1p1o1": 3}, by["山田 太郎"]["skill_map"])           # kept, Mech only: nothing from QC
+        self.assertEqual({}, by["佐藤 花子"]["skill_map"])
+        self.assertEqual({"p2o1": 3, "wf1p1o1": 3}, by["鈴木 一郎"]["skill_map"])
+        self.assertEqual({"regular"}, set(by["鈴木 一郎"]["worker_type_by_operation"].values()))
+
+    def test_a_worker_of_last_week_without_any_skill_keeps_none_even_with_a_role(self):
+        env = prev_env()
+        env["environment"]["worker_list"][1]["skill_map"] = {}                              # 佐藤 had no skill last week
+        env["environment"]["worker_list"][1]["worker_type_by_operation"] = {}
+        out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子", role="QC")], env=env)
+        self.assertEqual({}, by["佐藤 花子"]["skill_map"])
+        self.assertFalse(any("from their 担当職種" in line for line in out["report"]))
+        self.assertTrue(any("1 workers have no skill" in line and "佐藤 花子" in line for line in out["report"]))
+
+    def test_last_weeks_skills_that_point_to_no_operation_are_dropped_and_reported(self):
+        env = prev_env()
+        env["environment"]["worker_list"][1]["skill_map"] = {"other_op": 2}                # an operation that no workflow has
+        env["environment"]["worker_list"][1]["worker_type_by_operation"] = {"other_op": "regular"}
+        out, by = self.run_with([worker("山田 太郎"), worker("佐藤 花子", role="QC")], env=env)
+        self.assertEqual({}, by["佐藤 花子"]["skill_map"])
+        self.assertFalse(any("skills of the previous EnvConfig kept" in line and "佐藤 花子" in line for line in out["report"]))
+        self.assertTrue(any("other_op" in line for line in out["report"]))
+
+    def test_skills_of_last_week_reach_the_operations_of_a_new_workflow_by_work_name(self):
+        env = prev_env()
+        env["environment"]["worker_list"][0]["skill_map"] = {"p2o1": 1, "wf1p1o1": 3, "wf1p1o2": 2}
+        env["environment"]["worker_list"][0]["worker_type_by_operation"] = {"p2o1": "spot", "wf1p1o1": "regular", "wf1p1o2": "spot"}
+        t = Template(5, "工程テンプレート5", [TemplateOp(1, 1, "Mech", 100, 3, 3), TemplateOp(1, 2, "QC", 10, 3, 3),
+                                          TemplateOp(2, 1, "Elec", 10, 1, 1)])
+        out, by = self.run_with([worker(*self.YAMADA[:1]), worker(self.YAMADA[1])], env=env, templates={5: t})
+        self.assertEqual(["wf_tool", "wf1", "wf2"], [wf["id"] for wf in out["env"]["environment"]["workflow_list"]])
+        yamada = by["山田 太郎"]
+        # the new Mech operation gets the best Mech level (3, from wf1p1o1, so its type regular), the new QC the QC level;
+        # nothing for Elec (the worker has no Elec operation); old entries are not changed
+        self.assertEqual({"p2o1": 1, "wf1p1o1": 3, "wf1p1o2": 2, "wf2p1o1": 3, "wf2p1o2": 2}, yamada["skill_map"])
+        self.assertEqual("regular", yamada["worker_type_by_operation"]["wf2p1o1"])
+        self.assertEqual("spot", yamada["worker_type_by_operation"]["wf2p1o2"])
+        self.assertEqual({"p2o1": 2, "wf1p1o1": 2, "wf2p1o1": 2}, by["佐藤 花子"]["skill_map"])
+
+    def test_the_skill_file_is_not_needed_after_the_first_week(self):
+        # nobody is in a skill file: the second run gives the same skills as the first, also with a new workflow
+        first_week = prev_env()
+        first_week["environment"]["worker_list"] = []
+        first_week["environment"]["workflow_list"] = []
+        t = Template(1, "工程テンプレート1", [TemplateOp(1, 1, "Mech", 100, 1, 2)])
+        s = sheet()
+        s["workers"] = [worker("山田 太郎", work_skills={"Mech": 3}, has_skill_ref=True, worker_type="regular"), worker("佐藤 花子", role="M")]
+        week1 = ps.prepare(prev_flexible(), first_week, s, SEIBAN, "2026/10/10", templates={1: t})
+        s["workers"] = [worker("山田 太郎"), worker("佐藤 花子"), worker("新人 一郎", role="M")]
+        t2 = Template(2, "工程テンプレート2", [TemplateOp(1, 1, "Mech", 100, 5, 6)])
+        week2 = ps.prepare(prev_flexible(), week1["env"], s, SEIBAN, "2026/10/17", templates={1: t, 2: t2})
+        by2 = {w["name"]: w for w in week2["env"]["environment"]["worker_list"]}
+        self.assertEqual(["wf1", "wf2"], [wf["id"] for wf in week2["env"]["environment"]["workflow_list"]])
+        self.assertEqual({"wf1p1o1": 3, "wf2p1o1": 3}, by2["山田 太郎"]["skill_map"])
+        self.assertEqual({"wf1p1o1": 1, "wf2p1o1": 1}, by2["佐藤 花子"]["skill_map"])
+        self.assertEqual({"wf1p1o1": 1, "wf2p1o1": 1}, by2["新人 一郎"]["skill_map"])
+
+    def test_new_and_removed_workers_are_in_the_worker_list_and_the_report(self):
+        out, by = self.run_with([worker("山田 太郎"), worker("鈴木 一郎", role="M")])               # 佐藤 left, 鈴木 joined
+        self.assertEqual({"山田 太郎", "鈴木 一郎"}, set(by))
+        self.assertEqual("w007", by["山田 太郎"]["id"])
+        self.assertEqual("w001", by["鈴木 一郎"]["id"])
+        self.assertTrue(any(line.startswith("INFO: 1 workers added") and "鈴木 一郎" in line for line in out["report"]))
+        self.assertTrue(any("no longer" not in line and "not in SU_Others any more" in line and "佐藤 花子" in line
+                            for line in out["report"]))
+
+    def test_nothing_is_said_about_added_workers_when_there_was_no_worker_list_before(self):
+        env = prev_env()
+        env["environment"]["worker_list"] = []
+        out, _by = self.run_with([worker("山田 太郎"), worker("佐藤 花子")], env=env)
+        self.assertFalse(any("workers added" in line or "not in SU_Others any more" in line for line in out["report"]))
+
+    def test_a_worker_who_left_leaves_no_reference_behind_and_the_module_turns_into_misc(self):
+        env = prev_env()
+        env["environment"]["worker_list"].append(
+            {"id": "w009", "name": "退職 者", "worker_company": "wc1", "is_manager": False, "skill_map": {"p2o1": 1},
+             "worker_type_by_operation": {"p2o1": "spot"}, "fab_suitability_map": [], "unavailable_dates": [],
+             "affinity": ["wct1"]})
+        flex = prev_flexible()
+        flex["schedule"]["assignment_list"].append(row("w009", "e1p2o1", ["2026/10/23"]))      # also on the flexible module A
+        flex["schedule"]["trip_list"].append({"worker": "w009", "trips": [
+            {"start_date": "2026/10/19", "end_date": "2026/10/23", "region": "r1", "plan_flexibility": "Flexible", "description": None}]})
+        out = ps.prepare(flex, env, sheet(), SEIBAN, "2026/10/10")
+        e, sch = out["env"]["environment"], out["schedule"]["schedule"]
+        worker_ids = {w["id"] for w in e["worker_list"]}
+        self.assertNotIn("w009", worker_ids)
+        self.assertTrue({r["worker"] for r in sch["assignment_list"]} <= worker_ids)
+        self.assertTrue({t["worker"] for t in sch["trip_list"]} <= worker_ids)
+        self.assertEqual([], out["flexible_work"]["flexible_work"]["modules"])                  # A's rows changed: Fixed
+        self.assertTrue(any(line.startswith("INFO: 1 workers are not in SU_Others any more") and "退職 者" in line
+                            for line in out["report"]))
 
 
 if __name__ == "__main__":

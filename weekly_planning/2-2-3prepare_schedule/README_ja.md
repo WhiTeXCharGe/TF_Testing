@@ -17,7 +17,7 @@
 | 入力 | 前週の `FlexibleSchedule.yaml`（ツール 3-2 の出力） |
 | 入力 | 前週の EnvConfig（workflow・fab・region・会社などの定義を引き継ぐ） |
 | 入力 | SU_Others（進行中の作業バー、FI/FO、作業者一覧） |
-| 入力（任意） | スキルレベルのファイル（スキルと Regular/Spot だけを読む） |
+| 入力（初回のみ） | スキルレベルのファイル（スキルと Regular/Spot だけを読む）。2 週目以降は前週の EnvConfig のスキルを引き継ぐので不要 |
 | 入力 | 製番リストのブック（ツール 2-4 と同じファイル。シート `製番リスト` の製番ごとの顧客・fab・region） |
 | 出力 | `<日付>_FlexibleWork.yaml`（Flexible な製番のリストと Flexible な trip のリスト） |
 | 出力 | `01_EnvConfig.yaml`、`01_Schedule.yaml` |
@@ -89,9 +89,9 @@ trip の終わりと次の trip の始まりが同じ日付になることは、
 ## 5. Schedule / EnvConfig の作り方
 - Flexible な製番: workflow_task と作業割り当てを前週の FlexibleSchedule からそのままコピー（作業者 id だけ付け替え）。
 - それ以外のバー: 同じ文字のセルを 1 つの misc タスクにまとめ、作業者・日付ごとの Fixed の割り当て（1 日 10 時間）にする。region は製番コードがあれば製番リストにあるその製番の region、無ければ `r_other`。灰色セルの個人予定は個人予定の misc、赤いセルは休み（unavailable）として EnvConfig に入れる。
-- EnvConfig: workflow・fab・region・顧客・会社・移動日数は前週のものを引き継ぐ（既存の id は変えない）。新しい region / 顧客 / fab / 会社は末尾に追加する。`worker_list` は SU_Others から作り直す（前週にいた作業者は名前で対応付けて id を引き継ぐ）。スキルのファイルに居ない作業者は前週のスキルを引き継ぐ。
+- EnvConfig: workflow・fab・region・顧客・会社・移動日数は前週のものを引き継ぐ（既存の id は変えない）。新しい region / 顧客 / fab / 会社は末尾に追加する。`worker_list` は SU_Others に合わせる（前週にいた作業者は名前で対応付けて id を引き継ぐ。新しい作業者は追加し、SU_Others から居なくなった作業者は外す。どちらもレポートに出す）。外した作業者の製番は、そのセルが無くなるので misc タスクになり、外した作業者を指すデータは残らない。
 - **workflow を先に作る。** 製番リストのシート `工程テンプレート<N>` のうち読めるテンプレートごとに、スキルを設定する前に EnvConfig の workflow を用意する。作業の構成（工程番号・作業番号・作業名・最小/最大人数）が同じ workflow があればそれを使い、無ければ 2-4 と同じ規則で新しい `wf<n>` を作る。このため、workflow が 1 つも無い EnvConfig で動かす最初の回でも、workflow とスキルが揃った出力になる。2-4 は同じ workflow を見つけて使う。読めないテンプレートは `WARN` に出し、workflow は作らない。
-- **スキルは作業名で対応づける。** スキルのファイルの担当職種（`M` = Mech、`E` = Elec、`QC` = QC）とスキルレベルから、作業名ごとのレベルを作る。EnvConfig の**すべての workflow**（ツール 2-4 が作る `wf<n>` を含む）の、同じ名前の作業すべてにそのレベルを設定する（大文字小文字・全角半角・空白は無視）。同じ名前の作業が無い職種は、作業者の数とともにレポートの `WARN` に 1 行出す。Status が `Primary` なら regular、それ以外（`Secondary`・空欄）は spot。
+- **スキルは作業名で対応づける。** 作業名（`Mech`・`Elec`・`QC`）ごとのレベルを、EnvConfig の**すべての workflow**（ツール 2-4 が作る `wf<n>` を含む）の、同じ名前の作業すべてに設定する（大文字小文字・全角半角・空白は無視）。レベルは次の順で決める。(1) スキルのファイル（担当職種 `M` = Mech、`E` = Elec、`QC` = QC とスキルレベル。Status が `Primary` なら regular、それ以外は spot。レベル 0 は「スキル無し」を意味し、そのまま無しにする）。(2) ファイルに居ない作業者は前週の EnvConfig のスキルを引き継ぎ、まだ持っていない作業（新しい workflow の作業）には、同じ作業名で持っている一番高いレベルを設定する。(3) 前週の EnvConfig に居なかった新しい作業者は、SU_Others の担当職種（`M`/`E`/`QC`）から、レベル 1（`--default-skill-level`）の spot として設定する。搬送など作業ではない職種は何も設定しない。**このためスキルのファイルが要るのは初回だけ。** 同じ名前の作業が無い職種は、作業者の数とともにレポートの `WARN` に 1 行出す。
 
 ## 6. 実行方法
 ```

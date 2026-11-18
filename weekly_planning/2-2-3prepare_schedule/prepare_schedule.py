@@ -11,8 +11,9 @@ Inputs
                     (everything in it is treated as flexible; misc tasks in it are ignored).
   --prev-env        last week's EnvConfig.yaml (workflows, fabs, regions ... are carried over)
   --su-others       the dated SU_Others workbook (.xlsm): ongoing tasks and the worker list
-  --skill-file      the skill-level workbook (.xlsm): skills / status only (optional; without it the
-                    skill sheet is looked up inside --su-others)
+  --skill-file      the skill-level workbook (.xlsm): skills / status only. Needed only the first week: without it the
+                    skills of last week's EnvConfig are kept (new workflows follow the work name), and a new worker
+                    gets skills from the 担当職種 of --su-others
   --seiban-list     the seiban list workbook (the file of tool 2-4; sheet 製番リスト: module -> customer / fab / region)
 Output (in --out-dir)
   <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (file name starts with the --today date)
@@ -44,7 +45,7 @@ from common.dates import ymd   # noqa: E402
 from common.flexible_schedule import read_prev_flexible   # noqa: E402
 from common.text import match_key, name_key, tool_code   # noqa: E402
 from common.trips import pair_fifo, pair_fifo_repaired, read_mark   # noqa: E402
-from common.worker_skills import STATUS_TO_TYPE, parse_worker_skills   # noqa: E402
+from common.worker_skills import DEFAULT_ROLE_LEVEL, STATUS_TO_TYPE, parse_worker_skills, role_skills   # noqa: E402
 from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 
 HOURS_PER_WORKDAY = 10          # hours of every work day (the same value as in the SU_Others parser)
@@ -338,6 +339,10 @@ def build_misc(sheet, flexible_codes, code_region, worker_id_by_key):
     return misc, rows
 
 
+def _names(names, limit=20):
+    return ", ".join(names[:limit]) + (" ..." if len(names) > limit else "")
+
+
 def operations_by_work(env):
     """[(operation id, work name key)] of every operation of every workflow, in EnvConfig order.
     The work name key is `match_key` of the operation name (Mech, Elec, QC ...)."""
@@ -346,22 +351,31 @@ def operations_by_work(env):
             for op in ph.get("operation_list") or []]
 
 
-def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env_workers, operations):
+def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env_workers, operations,
+                      default_level=DEFAULT_ROLE_LEVEL):
     """EnvConfig worker_list from the SU_Others workers.
 
-    A worker's skill is a level per work name (`work_skills`: Mech / Elec / QC, from the skill sheet).  Every operation of
-    that name, in any workflow of the EnvConfig, gets the level; `worker_type` (regular / spot) goes with it.
+    A worker's skill is a level per work name (Mech / Elec / QC).  Every operation of that name, in any workflow of the
+    EnvConfig, gets the level; `worker_type` (regular / spot) goes with it.  The level comes from, in this order:
+      1. the skill file (`work_skills`, `worker_type`), if the worker is in it (a level 0 there means no skill, on purpose);
+      2. else the skills of last week's EnvConfig: kept as they are, and every operation of the same work name that the
+         worker does not have yet (an operation of a new workflow) gets the highest level the worker has for that name;
+      3. else, only for a worker who was not in last week's EnvConfig, the 担当職種 of SU_Others (`role`: M / E / QC), at
+         `default_level` and type spot. A worker of last week without any skill keeps none (the skill file said so).
     operations: operations_by_work(env).
-    Returns (workers, missing_work, dropped_ops, kept_prev): work names without any operation (count of workers),
-    operations of last week's skills that no longer exist, and the workers whose skills of last week were kept."""
+    Returns (workers, missing_work, dropped_ops, kept_prev, from_role, no_skill): work names without any operation (count
+    of workers), operations of last week's skills that no longer exist, the workers whose skills of last week were kept,
+    the workers whose skills come from their role, and the workers who end up without any skill."""
     prev_by_key = {name_key(w["name"]): w for w in prev_env_workers}
     valid_ops = {op for op, _ in operations}
+    work_of_op = dict(operations)
     known_work = {key for _, key in operations}
-    out, missing_work, dropped, kept_prev = [], Counter(), Counter(), []
+    out, missing_work, dropped, kept_prev, from_role, no_skill = [], Counter(), Counter(), [], [], []
     for w in sheet_workers:
         k = name_key(w["name"])
         work_skills = w.get("work_skills") or {}
         prev_w = prev_by_key.get(k) or {}
+        skill, wtype = {}, {}
         if work_skills:
             level = {match_key(work): lv for work, lv in work_skills.items()}
             skill = {op: level[key] for op, key in operations if key in level}
@@ -369,17 +383,35 @@ def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env
             for work in work_skills:
                 if match_key(work) not in known_work:
                     missing_work[work] += 1
-        elif not w.get("has_skill_ref", True) and prev_w.get("skill_map"):
-            # not in the skill file: keep the skills of last week instead of erasing them
-            skill = {op: lv for op, lv in prev_w["skill_map"].items() if op in valid_ops}
-            for op in prev_w["skill_map"]:
-                if op not in valid_ops:
-                    dropped[op] += 1
-            type_map = prev_w.get("worker_type_by_operation") or {}
-            wtype = {op: t for op, t in type_map.items() if op in skill}
-            kept_prev.append(w["name"])
-        else:
-            skill, wtype = {}, {}
+        elif not w.get("has_skill_ref", True):
+            if prev_w.get("skill_map"):
+                # not in the skill file: keep the skills of last week instead of erasing them ...
+                skill = {op: lv for op, lv in prev_w["skill_map"].items() if op in valid_ops}
+                for op in prev_w["skill_map"]:
+                    if op not in valid_ops:
+                        dropped[op] += 1
+                type_map = prev_w.get("worker_type_by_operation") or {}
+                wtype = {op: t for op, t in type_map.items() if op in skill}
+                # ... and give the operations of the same work name that are new (a new workflow) the best level of that name
+                best = {}
+                for op, lv in skill.items():
+                    key = work_of_op[op]
+                    if key not in best or lv > best[key][0]:
+                        best[key] = (lv, wtype.get(op) or "spot")
+                for op, key in operations:
+                    if op not in skill and key in best:
+                        skill[op], wtype[op] = best[key]
+                if skill:
+                    kept_prev.append(w["name"])
+            if not skill and not prev_w:
+                # a worker who was not in last week's EnvConfig; one who was and has no skill has none on purpose
+                level = {match_key(work): lv for work, lv in role_skills(w.get("role"), default_level).items()}
+                skill = {op: level[key] for op, key in operations if key in level}
+                wtype = {op: "spot" for op in skill}
+                if skill:
+                    from_role.append(w["name"])
+        if not skill:
+            no_skill.append(w["name"])
         item = {
             "id": worker_id_by_key[k], "name": w["name"],
             "worker_company": company_by_name[w["company_name"]],
@@ -392,13 +424,14 @@ def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env
         if w.get("description"):
             item["description"] = w["description"]
         out.append(item)
-    return out, missing_work, dropped, kept_prev
+    return out, missing_work, dropped, kept_prev, from_role, no_skill
 
 
 # ----------------------------------------------------------------------------- the whole preparation (pure)
 
 def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip_region=None, plan_range=None,
-            repair_fifo=True, max_gap_days=14, chain_days=3, seiban_warnings=(), templates=None):
+            repair_fifo=True, max_gap_days=14, chain_days=3, seiban_warnings=(), templates=None,
+            default_skill_level=DEFAULT_ROLE_LEVEL):
     """
     sheet: {"workers": [{name, company_name, is_manager, work_skills {Mech/Elec/QC: level}, worker_type, unavailable, description}],
             "date_map", "personal_map", "color_map", "fifo": {worker_key: {date: 'FI'|'FO'}},
@@ -469,11 +502,29 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
                           + "; ".join(template.problems[:3]))
     wfs.put_workflows_first(env)    # workflow_list on top, as in the other EnvConfig files
     worker_id_by_key = final_worker_ids(sheet["workers"], prev_workers)
-    env["worker_list"], missing_work, dropped_ops, kept_prev = build_worker_list(
-        sheet["workers"], worker_id_by_key, master["company_by_name"], prev_workers, operations_by_work(env))
+    # the worker list follows SU_Others: new workers are added, workers who are no longer in it are removed (their modules
+    # turn into misc tasks above, because their cells are gone, so nothing points to a removed worker)
+    sheet_keys = {name_key(w["name"]) for w in sheet["workers"]}
+    added = [w["name"] for w in sheet["workers"] if name_key(w["name"]) not in {name_key(p["name"]) for p in prev_workers}]
+    removed = [p["name"] for p in prev_workers if name_key(p["name"]) not in sheet_keys]
+    if prev_workers:
+        if added:
+            report.append(f"INFO: {len(added)} workers added to the worker list: " + _names(added))
+        if removed:
+            report.append(f"INFO: {len(removed)} workers are not in SU_Others any more and were removed from the worker list: "
+                          + _names(removed))
+    env["worker_list"], missing_work, dropped_ops, kept_prev, from_role, no_skill = build_worker_list(
+        sheet["workers"], worker_id_by_key, master["company_by_name"], prev_workers, operations_by_work(env),
+        default_skill_level)
     if kept_prev:
-        report.append(f"INFO: {len(kept_prev)} workers are not in the skill file; skills of the previous EnvConfig kept: "
-                      + ", ".join(kept_prev[:20]) + (" ..." if len(kept_prev) > 20 else ""))
+        report.append(f"INFO: {len(kept_prev)} workers are not in the skill file; skills of the previous EnvConfig kept "
+                      f"(an operation of a new workflow gets their best level for that work name): " + _names(kept_prev))
+    if from_role:
+        report.append(f"INFO: {len(from_role)} workers have no skill level anywhere; skills given from their 担当職種 at "
+                      f"level {default_skill_level} (spot): " + _names(from_role))
+    if no_skill:
+        report.append(f"INFO: {len(no_skill)} workers have no skill (not in the skill file with a level, no skill of last week, "
+                      f"no 担当職種 of M / E / QC): " + _names(no_skill))
     for work, n in sorted(missing_work.items()):
         report.append(f"WARN: skill {work} of {n} workers dropped (no operation named {work} in any workflow of the previous EnvConfig)")
     for op, n in sorted(dropped_ops.items()):
@@ -569,7 +620,7 @@ def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
         workers.append({
             "name": w["name"], "company_name": company_name[w["worker_company"]], "is_manager": w["is_manager"],
             "has_skill_ref": bool(su["worker_in_skill_sheet"].get(wid)),
-            "work_skills": work_skills, "worker_type": wtype,
+            "work_skills": work_skills, "worker_type": wtype, "role": w.get("role") or "",
             "unavailable": [u["date"] for u in w["unavailable_dates"]], "description": w.get("description"),
         })
 
@@ -621,6 +672,9 @@ def main(argv=None):
     ap.add_argument("--skill-file", default=None,
                     help="the skill-level workbook (.xlsm): skills / status only (default: look for the skill sheet inside --su-others)")
     ap.add_argument("--seiban-list", required=True, help="the seiban list workbook (.xlsx, the file of tool 2-4)")
+    ap.add_argument("--default-skill-level", type=int, default=DEFAULT_ROLE_LEVEL, metavar="N",
+                    help=f"level for a worker who has no skill level in the skill file or in last week's EnvConfig and is known only "
+                         f"by the 担当職種 of SU_Others (default {DEFAULT_ROLE_LEVEL}; 0 = no skill for such workers)")
     ap.add_argument("--out-dir", required=True, help="folder for <today>_FlexibleWork.yaml, 01_EnvConfig.yaml, 01_Schedule.yaml")
     ap.add_argument("--report", action="store_true", help="also write <today>_prepare_report.txt (every decision and unresolved item)")
     ap.add_argument("--today", default=None, help="YYYY/MM/DD; modules whose work all ended before it become Fixed (default: today)")
@@ -655,7 +709,7 @@ def main(argv=None):
     out = prepare(load_yaml(args.prev_flexible), load_yaml(args.prev_env), sheet, seiban, today,
                   default_trip_region=None if args.default_trip_region.lower() == "none" else args.default_trip_region,
                   repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days,
-                  seiban_warnings=seiban_warnings, templates=templates)
+                  seiban_warnings=seiban_warnings, templates=templates, default_skill_level=args.default_skill_level)
     od = Path(args.out_dir)
     stamp = today.replace("/", "")
     names = [f"{stamp}_FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]

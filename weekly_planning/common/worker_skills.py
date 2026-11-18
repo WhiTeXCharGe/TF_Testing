@@ -21,8 +21,20 @@ WORK_NAMES = ("Mech", "Elec", "QC")
 STATUS_TO_TYPE = {"PRIMARY": "regular"}  # everything else (Secondary / blank) -> spot
 
 
+# level given to a worker who has no skill level anywhere and is only known by the 担当職種 (role) of SU_Others:
+# the lowest level the skill sheet uses (1 to 3), so the worker can be planned but is not preferred
+DEFAULT_ROLE_LEVEL = 1
+
+
 def split_slash(s: str):
     return [t.strip() for t in re.split(r"[/／]", s) if t.strip()]
+
+
+def role_skills(role_text, level=DEFAULT_ROLE_LEVEL):
+    """{work name: level} from a 担当職種 text alone ("M/QC" -> Mech and QC at `level`); roles that are not a kind of work
+    in the workflows (搬送, 通訳 ...) give nothing. Ordered Mech, Elec, QC."""
+    works = {ROLE_TOKEN_WORK.get(t.upper()) for t in split_slash(clean_text(role_text or ""))}
+    return {work: level for work in WORK_NAMES if work in works} if level and level > 0 else {}
 
 
 def parse_worker_skills(role_text: str, skill_raw: str):
