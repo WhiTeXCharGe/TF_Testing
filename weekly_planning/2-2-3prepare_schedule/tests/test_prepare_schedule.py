@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (common)
 import prepare_schedule as ps   # noqa: E402
 from common.cell_names import module_cell_name, module_name_info   # noqa: E402
+from common.seiban_list import Template, TemplateOp   # noqa: E402
 from common.flexible_schedule import read_prev_flexible   # noqa: E402
 from common.text import name_key, tool_code   # noqa: E402
 from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
@@ -419,6 +420,38 @@ class Assembly(unittest.TestCase):
         self.assertEqual([("2026/10/19", "2026/10/23", "r1", "Flexible")], got)
         self.assertEqual(2, self.out["stats"]["trips_skipped"])
         self.assertTrue(any("Fixed trip" in line and "region could not be determined" in line for line in self.out["report"]))
+
+    def test_first_week_without_any_workflow_the_templates_give_the_workflows_and_the_skills_follow(self):
+        env = prev_env()
+        env["environment"]["workflow_list"] = []
+        t1 = Template(1, "工程テンプレート1", [TemplateOp(1, 1, "Mech", 160, 2, 4), TemplateOp(1, 2, "Elec", 40, 1, 1),
+                                          TemplateOp(2, 1, "QC", 64, 1, 2)])
+        t2 = Template(2, "工程テンプレート2", [TemplateOp(2, 1, "Mech", 576, 2, 4)])
+        out = ps.prepare(prev_flexible(), env, sheet(), SEIBAN, "2026/10/10", templates={1: t1, 2: t2})
+        e = out["env"]["environment"]
+        self.assertEqual(["wf1", "wf2"], [wf["id"] for wf in e["workflow_list"]])
+        w = next(w for w in e["worker_list"] if w["id"] == "w007")                    # Mech 3, Elec 2, QC 1
+        self.assertEqual({"wf1p1o1": 3, "wf1p1o2": 2, "wf1p2o1": 1, "wf2p2o1": 3}, w["skill_map"])
+        self.assertEqual({"regular"}, set(w["worker_type_by_operation"].values()))
+        self.assertFalse(any(line.startswith("WARN: skill") for line in out["report"]))
+        self.assertTrue(any("new workflow wf1 created" in line for line in out["report"]))
+
+    def test_a_template_that_matches_a_workflow_makes_no_new_one_and_a_second_run_finds_its_own_workflow(self):
+        same = Template(2, "工程テンプレート2", [TemplateOp(2, 1, "Mech", 100, 1, 8)])      # = the Mech operation of wf_tool
+        out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10", templates={2: same})
+        self.assertEqual(["wf_tool", "wf1"], [wf["id"] for wf in out["env"]["environment"]["workflow_list"]])
+        self.assertTrue(any("template 2 uses the existing workflow wf_tool" in line for line in out["report"]))
+        new = Template(3, "工程テンプレート3", [TemplateOp(3, 1, "QC", 10, 1, 1)])
+        first = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10", templates={3: new})
+        again = ps.prepare(prev_flexible(), first["env"], sheet(), SEIBAN, "2026/10/10", templates={3: new})
+        self.assertEqual(3, len(first["env"]["environment"]["workflow_list"]))
+        self.assertEqual(3, len(again["env"]["environment"]["workflow_list"]))         # not made twice
+
+    def test_a_template_with_problems_gets_no_workflow_and_a_warning(self):
+        bad = Template(4, "工程テンプレート4", [], ["row 2: 工数 is empty or not a number"])
+        out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10", templates={4: bad})
+        self.assertEqual(2, len(out["env"]["environment"]["workflow_list"]))
+        self.assertTrue(any(line.startswith("WARN: template 4") and "工数" in line for line in out["report"]))
 
     def test_warnings_of_the_seiban_list_go_into_the_report(self):
         out = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10",

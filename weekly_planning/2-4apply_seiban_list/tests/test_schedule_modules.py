@@ -3,7 +3,7 @@ import copy
 import unittest
 
 from envs import TEMPLATE_LIKE_WF_TOOL, TEMPLATE_WITH_P1, make_env, make_schedule, plan_row, template
-import env_workflows as wfs
+from common import env_workflows as wfs   # noqa: E402
 import schedule_modules as sm
 
 

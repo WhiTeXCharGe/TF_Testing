@@ -3,10 +3,11 @@ The seiban list workbook (read by tools 2-4 and 2-2-3).  Nothing is decided here
 everything that looks wrong is kept as text in `problems`, so the caller can skip a row and put the reason into its report.
 
 Sheets (names are the defaults of the constants below):
-  製番リスト         every module with customer / Fab / Region (tool 2-2-3 only, read_module_sites)
+  製番リスト         every module with customer / Fab / Region (tool 2-2-3 only: read_module_sites)
   計画対象          the rows to handle (one seiban per row; the colour of the seiban cell says add / keep / delete)
   搬入先テーブル     delivery sites: customer, Fab, Region (used to fill an empty Region)
   工程テンプレート<N> one sheet per process template: process number, work number, work name, man-hours, min / max workers
+                    (tool 2-2-3 reads only these, with read_templates)
 
 The workbook is opened read-only and a sheet stops after a run of empty rows, so the long (formatted) sheets are cheap to read.
 """
@@ -381,17 +382,33 @@ def read_seiban_list(path, plan_sheet=PLAN_SHEET, blank_run_limit=BLANK_RUN_LIMI
         else:
             sites = []
             warnings.append(f"sheet {SITE_SHEET!r} not found: an empty Region cannot be filled from it")
-        templates = {}
-        for name in wb.sheetnames:
-            m = _TEMPLATE_NO.fullmatch(unicodedata.normalize("NFKC", name).strip())
-            if m:
-                n = int(m.group(1))
-                if n in templates:
-                    warnings.append(f"sheets {templates[n].sheet!r} and {name!r} are the same template number; the first is used")
-                else:
-                    templates[n] = _read_template(wb[name], n)
-        if not templates:
-            warnings.append(f"no sheet named {TEMPLATE_PREFIX}<N> found")
+        templates = _read_templates(wb, warnings)
         return SeibanList(rows, sites, templates, warnings)
+    finally:
+        wb.close()
+
+
+def _read_templates(wb, warnings):
+    templates = {}
+    for name in wb.sheetnames:
+        m = _TEMPLATE_NO.fullmatch(unicodedata.normalize("NFKC", name).strip())
+        if m:
+            n = int(m.group(1))
+            if n in templates:
+                warnings.append(f"sheets {templates[n].sheet!r} and {name!r} are the same template number; the first is used")
+            else:
+                templates[n] = _read_template(wb[name], n)
+    if not templates:
+        warnings.append(f"no sheet named {TEMPLATE_PREFIX}<N> found")
+    return templates
+
+
+def read_templates(path):
+    """The process templates (sheets 工程テンプレート<N>) of the workbook: ({N: Template}, warnings).  Used by tool 2-2-3,
+    which needs the templates but not the rows.  A template with problems is returned with its `problems` filled in."""
+    wb = load_workbook(path, read_only=True, data_only=True)
+    try:
+        warnings = []
+        return _read_templates(wb, warnings), warnings
     finally:
         wb.close()

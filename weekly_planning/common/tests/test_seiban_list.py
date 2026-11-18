@@ -225,6 +225,30 @@ class Templates(Book):
             self.assertEqual(name, sl.normalise_work_name(text), text)
 
 
+class TemplatesOnly(Book):
+    """read_templates: the process templates without the plan sheet (tool 2-2-3)."""
+
+    def test_templates_are_read_even_when_the_plan_sheet_is_missing(self):
+        with self.assertRaises(sl.SeibanListError):                 # the full reader needs the plan sheet ...
+            self.make([plan_row()], plan_sheet="other sheet")
+        templates, warnings = sl.read_templates(self.path)         # ... this one does not
+        self.assertEqual([1, 2], sorted(templates))
+        self.assertTrue(templates[1].valid)
+        self.assertEqual("QC", templates[1].ops_of(2)[1].name)
+        self.assertEqual([], warnings)
+
+    def test_a_bad_template_comes_back_with_its_problems_and_no_template_is_a_warning(self):
+        bad = [[1, 1, "Mech", None, 2, 4]]
+        self.make([plan_row()], templates={1: bad})
+        templates, _ = sl.read_templates(self.path)
+        self.assertFalse(templates[1].valid)
+        self.assertIn("工数", templates[1].problems[0])
+        self.make([plan_row()], templates={})
+        templates, warnings = sl.read_templates(self.path)
+        self.assertEqual({}, templates)
+        self.assertEqual(1, len(warnings))
+
+
 MASTER_HEADER = ["計画対象", "製番", "装置名称", "顧客", "Fab", "Region", "開始可能日", "希望納期", "工程選択"]
 
 

@@ -1,19 +1,17 @@
 """
-Workflows of the EnvConfig (tool 2-4, step B): find the workflow that a process template matches, or create a new one.
+Workflows of the EnvConfig (used by tools 2-2-3 and 2-4): find the workflow that a process template matches, or create a new one.
 
 A template matches a workflow when both have the same operations: same process numbers, work numbers, work names and
 minimum / maximum workers (ids, names and work_hours are not compared).  An existing workflow is never changed: a template
 that no longer matches creates a new workflow and the old one stays.  The functions change the plain `environment` dict in
 place (the caller passes a copy) and put "INFO: ..." / "WARN: ..." lines into `report`.
-
-The caller puts weekly_planning/ on the import path (the tool script and the tests do).
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 
-from common.text import match_key
+from .text import match_key
 
 WORK_HOURS = [10]            # hours of a work day, as in every existing operation
 

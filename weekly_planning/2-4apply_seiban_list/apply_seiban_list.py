@@ -31,7 +31,7 @@ from common import seiban_list as sl, tf_config as tfc   # noqa: E402
 from common.yaml_io import dump_yaml, load_yaml   # noqa: E402
 import env_masters as masters   # noqa: E402
 import env_skills as skills   # noqa: E402
-import env_workflows as workflows   # noqa: E402
+from common import env_workflows as workflows   # noqa: E402
 import schedule_modules as modules   # noqa: E402
 
 CONFIG_FILE = HERE / tfc.CONFIG_NAME        # the settings of this tool

@@ -38,7 +38,7 @@ from openpyxl import load_workbook
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
-from common import seiban_list as sl, su_others   # noqa: E402
+from common import env_workflows as wfs, seiban_list as sl, su_others   # noqa: E402
 from common.cell_names import cell_name_key   # noqa: E402
 from common.dates import ymd   # noqa: E402
 from common.flexible_schedule import read_prev_flexible   # noqa: E402
@@ -398,12 +398,13 @@ def build_worker_list(sheet_workers, worker_id_by_key, company_by_name, prev_env
 # ----------------------------------------------------------------------------- the whole preparation (pure)
 
 def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip_region=None, plan_range=None,
-            repair_fifo=True, max_gap_days=14, chain_days=3, seiban_warnings=()):
+            repair_fifo=True, max_gap_days=14, chain_days=3, seiban_warnings=(), templates=None):
     """
     sheet: {"workers": [{name, company_name, is_manager, work_skills {Mech/Elec/QC: level}, worker_type, unavailable, description}],
             "date_map", "personal_map", "color_map", "fifo": {worker_key: {date: 'FI'|'FO'}},
             "fifo_variants": {raw text: (mark, count)}, "plan_range": {...}}
     repair_fifo: FI/FO without a partner are repaired from the busy days (pair_fifo_repaired); False reports and drops them.
+    templates: {N: Template} of the seiban list (common.seiban_list.read_templates); each usable one gets a workflow in the EnvConfig.
     Returns dict(flexible_work, env, schedule, report [lines], stats).
     """
     report = [f"WARN: seiban list: {w}" for w in seiban_warnings]
@@ -458,6 +459,14 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
     # --- 2-3: environment
     master = build_master_lists(prev_env, seiban_rows, [w["company_name"] for w in sheet["workers"]])
     env = master["env"]
+    # every usable process template gets its workflow (an existing one with the same operations, else a new wf<n>) BEFORE the
+    # skills are given, so that the skills reach those operations also in the first week, when the EnvConfig has no workflow
+    for number, template in sorted((templates or {}).items()):
+        if template.valid:
+            wfs.ensure_workflow(env, template, report)
+        else:
+            report.append(f"WARN: template {number} ({template.sheet}) cannot be used, so it gets no workflow: "
+                          + "; ".join(template.problems[:3]))
     worker_id_by_key = final_worker_ids(sheet["workers"], prev_workers)
     env["worker_list"], missing_work, dropped_ops, kept_prev = build_worker_list(
         sheet["workers"], worker_id_by_key, master["company_by_name"], prev_workers, operations_by_work(env))
@@ -595,8 +604,10 @@ def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
 
 
 def read_seiban(path, sheet=sl.MASTER_SHEET):
-    """The master list sheet of the seiban list workbook -> ({code: {customer, fab, region}}, warnings)."""
-    return sl.read_module_sites(path, sheet=sheet)
+    """The seiban list workbook -> ({code: {customer, fab, region}} from the master sheet, {N: Template}, warnings)."""
+    modules, warnings = sl.read_module_sites(path, sheet=sheet)
+    templates, template_warnings = sl.read_templates(path)
+    return modules, templates, warnings + template_warnings
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -633,7 +644,7 @@ def main(argv=None):
         ap.error("--today must look like 2026/10/01")
     sheets = tuple(s.strip() for s in args.su_sheets.split(",") if s.strip())
     try:       # the small workbook first, so a wrong file is found before the slow SU_Others read
-        seiban, seiban_warnings = read_seiban(args.seiban_list, args.seiban_sheet)
+        seiban, templates, seiban_warnings = read_seiban(args.seiban_list, args.seiban_sheet)
     except sl.SeibanListError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -643,7 +654,7 @@ def main(argv=None):
     out = prepare(load_yaml(args.prev_flexible), load_yaml(args.prev_env), sheet, seiban, today,
                   default_trip_region=None if args.default_trip_region.lower() == "none" else args.default_trip_region,
                   repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days,
-                  seiban_warnings=seiban_warnings)
+                  seiban_warnings=seiban_warnings, templates=templates)
     od = Path(args.out_dir)
     stamp = today.replace("/", "")
     names = [f"{stamp}_FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]

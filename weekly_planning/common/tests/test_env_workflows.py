@@ -1,8 +1,36 @@
-"""Tests of env_workflows.py (match a template to a workflow, or create one).  Run from the tool folder:  python -m unittest discover -s tests -v"""
-import unittest
+"""Tests of common/env_workflows.py (match a template to a workflow, or create one).
 
-from envs import TEMPLATE_LIKE_WF_TOOL, TEMPLATE_WITH_P1, make_env, template
-import env_workflows as wfs
+Run from weekly_planning/:   python -m unittest discover -s common/tests
+"""
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_planning/ (the folder of common)
+from common import env_workflows as wfs   # noqa: E402
+from common.seiban_list import Template, TemplateOp   # noqa: E402
+
+
+def op(op_id, name, lo=1, hi=8):
+    return {"id": op_id, "name": name, "work_hours": [10], "min_worker_num": lo, "max_worker_num": hi}
+
+
+def make_env():
+    return {"workflow_list": [{"id": "wf_tool", "name": "Tool Install", "phase_list": [
+        {"id": "p2", "name": "Hardware Setup", "operation_list": [op("p2o1", "Mech"), op("p2o2", "Elec")]},
+        {"id": "p3", "name": "Function Setup", "operation_list": [op("p3o1", "QC")]},
+        {"id": "p4", "name": "Acceptance Inspection", "operation_list": [op("p4o1", "QC")]}]}]}
+
+
+def template(number, ops):
+    """ops: [(phase, op, name, hours, min, max)]"""
+    return Template(number, f"工程テンプレート{number}", [TemplateOp(*o) for o in ops])
+
+
+# the same operations as wf_tool (min 1 / max 8), as a template
+TEMPLATE_LIKE_WF_TOOL = [(2, 1, "Mech", 576, 1, 8), (2, 2, "Elec", 144, 1, 8), (3, 1, "QC", 64, 1, 8), (4, 1, "QC", 288, 1, 8)]
+# a template with a process 1 and other minimum / maximum workers
+TEMPLATE_WITH_P1 = [(1, 1, "Mech", 160, 2, 4), (1, 2, "Elec", 40, 1, 1), (2, 1, "Mech", 576, 2, 4), (4, 1, "QC", 288, 1, 2)]
 
 
 class Matching(unittest.TestCase):

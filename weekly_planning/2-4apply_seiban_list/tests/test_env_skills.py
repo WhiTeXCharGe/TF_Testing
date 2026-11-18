@@ -3,7 +3,7 @@ import unittest
 
 from envs import TEMPLATE_WITH_P1, make_env, template
 import env_skills as sk
-import env_workflows as wfs
+from common import env_workflows as wfs   # noqa: E402
 
 
 def worker(env, wid):

@@ -13,6 +13,7 @@ Japanese explanation (how FI/FO is read, repaired and compared): [README_ja.md](
 - FI/FO is read tolerantly (typos, notes), marks without a partner are repaired from the worker's busy days, and one trip may end on the date the next starts. Trips without a known region get `r_other`.
 - Every flexible assignment row gets a `cell_name` (the text of its bar), also written to `description` when that is empty. 3-2 / 3-3 / the next run of this tool use it.
 - EnvConfig: last week's lists are kept (ids never change), new names are added, `worker_list` is rebuilt from the workbook.
+- **Workflows come first.** Every usable process template (sheets `工程テンプレート<N>` of the seiban list) gets a workflow in the EnvConfig before the skills are given: an existing workflow with the same operations (process, work, name, min / max workers) is used, otherwise a new `wf<n>` is made, exactly as tool 2-4 does. So the very first run, with an EnvConfig that has no workflow, already produces workflows and skills; tool 2-4 then finds the same workflows. A template that cannot be read is reported as a warning and gets no workflow.
 - **Skills follow the work name.** The skill workbook gives a level per kind of work (`M` = Mech, `E` = Elec, `QC` = QC) and a status (`Primary` = regular, anything else = spot). Every operation with that name, in every workflow of the EnvConfig (also the `wf<n>` workflows made by tool 2-4), gets the level. A name that no operation has is reported as a warning; a worker who is not in the skill workbook keeps last week's skills.
 
 ## Run
