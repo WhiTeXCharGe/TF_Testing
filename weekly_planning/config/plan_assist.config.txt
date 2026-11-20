@@ -1,0 +1,43 @@
+# Settings of plan_assist (01_StartSchedule and 02_UpdateSchedule)
+#
+# key = value lines, # starts a comment. A setting left empty is not set (the default is used).
+# A relative path is relative to the folder of this file.
+
+# ---------------------------------------------------------------------------------------------------- folders
+# The scripts of weekly_planning (default: Weekly_planning next to this file).
+tools_dir =
+# Skill workbook and EnvConfig_start.yaml, used in the first week only.
+master_dir = ..\..\Master
+# One folder per week is made in here.
+work_dir = ..\..\Work
+# Master files: empty skill_file = the newest "*skill*" workbook in master_dir.
+skill_file =
+start_env = EnvConfig_start.yaml
+
+# ---------------------------------------------------------------------------------------------------- sheets (they carry the year)
+su_sheet = 予定表_2026
+skill_sheet = 予定表_2026 (2)
+seiban_sheet = 製番リスト
+
+# ---------------------------------------------------------------------------------------------------- skills
+# Level of a new worker who is known only by the 担当職種 of SU_Others (the skill workbook uses 1 to 3).
+default_skill_level =
+
+# ---------------------------------------------------------------------------------------------------- solver
+# submit = false stops after the 03 files are made (nothing is sent).
+submit = true
+# mode: online = the API controller on Azure (azure_url), local = the solver on this PC (local_url)
+mode = online
+azure_url = https://as-eq-installation-dev-api-app.livelyground-11135bce.japaneast.azurecontainerapps.io
+local_url = http://localhost:3001
+# Empty run_id = date and time (on Azure a name can be used only once).
+run_id =
+params_file =
+stage1_minutes = 60
+stage2_enabled = true
+stage2_minutes = 20
+stage1_unimproved_seconds = 3600
+stage1_stop_when_feasible = true
+stage2_unimproved_seconds = 1200
+random_seed =
+allow_cut_fixed_trip = false

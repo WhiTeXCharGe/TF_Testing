@@ -1,0 +1,34 @@
+# User-provided and generated data
+**/input/
+**/output/
+
+# Tests
+**/test/
+**/tests/
+**/testing/
+**/test_*.py
+**/*_test.py
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Binary and compiled files
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.class
+*.jar
+*.o
+*.obj
+*.pyd
+
+# OS files
+.DS_Store
+Thumbs.db

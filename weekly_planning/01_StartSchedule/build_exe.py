@@ -7,7 +7,7 @@ build_exe.py  --  builds 01_StartSchedule.exe (PyInstaller, one folder) and asse
 Needs PyInstaller (python -m pip install pyinstaller). Result: <out>/plan_assist/ with
 
     01_StartSchedule.exe + _internal/   the program (Python and the libraries are inside)
-    plan_assist.config.txt              the settings (sample; edit it)
+    config\plan_assist.config.txt       the settings (sample; edit it)
     Weekly_planning/                    a copy of the tools (common/ and the tool folders, without tests and without their config.txt)
     Master/                             where the first-week files go
     Work/                               one folder per week is made here
@@ -32,7 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 TOOLS = HERE.parent                                     # weekly_planning/
 NAME = "01_StartSchedule"
-SKIP_DIRS = {"tests", "__pycache__", "dist", "build", NAME}          # not part of the tools copy
+SKIP_DIRS = {"tests", "__pycache__", "dist", "build", NAME, "config"}  # not part of the tools copy
 SKIP_FILES = {"config.txt"}                                          # the settings of a developer's PC: never shipped
 BIG_AND_UNUSED = ("matplotlib", "scipy", "IPython", "pytest", "numba", "PIL", "tornado", "jinja2", "sqlalchemy", "lxml")
 
@@ -100,7 +100,17 @@ def build(out, console):
         shutil.rmtree(target)
     shutil.copytree(work / "dist" / NAME, target)
     copy_tools(target / "Weekly_planning")
-    shutil.copy2(HERE / "plan_assist.config.txt", target / "plan_assist.config.txt")
+    config_text = (HERE.parent / "config" / "plan_assist.config.txt").read_text(
+        encoding="utf-8"
+    )
+    config_text = config_text.replace(
+        "master_dir = ..\\..\\Master", "master_dir = ..\\Master"
+    ).replace("work_dir = ..\\..\\Work", "work_dir = ..\\Work")
+    config_directory = target / "config"
+    config_directory.mkdir()
+    (config_directory / "plan_assist.config.txt").write_text(
+        config_text, encoding="utf-8"
+    )
     (target / "Master").mkdir()
     (target / "Master" / "README.txt").write_text(
         "First week only: put EnvConfig_start.yaml and the skill workbook (a file with 'skill' in its name) here.\n"

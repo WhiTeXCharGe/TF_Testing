@@ -107,7 +107,6 @@ def add_module(schedule, code, workflow_ref, fab_id, template, row):
     schedule.setdefault("workflow_task_list", []).append(task)
     return task
 
-
 # ----------------------------------------------------------------------------- delete
 
 def delete_module(schedule, task):
@@ -125,3 +124,4 @@ def delete_module(schedule, task):
         schedule["assignment_list"] = kept
     schedule["workflow_task_list"] = [t for t in schedule.get("workflow_task_list") or [] if t is not task]
     return {"phases": len(task.get("phase_task_list") or []), "operations": len(op_ids), "rows": rows, "fixed_rows": fixed}
+

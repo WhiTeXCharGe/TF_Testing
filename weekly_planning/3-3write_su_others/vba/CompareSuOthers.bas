@@ -89,7 +89,7 @@ Public Sub CompareWithOldVersion()
     Dim dRowO() As Long, dColO() As Long, dRowN() As Long, dColN() As Long
     Dim cap As Long, nDiff As Long, nFrames As Long, nMissing As Long, i As Long
     Dim key As Variant, dt As Variant
-    Dim rO As Long, rN As Long, cO As Long, cN As Long, tO As String, tN As String
+    Dim rO As Long, rN As Long, cO As Long, cN As Long, txtOld As String, txtNew As String
     Dim counts(1 To 3) As Long, nSummary As Long
 
     oldPath = Application.GetOpenFilename("Excel files (*.xlsm;*.xlsx),*.xlsm;*.xlsx", , "Select the OLD SU_Others (the input of step 3-3)")
@@ -127,7 +127,10 @@ Public Sub CompareWithOldVersion()
     ' rows are matched by company|name, columns by date. chg(row, col) (coordinates of the NEW sheet) = "old text" & Chr(1) & "new text"
     ReDim chg(1 To nInfo(I_LASTROW), 1 To nInfo(I_LASTCOL))
     cap = 1024
-    ReDim dRowO(1 To cap): ReDim dColO(1 To cap): ReDim dRowN(1 To cap): ReDim dColN(1 To cap)
+    ReDim dRowO(1 To cap)
+    ReDim dColO(1 To cap)
+    ReDim dRowN(1 To cap)
+    ReDim dColN(1 To cap)
     For Each key In nRowKey.Keys
         If oRowKey.Exists(key) Then
             rN = nRowKey(key)
@@ -136,17 +139,19 @@ Public Sub CompareWithOldVersion()
                 If oDateCol.Exists(dt) Then
                     cN = nDateCol(dt)
                     cO = oDateCol(dt)
-                    tO = CellText(oVals(rO, cO))
-                    tN = CellText(nVals(rN, cN))
-                    If StrComp(tO, tN, vbBinaryCompare) <> 0 Then
+                    txtOld = CellText(oVals(rO, cO))
+                    txtNew = CellText(nVals(rN, cN))
+                    If StrComp(txtOld, txtNew, vbBinaryCompare) <> 0 Then
                         nDiff = nDiff + 1
                         If nDiff > cap Then
                             cap = cap * 2
-                            ReDim Preserve dRowO(1 To cap): ReDim Preserve dColO(1 To cap)
-                            ReDim Preserve dRowN(1 To cap): ReDim Preserve dColN(1 To cap)
+                            ReDim Preserve dRowO(1 To cap)
+                            ReDim Preserve dColO(1 To cap)
+                            ReDim Preserve dRowN(1 To cap)
+                            ReDim Preserve dColN(1 To cap)
                         End If
                         dRowO(nDiff) = rO: dColO(nDiff) = cO: dRowN(nDiff) = rN: dColN(nDiff) = cN
-                        chg(rN, cN) = tO & Chr(1) & tN
+                        chg(rN, cN) = txtOld & Chr(1) & txtNew
                     End If
                 End If
             Next dt

@@ -24,14 +24,20 @@ def flatten_trips(trip_list):
     return out
 
 
+def _mark_events(marks):
+    for day in sorted(marks):
+        for kind in (("FO", "FI") if marks[day] in ("FO/FI", "FI/FO") else (marks[day],)):
+            yield day, kind
+
+
 def pair_fifo(marks):
     """
-    marks: {date: 'FI' | 'FO'} of one worker.  Pairs every FI with the next FO.
+    marks: {date: 'FI' | 'FO' | 'FO/FI'} of one worker. Pairs every FI with the next FO.
+    FO/FI closes the preceding trip and starts the next trip on the same date.
     Returns ([(start, end)], [warning]).  Orphans (FI without FO, FO without FI, FI FI, FO FO) are reported, not guessed.
     """
     pairs, warnings, open_fi = [], [], None
-    for d in sorted(marks):
-        kind = marks[d]
+    for d, kind in _mark_events(marks):
         if kind == "FI":
             if open_fi is not None:
                 warnings.append(f"FI {open_fi} has no FO before the next FI {d}")
@@ -48,7 +54,7 @@ def pair_fifo(marks):
 
 
 def read_mark(text):
-    """'FI' / 'FO' / None for one cell text.  Tolerates case, full-width letters, spaces, the typos F1 / Fl / F0
+    """'FI' / 'FO' / 'FO/FI' / None for one cell text. Tolerates case, full-width letters, spaces, the typos F1 / Fl / F0
     and a trailing note such as FI(仮).  Anything else (including 移動) is not a mark."""
     if not isinstance(text, str):
         return None
@@ -57,6 +63,8 @@ def read_mark(text):
         return "FI"
     if t in ("FO", "F0"):
         return "FO"
+    if t in ("FO/FI", "FI/FO"):
+        return "FO/FI"
     return None
 
 
@@ -93,7 +101,7 @@ def _run_start(end, lower, activity, max_gap, window_start):
 def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_days=2, chain_days=3):
     """
     Like pair_fifo, but every FI / FO that has no partner is repaired from the days the worker is busy in the sheet.
-    marks: {date: 'FI'|'FO'} of one worker; activity: that worker's busy dates (any text in the sheet), window: first and
+    marks: {date: 'FI'|'FO'|'FO/FI'} of one worker; activity: that worker's busy dates (any text in the sheet), window: first and
     last date of the sheet.  Returns ([(start, end)], [note]).
       FI right after FI or FO right after FO (<= dup_days apart, nothing busy between) .. one mark: the first FI, the last FO
       FI without FO (next FI or end of the sheet) .. ends on the last day of the busy run after the FI
@@ -107,9 +115,9 @@ def pair_fifo_repaired(marks, activity, window=(None, None), max_gap=14, dup_day
     w_start, w_end = window
     seq = []
     notes = []
-    for d in sorted(marks):
-        k = marks[d]
+    for d, k in _mark_events(marks):
         if (seq and seq[-1][1] == k and (_day(d) - _day(seq[-1][0])).days <= dup_days
+                and marks[d] not in ("FO/FI", "FI/FO") and marks[seq[-1][0]] not in ("FO/FI", "FI/FO")
                 and not any(seq[-1][0] < x < d for x in activity)):
             if k == "FO":
                 notes.append(f"duplicate FO {seq[-1][0]} / {d}: trip ends {d}")

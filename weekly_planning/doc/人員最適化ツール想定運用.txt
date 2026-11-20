@@ -1,0 +1,259 @@
+
+# 運用基本方針
+
+本運用では、自動計画は新規製番および未調整製番に対する初期計画生成を目的とする。  
+計画担当者が調整した製番は確定計画として扱い、以後の自動計画対象から除外する。  
+そのため、自動計画は毎週全製番を再最適化するものではなく、人手調整結果を蓄積しながら未確定部分のみを最適化する運用とする。  
+
+
+# 運用フロー
+
+## 1. 従来通りの手作業での計画編集（週半ば）
+
+- 計画担当者がSU_Others.xlsx上で計画編集
+- 最適化ロジックが割り当てた製番の作業や、FI/FOを編集することもある
+
+
+## 2. 規製番の自動計画（週末夕方）
+
+### 2-1. SU_Othersの編集と自動計画の競合を避ける
+
+#### 作業内容
+- SU_Others.xlsxを編集不可とする
+
+
+### 2-2. Fixedとする製番・FI/FOの特定
+
+※2-3とまとめて1ツールとする
+
+#### Input：
+- (N-1)/FlexibleSchedule.yaml
+- SU_Others.xlsx
+
+#### 使用ツール：
+- 新規作成（★）
+
+#### 処理内容：
+- (N-1)/FlexibleSchedule.yaml の製番の作業とFI/FOの位置が SU_Others.xlsx で一致するかチェック
+- 作業割り当てが変更された製番はFixed対象とする
+- FI/FOの割り当てが変更された場合は、FixedのFI/FOとする
+- 全ての作業の完了日が現在日より早い製番はFixed対象とする
+- (N-1)/FlexibleSchedule.yaml の製番の中でFixedとならなかった製番のみ N/00_FlexibleWork.yaml に書き出す
+
+#### Output：
+- N/00_FlexibleWork.yaml （前週から継続して計画対象となる製番・FI/FOのリスト）
+- N/SU_Others.xlsx （元データのコピー）
+
+
+### 2-3. Flexible製番以外をmiscタスクとしたSchedule.yamlの生成
+
+#### Input：
+- (N-1)/FlexibleSchedule.yaml
+- (N-1)/04_EnvConfig.yaml
+- N/00_FlexibleWork.yaml
+- SU_Others.xlsx
+  - 作業者リスト
+  - 責任者フラグ
+  - 作業者のスキルレベル
+  - Regular／Spot
+  - 所属会社
+- 初期データ追加情報.xlsx（製番情報）
+  - 製番の作業場所（fab、region）
+
+#### 使用ツール：
+- 新規作成（★）
+
+#### 処理内容：
+- N/00_FlexibleWork.yaml に含まれる製番のworkflow_taskや割り当ては、(N-1)/FlexibleSchedule.yamlからそのまま取得
+- N/00_FlexibleWork.yaml に含まれるtripは、(N-1)/FlexibleSchedule.yamlからそのまま取得
+- その他の製番やバーは、SU_Others.xlsxのバーを全てmiscタスクとして取得
+  - miscタスクのregionは、初期データ追加情報.xlsx（又は何らかの製番情報）から取得
+- その他のFI/FO、移動などの文言からFixedのtripを取得
+- 前週から自動計画されたままの製番・FI/FOは最適化可能なタスクとして、その他の製番はmiscタスク、その他FI/FOはFixedとする計画を作成する
+- EnvConfig.yaml の worker_list の情報は SU_Others.xlsx の情報から生成
+- EnvConfig.yaml の fab_list、region_list、customer_company_list、worker_company_list は初期データ追加情報.xlsxから生成
+  - GanttChartEditorで新規製番を追加するときのFab等の選択候補として使うことになる
+- N/01_EnvConfig.yaml、N/01_Schedule.yaml として出力
+
+#### 懸念点：
+- EnvConfigの定義などは前週のEnvConfig.yaml、SU_Others.xlsx、初期データ追加情報.xlsxから生成する
+  - Fixedとなった製番相当のmiscタスクのregionがSU_Others.xlsxから直接復元できないため、初期データ追加情報が必要となっている
+  - 初期データ追加情報に含まれていないfab、region
+
+- SU_OthersのFI/FOからFixedのtrip生成ロジックの仕様検討が必要
+  - SU_Others.xlsxでFI/FOの記述のされ方が割と色々なパターンありそう
+
+#### Output：
+- N/01_EnvConfig.yaml
+- N/01_Schedule.yaml
+
+
+### 2-4. 新規製番の追加（要計画担当者作業）
+
+#### Input：
+- N/01_Schedule.yaml
+- N/01_EnvConfig.yaml
+
+#### 使用ツール：
+- GanttChartEditor
+
+#### 作業内容：
+- GanttChartEditorの新規製番追加機能で、新規の製番を追加
+- 作成した新規製番の作業割り当ては行わないこと
+- 計画上のバーの編集は行わないこと
+- 名前を付けてファイルを保存
+
+#### 懸念点：
+- 新規製番の期日、工数などの情報を入力するだけなので、GanttChartEditorほどの機能は不要
+
+#### Output：
+- N/02_Schedule.yaml
+- N/02_EnvConfig.yaml
+
+
+### 2-5. 計画期間の決定
+
+### Input：
+- N/02_Schedule.yaml
+- N/02_EnvConfig.yaml
+
+### 使用ツール：
+- 新規作成（★）
+
+### 処理内容：
+- 最適化対象の作業の開始可能日のうち最早の日と、現在日+K日のより遅い方がstart_date
+- 最適化対象の作業の納期のうち最遅の日+L日が、end_date
+- K、Lは運用に合わせた適当な定数
+- start_dateよりも早いassignmentの割り当てがあれば、その割り当てのみをFixedとする
+
+#### Output：
+- N/03_Schedule.yaml
+- N/03_EnvConfig.yaml
+
+
+### 2-5. 自動計画開始
+
+#### Input：
+- N/03_Schedule.yaml
+- N/03_EnvConfig.yaml
+
+#### 使用ツール：
+- 計画管理ツール
+
+#### 作業内容：
+- 計画管理ツールを使って最適化を実行
+- 週末は最適化を開始するだけで完了
+
+
+## 3. 自動計画結果の反映（週初め朝一）
+
+### 3-1. 自動計画結果の取得
+
+#### 使用ツール：
+- 計画管理ツール
+
+#### 作業内容：
+- 計画完了後にデータをダウンロード
+
+#### Output：
+- N/04_Schedule.yaml
+- N/04_EnvConfig.yaml
+
+
+### 3-2. 最適化対象の情報抜粋
+
+#### Input：
+- N/04_Schedule.yaml
+- N/04_EnvConfig.yaml
+
+#### 使用ツール：
+- 新規作成（★）
+
+#### 処理内容：
+- 04_Schedule.yamlのwork_flow_taskの情報をそのまま保存
+- 04_Schedule.yamlのassignmentのうち、通常タスクの作業割り当てをそのまま保存
+- 04_Schedule.yamlのtripのうち、間にFlexibleのタスク作業割り当てがあるものをそのまま保存
+  - 自動計画ではFlexibleのタスクを含まないようなtripもFlexibleのtripとして生成するため、不要なものを削除する
+- 新規製番で色の未定の製番があれば、できるだけ古い製番の色と同じにする
+- assignment.nameにExcel上でのバー名を決定して設定する
+- 上記の保存した情報をN/FlexibleSchedule.yamlとして出力
+
+#### Output：
+- N/FlexibleSchedule.yaml
+
+
+### 3-3. 自動計画結果をExcelに反映
+
+#### Input：
+- (N-1)/FlexibleSchedule.yaml
+- SU_Others.xlsx
+- N/FlexibleSchedule.yaml
+- N/00_FlexibleWork.yaml
+
+#### 使用ツール：
+- 新規作成（★）
+
+#### 処理内容：
+- SU_Others.xlsx上でN/00_FlexibleWork.yamlに含まれる製番のバーを全て削除
+  - 製番バーの色情報などは残しておいて、自動計画結果をExcel上に配置する時に使いまわした方が良いかも
+- SU_Others.xlsxにN/FlexibleSchedule.yamlの製番作業の割り当てと、FI/FOの割り当てを配置
+
+#### Output：
+- N/diff_SU_Others.xlsx（削除されたバーと、配置されたバーを強調表示したSU_Others.xlsx）
+- N/result_SU_Others.xlsx
+
+
+### 3-4. SU_Othersを上書き
+
+#### Input：
+- N/result_SU_Others.xlsx
+
+#### 作業内容：
+- result_SU_Others.xlsx で SU_Others.xlsx を上書き
+- N/SU_Others.xlsx と SU_Others.xlsx が変更されていないことをチェック
+
+
+### 3-5. SU_Othersの編集と自動計画の競合を避ける
+
+#### 作業内容
+- SU_Others.xlsxを編集可とする
+
+
+## 4. 次週作業へ
+
+- N=N+1 として 1. に戻る
+
+
+# ファイル仕様
+
+## FlexibleSchedule.yaml
+
+自動計画可能な範囲の情報を持つ。  
+計画担当者が編集した製番の検出や、自動計画用の入力情報（02_Schedule.yaml）を生成する際に前週の情報が失われないようにする。  
+
+- Schedule.yamlと同様の形式でのworkflow_task情報（Flexible製番のみ）
+- Schedule.yamlと同様の形式でのassignment情報（Flexible製番のみ）
+- 自動計画対象製番の作業割り当てから算出したFI/FO位置情報
+
+
+## 00_FlexibleWork.yaml
+
+前週から引き続き自動計画対象となる製番のリスト  
+単純に製番番号のリストになっていればよい。  
+
+
+# フォルダ構成
+
+plan_assist（向さんのPCに存在）
+- 01_StartSchedule.exe
+- 02_UpdateSchedule.exe
+- ...
+- Work
+  - 20261110
+    - 01_SU_Others.xlsx
+    - FlexibleSchedue.yaml
+    - ...
+  - 20261117
+    - 01_SU_Others.xlsx
+    - ...
+

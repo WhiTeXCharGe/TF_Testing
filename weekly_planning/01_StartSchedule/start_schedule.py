@@ -8,7 +8,8 @@ window:
 
     python start_schedule.py --su-others <SU_Others.xlsm> --seiban-list <seiban list.xlsm> [--no-submit] [--yes]
 
-Settings (folders, solver address, sheet names) are in plan_assist.config.txt next to this program.
+Settings (folders, solver address, sheet names) are in the shared config/plan_assist.config.txt
+(or in the config folder beside the exe in a packaged deployment).
 The program finds the tools of weekly_planning above this folder (the repository) or in a Weekly_planning folder next to it (the exe).
 """
 from __future__ import annotations
@@ -40,6 +41,12 @@ for _root in (HERE.parent, HERE / "Weekly_planning"):        # the repository la
 sys.path.insert(0, str(HERE))
 from common import plan_settings as st   # noqa: E402
 from start_run import run_start   # noqa: E402
+
+DEFAULT_CONFIG = (
+    HERE / "config" / st.CONFIG_NAME
+    if getattr(sys, "frozen", False)
+    else HERE.parent / "config" / st.CONFIG_NAME
+)
 
 
 def fail_visibly(text, title="01 Start Schedule"):
@@ -76,14 +83,14 @@ def main(argv=None):
     ap.add_argument("--su-others", default=None, help="the SU_Others workbook of the week (.xlsm / .xlsx)")
     ap.add_argument("--seiban-list", default=None, help="the seiban list workbook of the week (.xlsm / .xlsx)")
     ap.add_argument("--date", type=parse_day, default=None, help="the run date, YYYYMMDD (default: today); it names the week folder")
-    ap.add_argument("--config", default=None, help=f"settings file (default: {st.CONFIG_NAME} next to this program)")
+    ap.add_argument("--config", default=None, help=f"settings file (default: {DEFAULT_CONFIG})")
     ap.add_argument("--no-submit", action="store_true", help="stop after the 03 files are made; nothing is sent to the solver")
     ap.add_argument("--yes", action="store_true", help="run a week again even if it was already sent to the solver")
     ap.add_argument("--no-ui", action="store_true", help="never open the window (an error when a file is missing)")
     args = ap.parse_args(argv)
 
     try:
-        settings = st.load(args.config, HERE)
+        settings = st.load(args.config or DEFAULT_CONFIG, HERE)
     except st.SettingsError as e:
         fail_visibly(f"Error: {e}")
         return 1

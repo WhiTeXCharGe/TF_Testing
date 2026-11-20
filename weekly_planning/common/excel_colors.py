@@ -20,7 +20,7 @@ GREY_INDEXED = {15, 22, 23, 24, 25, 26, 27, 28, 29}
 RED_INDEXED = {10}
 
 
-IGNORE_WHITE_TEXT = {"FI", "FO"}
+IGNORE_WHITE_TEXT = {"FI", "FO", "FO/FI", "FI/FO"}
 
 
 def _color_to_rgb6(color):

@@ -13,20 +13,21 @@ schedule.  Nothing else changes:
     a real cell of the module is copied (the same worker's nearest cell), or, for a module with no cell in the sheet,
     the name is made here from the fab and customer (--new-module-text).  The style (colour, border, font) is the one of
     the nearest real cell of the module, or the most common module style of the sheet for a new module;
-  * a cell that is no longer part of a module is emptied (the normal empty-cell style of the sheet);
+  * only worker/date cells from the previous flexible schedule may be cleared or reused; other cells sharing a module code stay;
   * cells of other tasks, red / grey cells and text of other modules are never overwritten;
   * a NEW module (added in step 2-4, so it has no cell in the sheet yet) is written with a name made from its fab and
     customer (--new-module-text) and the style of the most common module bar of the sheet (same colour theme as the other bars);
   * the FI / FO of the flexible trips are written too: FI on the first day of the trip, FO on the last day; where one trip ends
-    and the next one starts on the same date only one mark (FO) is written, which is how the sheet is read back.
+    and the next one starts on the same date, FO/FI is written and read back as both boundaries.
 
 Inputs
   --schedule      schedule of the flexible modules (a module = a workflow task whose name holds the module code)
   --env           EnvConfig.yaml that belongs to it (worker id -> name)
+  --prev-flexible previous FlexibleSchedule.yaml; omitted or empty means no old cells may be cleared
+  --prev-env      previous EnvConfig.yaml for the old worker IDs (default: --env)
   --su-others     the old SU_Others .xlsm (it is only read; give a copy, the output is a new file)
-  --flexible-work optional <date>_FlexibleWork.yaml: the flexible trips of last week are taken from it (their FI/FO are removed
-                  before the new ones are written).  It does NOT limit the modules: every module of the schedule is written,
-                  including the modules that are new this week and so are not in the list.
+  --flexible-work optional FlexibleWork.yaml: limits which previous flexible modules and trips may be removed.
+                  Every module of the new schedule is written, including modules new this week.
 Output (in --out-dir)
   <old file name>_rewritten.xlsm   the new workbook
   <old file name>_rewritten.txt    only with --report: every change, conflict and skipped item
@@ -39,6 +40,7 @@ import re
 import sys
 import zipfile
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -52,6 +54,23 @@ from common.flexible_schedule import read_prev_flexible   # noqa: E402
 from common.text import extract_tool_code, name_key, normalize_tool_code_in_text   # noqa: E402
 from common.trips import pair_fifo_repaired, read_mark   # noqa: E402
 from common.yaml_io import load_yaml   # noqa: E402
+
+
+@dataclass(frozen=True)
+class WriteResult:
+    output_path: Path
+    report_path: Path | None
+    warning_count: int
+    conflict_count: int
+
+
+class WriteVerificationError(RuntimeError):
+    pass
+
+
+class WriteConflictError(ValueError):
+    pass
+
 
 DEFAULT_BLANK_STYLE = "4"       # style of an empty day cell in the real sheet; the tool uses the most common one it finds
 
@@ -153,18 +172,19 @@ def patch_sheet_xml(xml, rows, new_cells):
 # ----------------------------------------------------------------------------- the plan (pure)
 
 def plan_changes(old_cells, want, rows_by_worker, col_by_date, empty, blocked, from_date, new_modules=None, names=None,
-                 text_of=None):
+                 text_of=None, removable_cells=None):
     """
     old_cells : {code: {(row, col)}}   cells of the sheet that show the module now (red/grey cells excluded)
     want      : {code: {(worker_key, 'YYYY/MM/DD')}}   what the flexible schedule says
     rows_by_worker : {worker_key: [row]}   sheet rows of a worker
     col_by_date    : {'YYYY/MM/DD': col}   date columns of the sheet
-    empty(row, col) -> True when the cell has no text;  blocked(row, col) -> True for red / grey cells
+    empty(row, col) -> True when the cell has no text; blocked(row, col) -> True for red / grey cells
     from_date : cells before this date are never touched
     new_modules : {code: (text, style)} for modules that have no cell in the sheet yet (new modules): their cells are
                   written with this text and style; without an entry such a module is only reported
     names       : {code: {(worker_key, date): cell_name}} the text of the cells from the assignment rows (FlexibleSchedule)
     text_of(row, col) -> text of a sheet cell (or None); lets a cell whose real donor already has the cell_name be copied as it is
+    removable_cells: exact old flexible cells permitted to change; an empty map permits no clearing or reuse
     Returns (clears [(code, row, col)], sets [(code, row, col, donor)], report [str]); donor is
       (row, col)                        a real cell of the module: its text and style are copied
       ("named", text, (row, col))       the style of that real cell, the text of the cell_name
@@ -172,15 +192,16 @@ def plan_changes(old_cells, want, rows_by_worker, col_by_date, empty, blocked, f
     """
     report, clears, wants, names_at = [], [], {}, {}
     date_of_col = {c: d for d, c in col_by_date.items()}
-    for code in sorted(want):
-        old = old_cells.get(code, set())
+    removable_cells = old_cells if removable_cells is None else removable_cells
+    for code in sorted(set(want) | set(removable_cells)):
+        old = removable_cells.get(code, set())
         old_by_row = defaultdict(set)
         for r, c in old:
             old_by_row[r].add(c)
         target = set()
         name_at = names_at.setdefault(code, {})
         missing_worker = skipped_date = 0
-        for wk, d in sorted(want[code]):
+        for wk, d in sorted(want.get(code, ())):
             if d < from_date:
                 continue
             if wk not in rows_by_worker:
@@ -191,25 +212,29 @@ def plan_changes(old_cells, want, rows_by_worker, col_by_date, empty, blocked, f
                 skipped_date += 1
                 continue
             rows = rows_by_worker[wk]
-            row = max(rows, key=lambda r: len(old_by_row.get(r, ())))    # the row that already carries the module, else the first
+            row = max(rows, key=lambda r: (
+                (r, col) in old,
+                empty(r, col) and not blocked(r, col),
+                len(old_by_row.get(r, ())),
+            ))
             target.add((row, col))
             nm = (names or {}).get(code, {}).get((wk, d))
             if nm:
                 name_at[(row, col)] = nm
         wants[code] = target
         if missing_worker:
-            report.append(f"WARN: module {code}: {missing_worker} worker-days skipped, the worker has no row in the sheet")
+            report.append(f"CONFLICT: module {code}: {missing_worker} worker-days cannot be placed, the worker has no row in the sheet")
         if skipped_date:
-            report.append(f"WARN: module {code}: {skipped_date} worker-days skipped, the date is outside the sheet")
+            report.append(f"CONFLICT: module {code}: {skipped_date} worker-days cannot be placed, the date is outside the sheet")
         for r, c in sorted(old - target):
-            if date_of_col.get(c, "0000/00/00") >= from_date:
+            if date_of_col.get(c, "0000/00/00") >= from_date and not blocked(r, c):
                 clears.append((code, r, c))
 
     freed = {(r, c) for _code, r, c in clears}
     claimed, sets, no_donor = {}, [], Counter()
     for code in sorted(wants):
         old = old_cells.get(code, set())
-        for r, c in sorted(wants[code] - old):
+        for r, c in sorted(wants[code] - removable_cells.get(code, set())):
             if blocked(r, c):
                 report.append(f"CONFLICT: {code} row {r} {col_letters(c)}: the cell is red / grey, left as it is")
                 continue
@@ -245,11 +270,11 @@ def plan_trips(want_trips, remove_trips, rows_by_worker, col_by_date, marks, tex
     FI / FO of the flexible trips.
     want_trips  : {worker_key: [(start, end)]}   flexible trips of the schedule (FI on start, FO on end)
     remove_trips: {worker_key: [(start, end)]}   flexible trips of last week (FlexibleWork): their FI / FO are removed first
-    marks       : {(row, col): 'FI'|'FO'}        FI / FO cells of the sheet now
+    marks       : {(row, col): 'FI'|'FO'|'FO/FI'}  FI / FO cells of the sheet now
     texts_by_row: {row: {date: text}}            every written day of a row (to repair the pairs of the sheet)
     blocked(row, col) -> True for red / grey cells (never touched)
-    A date where one trip ends and the next one starts holds ONE mark, FO (the FI is the same date, as the sheet is read back).
-    Returns (clears [(row, col)], sets [(row, col, 'FI'|'FO')], report [str]).
+    A date where one trip ends and the next one starts holds FO/FI.
+    Returns (clears [(row, col)], sets [(row, col, 'FI'|'FO'|'FO/FI')], report [str]).
     """
     report, clears, sets = [], [], []
     date_of_col = {c: d for d, c in col_by_date.items()}
@@ -258,34 +283,53 @@ def plan_trips(want_trips, remove_trips, rows_by_worker, col_by_date, marks, tex
         rows = rows_by_worker.get(wk)
         if not rows:
             n = len(want_trips.get(wk, ())) + len(remove_trips.get(wk, ()))
-            report.append(f"WARN: {n} trips of {wk} skipped, the worker has no row in the sheet")
+            report.append(f"CONFLICT: {n} trips of {wk} cannot be placed, the worker has no row in the sheet")
             continue
         row = max(rows, key=lambda r: sum(1 for (rr, _c) in marks if rr == r))
         row_marks = {date_of_col[c]: m for (r, c), m in marks.items() if r == row and c in date_of_col}
 
-        desired = {}
+        desired_parts = defaultdict(set)
         trips = sorted(set(want_trips.get(wk, ())))
-        for i, (s, e) in enumerate(trips):
+        for s, e in trips:
             if s == e:
-                report.append(f"WARN: one-day trip {wk} {s} cannot be written with one mark: skipped")
+                report.append(f"CONFLICT: one-day trip {wk} {s} cannot be written with one mark")
                 continue
-            touches_previous = any(e0 == s for (_s0, e0) in trips[:i])
-            if not touches_previous:
-                desired[s] = "FI"
-            desired[e] = "FO"
+            desired_parts[s].add("FI")
+            desired_parts[e].add("FO")
+        desired = {day: "FO/FI" if len(parts) == 2 else next(iter(parts))
+                   for day, parts in desired_parts.items()}
 
         protected = set()
+        protected_parts = defaultdict(set)
+        owned_parts = defaultdict(set)
+        for start, end in remove_trips.get(wk, ()):
+            owned_parts[start].add("FI")
+            owned_parts[end].add("FO")
+        owned_dates = {d for trip in remove_trips.get(wk, ()) for d in trip}
         if remove_trips.get(wk):
             pairs, _n = pair_fifo_repaired(row_marks, list(texts_by_row.get(row, {})), window)
             old = set(remove_trips[wk])
             for s, e in pairs:
                 if (s, e) not in old:
                     protected.update((s, e))
+                    protected_parts[s].add("FI")
+                    protected_parts[e].add("FO")
         freed = set()
         for s, e in sorted(set(remove_trips.get(wk, ()))):
             for d in (s, e):
                 col = col_by_date.get(d)
-                if col is None or d < from_date or d in desired or d in protected:
+                if col is None or d < from_date or d in desired:
+                    continue
+                if marks.get((row, col)) == "FO/FI" and not blocked(row, col):
+                    remaining = {"FO", "FI"} - (owned_parts[d] - protected_parts[d])
+                    if len(remaining) == 1:
+                        replacement = (row, col, next(iter(remaining)))
+                        if replacement not in sets:
+                            sets.append(replacement)
+                        continue
+                    if remaining:
+                        continue
+                elif d in protected:
                     continue
                 if (row, col) in marks and not blocked(row, col) and (row, col) not in freed:
                     clears.append((row, col))
@@ -293,18 +337,32 @@ def plan_trips(want_trips, remove_trips, rows_by_worker, col_by_date, marks, tex
         for d, mark in sorted(desired.items()):
             col = col_by_date.get(d)
             if col is None:
-                report.append(f"WARN: {mark} of {wk} on {d} skipped, the date is outside the sheet")
+                report.append(f"CONFLICT: {mark} of {wk} on {d} cannot be placed, the date is outside the sheet")
                 continue
             if d < from_date:
                 continue
-            if marks.get((row, col)) == mark:
+            if marks.get((row, col)) == mark and d in owned_dates and d not in protected:
                 continue
             if blocked(row, col):
                 report.append(f"CONFLICT: {mark} of {wk} on {d}: the cell is red / grey, left as it is")
                 continue
             if (row, col) in marks and (row, col) not in freed:
-                report.append(f"CONFLICT: {mark} of {wk} on {d}: the cell already holds {marks[(row, col)]}, left as it is")
-                continue
+                existing = marks[(row, col)]
+                existing_parts = set(existing.split("/"))
+                if d in owned_dates and existing == "FO/FI":
+                    existing_parts -= owned_parts[d] - protected_parts[d]
+                elif d in owned_dates and d not in protected:
+                    existing_parts = set()
+                merged = existing_parts | set(mark.split("/"))
+                if len(merged) == 2:
+                    if existing == "FO/FI":
+                        continue
+                    mark = "FO/FI"
+                elif existing == "FO/FI" or (d in owned_dates and d not in protected):
+                    mark = next(iter(merged))
+                else:
+                    report.append(f"CONFLICT: {mark} of {wk} on {d}: the cell already holds {existing}, left as it is")
+                    continue
             if d in texts_by_row.get(row, {}) and (row, col) not in marks:
                 report.append(f"CONFLICT: {mark} of {wk} on {d}: the cell holds another task ({texts_by_row[row][d]!r}), left as it is")
                 continue
@@ -442,10 +500,16 @@ def verify(su_path, out_path, sheet_name, new_cells):
 def wanted_cells(schedule_doc, env_doc, only_modules=None):
     """({code: {(worker_key, date)}}, warnings, {code: {"fab", "customer", "description"}}, {worker_key: [(start, end)]},
     {code: {(worker_key, date): cell_name}}).
-    Every module with assignments is wanted (only_modules, if given, limits it); trips are the Flexible ones of the schedule."""
+    Only Flexible workflow assignments are wanted (only_modules, if given, limits them); trips are the Flexible ones."""
     env = env_doc.get("environment", env_doc)
     names = {w["id"]: w["name"] for w in env.get("worker_list") or []}
-    prev = read_prev_flexible(schedule_doc, names)
+    schedule = schedule_doc.get("schedule", schedule_doc)
+    flexible_schedule = dict(schedule)
+    flexible_schedule["assignment_list"] = [
+        row for row in schedule.get("assignment_list") or []
+        if str(row.get("plan_flexibility") or "Flexible").casefold() == "flexible"
+    ]
+    prev = read_prev_flexible(flexible_schedule, names)
     want, info, cell_names = {}, {}, {}
     for code, m in prev["modules"].items():
         if not m["assign"]:
@@ -460,6 +524,33 @@ def wanted_cells(schedule_doc, env_doc, only_modules=None):
         if t["flex"].lower() == "flexible":
             trips[t["worker_key"]].append((t["start"], t["end"]))
     return want, prev["warnings"], info, dict(trips), cell_names
+
+
+def previous_cells(previous_want, previous_names, layout, from_date):
+    """Resolve only the old flexible worker/date cells, never all cells sharing a module code."""
+    removable, report = {}, []
+    for code, assignments in previous_want.items():
+        owned = removable.setdefault(code, set())
+        for worker, day in sorted(assignments):
+            if day < from_date:
+                continue
+            col = layout["col_by_date"].get(day)
+            rows = layout["rows_by_worker"].get(worker, ())
+            expected_name = previous_names.get(code, {}).get((worker, day))
+            matches = [
+                (row, col) for row in rows
+                if (row, col) in layout["old_cells"].get(code, ())
+                and (row, col) not in layout["red_grey"]
+                and (not expected_name or cell_name_key(layout["texts"].get((row, col), "")) == cell_name_key(expected_name))
+            ]
+            if len(matches) != 1:
+                report.append(
+                    f"CONFLICT: old flexible module {code}, worker {worker}, {day}: "
+                    f"expected one unchanged cell, found {len(matches)}"
+                )
+                continue
+            owned.add(matches[0])
+    return removable, report
 
 
 def new_module_text(template, code, info):
@@ -489,95 +580,156 @@ def mark_donors(layout, cells):
     return out
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="Weekly planning 3-3: write the flexible schedule back into a copy of SU_Others.")
-    ap.add_argument("--schedule", required=True, help="schedule of the flexible modules (FlexibleSchedule / Timefold result Schedule.yaml)")
-    ap.add_argument("--env", required=True, help="EnvConfig.yaml that belongs to the schedule (worker names)")
-    ap.add_argument("--su-others", required=True, help="old SU_Others workbook (.xlsm) (only read)")
-    ap.add_argument("--out-dir", required=True, help="folder for the new workbook")
-    ap.add_argument("--flexible-work", default=None,
-                    help="<date>_FlexibleWork.yaml: its flexible trips are removed from the sheet before the new FI/FO are written "
-                         "(it does not limit the modules)")
-    ap.add_argument("--new-module-text", default=DEFAULT_CELL_NAME_TEMPLATE,
-                    help="text of the cells of a module that has no cell in the sheet and no cell_name in the schedule rows; "
-                         "{customer} {fab} {code} {description} (default '{customer}{fab}_{code}_新規')")
-    ap.add_argument("--new-module-style-from", default=None,
-                    help="module code whose cell style is used for new modules (default: the most common module style of the sheet)")
-    ap.add_argument("--no-trips", action="store_true", help="do not write FI/FO")
-    ap.add_argument("--sheet", default="予定表_2026", help="task sheet of SU_Others")
-    ap.add_argument("--from-date", default=None, help="YYYY/MM/DD; cells before it are never touched (default: today)")
-    ap.add_argument("--report", action="store_true", help="also write <name>_rewritten.txt with every change and conflict")
-    ap.add_argument("--dry-run", action="store_true", help="only print the plan, write nothing")
-    args = ap.parse_args(argv)
-
-    src = Path(args.su_others)
-    out = Path(args.out_dir) / f"{src.stem}_rewritten{src.suffix}"
+def _run_write(
+    schedule_path: Path,
+    env_path: Path,
+    su_others_path: Path,
+    output_dir: Path,
+    flexible_work_path: Path | None,
+    *,
+    sheet: str,
+    from_date: date | None,
+    write_report: bool,
+    new_module_text_template: str,
+    new_module_style_from: str | None,
+    write_trips: bool,
+    previous_flexible_path: Path | None = None,
+    previous_env_path: Path | None = None,
+    dry_run: bool = False,
+    verbose: bool = False,
+) -> WriteResult:
+    src = Path(su_others_path)
+    out = Path(output_dir) / f"{src.stem}_rewritten{src.suffix}"
     if out.resolve() == src.resolve():
-        ap.error("the output would overwrite the input")
-    from_date = ymd(args.from_date) if args.from_date else date.today().strftime("%Y/%m/%d")
-    if from_date is None:
-        ap.error("--from-date must look like 2026/10/01")
+        raise ValueError("the output would overwrite the input")
+    from_date_text = ymd(from_date) if from_date else date.today().strftime("%Y/%m/%d")
+    if from_date_text is None:
+        raise ValueError("from_date must be a date")
 
-    env_doc = load_yaml(args.env)
+    env_doc = load_yaml(env_path)
     want_names = [w["name"] for w in env_doc.get("environment", env_doc).get("worker_list") or []]
-    want, warns, info, want_trips, cell_names = wanted_cells(load_yaml(args.schedule), env_doc)
-    remove_trips, listed_modules = {}, set()
-    if args.flexible_work:
-        names = {w["id"]: w["name"] for w in (env_doc.get("environment", env_doc).get("worker_list") or [])}
-        fw = load_yaml(args.flexible_work).get("flexible_work") or {}
+    schedule_doc = load_yaml(schedule_path)
+    want, warns, info, want_trips, cell_names = wanted_cells(schedule_doc, env_doc)
+    previous_doc = load_yaml(previous_flexible_path) if previous_flexible_path is not None else {}
+    previous_env = load_yaml(previous_env_path) if previous_env_path is not None else env_doc
+    fw = None
+    listed_modules = set()
+    if flexible_work_path:
+        fw = load_yaml(flexible_work_path).get("flexible_work") or {}
         listed_modules = set(fw.get("modules") or [])
-        for t in fw.get("trips") or []:
-            s, e = ymd(t.get("start_date")), ymd(t.get("end_date"))
-            if s and e and t.get("worker") in names:
-                remove_trips.setdefault(name_key(names[t["worker"]]), []).append((s, e))
-    print(f"{len(want)} modules with assignments and {sum(len(v) for v in want_trips.values())} flexible trips in the schedule; "
-          f"reading SU_Others (this takes a while) ...", flush=True)
-    layout = read_layout(str(src), args.sheet)
+    old_want, old_warns, _old_info, old_trips, old_names = wanted_cells(
+        previous_doc, previous_env, only_modules=listed_modules if fw is not None else None
+    )
+    remove_trips = old_trips
+    if fw is not None:
+        names = {w["id"]: w["name"] for w in env_doc.get("environment", env_doc).get("worker_list") or []}
+        allowed_trips = set()
+        for trip in fw.get("trips") or []:
+            worker = trip.get("worker")
+            start, end = ymd(trip.get("start_date")), ymd(trip.get("end_date"))
+            if worker not in names or not start or not end:
+                raise ValueError(f"Invalid flexible trip removal entry: {trip}")
+            allowed_trips.add((name_key(names[worker]), start, end))
+        remove_trips = {
+            worker: [(start, end) for start, end in trips if (worker, start, end) in allowed_trips]
+            for worker, trips in old_trips.items()
+            if any((worker, start, end) in allowed_trips for start, end in trips)
+        }
+    if verbose:
+        print(f"{len(want)} modules with assignments and {sum(len(v) for v in want_trips.values())} "
+              "flexible trips in the schedule; reading SU_Others (this takes a while) ...", flush=True)
+    layout = read_layout(str(src), sheet)
+    removable, previous_report = previous_cells(old_want, old_names, layout, from_date_text)
+
+    def blocked(r, c):
+        return (r, c) in layout["red_grey"]
+
+    old_trip_cells = set()
+    if write_trips and remove_trips:
+        old_trip_clears, _old_sets, old_trip_report = plan_trips(
+            {}, remove_trips, layout["rows_by_worker"], layout["col_by_date"], layout["marks"],
+            layout["texts_by_row"], blocked, from_date_text,
+        )
+        previous_report += old_trip_report
+        desired_trip_cells = {
+            (row, layout["col_by_date"][day])
+            for worker, trips in want_trips.items()
+            for trip in trips for day in trip
+            if day in layout["col_by_date"]
+            for row in layout["rows_by_worker"].get(worker, ())
+        }
+        old_trip_cells = set(old_trip_clears) - desired_trip_cells
 
     with zipfile.ZipFile(src) as z:
-        part = sheet_part_name(z, args.sheet)
+        part = sheet_part_name(z, sheet)
         sheet_xml = z.read(part).decode("utf-8")
     rows, cells = index_sheet(sheet_xml)
     blank = Counter(cells[(r, c)][0] for rs in layout["rows_by_worker"].values() for r in rs for c in layout["date_cols"]
                     if (r, c) in cells and (r, c) not in layout["texts"] and (r, c) not in layout["red_grey"])
     blank_style = blank.most_common(1)[0][0] if blank else DEFAULT_BLANK_STYLE
 
-    new_style = most_common_module_style(layout["old_cells"], cells, args.new_module_style_from)
-    new_modules = {code: (new_module_text(args.new_module_text, code, info.get(code, {})), new_style)
+    new_style = most_common_module_style(layout["old_cells"], cells, new_module_style_from)
+    new_modules = {code: (new_module_text(new_module_text_template, code, info.get(code, {})), new_style)
                    for code in want if not layout["old_cells"].get(code)}
     clears, sets, report = plan_changes(
         layout["old_cells"], want, layout["rows_by_worker"], layout["col_by_date"],
-        empty=lambda r, c: (r, c) not in layout["texts"], blocked=lambda r, c: (r, c) in layout["red_grey"], from_date=from_date,
-        new_modules=new_modules, names=cell_names, text_of=lambda r, c: layout["texts"].get((r, c)))
+        empty=lambda r, c: (r, c) not in layout["texts"] or (r, c) in old_trip_cells,
+        blocked=blocked, from_date=from_date_text,
+        new_modules=new_modules, names=cell_names, text_of=lambda r, c: layout["texts"].get((r, c)),
+        removable_cells=removable)
     no_name = sorted(code for code in want if not cell_names.get(code))
     if no_name:
         report.append(f"INFO: no cell_name in the schedule rows of {', '.join(no_name)}: the text of a real cell of the module is "
                       f"copied (or the name is made from fab and customer for a new module)")
-    report = [f"WARN: {w}" for w in warns] + report
+    report = ([f"WARN: {warning}" for warning in warns]
+              + [f"CONFLICT: previous flexible schedule: {warning}; check --prev-env" for warning in old_warns]
+              + previous_report + report)
     if listed_modules:
         for code in sorted(listed_modules - set(want)):
-            report.append(f"WARN: module {code} is in FlexibleWork but has no assignment in the schedule: its cells are left as they are")
+            report.append(f"INFO: module {code} is in FlexibleWork but has no new assignment: only its previous flexible cells are removed")
         for code in sorted(set(want) - listed_modules):
             report.append(f"INFO: module {code} is in the schedule but not in FlexibleWork (new this week)")
     trip_clears, trip_sets, trip_report = [], [], []
-    if not args.no_trips and (want_trips or remove_trips):
+    donors = {}
+    if write_trips and (want_trips or remove_trips):
         donors = mark_donors(layout, cells)
         if len(donors) < 2:
-            trip_report.append("WARN: the sheet has no plain FI / FO cell to copy the style from: FI / FO not written")
+            trip_report.append("CONFLICT: the sheet has no plain FI / FO cell to copy the style from")
         else:
+            cleared_modules = {(r, c) for _code, r, c in clears}
+            date_columns = layout["col_by_date"]
+            trip_texts = {
+                row: {day: text for day, text in texts.items() if (row, date_columns[day]) not in cleared_modules}
+                for row, texts in layout["texts_by_row"].items()
+            }
             trip_clears, trip_sets, trip_report = plan_trips(
                 want_trips, remove_trips, layout["rows_by_worker"], layout["col_by_date"], layout["marks"],
-                layout["texts_by_row"], lambda r, c: (r, c) in layout["red_grey"], from_date)
+                trip_texts, blocked, from_date_text)
     report += trip_report
     clears = clears + [("FI/FO", r, c) for r, c in trip_clears]
-    sets = sets + [("FI/FO", r, c, donors[m]) for r, c, m in trip_sets] if trip_sets else sets
+    for r, c, mark in trip_sets:
+        if (r, c) in layout["marks"]:
+            donor = ("named", mark, (r, c))
+        elif mark == "FO/FI":
+            donor = ("named", mark, donors["FO"])
+        else:
+            donor = donors[mark]
+        sets.append(("FI/FO", r, c, donor))
+    set_locations = Counter((r, c) for _code, r, c, _donor in sets)
+    report += [
+        f"CONFLICT: {col_letters(c)}{r}: multiple module/trip assignments target the same cell"
+        for (r, c), count in sorted(set_locations.items()) if count > 1
+    ]
+    conflicts = [line for line in report if line.startswith("CONFLICT")]
+    if conflicts:
+        raise WriteConflictError("No workbook was written because of conflicts:\n" + "\n".join(conflicts))
     per = defaultdict(lambda: [0, 0])
     for code, _r, _c in clears:
         per[code][0] += 1
     for code, _r, _c, _dn in sets:
         per[code][1] += 1
     per_trip = per.pop("FI/FO", [0, 0])
-    lines = [f"write_su_others report (from {from_date}, sheet {args.sheet})",
+    lines = [f"write_su_others report (from {from_date_text}, sheet {sheet})",
              f"{len(clears) - per_trip[0]} module cells emptied, {len(sets) - per_trip[1]} module cells filled, "
              f"{sum(1 for r in report if r.startswith('CONFLICT'))} conflicts "
              f"(FI/FO: {per_trip[0]} emptied, {per_trip[1]} written)", ""]
@@ -591,24 +743,126 @@ def main(argv=None):
     for code, r, c in clears:
         lines.append(f"EMPTIED {col_letters(c)}{r}\t{display.get(name_of_row.get(r), name_of_row.get(r))}\t{date_of_col.get(c)}\t{code}")
     for code, r, c, dn in sets:
-        what = dn[1] if dn[0] == "new" else layout["texts"].get(dn, "")
+        what = dn[1] if dn[0] in ("new", "named") else layout["texts"].get(dn, "")
         lines.append(f"WRITTEN {col_letters(c)}{r}\t{display.get(name_of_row.get(r), name_of_row.get(r))}\t{date_of_col.get(c)}\t{what}")
-    print("\n".join(lines[:2]))
+    if verbose:
+        print("\n".join(lines[:2]))
+
+    report_path = out.with_suffix(".txt") if write_report and not dry_run else None
+    result = WriteResult(
+        output_path=out,
+        report_path=report_path,
+        warning_count=sum(line.startswith("WARN:") for line in report),
+        conflict_count=sum(line.startswith("CONFLICT") for line in report),
+    )
+    if dry_run:
+        return result
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    new_cells = rewrite(str(src), str(out), sheet, layout, clears, sets, sheet_xml, rows, cells, blank_style)
+    problems = verify(str(src), str(out), sheet, new_cells)
+    if problems:
+        raise WriteVerificationError("; ".join(problems[:5]))
+    if report_path:
+        report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return result
+
+
+def write_su_others(
+    schedule_path: Path,
+    env_path: Path,
+    su_others_path: Path,
+    output_dir: Path,
+    flexible_work_path: Path | None,
+    *,
+    sheet: str = "予定表_2026",
+    from_date: date | None = None,
+    write_report: bool = False,
+    previous_flexible_path: Path | None = None,
+    previous_env_path: Path | None = None,
+) -> WriteResult:
+    """Excelへ計画を反映し、出力先と警告・競合数を返す。"""
+    return _run_write(
+        schedule_path,
+        env_path,
+        su_others_path,
+        output_dir,
+        flexible_work_path,
+        sheet=sheet,
+        from_date=from_date,
+        write_report=write_report,
+        new_module_text_template=DEFAULT_CELL_NAME_TEMPLATE,
+        new_module_style_from=None,
+        write_trips=True,
+        previous_flexible_path=previous_flexible_path,
+        previous_env_path=previous_env_path,
+    )
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Weekly planning 3-3: write the flexible schedule back into a copy of SU_Others.")
+    ap.add_argument("--schedule", required=True, help="schedule of the flexible modules (FlexibleSchedule / Timefold result Schedule.yaml)")
+    ap.add_argument("--env", required=True, help="EnvConfig.yaml that belongs to the schedule (worker names)")
+    ap.add_argument("--prev-flexible", default=None,
+                    help="previous FlexibleSchedule.yaml; omitted or empty means no old cells may be removed")
+    ap.add_argument("--prev-env", default=None,
+                    help="previous EnvConfig for old worker IDs (default: --env)")
+    ap.add_argument("--su-others", required=True, help="old SU_Others workbook (.xlsm) (only read)")
+    ap.add_argument("--out-dir", required=True, help="folder for the new workbook")
+    ap.add_argument("--flexible-work", default=None,
+                    help="FlexibleWork.yaml: limits which previous flexible modules/trips may be removed; "
+                         "does not limit newly placed modules")
+    ap.add_argument("--new-module-text", default=DEFAULT_CELL_NAME_TEMPLATE,
+                    help="text of the cells of a module that has no cell in the sheet and no cell_name in the schedule rows; "
+                         "{customer} {fab} {code} {description} (default '{customer}{fab}_{code}_新規')")
+    ap.add_argument("--new-module-style-from", default=None,
+                    help="module code whose cell style is used for new modules (default: the most common module style of the sheet)")
+    ap.add_argument("--no-trips", action="store_true", help="do not write FI/FO")
+    ap.add_argument("--sheet", default="予定表_2026", help="task sheet of SU_Others")
+    ap.add_argument("--from-date", default=None, help="YYYY/MM/DD; cells before it are never touched (default: today)")
+    ap.add_argument("--report", action="store_true", help="also write <name>_rewritten.txt with every change and conflict")
+    ap.add_argument("--dry-run", action="store_true", help="only print the plan, write nothing")
+    args = ap.parse_args(argv)
+    src = Path(args.su_others)
+    out = Path(args.out_dir) / f"{src.stem}_rewritten{src.suffix}"
+    if out.resolve() == src.resolve():
+        ap.error("the output would overwrite the input")
+    from_date = ymd(args.from_date) if args.from_date else None
+    if args.from_date and from_date is None:
+        ap.error("--from-date must look like 2026/10/01")
+    parsed_from_date = date.fromisoformat(from_date.replace("/", "-")) if from_date else None
+
+    try:
+        outcome = _run_write(
+            Path(args.schedule),
+            Path(args.env),
+            Path(args.su_others),
+            Path(args.out_dir),
+            Path(args.flexible_work) if args.flexible_work else None,
+            sheet=args.sheet,
+            from_date=parsed_from_date,
+            write_report=args.report,
+            new_module_text_template=args.new_module_text,
+            new_module_style_from=args.new_module_style_from,
+            write_trips=not args.no_trips,
+            previous_flexible_path=Path(args.prev_flexible) if args.prev_flexible else None,
+            previous_env_path=Path(args.prev_env) if args.prev_env else None,
+            dry_run=args.dry_run,
+            verbose=True,
+        )
+    except WriteVerificationError as exc:
+        print(f"VERIFY FAILED: {exc}", file=sys.stderr)
+        return 3
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     if args.dry_run:
         print("dry run: nothing written")
         return 0
-    out.parent.mkdir(parents=True, exist_ok=True)
-    new_cells = rewrite(str(src), str(out), args.sheet, layout, clears, sets, sheet_xml, rows, cells, blank_style)
-    problems = verify(str(src), str(out), args.sheet, new_cells)
-    if problems:
-        print("VERIFY FAILED: " + "; ".join(problems[:5]), file=sys.stderr)
-        return 3
-    print(f"written {out}")
+    print(f"written {outcome.output_path}")
     print("check: only the sheet cells listed in the plan differ; all other parts of the file are byte-identical")
-    if args.report:
-        rp = out.with_suffix(".txt")
-        rp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"report {rp}")
+    if outcome.report_path:
+        print(f"report {outcome.report_path}")
     return 0
 
 

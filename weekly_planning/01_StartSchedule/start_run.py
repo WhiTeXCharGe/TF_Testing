@@ -132,8 +132,10 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
         skill_file = None
         if previous:
             emit(f"Previous week: {previous.name}")
-            prev_flex = previous / weeks.FLEXIBLE_FILE
-            prev_env = previous / weeks.ENV_FILE
+            carry_over = weeks.previous_week_inputs(previous)
+            if carry_over is None:
+                raise StartError("2-2-3", f"the carry-over files for week {previous.name} are no longer available")
+            prev_flex, prev_env = carry_over
         else:
             emit("First week: there is no earlier week with FlexibleSchedule.yaml and EnvConfig.yaml.")
             prev_flex = steps_dir / "prev_FlexibleSchedule_none.yaml"
@@ -168,7 +170,7 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
 
         # --- 2-2-3
         argv = ["--prev-flexible", prev_flex, "--prev-env", prev_env, "--su-others", su_copy, "--seiban-list", sb_copy,
-                "--out-dir", steps_dir, "--today", day.strftime("%Y/%m/%d"), "--report"]
+                "--out-dir", steps_dir, "--today", day.strftime("%Y/%m/%d")]
         if skill_file:
             argv += ["--skill-file", skill_file]
         for opt, key in (("--su-sheets", "su_sheet"), ("--skill-sheet", "skill_sheet"), ("--seiban-sheet", "seiban_sheet"),
@@ -182,7 +184,7 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
         cfg = steps_dir / "config_2-4.txt"
         write_config(cfg, "settings of tool 2-4 (apply_seiban_list)",
                      [("schedule", steps_dir / "01_Schedule.yaml"), ("env", steps_dir / "01_EnvConfig.yaml"),
-                      ("seiban_list", sb_copy), ("out_dir", steps_dir), ("report", "true")])
+                      ("seiban_list", sb_copy), ("out_dir", steps_dir), ("report", "false")])
         step("2-4", "2-4 apply_seiban_list (new and deleted seiban)", ["--config", cfg],
              [steps_dir / "02_Schedule.yaml", steps_dir / "02_EnvConfig.yaml"])
 

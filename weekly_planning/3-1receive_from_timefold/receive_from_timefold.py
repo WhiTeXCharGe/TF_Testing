@@ -22,7 +22,9 @@ import argparse
 import shutil
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
@@ -32,6 +34,11 @@ CONFIG_FILE = HERE / tfc.CONFIG_NAME        # the settings of this tool
 
 EXIT_DONE, EXIT_RUNNING, EXIT_FAILED, EXIT_CANCELLED, EXIT_UNREACHABLE, EXIT_ARGS = 0, 1, 2, 3, 4, 5
 TERMINAL = ("Completed", "Failed", "Cancelled")
+
+
+@dataclass(frozen=True)
+class ReceiveResult:
+    status: Literal["completed", "not_finished"]
 
 
 def describe(status):
@@ -62,6 +69,49 @@ def find_run_record(arg, cfg):
         if c and Path(c).is_file():
             return Path(c)
     return None
+
+
+def receive_result(
+    run_info_path: Path,
+    output_dir: Path,
+    config_path: Path,
+    *,
+    watch_seconds: int = 0,
+) -> ReceiveResult:
+    """状態を確認し、完了済みの結果とEnvConfigを指定先へ保存する。"""
+    cfg = tfc.load(config_path, CONFIG_FILE, tfc.RECEIVE_KEYS)
+    record_path = Path(run_info_path)
+    info = api.read_run_info(record_path)
+    run_id = info.get("runId")
+    if not run_id:
+        raise tfc.ConfigError(f"no runId in run record: {record_path}")
+    api.check_run_id(run_id)
+    conn = tfc.connection(cfg, record=info)
+    while True:
+        status = api.get_status(conn, run_id)
+        if status.get("status") in TERMINAL or watch_seconds <= 0:
+            break
+        time.sleep(watch_seconds)
+    state = status.get("status")
+    if state == "Failed":
+        error = status.get("error") or {}
+        raise api.ApiError(
+            f"Timefold run failed: {error.get('type', 'error')}: {error.get('message', 'no message')}"
+        )
+    if state == "Cancelled":
+        raise api.ApiError("Timefold run was cancelled")
+    if state != "Completed":
+        return ReceiveResult(status="not_finished")
+    env_src = info.get("envFile")
+    if not env_src or not Path(env_src).is_file():
+        raise api.ApiError(
+            f"cannot read the EnvConfig file: {env_src or '(envFile is missing)'}"
+        )
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "04_Schedule.yaml").write_bytes(api.download(conn, run_id))
+    shutil.copyfile(env_src, output_dir / "04_EnvConfig.yaml")
+    return ReceiveResult(status="completed")
 
 
 def main(argv=None):

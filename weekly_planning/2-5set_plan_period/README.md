@@ -1,19 +1,29 @@
-# 2-5 set_plan_period
+# Setting the plan period
 
-Decides the plan period of the solver input.
+The tool reads Schedule and EnvConfig files and writes the Schedule with a calculated
+plan period. The start date is the later of the earliest workflow phase start and
+today + 7 calendar days. The end date is the later of the latest workflow phase
+end + 30 calendar days and the plan start + 30 calendar days. If there are no
+phases, the start date is today + 7 calendar days and the end date is the plan
+start + 30 calendar days.
 
-**In** `02_Schedule.yaml`, `02_EnvConfig.yaml`. **Out** `03_Schedule.yaml`, `03_EnvConfig.yaml` (a plain copy of the 02 file).
+An assignment with any work date before the calculated start date becomes `Fixed`
+as a whole; assignment rows are not split. EnvConfig is copied byte-for-byte.
 
-## What it does
-- `start_date` = the later of the earliest start date of the modules and today + K days.
-- `end_date` = the latest due date of the modules + L days.
-- Assignments before `start_date` become Fixed (only those days; a row that crosses the date is split).
-- Defaults: K = 7, L = 30.
+Specify the input and output file paths with the required arguments
+`--input-schedule`, `--input-env-config`, `--output-schedule`, and
+`--output-env-config`. Use `--plan-start YYYY/MM/DD` to override the calculated
+start date without changing phase dates. An output-prefix option is not provided
+because output paths are specified individually. Report output is outside the
+current design scope.
 
-## Run
-```
-python set_plan_period.py --schedule <02_Schedule.yaml> --env <02_EnvConfig.yaml> --out-dir <folder> --today YYYY/MM/DD [--k 7] [--l 30] [--report]
-```
+Python callers can use `set_plan_period.set_plan_period(input_schedule,
+input_env_config, output_schedule, output_env_config, plan_start=None)`.
+The four path arguments accept strings or `pathlib.Path` objects; `plan_start`
+is an optional `datetime.date`.
 
-## Notes
-- The new `end_date` can be later than the last date the SU_Others workbook shows; check that the EnvConfig calendars cover the period.
+Missing or invalid phase dates, a missing or empty work-date list, invalid work
+dates, and conflicts between assignment periods and work dates are input format
+errors. Reversed phase or assignment date ranges, missing required Schedule keys,
+invalid `plan_flexibility` values, and overlapping input/output paths are also
+rejected before writing either output.

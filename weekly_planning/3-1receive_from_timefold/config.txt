@@ -9,21 +9,21 @@
 # mode
 #   local  : the solver server on this PC (MockServer). Address: local_url.
 #   online : the API controller on Azure. Address: azure_url. Same server and same behaviour as SchedulerWeb.
-mode = local
-azure_url = https://<your-solver-api>.azurecontainerapps.io
+mode = online
+azure_url = https://as-eq-installation-dev-api-app.livelyground-11135bce.japaneast.azurecontainerapps.io
 local_url = http://localhost:3001
 
 # ---------------------------------------------------------------------------------------------------- which run
 # run_info: the run record (run_info.json) that tool 2-6 wrote, in its out_dir or next to its schedule file.
 # Empty: run_info.json in the folder you run the tool from.
-run_info =
+run_info = C:\Users\3281000X\Desktop\file\csv\2026\20261105Weeklyplanning\20261030Initialplan\2-6-3-1 Timefold\output\run_info.json
 # run_id: used only when there is no run record.
 run_id =
 
 # ---------------------------------------------------------------------------------------------------- what to do
 # Folder for 04_Schedule.yaml and 04_EnvConfig.yaml (empty: the folder of the run record).
-result_dir =
+result_dir = C:\Users\3281000X\Desktop\file\csv\2026\20261105Weeklyplanning\20261030Initialplan\2-6-3-1 Timefold\output
 # Seconds between two checks until the run has ended (0 or empty: check once and stop).
 watch =
 # ask: ask  Download the result? [Y/N]    yes: download without asking    no: never download
-download = ask
+download = yes

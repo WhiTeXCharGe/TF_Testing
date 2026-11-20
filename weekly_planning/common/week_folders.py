@@ -12,9 +12,10 @@ from pathlib import Path
 WEEK_NAME = re.compile(r"^\d{8}$")
 STATUS_FILE = "week_status.json"
 RUN_INFO_FILE = "run_info.json"                 # written by tool 2-6 into steps/
-FLEXIBLE_FILE = "FlexibleSchedule.yaml"         # written by part 2 into the week folder
-ENV_FILE = "EnvConfig.yaml"                     # (the EnvConfig that the solver ran with)
-KEY_FILES = (FLEXIBLE_FILE, ENV_FILE)           # what the next week needs
+UPDATE_STATUS_FILE = "update_status.json"
+FLEXIBLE_FILE = "FlexibleSchedule.yaml"
+ENV_FILE = "EnvConfig.yaml"                     # legacy carry-over name
+KEY_FILES = (FLEXIBLE_FILE, ENV_FILE)            # legacy carry-over files
 
 
 def week_name(day):
@@ -25,10 +26,27 @@ def week_path(work_dir, name):
     return Path(work_dir) / name
 
 
-def is_completed(path):
-    """A week the next one can start from: it has FlexibleSchedule.yaml and EnvConfig.yaml (not empty)."""
+def previous_week_inputs(path):
+    """The carry-over files from an applied update, or from the legacy layout."""
     path = Path(path)
-    return all((path / f).is_file() and (path / f).stat().st_size > 0 for f in KEY_FILES)
+    steps = path / "steps"
+    status_path = steps / UPDATE_STATUS_FILE
+    if status_path.exists() or (steps / RUN_INFO_FILE).is_file():
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(status, dict) or status.get("status") != "applied":
+            return None
+        files = (steps / FLEXIBLE_FILE, steps / "04_EnvConfig.yaml")
+    else:
+        files = tuple(path / name for name in KEY_FILES)
+    return files if all(f.is_file() and f.stat().st_size > 0 for f in files) else None
+
+
+def is_completed(path):
+    """Whether a week has the two non-empty carry-over files."""
+    return previous_week_inputs(path) is not None
 
 
 def previous_week(work_dir, name):

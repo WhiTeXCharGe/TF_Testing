@@ -100,12 +100,17 @@ class Settings:
 
     @property
     def tools_dir(self):
-        """The folder of the weekly_planning scripts: tools_dir, else Weekly_planning next to the settings / program, else (the
-        scripts run from the repository, the program folder is inside weekly_planning) the folder above."""
+        """The folder of the weekly_planning scripts: tools_dir, else nearby Weekly_planning, else a repository parent."""
         explicit = self.folder("tools_dir")
         if explicit:
             return explicit
-        candidates = [self.base_dir / "Weekly_planning", self.base_dir.parent]
+        candidates = [
+            self.base_dir / "Weekly_planning",
+            self.base_dir.parent / "Weekly_planning",
+            self.base_dir,
+            self.base_dir.parent,
+            self.base_dir.parent.parent,
+        ]
         return next((c for c in candidates if (c / "common").is_dir()), candidates[0])
 
     def master_skill_file(self):

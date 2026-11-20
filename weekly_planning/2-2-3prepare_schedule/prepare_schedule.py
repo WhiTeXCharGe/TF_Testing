@@ -16,7 +16,7 @@ Inputs
                     gets skills from the 担当職種 of --su-others
   --seiban-list     the seiban list workbook (the file of tool 2-4; sheet 製番リスト: module -> customer / fab / region)
 Output (in --out-dir)
-  <today>_FlexibleWork.yaml   modules and trips that stay auto-planned (file name starts with the --today date)
+  FlexibleWork.yaml           modules and trips that stay auto-planned
   01_EnvConfig.yaml           EnvConfig for the run
   01_Schedule.yaml            Schedule for the run (flexible modules + misc tasks + trip_list)
   <today>_prepare_report.txt  only with --report: what was decided and why, and everything that could not be resolved
@@ -675,7 +675,7 @@ def main(argv=None):
     ap.add_argument("--default-skill-level", type=int, default=DEFAULT_ROLE_LEVEL, metavar="N",
                     help=f"level for a worker who has no skill level in the skill file or in last week's EnvConfig and is known only "
                          f"by the 担当職種 of SU_Others (default {DEFAULT_ROLE_LEVEL}; 0 = no skill for such workers)")
-    ap.add_argument("--out-dir", required=True, help="folder for <today>_FlexibleWork.yaml, 01_EnvConfig.yaml, 01_Schedule.yaml")
+    ap.add_argument("--out-dir", required=True, help="folder for FlexibleWork.yaml, 01_EnvConfig.yaml, 01_Schedule.yaml")
     ap.add_argument("--report", action="store_true", help="also write <today>_prepare_report.txt (every decision and unresolved item)")
     ap.add_argument("--today", default=None, help="YYYY/MM/DD; modules whose work all ended before it become Fixed (default: today)")
     ap.add_argument("--su-sheets", default="予定表_2026")
@@ -711,14 +711,14 @@ def main(argv=None):
                   repair_fifo=not args.no_fifo_repair, max_gap_days=args.max_gap_days, chain_days=args.chain_days,
                   seiban_warnings=seiban_warnings, templates=templates, default_skill_level=args.default_skill_level)
     od = Path(args.out_dir)
-    stamp = today.replace("/", "")
-    names = [f"{stamp}_FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]
+    names = ["FlexibleWork.yaml", "01_EnvConfig.yaml", "01_Schedule.yaml"]
     dump_yaml(od / names[0], out["flexible_work"])
     dump_yaml(od / names[1], out["env"])
     dump_yaml(od / names[2], out["schedule"])
     lines = [f"prepare_schedule report (today = {today})", f"stats: {out['stats']}", ""] + out["report"]
     print("\n".join(lines[:2]))
     if args.report:
+        stamp = today.replace("/", "")
         names.append(f"{stamp}_prepare_report.txt")
         (od / names[3]).write_text("\n".join(lines) + "\n", encoding="utf-8")
     else:

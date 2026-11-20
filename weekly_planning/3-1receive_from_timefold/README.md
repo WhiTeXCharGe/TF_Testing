@@ -33,3 +33,8 @@ The server comes from `config.txt` (or `--mode` / `--api-url`); only when neithe
 - In online mode, short server errors while the app wakes up are retried.
 - `04_Schedule.yaml` is the solver result. The solver does not change the EnvConfig, so `04_EnvConfig.yaml` is a copy of the `03_EnvConfig.yaml` that was sent.
 - Exit codes: 0 done, 1 not finished, 2 failed, 3 cancelled, 4 cannot reach the server, 5 bad arguments or settings.
+
+## Python API
+The GUI and other Python callers can use `receive_result(run_info_path, output_dir, config_path, *, watch_seconds=0)`.
+It returns `ReceiveResult(status="completed" | "not_finished")`; a completed result is downloaded without prompting.
+Configuration and connection errors, failed or cancelled runs, and a missing EnvConfig are raised as `common.tf_config.ConfigError` or `common.timefold_api.ApiError`. The existing CLI remains available and keeps its command-line behavior.
