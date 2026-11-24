@@ -105,6 +105,37 @@ class Window(unittest.TestCase):
         self.assertTrue(info.called)
         self.assertTrue([p for p in (self.root / "Work" / "20261117").iterdir() if p.name.startswith("steps_old_")])
 
+    def sign_in_dialog(self, press, code):
+        """Asks for a SharePoint sign-in from another thread, as the download does, and presses `press` in the dialog the window shows.
+        (The dialog runs its own loop inside the window's poll, so the button is pressed from a timer that is set first.)"""
+        import threading
+        answers = []
+
+        def press_button():
+            for top in self.window.root.winfo_children():
+                if isinstance(top, tkinter.Toplevel):
+                    for frame in top.winfo_children():
+                        for row in frame.winfo_children():
+                            for button in row.winfo_children():
+                                if str(button.cget("text")) == press:
+                                    button.invoke()
+                                    return
+            self.window.root.after(50, press_button)          # the dialog is not there yet
+
+        with mock.patch.object(ui.webbrowser, "open") as opened:
+            self.window.root.after(50, press_button)
+            worker = threading.Thread(target=lambda: answers.append(self.window._ask_sign_in("https://login.example/device", code)))
+            worker.start()
+            self.pump(lambda: answers, 10)
+            worker.join(10)
+        opened.assert_called_once_with("https://login.example/device")
+        return answers
+
+    def test_a_sharepoint_sign_in_is_shown_by_the_window_and_the_answer_goes_back_to_the_worker(self):
+        self.assertEqual([True], self.sign_in_dialog("OK", "ABC-123"))
+        self.assertEqual([False], self.sign_in_dialog("Cancel", "DEF-456"))
+        self.assertEqual([], [w for w in self.window.root.winfo_children() if isinstance(w, tkinter.Toplevel)])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -49,6 +49,7 @@ plan_assist/
 - **Settings:** `plan_assist.config.txt` next to the program: folders, online/local mode and address, solver minutes, the year-specific sheet
   names. Relative paths are relative to that file. A missing file gives the defaults (folders next to the program).
 - **Errors** are short sentences naming the step; details are in `logs/start_log.txt` and the reports in `steps/`.
+- **Input from SharePoint (2026-11-20):** each of the two files is a path or a SharePoint link (`common/file_source.py`). A link is downloaded read only into `input/`; 01 never renames or locks (the planner just does not edit after the start; 02 warns if they did). One sign-in per run. A file named `_SU_Others...` is refused, because 02 uses that name as its lock. The SharePoint class itself is `common/file_operation_sharepoint.py` (not ours); we only subclass it to show the sign-in code in our window.
 
 ## Not in this part
 

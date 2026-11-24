@@ -15,6 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
 from common import week_folders as weeks   # noqa: E402
+from common.file_source import FileSource, SourceError, is_link   # noqa: E402
 from common.plan_settings import SOLVER_KEYS, SettingsError   # noqa: E402
 from common.tool_runner import ToolRunner   # noqa: E402
 
@@ -71,14 +72,20 @@ def write_config(path, header, pairs):
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def check_inputs(settings, su_others, seiban_list, submit, runner):
+def check_inputs(settings, su_others, seiban_list, submit, runner, source):
     """Everything that can be checked before the slow steps start; raises StartError."""
     for label, path in (("SU_Others", su_others), ("seiban list", seiban_list)):
-        if not path or not Path(path).is_file():
-            raise StartError("check", f"the {label} file was not found: {path or '(not chosen)'}")
-        if Path(path).suffix.lower() not in EXCEL:
+        try:
+            source.check(path, label)
+        except SourceError as e:
+            raise StartError("check", str(e)) from None
+        if not is_link(path) and Path(path).suffix.lower() not in EXCEL:
             raise StartError("check", f"the {label} file must be an Excel file ({', '.join(EXCEL)}): {Path(path).name}")
-    if Path(su_others).resolve() == Path(seiban_list).resolve():
+    if is_link(su_others) or is_link(seiban_list):
+        same = str(su_others).strip() == str(seiban_list).strip()
+    else:
+        same = Path(su_others).resolve() == Path(seiban_list).resolve()
+    if same:
         raise StartError("check", "the SU_Others file and the seiban list file are the same file")
     missing = runner.missing(STEPS if submit else STEPS[:-1])
     if missing:
@@ -93,14 +100,17 @@ def check_inputs(settings, su_others, seiban_list, submit, runner):
                                       f"in {settings._where()} (or use --no-submit)")
 
 
-def run_start(settings, su_others, seiban_list, day, log=None, runner=None, submit=None, overwrite=False):
-    """Runs the whole of part 1 for the week of `day` (a date). Never raises; the answer says what happened."""
+def run_start(settings, su_others, seiban_list, day, log=None, runner=None, submit=None, overwrite=False, sign_in=None, source=None):
+    """Runs the whole of part 1 for the week of `day` (a date). Never raises; the answer says what happened.
+    su_others / seiban_list: a path on this PC or a SharePoint link. sign_in(url, code): how the SharePoint sign-in code is shown
+    (default: a window); source: a replacement for the FileSource (tests)."""
     emit = Emitter(log)
     runner = runner or ToolRunner(settings.tools_dir)
+    source = source or FileSource(settings.text("tenant_id"), settings.text("client_id"), sign_in=sign_in)
     week = None
     try:
         submit = settings.flag("submit", True) if submit is None else submit
-        check_inputs(settings, su_others, seiban_list, submit, runner)
+        check_inputs(settings, su_others, seiban_list, submit, runner, source)
         name = weeks.week_name(day)
         week = weeks.week_path(settings.work_dir, name)
 
@@ -121,11 +131,19 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
         weeks.write_status(week, stage="started", step="check", message="", run_id=None, started=datetime.now().isoformat(timespec="seconds"),
                            su_others=str(su_others), seiban_list=str(seiban_list))
 
-        # --- the user's two files are copied; the originals are never touched
-        su_copy = input_dir / f"01_SU_Others{Path(su_others).suffix.lower()}"
-        sb_copy = input_dir / f"02_SeibanList{Path(seiban_list).suffix.lower()}"
-        shutil.copy2(su_others, su_copy)
-        shutil.copy2(seiban_list, sb_copy)
+        # --- the user's two files are copied (a SharePoint file is downloaded); the originals are never touched
+        copies = {}
+        for label, text, stem in (("SU_Others", su_others, "01_SU_Others"), ("seiban list", seiban_list, "02_SeibanList")):
+            if is_link(text):
+                emit(f"Getting the {label} from SharePoint ..." + (" (a sign-in may be asked)" if not copies else ""))
+            try:
+                got = source.fetch(text, input_dir, stem, EXCEL)
+            except SourceError as e:
+                raise StartError("download", f"the {label}: {e}") from None
+            copies[label] = got.path
+            if is_link(text):
+                emit(f"  {label}: {got.name}")
+        su_copy, sb_copy = copies["SU_Others"], copies["seiban list"]
 
         # --- what last week left
         previous = weeks.previous_week(settings.work_dir, name)

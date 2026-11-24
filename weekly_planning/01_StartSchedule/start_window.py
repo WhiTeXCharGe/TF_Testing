@@ -5,6 +5,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -48,6 +49,9 @@ class StartWindow:
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=2)
             ttk.Label(frame, text=text).grid(row=row, column=1, columnspan=2, sticky="w", pady=2)
             row += 1
+        ttk.Label(frame, text="A file on this PC or a SharePoint link (paste it into the box).", foreground="gray").grid(
+            row=row, column=1, columnspan=2, sticky="w")
+        row += 1
         for label, var in (("SU_Others", self.su_var), ("Seiban list", self.sb_var)):
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=6)
             ttk.Entry(frame, textvariable=var).grid(row=row, column=1, sticky="ew", padx=6)
@@ -105,7 +109,7 @@ class StartWindow:
 
         def work():
             result = run_start(self.settings, su, sb, self.day, log=lambda line: self.queue.put(("line", line)),
-                               submit=submit, overwrite=overwrite)
+                               submit=submit, overwrite=overwrite, sign_in=self._ask_sign_in)
             self.queue.put(("done", result))
 
         self.worker = threading.Thread(target=work, daemon=True)
@@ -117,11 +121,54 @@ class StartWindow:
                 kind, value = self.queue.get_nowait()
                 if kind == "line":
                     self._write(value)
+                elif kind == "signin":
+                    self._sign_in_dialog(*value)
                 else:
                     self._finished(value)
         except queue.Empty:
             pass
         self.root.after(100, self._poll)
+
+    def _ask_sign_in(self, url, code):
+        """Called from the worker thread when SharePoint wants a sign-in: the window is shown by the window thread, the worker waits."""
+        reply = {"done": threading.Event(), "ok": False}
+        self.queue.put(("signin", (url, code, reply)))
+        reply["done"].wait()
+        return reply["ok"]
+
+    def _sign_in_dialog(self, url, code, reply):
+        top = tk.Toplevel(self.root)
+        top.title("Sign in to SharePoint")
+        top.transient(self.root)
+        frame = ttk.Frame(top, padding=14)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Open the page in your browser, enter the code, sign in, then press OK here.\n"
+                              "(Select a box and press Ctrl+C to copy it.)").pack(anchor="w")
+        for label, value in (("Page:", url), ("Code:", code)):
+            ttk.Label(frame, text=label).pack(anchor="w", pady=(8, 0))
+            entry = ttk.Entry(frame, width=60)
+            entry.insert(0, value)
+            entry.configure(state="readonly")
+            entry.pack(fill="x")
+
+        def finish(ok):
+            reply["ok"] = ok
+            top.destroy()
+
+        row = ttk.Frame(frame)
+        row.pack(pady=(12, 0))
+        ttk.Button(row, text="OK", command=lambda: finish(True)).pack(side="left", padx=4)
+        ttk.Button(row, text="Cancel", command=lambda: finish(False)).pack(side="left", padx=4)
+        top.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass          # the page address is in the box
+        top.grab_set()
+        try:
+            self.root.wait_window(top)
+        finally:
+            reply["done"].set()
 
     def _finished(self, result):
         self.start_button.state(["!disabled"])

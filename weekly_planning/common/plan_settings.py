@@ -17,7 +17,7 @@ SOLVER_KEYS = ("mode", "azure_url", "local_url", "run_id", "params_file", "stage
                "stage1_unimproved_seconds", "stage1_stop_when_feasible", "stage2_unimproved_seconds", "random_seed",
                "allow_cut_fixed_trip")
 KNOWN = ("tools_dir", "master_dir", "work_dir", "skill_file", "start_env", "su_sheet", "skill_sheet", "seiban_sheet",
-         "default_skill_level", "submit") + SOLVER_KEYS
+         "default_skill_level", "submit", "tenant_id", "client_id") + SOLVER_KEYS
 TRUE, FALSE = ("true", "yes", "on", "1"), ("false", "no", "off", "0")
 
 

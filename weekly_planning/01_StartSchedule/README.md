@@ -9,7 +9,7 @@ one go. The user gives two files; everything else is automatic. Design and reaso
 | `02_UpdateSchedule` | `02_UpdateSchedule` (by someone else) | 3-1, 3-2, 3-3 | not here yet |
 
 Code shared with part 2 is in `common`: `plan_settings.py` (plan_assist.config.txt), `week_folders.py` (the week folders and their status),
-`tool_runner.py` (runs a tool from its file). Here: `start_schedule.py` (entry), `start_run.py` (the steps), `start_window.py` (the window).
+`tool_runner.py` (runs a tool from its file), `file_source.py` (a path or a SharePoint link -> a local copy). Here: `start_schedule.py` (entry), `start_run.py` (the steps), `start_window.py` (the window).
 
 ## 01_StartSchedule
 
@@ -20,6 +20,16 @@ python start_schedule.py --su-others <file> --seiban-list <file> [--no-submit] [
 - Both files on the command line: no window. `--no-submit` stops after the 03 files are made (nothing is sent). `--yes` runs a week again
   that was already sent to the solver. `--date` is the run date (default: today); it names the week folder and is `--today` of 2-2-3.
 - It stops at the first tool that fails and says which one and why.
+
+### The two files: a path or a SharePoint link
+`--su-others` / `--seiban-list` (and the two boxes of the window) take **a path on this PC or a SharePoint link**. A link is downloaded into
+`Work/<week>/input/` (read only: nothing on SharePoint is renamed, locked or changed; 01 is only a reader). Both files use one sign-in:
+the user's own Microsoft account, asked in a small window when the first file is fetched.
+- Settings: `tenant_id` and `client_id` in `plan_assist.config.txt` (company values; no secret). The libraries `msal` and `requests`
+  are needed for links only (`python -m pip install msal requests`; also before building the exe).
+- A file on SharePoint named `_SU_Others...` is refused: 02_UpdateSchedule renames the workbook that way while it writes the result.
+- Code: `common/file_source.py` (path or link -> local copy) on top of `common/file_operation_sharepoint.py`. Tests use a fake client; a
+  real SharePoint has not been tried yet.
 
 ### Folders
 On the user's PC (the exe next to a copy of `weekly_planning`); in the repository the program runs from this folder and the tools are the

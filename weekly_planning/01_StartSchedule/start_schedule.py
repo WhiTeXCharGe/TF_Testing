@@ -80,8 +80,8 @@ def parse_day(text):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="01_StartSchedule: run 2-2-3, 2-4, 2-5 and 2-6 for this week.")
-    ap.add_argument("--su-others", default=None, help="the SU_Others workbook of the week (.xlsm / .xlsx)")
-    ap.add_argument("--seiban-list", default=None, help="the seiban list workbook of the week (.xlsm / .xlsx)")
+    ap.add_argument("--su-others", default=None, help="the SU_Others workbook of the week (.xlsm / .xlsx): a path or a SharePoint link")
+    ap.add_argument("--seiban-list", default=None, help="the seiban list workbook of the week (.xlsm / .xlsx): a path or a SharePoint link")
     ap.add_argument("--date", type=parse_day, default=None, help="the run date, YYYYMMDD (default: today); it names the week folder")
     ap.add_argument("--config", default=None, help=f"settings file (default: {DEFAULT_CONFIG})")
     ap.add_argument("--no-submit", action="store_true", help="stop after the 03 files are made; nothing is sent to the solver")

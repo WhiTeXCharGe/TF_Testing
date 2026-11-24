@@ -23,6 +23,14 @@ seiban_sheet = 製番リスト
 # Level of a new worker who is known only by the 担当職種 of SU_Others (the skill workbook uses 1 to 3).
 default_skill_level =
 
+# ---------------------------------------------------------------------------------------------------- SharePoint
+# Only needed when a file is given as a SharePoint link instead of a path on this PC (01_StartSchedule downloads it, read only).
+# Both ids are the company's Microsoft Entra ID values (tenant = the company, client = the app registered for these tools).
+# The user signs in with their own Microsoft account when the first file is fetched; no password or secret is kept here.
+# A SharePoint link needs the Python libraries msal and requests (python -m pip install msal requests).
+tenant_id =
+client_id =
+
 # ---------------------------------------------------------------------------------------------------- solver
 # submit = false stops after the 03 files are made (nothing is sent).
 submit = true

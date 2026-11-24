@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))      # weekly_plann
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))      # 01_StartSchedule/
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import week_folders as weeks   # noqa: E402
+from common.file_source import FileSource   # noqa: E402
 from common.plan_settings import Settings   # noqa: E402
 from fake_tools import calls, make_tools   # noqa: E402
 from start_run import run_start   # noqa: E402
@@ -111,7 +112,7 @@ class FirstWeek(Base):
         self.assertEqual(str(self.week / "input" / "02_SeibanList.xlsm"), self.value(argv, "--seiban-list"))
         self.assertEqual(str(self.week / "steps"), self.value(argv, "--out-dir"))
         self.assertEqual("2026/11/17", self.value(argv, "--today"))
-        self.assertIn("--report", argv)
+        self.assertNotIn("--report", argv)        # no report files are written in the week folder
 
     def test_sheet_names_and_the_default_level_are_passed_only_when_they_are_set(self):
         self.run_start()
@@ -133,7 +134,7 @@ class FirstWeek(Base):
         cfg = (steps / "config_2-4.txt").read_text(encoding="utf-8")
         self.assertIn(f"schedule = {steps / '01_Schedule.yaml'}", cfg)
         self.assertIn(f"seiban_list = {self.week / 'input' / '02_SeibanList.xlsm'}", cfg)
-        self.assertIn("report = true", cfg)
+        self.assertIn("report = false", cfg)
         a5 = self.argv("2-5")
         self.assertEqual(str(steps / "02_Schedule.yaml"), self.value(a5, "--input-schedule"))
         self.assertEqual(str(steps / "03_EnvConfig.yaml"), self.value(a5, "--output-env-config"))
@@ -266,6 +267,96 @@ class Rerun(Base):
         self.assertEqual("submitted", result.stage)
 
 
+class FakeSharePoint:
+    """The SharePoint client of a test: link -> (file name, content)."""
+
+    def __init__(self, files):
+        self.files, self.asked = files, []
+
+    def get_file_url_from_sharing_link(self, link):
+        self.asked.append(link)
+        if link not in self.files:
+            raise RuntimeError("HTTP 404: itemNotFound")
+        return link
+
+    def get_file_name(self, url):
+        return self.files[url][0]
+
+    def download_file(self, url, destination):
+        Path(destination).write_bytes(self.files[url][1])
+
+
+class FromSharePoint(Base):
+    SU, SB = "https://example.sharepoint.com/su", "https://example.sharepoint.com/sb"
+
+    def setUp(self):
+        super().setUp()
+        self.client = FakeSharePoint({self.SU: ("SU_Others.xlsm", b"remote su"), self.SB: ("List.xlsx", b"remote list")})
+        self.source = FileSource("tenant", "client", client_factory=lambda: self.client)
+
+    def test_two_links_are_downloaded_into_the_week_and_the_tools_work_from_the_copies(self):
+        result = self.run_start(su=self.SU, sb=self.SB, source=self.source)
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(b"remote su", (self.week / "input" / "01_SU_Others.xlsm").read_bytes())
+        self.assertEqual(b"remote list", (self.week / "input" / "02_SeibanList.xlsx").read_bytes())      # the extension of the original
+        self.assertEqual(str(self.week / "input" / "01_SU_Others.xlsm"), self.value(self.argv("2-2-3"), "--su-others"))
+        self.assertEqual(str(self.week / "input" / "02_SeibanList.xlsx"), self.value(self.argv("2-2-3"), "--seiban-list"))
+        text = " | ".join(self.log)
+        self.assertIn("Getting the SU_Others from SharePoint", text)
+        self.assertIn("SU_Others: SU_Others.xlsm", text)
+        self.assertIn("seiban list: List.xlsx", text)
+        self.assertEqual([self.SU, self.SB], self.client.asked)
+
+    def test_a_link_and_a_local_file_can_be_mixed(self):
+        result = self.run_start(su=self.SU, sb=self.sb, source=self.source)
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(b"seiban list", (self.week / "input" / "02_SeibanList.xlsm").read_bytes())
+        self.assertEqual([self.SU], self.client.asked)
+
+    def test_a_file_that_the_update_has_locked_stops_the_run_before_any_tool(self):
+        self.client.files[self.SU] = ("_SU_Others.xlsx", b"x")
+        result = self.run_start(su=self.SU, sb=self.SB, source=self.source)
+        self.assertFalse(result.ok)
+        self.assertEqual("download", result.step)
+        self.assertIn("locked while 02_UpdateSchedule", result.message)
+        self.assertIn("SU_Others", result.message)
+        self.assertEqual([], calls(self.tools))
+        self.assertEqual("failed", weeks.read_status(self.week)["stage"])
+
+    def test_a_link_that_cannot_be_opened_is_reported_with_the_reason(self):
+        result = self.run_start(su=self.SU, sb="https://example.sharepoint.com/other", source=self.source)
+        self.assertEqual("download", result.step)
+        self.assertIn("the seiban list", result.message)
+        self.assertIn("itemNotFound", result.message)
+
+    def test_a_link_without_the_settings_stops_in_the_check_and_creates_nothing(self):
+        result = self.run_start(su=self.SU, sb=self.SB)           # no tenant_id / client_id in the settings
+        self.assertEqual("check", result.step)
+        self.assertIn("tenant_id and client_id", result.message)
+        self.assertFalse((self.root / "Work").exists())
+        self.assertEqual([], calls(self.tools))
+
+    def test_the_ids_of_the_settings_reach_the_file_source(self):
+        made = {}
+
+        class Spy(FileSource):
+            def __init__(spy, tenant_id=None, client_id=None, sign_in=None, client_factory=None):
+                made.update(tenant=tenant_id, client=client_id, sign_in=sign_in)
+                super().__init__(tenant_id, client_id, sign_in, lambda: self.client)
+
+        sign_in = lambda url, code: True      # noqa: E731
+        from unittest import mock
+        with mock.patch("start_run.FileSource", Spy):
+            result = self.run_start(settings=self.settings(tenant_id="t-1", client_id="c-1"), su=self.SU, sb=self.SB, sign_in=sign_in)
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual({"tenant": "t-1", "client": "c-1", "sign_in": sign_in}, made)
+
+    def test_the_same_link_twice_is_refused(self):
+        result = self.run_start(su=self.SU, sb=self.SU, source=self.source)
+        self.assertEqual("check", result.step)
+        self.assertIn("the same file", result.message)
+
+
 class Checks(Base):
     def stops_in_check(self, expected, **kw):
         result = self.run_start(**kw)
@@ -278,7 +369,7 @@ class Checks(Base):
 
     def test_a_missing_file(self):
         self.stops_in_check("SU_Others file was not found", su=self.root / "nope.xlsm")
-        self.stops_in_check("seiban list file was not found", sb="")
+        self.stops_in_check("seiban list file was not chosen", sb="")
 
     def test_a_file_that_is_not_excel(self):
         csv = self.root / "in" / "list.csv"
