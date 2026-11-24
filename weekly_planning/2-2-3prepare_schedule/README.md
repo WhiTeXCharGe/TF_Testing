@@ -9,6 +9,7 @@ Steps 2-2 and 2-3 in one tool: find what the planner changed in SU_Others, then 
 - A **module** stays flexible unless the planner moved its work (worker or date), only renamed its bar, or all its work is before today. Then it becomes Fixed and turns into misc tasks.
 - **FI/FO never decide a module.** A flexible trip whose FI or FO day moved becomes a Fixed trip; unchanged flexible trips stay flexible and are listed in `FlexibleWork`.
 - Flexible modules and trips are copied from last week; every other bar is a misc task, every other FI/FO a Fixed trip.
+- **A bar written in its first cell only is one bar.** Blank cells that follow a cell with text on the same worker row, with the same fill colour (not white), belong to that bar and get its text (FI / FO cells are not bars and never continue). So `FI`, `task`, blank, blank, `FO` is one task over all its days and Timefold cannot place work into the blank cells. The report says how many cells were read this way.
 - FI/FO is read tolerantly (typos, notes), marks without a partner are repaired from the worker's busy days, and one trip may end on the date the next starts. Trips without a known region get `r_other`.
 - Every flexible assignment row gets a `cell_name` (the text of its bar), also written to `description` when that is empty. 3-2 / 3-3 / the next run of this tool use it.
 - EnvConfig: last week's lists are kept (ids never change), new names are added, `worker_list` is rebuilt from the workbook.

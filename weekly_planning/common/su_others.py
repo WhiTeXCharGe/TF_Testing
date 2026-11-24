@@ -11,7 +11,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from .dates import to_ymd
-from .excel_colors import IGNORE_WHITE_TEXT, cell_color_hex, is_grey_cell, is_red_cell, load_theme_palette
+from .excel_colors import IGNORE_WHITE_TEXT, NO_BAR_COLORS, cell_color_hex, is_grey_cell, is_red_cell, load_theme_palette
 from .text import clean_text, extract_tool_code, norm_name, normalize_tool_code_in_text
 from .worker_skills import split_slash
 
@@ -183,6 +183,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
     worker_status = {}         # wid -> "Primary"/"Secondary"/""
     worker_in_skill_sheet = {} # wid -> True if matched in the skill sheet
     worker_description = {}
+    continued_cells = []       # (wid, dt) of blank cells read as part of the bar before them (see below)
 
     plan_start = None
     plan_end = None
@@ -282,26 +283,40 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
                         desc["備考"] = "OJT"
                     worker_description[wid] = desc
 
+            # A bar is often written in its first cell only: the next days are blank but have the same fill colour. Those blank
+            # cells belong to the bar, so they get its text. `bar` = (text, colour, column) of the last cell with text.
+            bar = None
             for c in date_cols:
                 dt = dt_by_col[c]
                 cell = row_cells[c - 1]
 
                 if is_red_cell(cell):
                     worker_acc[key]["unavailable_set"].add(to_ymd(dt))
+                    bar = None
                     continue
 
                 val = cell.value
                 text = normalize_tool_code_in_text(val.strip()) if isinstance(val, str) else ""
 
                 if text.upper() in IGNORE_WHITE_TEXT:
+                    bar = None
                     continue
+
+                color = cell_color_hex(cell, theme_palette)
+                if text:
+                    bar = (text, color, c)
+                elif bar and color and color not in NO_BAR_COLORS and color == bar[1] and c == bar[2] + 1:
+                    text = bar[0]
+                    bar = (text, color, c)
+                    continued_cells.append((wid, dt))
+                else:
+                    bar = None
 
                 if is_grey_cell(cell):
                     if text and extract_tool_code(text):
                         worker_date_map[(wid, dt)] = text
                     else:
                         worker_personal_map[(wid, dt)] = text
-                    color = cell_color_hex(cell, theme_palette)
                     if color:
                         worker_color_map[(wid, dt)] = color
                     continue
@@ -310,7 +325,6 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
                     continue
 
                 worker_date_map[(wid, dt)] = text
-                color = cell_color_hex(cell, theme_palette)
                 if color:
                     worker_color_map[(wid, dt)] = color
 
@@ -338,5 +352,5 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
         "worker_roles": worker_roles, "worker_skill_role": worker_skill_role,
         "worker_skill_raw": worker_skill_raw, "worker_status": worker_status,
         "worker_in_skill_sheet": worker_in_skill_sheet,
-        "worker_description": worker_description,
+        "worker_description": worker_description, "continued_cells": continued_cells,
     }

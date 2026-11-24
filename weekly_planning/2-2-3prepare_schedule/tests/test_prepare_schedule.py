@@ -200,6 +200,15 @@ class Decisions(unittest.TestCase):
         self.assertEqual({"FABA": "r1", "FABD": "r1"}, ps.fab_name_regions(env))
 
 
+class ContinuedBars(unittest.TestCase):
+    def test_the_number_of_blank_cells_read_as_part_of_a_bar_is_reported(self):
+        out = ps.prepare(prev_flexible(), prev_env(), sheet(continued_cells=7), SEIBAN, "2026/10/10")
+        self.assertIn("INFO: 7 blank cells with the same fill colour as the cell before them were read as part of that bar "
+                      "(a bar written in its first cell only)", out["report"])
+        quiet = ps.prepare(prev_flexible(), prev_env(), sheet(), SEIBAN, "2026/10/10")
+        self.assertFalse([line for line in quiet["report"] if "blank cells" in line])
+
+
 def days(first, last):
     from datetime import date, timedelta
     a, b = date(*map(int, first.split("/"))), date(*map(int, last.split("/")))

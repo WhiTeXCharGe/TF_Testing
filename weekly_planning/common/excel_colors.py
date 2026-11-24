@@ -22,6 +22,10 @@ RED_INDEXED = {10}
 
 IGNORE_WHITE_TEXT = {"FI", "FO", "FO/FI", "FI/FO"}
 
+# A blank cell with one of these fill colours is background, not part of the bar before it (white is Excel's "no colour" that
+# some cells carry explicitly).
+NO_BAR_COLORS = {"FFFFFF"}
+
 
 def _color_to_rgb6(color):
     if color is None:
