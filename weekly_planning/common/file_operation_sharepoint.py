@@ -836,3 +836,4 @@ def sample():
         # SU_Others.xlsxと_SU_Others.xlsxが両方存在するため、手動で削除する必要がある場合がある
         print(f"ファイルのロック解除に失敗: {e}")
         return
+
