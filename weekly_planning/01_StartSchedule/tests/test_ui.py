@@ -1,4 +1,5 @@
 """The window of 01_StartSchedule, driven from the test (skipped when there is no screen). Message boxes are replaced."""
+import gc
 import sys
 import tempfile
 import time
@@ -35,7 +36,11 @@ class Window(unittest.TestCase):
         self.sb.write_bytes(b"2")
         self.settings = Settings({"mode": "local"}, base_dir=self.root)
         self.window = ui.StartWindow(self.settings, date(2026, 11, 17))
+        # cleanups run last-in first-out: end the worker, destroy the window, then collect the Tk objects here in the main thread
+        # (a Tk object that is collected in another thread aborts the whole test run: Tcl_AsyncDelete)
+        self.addCleanup(gc.collect)
         self.addCleanup(self.window.root.destroy)
+        self.addCleanup(lambda: self.window.worker and self.window.worker.join(10))
 
     def pump(self, until, seconds=10):
         end = time.time() + seconds
@@ -65,7 +70,7 @@ class Window(unittest.TestCase):
         self.assertIn("run-test", info.call_args[0][1])
         self.assertIn("== [4/4] 2-6", self.text())
         self.assertEqual("submitted", weeks.read_status(self.root / "Work" / "20261117")["stage"])
-        self.assertEqual("finished", self.window.status.cget("text"))
+        self.assertEqual("完了", self.window.status.cget("text"))
 
     def test_the_submit_box_switches_the_last_step_off(self):
         self.window.su_var.set(str(self.su))
@@ -133,7 +138,7 @@ class Window(unittest.TestCase):
 
     def test_a_sharepoint_sign_in_is_shown_by_the_window_and_the_answer_goes_back_to_the_worker(self):
         self.assertEqual([True], self.sign_in_dialog("OK", "ABC-123"))
-        self.assertEqual([False], self.sign_in_dialog("Cancel", "DEF-456"))
+        self.assertEqual([False], self.sign_in_dialog("キャンセル", "DEF-456"))
         self.assertEqual([], [w for w in self.window.root.winfo_children() if isinstance(w, tkinter.Toplevel)])
 
 

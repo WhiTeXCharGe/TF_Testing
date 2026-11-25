@@ -92,8 +92,8 @@ class FirstWeek(Base):
         self.assertEqual("", Path(self.value(argv, "--prev-env")).read_text(encoding="utf-8"))
         self.assertNotIn("--skill-file", argv)
         text = "\n".join(self.log)
-        self.assertIn("WARN: no EnvConfig_start.yaml in Master", text)
-        self.assertIn("WARN: no skill workbook in Master", text)
+        self.assertIn("警告: MasterフォルダにEnvConfig_start.yamlがありません", text)
+        self.assertIn("警告: Masterフォルダにスキルレベルのファイルがありません", text)
 
     def test_the_master_files_are_used_in_the_first_week(self):
         (self.root / "Master" / "EnvConfig_start.yaml").write_text("start env\n", encoding="utf-8")
@@ -164,7 +164,7 @@ class FirstWeek(Base):
         s = self.settings()
         s.unknown = ["stage1_minuts"]
         self.run_start(s)
-        self.assertTrue(any("'stage1_minuts' in the settings is not known" in line for line in self.log))
+        self.assertTrue(any("項目 'stage1_minuts' は不明" in line for line in self.log))
 
 
 class LaterWeeks(Base):
@@ -181,8 +181,8 @@ class LaterWeeks(Base):
         self.assertNotIn("--skill-file", argv)                  # the skill workbook is for the first week only
         status = weeks.read_status(self.week)
         self.assertEqual(("20261110", False), (status["previous_week"], status["first_week"]))
-        self.assertIn("Previous week: 20261110", self.log)
-        self.assertFalse(any("First week" in line for line in self.log))
+        self.assertIn("前週: 20261110", self.log)
+        self.assertFalse(any("初回の週です" in line for line in self.log))
 
 
 class NoSubmit(Base):
@@ -211,7 +211,7 @@ class Failures(Base):
         self.assertEqual(["2-2-3", "2-4"], [c["step"] for c in calls(self.tools)])     # 2-5 and 2-6 never ran
         status = weeks.read_status(self.week)
         self.assertEqual(("failed", "2-4"), (status["stage"], status["step"]))
-        self.assertIn("STOPPED at 2-4", (self.week / "logs" / "start_log.txt").read_text(encoding="utf-8"))
+        self.assertIn("中断（2-4 製番リストの反映）", (self.week / "logs" / "start_log.txt").read_text(encoding="utf-8"))
 
     def test_a_tool_that_raises_is_caught(self):
         (self.tools / "raise_2-5").write_text("", encoding="utf-8")
@@ -225,7 +225,7 @@ class Failures(Base):
             "def main(argv):\n    return 0\n", encoding="utf-8")
         result = self.run_start()
         self.assertEqual("2-5", result.step)
-        self.assertIn("did not write 03_Schedule.yaml", result.message)
+        self.assertIn("03_Schedule.yaml が作られていません", result.message)
 
     def test_a_failed_week_can_be_run_again_and_the_first_try_is_kept(self):
         (self.tools / "fail_2-4").write_text("Error: boom", encoding="utf-8")
@@ -245,7 +245,7 @@ class Rerun(Base):
         result = self.run_start()
         self.assertFalse(result.ok)
         self.assertEqual("check", result.step)
-        self.assertIn("already sent", result.message)
+        self.assertIn("送信済み", result.message)
         self.assertEqual(before, len(calls(self.tools)))
         self.assertEqual("submitted", weeks.read_status(self.week)["stage"])      # nothing was touched
         self.assertFalse([p for p in self.week.iterdir() if "_old_" in p.name])
@@ -302,9 +302,9 @@ class FromSharePoint(Base):
         self.assertEqual(str(self.week / "input" / "01_SU_Others.xlsm"), self.value(self.argv("2-2-3"), "--su-others"))
         self.assertEqual(str(self.week / "input" / "02_SeibanList.xlsx"), self.value(self.argv("2-2-3"), "--seiban-list"))
         text = " | ".join(self.log)
-        self.assertIn("Getting the SU_Others from SharePoint", text)
+        self.assertIn("SU_OthersをSharePointから取得しています", text)
         self.assertIn("SU_Others: SU_Others.xlsm", text)
-        self.assertIn("seiban list: List.xlsx", text)
+        self.assertIn("製番リスト: List.xlsx", text)
         self.assertEqual([self.SU, self.SB], self.client.asked)
 
     def test_a_link_and_a_local_file_can_be_mixed(self):
@@ -318,7 +318,7 @@ class FromSharePoint(Base):
         result = self.run_start(su=self.SU, sb=self.SB, source=self.source)
         self.assertFalse(result.ok)
         self.assertEqual("download", result.step)
-        self.assertIn("locked while 02_UpdateSchedule", result.message)
+        self.assertIn("ロックされています", result.message)
         self.assertIn("SU_Others", result.message)
         self.assertEqual([], calls(self.tools))
         self.assertEqual("failed", weeks.read_status(self.week)["stage"])
@@ -326,13 +326,13 @@ class FromSharePoint(Base):
     def test_a_link_that_cannot_be_opened_is_reported_with_the_reason(self):
         result = self.run_start(su=self.SU, sb="https://example.sharepoint.com/other", source=self.source)
         self.assertEqual("download", result.step)
-        self.assertIn("the seiban list", result.message)
+        self.assertIn("製番リスト", result.message)
         self.assertIn("itemNotFound", result.message)
 
     def test_a_link_without_the_settings_stops_in_the_check_and_creates_nothing(self):
         result = self.run_start(su=self.SU, sb=self.SB)           # no tenant_id / client_id in the settings
         self.assertEqual("check", result.step)
-        self.assertIn("tenant_id and client_id", result.message)
+        self.assertIn("tenant_id と client_id", result.message)
         self.assertFalse((self.root / "Work").exists())
         self.assertEqual([], calls(self.tools))
 
@@ -354,7 +354,7 @@ class FromSharePoint(Base):
     def test_the_same_link_twice_is_refused(self):
         result = self.run_start(su=self.SU, sb=self.SU, source=self.source)
         self.assertEqual("check", result.step)
-        self.assertIn("the same file", result.message)
+        self.assertIn("同じファイル", result.message)
 
 
 class Checks(Base):
@@ -368,16 +368,16 @@ class Checks(Base):
         return result
 
     def test_a_missing_file(self):
-        self.stops_in_check("SU_Others file was not found", su=self.root / "nope.xlsm")
-        self.stops_in_check("seiban list file was not chosen", sb="")
+        self.stops_in_check("SU_Othersのファイルが見つかりません", su=self.root / "nope.xlsm")
+        self.stops_in_check("製番リストのファイルが選択されていません", sb="")
 
     def test_a_file_that_is_not_excel(self):
         csv = self.root / "in" / "list.csv"
         csv.write_text("x", encoding="utf-8")
-        self.stops_in_check("must be an Excel file", sb=csv)
+        self.stops_in_check("Excelファイル", sb=csv)
 
     def test_the_same_file_twice(self):
-        self.stops_in_check("the same file", sb=self.su)
+        self.stops_in_check("同じファイル", sb=self.su)
 
     def test_incomplete_scripts(self):
         (self.tools / "2-4apply_seiban_list" / "apply_seiban_list.py").unlink()
@@ -390,7 +390,7 @@ class Checks(Base):
     def test_the_solver_address_is_checked_before_anything_runs(self):
         self.stops_in_check("azure_url", settings=self.settings(mode="online", azure_url="https://<your-solver-api>.example"))
         self.stops_in_check("azure_url", settings=self.settings(mode="", azure_url=""))
-        self.stops_in_check("mode must be", settings=self.settings(mode="cloud"))
+        self.stops_in_check("mode は online か local", settings=self.settings(mode="cloud"))
 
 
 if __name__ == "__main__":

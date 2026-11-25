@@ -13,9 +13,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))      # weekly_planning/ (the folder of common)
 sys.path.insert(0, str(HERE))
 from common import week_folders as weeks   # noqa: E402
-from start_run import run_start   # noqa: E402
+from start_run import run_start, step_name   # noqa: E402
 
-EXCEL_TYPES = [("Excel", "*.xlsm *.xlsx"), ("All files", "*.*")]
+TITLE = "01_StartSchedule 週次計画の開始"
+EXCEL_TYPES = [("Excelファイル", "*.xlsm *.xlsx"), ("すべてのファイル", "*.*")]
 
 
 class StartWindow:
@@ -24,7 +25,7 @@ class StartWindow:
         self.queue = queue.Queue()
         self.worker = None
         self.root = tk.Tk()
-        self.root.title("01 Start Schedule")
+        self.root.title(TITLE)
         self.root.minsize(760, 520)
         self.su_var = tk.StringVar(value=su_others or "")
         self.sb_var = tk.StringVar(value=seiban_list or "")
@@ -39,28 +40,28 @@ class StartWindow:
         frame.columnconfigure(1, weight=1)
         name = weeks.week_name(self.day)
         previous = weeks.previous_week(self.settings.work_dir, name)
-        info = [("Week", f"{name}  ({self.settings.work_dir / name})"),
-                ("Previous week", previous.name if previous else "none: this is the first week (Master is used)")]
+        info = [("週", f"{name}  （{self.settings.work_dir / name}）"),
+                ("前週", previous.name if previous else "なし（初回の週です。Masterフォルダのファイルを使います）")]
         if not previous:
-            info.append(("Master", f"EnvConfig_start: {'found' if self.settings.master_start_env() else 'MISSING'}"
-                                   f"   skill workbook: {'found' if self.settings.master_skill_file() else 'MISSING'}"))
+            info.append(("Master", f"EnvConfig_start.yaml: {'あり' if self.settings.master_start_env() else 'なし（要用意）'}"
+                                   f"　　スキルレベルのファイル: {'あり' if self.settings.master_skill_file() else 'なし（要用意）'}"))
         row = 0
         for label, text in info:
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=2)
             ttk.Label(frame, text=text).grid(row=row, column=1, columnspan=2, sticky="w", pady=2)
             row += 1
-        ttk.Label(frame, text="A file on this PC or a SharePoint link (paste it into the box).", foreground="gray").grid(
+        ttk.Label(frame, text="このPCのファイル、またはSharePointのリンク（欄に貼り付け）を指定してください。", foreground="gray").grid(
             row=row, column=1, columnspan=2, sticky="w")
         row += 1
-        for label, var in (("SU_Others", self.su_var), ("Seiban list", self.sb_var)):
+        for label, var in (("SU_Others", self.su_var), ("製番リスト", self.sb_var)):
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=6)
             ttk.Entry(frame, textvariable=var).grid(row=row, column=1, sticky="ew", padx=6)
-            ttk.Button(frame, text="Browse...", command=lambda v=var, t=label: self._browse(v, t)).grid(row=row, column=2)
+            ttk.Button(frame, text="参照...", command=lambda v=var, t=label: self._browse(v, t)).grid(row=row, column=2)
             row += 1
-        ttk.Checkbutton(frame, text="Send to the solver at the end (2-6)", variable=self.submit_var).grid(
+        ttk.Checkbutton(frame, text="最後にソルバーへ送信する（2-6）", variable=self.submit_var).grid(
             row=row, column=1, sticky="w", pady=4)
         row += 1
-        self.start_button = ttk.Button(frame, text="Start", command=self._start)
+        self.start_button = ttk.Button(frame, text="開始", command=self._start)
         self.start_button.grid(row=row, column=1, sticky="w", pady=8)
         self.status = ttk.Label(frame, text="")
         self.status.grid(row=row, column=1, sticky="e")
@@ -75,7 +76,7 @@ class StartWindow:
         self.log.pack(side="left", fill="both", expand=True)
 
     def _browse(self, var, title):
-        path = filedialog.askopenfilename(title=f"Choose the {title} file", filetypes=EXCEL_TYPES)
+        path = filedialog.askopenfilename(title=f"{title}のファイルを選択", filetypes=EXCEL_TYPES)
         if path:
             var.set(path)
 
@@ -91,20 +92,20 @@ class StartWindow:
             return
         su, sb = self.su_var.get().strip(), self.sb_var.get().strip()
         if not su or not sb:
-            messagebox.showwarning("01 Start Schedule", "Choose both files first: the SU_Others workbook and the seiban list.")
+            messagebox.showwarning(TITLE, "先に2つのファイル（SU_Others と 製番リスト）を指定してください。")
             return
         week = weeks.week_path(self.settings.work_dir, weeks.week_name(self.day))
         overwrite = False
         if week.exists() and weeks.was_submitted(week):
-            if not messagebox.askyesno("01 Start Schedule", f"Week {week.name} was already sent to the solver.\n\n"
-                                       "Run it again? The old files are kept (steps_old_*, logs_old_*)."):
+            if not messagebox.askyesno(TITLE, f"{week.name} の週は既にソルバーへ送信済みです。\n\n"
+                                       "もう一度実行しますか？ 古いファイルは残ります（steps_old_*、logs_old_*）。"):
                 return
             overwrite = True
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
         self.start_button.state(["disabled"])
-        self.status.configure(text="running ...")
+        self.status.configure(text="実行中 ...")
         submit = self.submit_var.get()
 
         def work():
@@ -138,13 +139,13 @@ class StartWindow:
 
     def _sign_in_dialog(self, url, code, reply):
         top = tk.Toplevel(self.root)
-        top.title("Sign in to SharePoint")
+        top.title("SharePointへのサインイン")
         top.transient(self.root)
         frame = ttk.Frame(top, padding=14)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Open the page in your browser, enter the code, sign in, then press OK here.\n"
-                              "(Select a box and press Ctrl+C to copy it.)").pack(anchor="w")
-        for label, value in (("Page:", url), ("Code:", code)):
+        ttk.Label(frame, text="ブラウザーでページを開き、コードを入力してサインインしてから、ここで［OK］を押してください。\n"
+                              "（欄を選んで Ctrl+C でコピーできます）").pack(anchor="w")
+        for label, value in (("ページ:", url), ("コード:", code)):
             ttk.Label(frame, text=label).pack(anchor="w", pady=(8, 0))
             entry = ttk.Entry(frame, width=60)
             entry.insert(0, value)
@@ -158,7 +159,7 @@ class StartWindow:
         row = ttk.Frame(frame)
         row.pack(pady=(12, 0))
         ttk.Button(row, text="OK", command=lambda: finish(True)).pack(side="left", padx=4)
-        ttk.Button(row, text="Cancel", command=lambda: finish(False)).pack(side="left", padx=4)
+        ttk.Button(row, text="キャンセル", command=lambda: finish(False)).pack(side="left", padx=4)
         top.protocol("WM_DELETE_WINDOW", lambda: finish(False))
         try:
             webbrowser.open(url)
@@ -173,11 +174,12 @@ class StartWindow:
     def _finished(self, result):
         self.start_button.state(["!disabled"])
         if result.ok:
-            self.status.configure(text="finished")
-            messagebox.showinfo("01 Start Schedule", result.message)
+            self.status.configure(text="完了")
+            messagebox.showinfo(TITLE, result.message)
         else:
-            self.status.configure(text="stopped")
-            messagebox.showerror("01 Start Schedule", f"Stopped at {result.step}.\n\n{result.message}\n\nThe log is in the week folder (logs).")
+            self.status.configure(text="中断")
+            messagebox.showerror(TITLE, f"「{step_name(result.step)}」で中断しました。\n\n{result.message}\n\n"
+                                        "ログは週フォルダの logs フォルダにあります。")
 
     def run(self):
         self.root.mainloop()

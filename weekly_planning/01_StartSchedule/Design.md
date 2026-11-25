@@ -18,8 +18,8 @@ Two programs, split at the solver:
 plan_assist/
 ├─ 01_StartSchedule.exe
 ├─ 02_UpdateSchedule.exe
-├─ plan_assist.config.txt     settings of both programs
-├─ Weekly_planning/           the scripts of weekly_planning (unchanged)
+├─ config/plan_assist.config.txt   settings of both programs
+├─ common/, 2-2-3..., ..., 3-3..., update_schedule/   the scripts of weekly_planning (unchanged), next to the exes
 ├─ Master/                    skill workbook and EnvConfig_start.yaml (first week only)
 └─ Work/
    └─ 20261117/               one folder per week, named by the run date
@@ -54,5 +54,5 @@ plan_assist/
 ## Not in this part
 
 - 02_UpdateSchedule (3-1, 3-2, 3-3), the top-level result files of the week.
-- (Done afterwards) the `.exe`: `build_exe.py` builds a one-folder PyInstaller exe; the tools stay outside it, in `Weekly_planning/`.
+- (Done afterwards) the `.exe`: `../build_exe.py` builds both exes (one folder each); the scripts stay outside them, next to the exes (the layout 02_UpdateSchedule expects).
 - Locking for several people using the same `Work` folder.

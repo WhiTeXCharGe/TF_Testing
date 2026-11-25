@@ -46,7 +46,7 @@ class CommandLine(TempCase):
     def test_both_files_run_without_a_window_and_print_the_log(self):
         rc, text = self.run_main(self.args())
         self.assertEqual(0, rc)
-        self.assertIn("Week 20261117", text)
+        self.assertIn("週 20261117", text)
         self.assertIn("== [4/4] 2-6", text)
         self.assertEqual(["2-2-3", "2-4", "2-5", "2-6"], [c["step"] for c in calls(self.tools)])
 
@@ -57,19 +57,19 @@ class CommandLine(TempCase):
         (self.tools / "fail_2-4").write_text("Error: boom", encoding="utf-8")
         rc, text = self.run_main(self.args("--no-submit", "--yes"))
         self.assertEqual(1, rc)
-        self.assertIn("STOPPED at 2-4", text)
+        self.assertIn("中断（2-4 製番リストの反映）", text)
 
     def test_a_sent_week_needs_yes(self):
         self.assertEqual(0, self.run_main(self.args())[0])
         rc, text = self.run_main(self.args())
         self.assertEqual(1, rc)
-        self.assertIn("already sent", text)
+        self.assertIn("送信済み", text)
         self.assertEqual(0, self.run_main(self.args("--yes"))[0])
 
     def test_no_ui_without_files_is_an_error_and_a_bad_date_is_refused(self):
         rc, text = self.run_main(["--config", str(self.root / "plan_assist.config.txt"), "--no-ui"])
         self.assertEqual(1, rc)
-        self.assertIn("not chosen", text)
+        self.assertIn("選択されていません", text)
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             start_schedule.main(self.args()[:-2] + ["--date", "soon"])
 
@@ -78,7 +78,7 @@ class CommandLine(TempCase):
         with contextlib.redirect_stderr(err):
             rc = start_schedule.main(["--config", str(self.root / "none.txt"), "--no-ui"])
         self.assertEqual(1, rc)
-        self.assertIn("settings file not found", err.getvalue())
+        self.assertIn("設定ファイルが見つかりません", err.getvalue())
 
     def test_without_a_console_an_error_is_kept_in_a_file_and_shown(self):
         # the windowed exe has no console: the message must reach the user another way
@@ -86,8 +86,8 @@ class CommandLine(TempCase):
                 mock.patch("tkinter.messagebox.showerror") as box, mock.patch("tkinter.Tk"), contextlib.redirect_stderr(io.StringIO()):
             rc = start_schedule.main(["--config", str(self.root / "none.txt"), "--no-ui"])
         self.assertEqual(1, rc)
-        self.assertIn("settings file not found", (self.root / "plan_assist_error.txt").read_text(encoding="utf-8"))
-        self.assertIn("settings file not found", box.call_args[0][1])
+        self.assertIn("設定ファイルが見つかりません", (self.root / "plan_assist_error.txt").read_text(encoding="utf-8"))
+        self.assertIn("設定ファイルが見つかりません", box.call_args[0][1])
 
     def test_with_a_console_nothing_is_written_and_no_box_is_shown(self):
         with mock.patch.object(start_schedule, "HERE", self.root), mock.patch("tkinter.messagebox.showerror") as box, \
@@ -103,7 +103,7 @@ class CommandLine(TempCase):
         with mock.patch.dict(sys.modules, {"start_window": fake}), contextlib.redirect_stderr(err):
             rc = start_schedule.main(["--config", str(self.root / "plan_assist.config.txt")])
         self.assertEqual(1, rc)
-        self.assertIn("unexpected error", err.getvalue())
+        self.assertIn("予期しないエラー", err.getvalue())
         self.assertIn("window broke", err.getvalue())
 
     def test_the_date_formats(self):

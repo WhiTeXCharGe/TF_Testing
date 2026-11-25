@@ -38,6 +38,9 @@ weekly_planning/**/run_info.json
 # any yaml inside weekly_planning is a tool input / output, not source
 weekly_planning/**/*.yaml
 
+# dated folders with the files of real planning runs (e.g. 20261105Weeklyplanning/): worker and plan data, not source
+/20[0-9][0-9][0-9][0-9][0-9][0-9]*/
+
 # ---- editor / OS
 .idea/
 .vscode/

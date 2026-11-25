@@ -7,6 +7,7 @@ folder of the file.  A missing default file gives the defaults (folders next to 
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -66,7 +67,7 @@ class Settings:
         if value is None:
             return None
         p = Path(value).expanduser()
-        return p if p.is_absolute() else self.base_dir / p
+        return p if p.is_absolute() else Path(os.path.normpath(self.base_dir / p))       # no 'config\..\Work' in what the user sees
 
     def flag(self, key, default):
         value = self.text(key)
@@ -76,7 +77,7 @@ class Settings:
             return True
         if value.lower() in FALSE:
             return False
-        raise SettingsError(f"{self._where()}: {key} must be true or false (got {value!r})")
+        raise SettingsError(f"{self._where()}: {key} は true か false にしてください（現在: {value!r}）")
 
     def whole(self, key):
         value = self.text(key)
@@ -85,7 +86,7 @@ class Settings:
         try:
             return int(value)
         except ValueError:
-            raise SettingsError(f"{self._where()}: {key} must be a whole number (got {value!r})") from None
+            raise SettingsError(f"{self._where()}: {key} は整数にしてください（現在: {value!r}）") from None
 
     def _where(self):
         return str(self.path) if self.path else CONFIG_NAME
@@ -136,11 +137,11 @@ def load(path=None, program_dir=None):
     p = Path(path) if explicit else program_dir / CONFIG_NAME
     if not p.is_file():
         if explicit:
-            raise SettingsError(f"settings file not found: {p}")
+            raise SettingsError(f"設定ファイルが見つかりません: {p}")
         return Settings(base_dir=program_dir)
     try:
         text = p.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
-        raise SettingsError(f"cannot read {p}: {e}") from None
+        raise SettingsError(f"設定ファイルを読み込めません: {p}（{e}）") from None
     values, unknown = parse_text(text)
     return Settings(values, p, unknown=unknown)

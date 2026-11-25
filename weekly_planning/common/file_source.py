@@ -46,20 +46,20 @@ class FileSource:
         """Raises SourceError when `text` cannot work: no such local file, or a link without the settings or libraries for it."""
         text = str(text or "").strip()
         if not text:
-            raise SourceError(f"the {label} file was not chosen")
+            raise SourceError(f"{label}のファイルが選択されていません")
         if not is_link(text):
             if not Path(text).is_file():
-                raise SourceError(f"the {label} file was not found: {text}")
+                raise SourceError(f"{label}のファイルが見つかりません: {text}")
             return
         if not (self.tenant_id and self.client_id):
-            raise SourceError(f"the {label} is a SharePoint link, but tenant_id and client_id are not set in the settings file")
+            raise SourceError(f"{label}にSharePointのリンクが指定されましたが、設定ファイルに tenant_id と client_id が設定されていません")
         if self.client_factory is None:
             try:
                 import msal   # noqa: F401
                 import requests   # noqa: F401
             except ImportError as e:
-                raise SourceError(f"the {label} is a SharePoint link, but the library {e.name!r} is missing "
-                                  f"(python -m pip install msal requests)") from None
+                raise SourceError(f"{label}にSharePointのリンクが指定されましたが、ライブラリ {e.name!r} がありません"
+                                  f"（python -m pip install msal requests）") from None
 
     # ------------------------------------------------------------------------------------------ the copy
     def fetch(self, text, folder, stem, suffixes=None):
@@ -78,8 +78,9 @@ class FileSource:
             url = client.get_file_url_from_sharing_link(text)
             name = client.get_file_name(url)
             if name.startswith(LOCK_PREFIX):
-                raise SourceError(f"the file on SharePoint is named {name}: it is locked while 02_UpdateSchedule writes its result "
-                                  f"(or a lock was left behind). Try again later; if it stays, ask who ran 02_UpdateSchedule.")
+                raise SourceError(f"SharePoint上のファイル名が {name} になっています。02_UpdateSchedule が結果を書き込み中のため"
+                                  f"ロックされています（またはロックが残っています）。しばらくしてからやり直してください。"
+                                  f"続く場合は 02_UpdateSchedule を実行した人に確認してください。")
             self._accept(name, suffixes)
             dest = folder / (stem + Path(name).suffix.lower())
             if dest.exists():
@@ -89,13 +90,13 @@ class FileSource:
             raise
         except Exception as e:      # the SharePoint client's own errors already carry a message for the user
             kind = "" if type(e).__name__ == "FileOperationSharePointError" else f"{type(e).__name__}: "
-            raise SourceError(f"cannot get the file from SharePoint ({kind}{e})") from e
+            raise SourceError(f"SharePointからファイルを取得できませんでした（{kind}{e}）") from e
         return Fetched(dest, name)
 
     @staticmethod
     def _accept(name, suffixes):
         if suffixes and Path(name).suffix.lower() not in suffixes:
-            raise SourceError(f"the file must be one of {', '.join(suffixes)}: {name}")
+            raise SourceError(f"ファイルは {' / '.join(suffixes)} のいずれかにしてください: {name}")
 
     def _get_client(self):
         if self._client is None:

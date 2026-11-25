@@ -13,5 +13,7 @@ One folder per tool; they run in this order every week (step numbers are the one
 
 `01_StartSchedule` keeps the combined run log at `logs/start_log.txt` in the week folder and does not write separate reports for steps 2-2-3 and 2-4.
 
+`01_StartSchedule` and `02_UpdateSchedule` are the programs for the weekly user; `python build_exe.py` (in this folder) builds both as `.exe` files into `dist/plan_assist/` (see `01_StartSchedule/README.md`).
+
 All tools run with plain `python` (3.12; `pyyaml`, `openpyxl`, `pandas`). Each has its own tests: `python -m unittest discover -s tests` in the tool folder.
 The tools import `prepare_schedule` for small shared helpers, so keep the folders side by side.

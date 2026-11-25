@@ -56,8 +56,8 @@ class Runs:
     def status(self, run_id):
         """What the solver would answer now, from the time that has passed."""
         done = time.time() - float((self.dir / run_id / "started").read_text(encoding="utf-8"))
-        total = max(self.seconds, 0.001)
-        if done >= total:
+        total = self.seconds
+        if done >= total:               # (a clock tick can be longer than a very short run: 0 s is always finished)
             if self.fail:
                 return {"status": "Failed", "stage": None, "progress": 0,
                         "error": {"type": "StubError", "message": "the stub solver was started with --fail"}}

@@ -21,6 +21,19 @@ from common.tool_runner import ToolRunner   # noqa: E402
 
 STEPS = ("2-2-3", "2-4", "2-5", "2-6")
 EXCEL = (".xlsm", ".xlsx")
+LABEL_SU, LABEL_SEIBAN = "SU_Others", "製番リスト"          # how the two files are called in messages
+STEP_TITLES = {
+    "2-2-3": "2-2-3 計画の準備（担当者の変更を確認し、EnvConfigとScheduleを作成）",
+    "2-4": "2-4 製番リストの反映（新規・削除の製番）",
+    "2-5": "2-5 計画期間の設定（期間より前の作業をFixedにする）",
+    "2-6": "2-6 ソルバーへ送信",
+}
+STEP_NAMES = {"check": "入力の確認", "download": "ファイルの取得", "error": "エラー"}      # where a run can stop besides the tools
+
+
+def step_name(step):
+    """What to call the place where a run stopped, for the user."""
+    return STEP_NAMES.get(step) or STEP_TITLES.get(step, step).split("（")[0]
 
 
 class StartError(Exception):
@@ -74,30 +87,31 @@ def write_config(path, header, pairs):
 
 def check_inputs(settings, su_others, seiban_list, submit, runner, source):
     """Everything that can be checked before the slow steps start; raises StartError."""
-    for label, path in (("SU_Others", su_others), ("seiban list", seiban_list)):
+    for label, path in ((LABEL_SU, su_others), (LABEL_SEIBAN, seiban_list)):
         try:
             source.check(path, label)
         except SourceError as e:
             raise StartError("check", str(e)) from None
         if not is_link(path) and Path(path).suffix.lower() not in EXCEL:
-            raise StartError("check", f"the {label} file must be an Excel file ({', '.join(EXCEL)}): {Path(path).name}")
+            raise StartError("check", f"{label}のファイルはExcelファイル（{' / '.join(EXCEL)}）を指定してください: {Path(path).name}")
     if is_link(su_others) or is_link(seiban_list):
         same = str(su_others).strip() == str(seiban_list).strip()
     else:
         same = Path(su_others).resolve() == Path(seiban_list).resolve()
     if same:
-        raise StartError("check", "the SU_Others file and the seiban list file are the same file")
+        raise StartError("check", f"{LABEL_SU}と{LABEL_SEIBAN}に同じファイルが指定されています。")
     missing = runner.missing(STEPS if submit else STEPS[:-1])
     if missing:
-        raise StartError("check", "the weekly_planning scripts are not complete; not found: " + "; ".join(missing))
+        raise StartError("check", "週次計画のスクリプトがそろっていません。見つからないもの: " + "; ".join(missing))
     if submit:
         mode = settings.text("mode", "online")
         if mode not in ("online", "local"):
-            raise StartError("check", f"mode must be online or local (got {mode!r}); see {settings._where()}")
+            raise StartError("check", f"mode は online か local にしてください（現在: {mode!r}）。設定ファイル: {settings._where()}")
         url = settings.text("azure_url" if mode == "online" else "local_url", "http://localhost:3001" if mode == "local" else "")
         if not url or "<" in url:
-            raise StartError("check", f"the address of the solver is not set: fill in {'azure_url' if mode == 'online' else 'local_url'} "
-                                      f"in {settings._where()} (or use --no-submit)")
+            raise StartError("check", f"ソルバーのアドレスが設定されていません。設定ファイル（{settings._where()}）の "
+                                      f"{'azure_url' if mode == 'online' else 'local_url'} を記入してください"
+                                      f"（ソルバーへ送信しない設定にすることもできます）。")
 
 
 def run_start(settings, su_others, seiban_list, day, log=None, runner=None, submit=None, overwrite=False, sign_in=None, source=None):
@@ -115,76 +129,76 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
         week = weeks.week_path(settings.work_dir, name)
 
         if week.exists() and weeks.was_submitted(week) and not overwrite:
-            raise StartError("check", f"week {name} was already sent to the solver; run it again only if you mean it "
-                                      f"(the old files are kept in steps_old_* / logs_old_*)")
+            raise StartError("check", f"{name} の週は既にソルバーへ送信済みです。もう一度実行するときは確認（--yes）が必要です。"
+                                      f"古いファイルは steps_old_* / logs_old_* に残ります。")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         moved = weeks.archive_old(week, stamp) if week.exists() else []
         steps_dir, input_dir = week / "steps", week / "input"
         for d in (steps_dir, input_dir, week / "logs"):
             d.mkdir(parents=True, exist_ok=True)
         emit.attach(week / "logs" / "start_log.txt")
-        emit(f"Week {name}  ({week})")
+        emit(f"週 {name}（{week}）")
         for key in settings.unknown:
-            emit(f"  Note: the setting '{key}' in {settings.path.name if settings.path else 'the settings'} is not known and is ignored.")
+            emit(f"  注意: 設定ファイル（{settings.path.name if settings.path else '設定'}）の項目 '{key}' は不明なので無視します。")
         if moved:
-            emit(f"  the files of the earlier run were kept as {', '.join(moved)}")
+            emit(f"  前回の実行のファイルは {', '.join(moved)} として残しました。")
         weeks.write_status(week, stage="started", step="check", message="", run_id=None, started=datetime.now().isoformat(timespec="seconds"),
                            su_others=str(su_others), seiban_list=str(seiban_list))
 
         # --- the user's two files are copied (a SharePoint file is downloaded); the originals are never touched
         copies = {}
-        for label, text, stem in (("SU_Others", su_others, "01_SU_Others"), ("seiban list", seiban_list, "02_SeibanList")):
+        for label, text, stem in ((LABEL_SU, su_others, "01_SU_Others"), (LABEL_SEIBAN, seiban_list, "02_SeibanList")):
             if is_link(text):
-                emit(f"Getting the {label} from SharePoint ..." + (" (a sign-in may be asked)" if not copies else ""))
+                emit(f"{label}をSharePointから取得しています ..." + (" （サインインを求められることがあります）" if not copies else ""))
             try:
                 got = source.fetch(text, input_dir, stem, EXCEL)
             except SourceError as e:
-                raise StartError("download", f"the {label}: {e}") from None
+                raise StartError("download", f"{label}: {e}") from None
             copies[label] = got.path
             if is_link(text):
                 emit(f"  {label}: {got.name}")
-        su_copy, sb_copy = copies["SU_Others"], copies["seiban list"]
+        su_copy, sb_copy = copies[LABEL_SU], copies[LABEL_SEIBAN]
 
         # --- what last week left
         previous = weeks.previous_week(settings.work_dir, name)
         skill_file = None
         if previous:
-            emit(f"Previous week: {previous.name}")
+            emit(f"前週: {previous.name}")
             carry_over = weeks.previous_week_inputs(previous)
             if carry_over is None:
-                raise StartError("2-2-3", f"the carry-over files for week {previous.name} are no longer available")
+                raise StartError("2-2-3", f"{previous.name} の週の引き継ぎファイルが見つかりません。")
             prev_flex, prev_env = carry_over
         else:
-            emit("First week: there is no earlier week with FlexibleSchedule.yaml and EnvConfig.yaml.")
+            emit("初回の週です: FlexibleSchedule.yaml と EnvConfig.yaml がそろった過去の週がありません。")
             prev_flex = steps_dir / "prev_FlexibleSchedule_none.yaml"
             prev_flex.write_text("{}\n", encoding="utf-8")
             start_env = settings.master_start_env()
             if start_env:
                 prev_env = steps_dir / "prev_EnvConfig_start.yaml"
                 shutil.copy2(start_env, prev_env)
-                emit(f"  starting EnvConfig: {start_env.name}")
+                emit(f"  開始用のEnvConfig: {start_env.name}")
             else:
                 prev_env = steps_dir / "prev_EnvConfig_none.yaml"
                 prev_env.write_text("", encoding="utf-8")
-                emit("  WARN: no EnvConfig_start.yaml in Master: the EnvConfig starts empty (regions, fabs and workflows are made "
-                     "from the seiban list only).")
+                emit("  警告: MasterフォルダにEnvConfig_start.yamlがありません。EnvConfigは空から始まり、"
+                     "地域・Fab・ワークフローは製番リストだけから作られます。")
             skill_file = settings.master_skill_file()
             if skill_file:
-                emit(f"  skill workbook: {skill_file.name}")
+                emit(f"  スキルレベルのファイル: {skill_file.name}")
             else:
-                emit("  WARN: no skill workbook in Master: workers get skills from their 担当職種 only.")
+                emit("  警告: Masterフォルダにスキルレベルのファイルがありません。作業者のスキルは担当職種だけから決めます。")
         weeks.write_status(week, previous_week=previous.name if previous else None, first_week=previous is None)
 
         def step(key, label, argv, expect):
             number = STEPS.index(key) + 1
-            emit(f"== [{number}/{len(STEPS) if submit else len(STEPS) - 1}] {label}")
+            emit(f"== [{number}/{len(STEPS) if submit else len(STEPS) - 1}] {STEP_TITLES[key]}")
             weeks.write_status(week, step=key)
             result = runner.run(key, argv, lambda line: emit("   " + line))
             if result.rc != 0:
-                raise StartError(key, f"{label} stopped: {result.last_error()}")
+                raise StartError(key, f"{STEP_TITLES[key]} が停止しました: {result.last_error()}")
             for f in expect:
                 if not Path(f).exists():
-                    raise StartError(key, f"{label} finished but did not write {Path(f).name}")
+                    raise StartError(key, f"{STEP_TITLES[key]} は終了しましたが {Path(f).name} が作られていません。")
 
         # --- 2-2-3
         argv = ["--prev-flexible", prev_flex, "--prev-env", prev_env, "--su-others", su_copy, "--seiban-list", sb_copy,
@@ -195,7 +209,7 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
                          ("--default-skill-level", "default_skill_level")):
             if settings.has(key):
                 argv += [opt, settings.text(key)]
-        step("2-2-3", "2-2-3 prepare_schedule (what the planner changed, the EnvConfig and the Schedule)", argv,
+        step("2-2-3", "2-2-3", argv,
              [steps_dir / "01_EnvConfig.yaml", steps_dir / "01_Schedule.yaml"])
 
         # --- 2-4
@@ -203,11 +217,11 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
         write_config(cfg, "settings of tool 2-4 (apply_seiban_list)",
                      [("schedule", steps_dir / "01_Schedule.yaml"), ("env", steps_dir / "01_EnvConfig.yaml"),
                       ("seiban_list", sb_copy), ("out_dir", steps_dir), ("report", "false")])
-        step("2-4", "2-4 apply_seiban_list (new and deleted seiban)", ["--config", cfg],
+        step("2-4", "2-4", ["--config", cfg],
              [steps_dir / "02_Schedule.yaml", steps_dir / "02_EnvConfig.yaml"])
 
         # --- 2-5
-        step("2-5", "2-5 set_plan_period (plan period, work before it becomes Fixed)",
+        step("2-5", "2-5",
              ["--input-schedule", steps_dir / "02_Schedule.yaml", "--input-env-config", steps_dir / "02_EnvConfig.yaml",
               "--output-schedule", steps_dir / "03_Schedule.yaml", "--output-env-config", steps_dir / "03_EnvConfig.yaml"],
              [steps_dir / "03_Schedule.yaml", steps_dir / "03_EnvConfig.yaml"])
@@ -221,26 +235,26 @@ def run_start(settings, su_others, seiban_list, day, log=None, runner=None, subm
             write_config(cfg, "settings of tool 2-6 (submit_to_timefold)",
                          [("schedule", steps_dir / "03_Schedule.yaml"), ("env", steps_dir / "03_EnvConfig.yaml"),
                           ("out_dir", steps_dir)] + list(solver.items()))
-            step("2-6", "2-6 submit_to_timefold (send to the solver)", ["--config", cfg], [steps_dir / weeks.RUN_INFO_FILE])
+            step("2-6", "2-6", ["--config", cfg], [steps_dir / weeks.RUN_INFO_FILE])
             try:
                 run_id = json.loads((steps_dir / weeks.RUN_INFO_FILE).read_text(encoding="utf-8")).get("runId")
             except (OSError, ValueError):
                 run_id = None
-            message = f"Sent to the solver as run {run_id}. When it has finished, run 02_UpdateSchedule."
+            message = f"ソルバーへ送信しました（実行ID: {run_id}）。計算が終わったら 02_UpdateSchedule を実行してください。"
             stage = "submitted"
         else:
-            message = "Prepared, not sent (submit is off). The solver input is steps/03_Schedule.yaml and steps/03_EnvConfig.yaml."
+            message = "準備だけ行いました（ソルバーへは送信していません）。ソルバーへの入力は steps/03_Schedule.yaml と steps/03_EnvConfig.yaml です。"
             stage = "ready"
         emit(message)
         weeks.write_status(week, stage=stage, step="done", message=message, run_id=run_id)
         return StartResult(True, "done", message, week, run_id, stage)
     except StartError as e:
-        emit(f"STOPPED at {e.step}: {e.message}")
+        emit(f"中断（{step_name(e.step)}）: {e.message}")
         if week is not None and week.exists() and e.step != "check":
             weeks.write_status(week, stage="failed", step=e.step, message=e.message)
         return StartResult(False, e.step, e.message, week, stage="failed")
     except (SettingsError, OSError) as e:
-        emit(f"STOPPED: {e}")
+        emit(f"中断: {e}")
         if week is not None and week.exists():
             weeks.write_status(week, stage="failed", step="error", message=str(e))
         return StartResult(False, "error", str(e), week, stage="failed")

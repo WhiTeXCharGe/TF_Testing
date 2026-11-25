@@ -34,7 +34,7 @@ def program_dir():
 
 
 HERE = program_dir()
-for _root in (HERE.parent, HERE / "Weekly_planning"):        # the repository layout, then the layout of the exe
+for _root in (HERE.parent, HERE, HERE / "Weekly_planning"):        # the repository layout, the layout of the exe (scripts next to it)
     if (_root / "common").is_dir():
         sys.path.insert(0, str(_root))
         break
@@ -49,7 +49,7 @@ DEFAULT_CONFIG = (
 )
 
 
-def fail_visibly(text, title="01 Start Schedule"):
+def fail_visibly(text, title="01_StartSchedule 週次計画の開始"):
     """An error message the user can see: on stderr, and (windowed exe: nobody sees stderr) in plan_assist_error.txt and a message box."""
     print(text, file=sys.stderr)
     if not NO_CONSOLE:
@@ -92,7 +92,7 @@ def main(argv=None):
     try:
         settings = st.load(args.config or DEFAULT_CONFIG, HERE)
     except st.SettingsError as e:
-        fail_visibly(f"Error: {e}")
+        fail_visibly(f"エラー: {e}")
         return 1
     day = args.date or date.today()
     submit = False if args.no_submit else None
@@ -112,7 +112,7 @@ def main(argv=None):
         from start_window import run_window     # tkinter is only needed for the window
         run_window(settings, day, args.su_others or "", args.seiban_list or "", submit=submit)
     except Exception:
-        fail_visibly("The program stopped because of an unexpected error:\n\n" + traceback.format_exc())
+        fail_visibly("予期しないエラーのため、プログラムが停止しました。\n\n" + traceback.format_exc())
         return 1
     return 0
 

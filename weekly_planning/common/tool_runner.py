@@ -80,7 +80,7 @@ class ToolRunner:
         """What is not found in the weekly_planning folder for these steps (empty list: all there)."""
         problems = []
         if not (self.tools_dir / "common").is_dir():
-            problems.append(f"{self.tools_dir / 'common'} (the shared code)")
+            problems.append(f"{self.tools_dir / 'common'}（共通コード）")
         problems += [str(self.script(s)) for s in steps if not self.script(s).is_file()]
         return problems
 
