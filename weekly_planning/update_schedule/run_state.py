@@ -131,20 +131,31 @@ def _require_readable_file(path: Path, label: str) -> None:
         raise RunStateError(f"Cannot read {label} file {path}: {error}") from error
 
 
-def validate_run_inputs(run: RunDirectory, selected_workbook: Path) -> None:
+def validate_run_inputs(
+    run: RunDirectory,
+    selected_workbook: str | Path,
+    *,
+    resolved_name: str | None = None,
+) -> None:
     """選択ブックと対象回の必須ファイル、形式、EnvConfig参照を検証する。"""
-    selected_workbook = Path(selected_workbook)
-    suffix = selected_workbook.suffix.casefold()
+    remote_reference = isinstance(
+        selected_workbook, str
+    ) and selected_workbook.casefold().startswith("https://")
+    workbook_name = resolved_name or Path(str(selected_workbook)).name
+    suffix = Path(workbook_name).suffix.casefold()
     if suffix not in {".xlsx", ".xlsm"}:
         raise RunStateError(
-            f"Selected workbook must have an .xlsx or .xlsm extension: {selected_workbook}"
+            f"Selected workbook must have an .xlsx or .xlsm extension: "
+            f"{workbook_name}"
         )
-    if not selected_workbook.is_absolute():
-        raise RunStateError(
-            f"Selected workbook path must be absolute: {selected_workbook}"
-        )
+    if not remote_reference:
+        local_workbook = Path(selected_workbook)
+        if not local_workbook.is_absolute():
+            raise RunStateError(
+                f"Selected workbook path must be absolute: {local_workbook}"
+            )
+        _require_readable_file(local_workbook, "selected workbook")
 
-    _require_readable_file(selected_workbook, "selected workbook")
     _require_readable_file(run.workbook_for_suffix(suffix), "initial workbook copy")
     _require_readable_file(run.flexible_work, "FlexibleWork")
     _require_readable_file(run.run_info, "run_info")

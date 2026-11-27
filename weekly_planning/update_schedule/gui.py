@@ -3,13 +3,16 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Literal
 
+from common import plan_settings
 from update_schedule.orchestrator import UpdateResult, run_update
 from update_schedule.paths import ApplicationPaths
+from update_schedule.workbook_store import SharePointWorkbookStore
 
 
 _SUPPORTED_SUFFIXES = {".xlsx", ".xlsm"}
@@ -20,19 +23,30 @@ class WorkbookInputError(ValueError):
     """Raised when the selected SU_Others workbook path is invalid."""
 
 
+@dataclass
+class _AuthenticationRequest:
+    verification_uri: str
+    user_code: str
+    completed: threading.Event
+    accepted: bool = False
+
+
 @dataclass(frozen=True)
 class _WorkerMessage:
-    kind: Literal["stage", "result", "error"]
+    kind: Literal["stage", "authentication", "result", "error"]
     stage: str | None = None
+    authentication: _AuthenticationRequest | None = None
     result: UpdateResult | None = None
     error: Exception | None = None
 
 
-def _selected_path(path_text: str) -> Path:
-    """入力文字列を検証し、対象ブックの絶対パスを返す。"""
+def _selected_path(path_text: str) -> Path | str:
+    """入力文字列をローカルパスまたはSharePoint共有リンクとして返す。"""
     value = path_text.strip()
     if not value:
         raise WorkbookInputError("SU_Othersのパスを入力するか、ファイルを選択してください。")
+    if value.casefold().startswith("https://"):
+        return value
 
     path = Path(value).expanduser()
     if not path.is_absolute():
@@ -56,6 +70,8 @@ def _dialog_initial_directory(path_text: str) -> str | None:
     try:
         path = _selected_path(path_text)
     except WorkbookInputError:
+        return None
+    if isinstance(path, str):
         return None
     if not _is_unc_path(path) and path.is_file():
         return str(path.parent)
@@ -95,6 +111,10 @@ def _format_error(error: Exception, selected_path: str) -> str:
     try:
         path = _selected_path(selected_path)
     except WorkbookInputError:
+        return message
+    if isinstance(path, str):
+        if isinstance(error, PermissionError):
+            message += "\nSharePointのサインイン状態と対象ライブラリの権限を確認してください。"
         return message
     if isinstance(error, PermissionError):
         message += (
@@ -220,17 +240,105 @@ class UpdateScheduleApp:
 
     def _run_worker(self, workbook_path: Path) -> None:
         try:
+            arguments = {
+                "on_stage": lambda stage: self._messages.put(
+                    _WorkerMessage(kind="stage", stage=stage)
+                )
+            }
+            if isinstance(workbook_path, str):
+                arguments["store"] = self._create_sharepoint_store()
             result = self.update_runner(
                 self.paths,
                 workbook_path,
-                on_stage=lambda stage: self._messages.put(
-                    _WorkerMessage(kind="stage", stage=stage)
-                ),
+                **arguments,
             )
         except Exception as error:
             self._messages.put(_WorkerMessage(kind="error", error=error))
             return
         self._messages.put(_WorkerMessage(kind="result", result=result))
+
+    def _create_sharepoint_store(self) -> SharePointWorkbookStore:
+        """設定とGUI認証callbackを使ってSharePoint Storeを作る。"""
+        settings = plan_settings.load(path=self.paths.config_file)
+        tenant_id = settings.text("tenant_id")
+        client_id = settings.text("client_id")
+        if tenant_id is None or client_id is None:
+            raise WorkbookInputError(
+                "SharePointを利用するには tenant_id と client_id を設定してください。"
+            )
+
+        from update_schedule.sharepoint_auth import UpdateScheduleFileOperationSharePoint
+
+        operation = UpdateScheduleFileOperationSharePoint(
+            tenant_id,
+            client_id,
+            self._request_sign_in,
+        )
+        return SharePointWorkbookStore(operation)
+
+    def _request_sign_in(self, verification_uri: str, user_code: str) -> bool:
+        """workerの認証表示要求をGUIへ送り、利用者の応答を待つ。"""
+        request = _AuthenticationRequest(
+            verification_uri=verification_uri,
+            user_code=user_code,
+            completed=threading.Event(),
+        )
+        self._messages.put(
+            _WorkerMessage(kind="authentication", authentication=request)
+        )
+        request.completed.wait()
+        return request.accepted
+
+    def _show_authentication_dialog(
+        self,
+        request: _AuthenticationRequest,
+    ) -> None:
+        """GUI threadでデバイスコード認証画面を表示する。"""
+        dialog: tk.Toplevel | None = None
+        try:
+            dialog = tk.Toplevel(self.root)
+            dialog.title("SharePointへのサインイン")
+            dialog.transient(self.root)
+
+            def finish(accepted: bool) -> None:
+                request.accepted = accepted
+                request.completed.set()
+                dialog.destroy()
+
+            frame = ttk.Frame(dialog, padding=16)
+            frame.pack(fill="both", expand=True)
+            ttk.Label(
+                frame,
+                text="コードをコピーしてブラウザーでサインインしてください。",
+            ).pack(anchor="w")
+            for label, value in (
+                ("サインインURL:", request.verification_uri),
+                ("サインインコード:", request.user_code),
+            ):
+                ttk.Label(frame, text=label).pack(anchor="w", pady=(10, 0))
+                entry = ttk.Entry(frame, width=65)
+                entry.insert(0, value)
+                entry.configure(state="readonly")
+                entry.pack(fill="x")
+
+            buttons = ttk.Frame(frame)
+            buttons.pack(pady=(12, 0))
+            ttk.Button(buttons, text="OK", command=lambda: finish(True)).pack(
+                side="left", padx=5
+            )
+            ttk.Button(buttons, text="キャンセル", command=lambda: finish(False)).pack(
+                side="left", padx=5
+            )
+            dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+            try:
+                webbrowser.open(request.verification_uri)
+            except (OSError, webbrowser.Error):
+                pass
+            dialog.wait_window()
+        finally:
+            request.completed.set()
+            if dialog is not None and dialog.winfo_exists():
+                dialog.destroy()
 
     def _poll_messages(self) -> None:
         while True:
@@ -242,6 +350,9 @@ class UpdateScheduleApp:
             if message.kind == "stage":
                 if message.stage is not None:
                     self.status_variable.set(message.stage)
+            elif message.kind == "authentication":
+                if message.authentication is not None:
+                    self._show_authentication_dialog(message.authentication)
             elif message.kind == "result":
                 if message.result is not None:
                     self.status_variable.set("処理が終了しました。")

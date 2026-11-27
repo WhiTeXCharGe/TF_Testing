@@ -22,8 +22,10 @@ from update_schedule.run_state import (
 from update_schedule.workbook_store import (
     FileSystemWorkbookStore,
     FileSystemWorkbookTarget,
-    LockHandle,
+    PublicationOutcomeUnknown,
+    SharePointWorkbookTarget,
     WorkbookStore,
+    WorkbookTarget,
 )
 
 
@@ -48,7 +50,7 @@ class ExistingTools:
 class UpdateResult:
     status: Literal["completed", "not_finished", "already_applied"]
     run_directory: Path
-    workbook_path: Path
+    workbook_path: Path | str
     warning_count: int
     conflict_count: int
     warnings: tuple[str, ...]
@@ -90,6 +92,8 @@ def _load_module(module_name: str, script_path: Path):
 def load_existing_tools(application_directory: Path) -> ExistingTools:
     """アプリ配置ディレクトリにある3-1〜3-3の既存関数APIを読み込む。"""
     application_directory = Path(application_directory)
+    if (application_directory / "weekly_planning" / "common").is_dir():
+        application_directory = application_directory / "weekly_planning"
     receive_module = _load_module(
         "_update_schedule_receive_from_timefold",
         application_directory
@@ -155,7 +159,7 @@ def _require_output(path: Path, label: str) -> None:
 
 def _restore_after_failure(
     store: WorkbookStore,
-    lock: LockHandle,
+    lock: object,
     state: UpdateStateStore,
     original_error: Exception,
 ) -> None:
@@ -185,7 +189,7 @@ def _restore_after_failure(
 
 def _release_without_update(
     store: WorkbookStore,
-    lock: LockHandle,
+    lock: object,
     reason: str,
     original_error: Exception | None = None,
 ) -> None:
@@ -200,7 +204,7 @@ def _release_without_update(
 
 def run_update(
     paths: ApplicationPaths,
-    selected_workbook: Path,
+    selected_workbook: str | Path,
     *,
     store: WorkbookStore | None = None,
     tools: ExistingTools | None = None,
@@ -209,11 +213,26 @@ def run_update(
     """対象回をロックし、既存3-1〜3-3を実行してブックを公開する。"""
     paths.prepare()
     run = select_latest_run(paths.work_directory)
-    validate_run_inputs(run, selected_workbook)
-    _validate_run_id(run)
+    if isinstance(selected_workbook, str) and selected_workbook.casefold().startswith(
+        "https://"
+    ):
+        if store is None:
+            raise RunStateError("SharePoint workbook requires a SharePoint store")
+        target: WorkbookTarget = SharePointWorkbookTarget(selected_workbook)
+        workbook_reference: Path | str = selected_workbook
+    else:
+        target = FileSystemWorkbookTarget(Path(selected_workbook))
+        workbook_reference = target.path
+
     store = store or FileSystemWorkbookStore()
+    workbook_name = store.workbook_name(target)
+    validate_run_inputs(
+        run,
+        selected_workbook,
+        resolved_name=workbook_name,
+    )
+    _validate_run_id(run)
     tools = tools or load_existing_tools(paths.application_directory)
-    target = FileSystemWorkbookTarget(Path(selected_workbook))
     state = UpdateStateStore(run)
 
     lock = store.acquire(target)
@@ -232,7 +251,7 @@ def run_update(
         return UpdateResult(
             status="already_applied",
             run_directory=run.directory,
-            workbook_path=target.path,
+            workbook_path=workbook_reference,
             warning_count=0,
             conflict_count=0,
             warnings=(),
@@ -259,7 +278,7 @@ def run_update(
     try:
         state.archive_intermediates()
         state.mark_in_progress()
-        suffix = target.path.suffix.casefold()
+        suffix = Path(workbook_name).suffix.casefold()
         work_copy = run.steps / f"02_SU_Others{suffix}"
         store.download_locked(lock, work_copy)
         reference_copy = run.workbook_for_suffix(suffix)
@@ -292,7 +311,7 @@ def run_update(
             return UpdateResult(
                 status="not_finished",
                 run_directory=run.directory,
-                workbook_path=target.path,
+                workbook_path=workbook_reference,
                 warning_count=0,
                 conflict_count=0,
                 warnings=tuple(warnings),
@@ -351,9 +370,15 @@ def run_update(
         _require_output(expected_result, "3-3 rewritten workbook")
         if write_result.warning_count < 0 or write_result.conflict_count < 0:
             raise RunStateError("3-3 returned negative warning/conflict counts")
+        if write_result.conflict_count:
+            raise RunStateError(
+                f"3-3 reported {write_result.conflict_count} conflict(s)"
+            )
 
         store.publish(lock, expected_result)
     except Exception as error:
+        if isinstance(error, PublicationOutcomeUnknown):
+            raise
         if release_attempted:
             if workbook_restored:
                 raise
@@ -369,7 +394,7 @@ def run_update(
         state.mark_applied()
     except Exception as error:
         raise PostPublishStateError(
-            f"Workbook was published to {target.path}, but applied state "
+            f"Workbook was published to {workbook_reference}, but applied state "
             f"could not be saved. Do not retry automatically; inspect "
             f"{state.run.status_file} and the locked workbook. Cause: {error}"
         ) from error
@@ -378,14 +403,15 @@ def run_update(
         store.release(lock, published=True)
     except Exception as error:
         warnings.append(
-            f"反映は完了しましたが、ロックファイルを解除できませんでした。"
-            f"対象: {target.path.with_name('_SU_Others.xlsx')}。原因: {error}"
+            "反映は完了しましたが、ロックファイルを解除できませんでした。"
+            "対象と同じ場所の _SU_Others.xlsx と反映先を確認してください。"
+            f"原因: {error}"
         )
 
     return UpdateResult(
         status="completed",
         run_directory=run.directory,
-        workbook_path=target.path,
+        workbook_path=workbook_reference,
         warning_count=write_result.warning_count,
         conflict_count=write_result.conflict_count,
         warnings=tuple(warnings),

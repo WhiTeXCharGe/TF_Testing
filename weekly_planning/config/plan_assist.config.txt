@@ -14,6 +14,10 @@ work_dir = ..\..\Work
 skill_file =
 start_env = EnvConfig_start.yaml
 
+# ---------------------------------------------------------------------------------------------------- SharePoint
+tenant_id = a54b00a2-87e8-4e92-a76d-de53269b7ddd
+client_id = 18cd7185-631e-4b45-9668-aa8c0ad18469
+
 # ---------------------------------------------------------------------------------------------------- sheets (they carry the year)
 su_sheet = 予定表_2026
 skill_sheet = 予定表_2026 (2)
@@ -27,11 +31,12 @@ default_skill_level =
 # Only needed when a file is given as a SharePoint link instead of a path on this PC
 # The user signs in with their own Microsoft account when the first file is fetched; no password or secret is kept here.
 # A SharePoint link needs the Python libraries msal and requests (python -m pip install msal requests).
-tenant_id =
-client_id =
+tenant_id = a54b00a2-87e8-4e92-a76d-de53269b7ddd
+client_id = 18cd7185-631e-4b45-9668-aa8c0ad18469
 
 # ---------------------------------------------------------------------------------------------------- solver
-# submit = false stops after the 03 files are made (nothing is sent).
+# In command-line runs, submit = false stops after the 03 files are made (nothing is sent).
+# The window sends by default regardless of this setting; --no-submit can explicitly override it.
 submit = true
 # mode: online = the API controller on Azure (azure_url), local = the solver on this PC (local_url)
 mode = online

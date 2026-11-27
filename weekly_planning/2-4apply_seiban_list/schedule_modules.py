@@ -39,7 +39,9 @@ def add_row_problems(row, template):
         elif not template.valid:
             problems.append(f"template {row.template} cannot be used: " + ("; ".join(template.problems) or "it has no operations"))
     if template_ok:
-        for p in template.phases():
+        phases = template.phases()
+        first_start = row.phases.get(phases[0], (None, None))[0]
+        for p in phases:
             start, end = row.phases.get(p, (None, None))
             if not start:
                 problems.append(f"process {p} has no start date")
@@ -47,6 +49,8 @@ def add_row_problems(row, template):
                 problems.append(f"process {p} has no end date")
             if start and end and end < start:
                 problems.append(f"process {p}: end date {end} is before start date {start}")
+            elif first_start and end and end < first_start:
+                problems.append(f"process {p}: end date {end} is before the first process start date {first_start}")
     return problems
 
 
@@ -92,8 +96,10 @@ def add_module(schedule, code, workflow_ref, fab_id, template, row):
     recommends_worker_min / max are not written: the solver treats a missing value as no recommendation."""
     module_id = next_module_id(schedule)
     phase_tasks = []
-    for p in template.phases():
-        start, end = row.phases[p]
+    phases = template.phases()
+    start = row.phases[phases[0]][0]
+    for p in phases:
+        _, end = row.phases[p]
         ops = []
         for o in template.ops_of(p):
             op = workflow_ref.ops[(p, o.op)]

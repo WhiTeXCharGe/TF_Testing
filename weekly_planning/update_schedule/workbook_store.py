@@ -11,10 +11,28 @@ from typing import Protocol, TypeAlias
 
 
 _LOCKED_WORKBOOK_NAME = "_SU_Others.xlsx"
+_SUPPORTED_WORKBOOK_SUFFIXES = {".xlsx", ".xlsm"}
+
+
+def _validate_workbook_name(name: str) -> str:
+    """SU_Othersのファイル名と拡張子を検証する。"""
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError(f"Invalid workbook file name: {name}")
+    if Path(name).suffix.casefold() not in _SUPPORTED_WORKBOOK_SUFFIXES:
+        raise ValueError(
+            f"Workbook target must have an .xlsx or .xlsm extension: {name}"
+        )
+    if name.casefold() == _LOCKED_WORKBOOK_NAME.casefold():
+        raise ValueError(f"Workbook target cannot use the reserved lock name: {name}")
+    return name
 
 
 class WorkbookStoreError(RuntimeError):
     """ブックストアの操作を安全に完了できない場合に送出する例外。"""
+
+
+class PublicationOutcomeUnknown(WorkbookStoreError):
+    """公開要求後にSharePoint上の結果を確定できない場合の例外。"""
 
 
 @dataclass(frozen=True)
@@ -28,22 +46,23 @@ class FileSystemWorkbookTarget:
         path = Path(self.path)
         if not path.is_absolute():
             raise ValueError(f"Workbook target must be an absolute path: {path}")
-        if path.suffix.casefold() not in {".xlsx", ".xlsm"}:
-            raise ValueError(
-                f"Workbook target must have an .xlsx or .xlsm extension: {path}"
-            )
-        if path.name.casefold() == _LOCKED_WORKBOOK_NAME.casefold():
-            raise ValueError(f"Workbook target cannot use the reserved lock name: {path}")
+        _validate_workbook_name(path.name)
         object.__setattr__(self, "path", path)
 
 
 @dataclass(frozen=True)
 class SharePointWorkbookTarget:
-    """SharePoint上の対象ブックを特定する情報を保持する。"""
+    """SharePoint上の対象ブックを共有リンクで特定する。"""
 
-    site_url: str
-    library_name: str
-    item_path: str
+    sharing_link: str
+
+    def __post_init__(self) -> None:
+        sharing_link = str(self.sharing_link).strip()
+        if not sharing_link:
+            raise ValueError("SharePoint sharing link cannot be empty")
+        if not sharing_link.casefold().startswith("https://"):
+            raise ValueError(f"SharePoint sharing link must use HTTPS: {sharing_link}")
+        object.__setattr__(self, "sharing_link", sharing_link)
 
 
 WorkbookTarget: TypeAlias = FileSystemWorkbookTarget | SharePointWorkbookTarget
@@ -74,22 +93,64 @@ class LockHandle:
         self._released = False
 
 
+@dataclass
+class _SharePointLockHandle:
+    """SharePoint Storeだけが解釈できるロック状態を保持する。"""
+
+    store_token: object
+    sharing_link: str
+    original_url: str
+    original_name: str
+    parent_url: str
+    locked_url: str
+    published_url: str | None = None
+    publication_unknown: bool = False
+    released: bool = False
+
+
+class FileOperationSharePointLike(Protocol):
+    """SharePoint Storeが利用する既存Helperの操作契約。"""
+
+    def get_file_url_from_sharing_link(self, sharing_link: str) -> str: ...
+
+    def get_parent_folder_path(self, file_path: str) -> str: ...
+
+    def download_file(self, file_path: str, local_path: str | os.PathLike[str]) -> None: ...
+
+    def get_file_name(self, file_path: str) -> str: ...
+
+    def rename_file(self, file_path: str, new_name: str) -> str: ...
+
+    def upload_file(
+        self,
+        local_path: str | os.PathLike[str],
+        parent_folder_path: str,
+        file_name: str,
+    ) -> str: ...
+
+    def delete_file(self, file_path: str) -> None: ...
+
+
 class WorkbookStore(Protocol):
     """ブックストアが実装するロック操作のプロトコル。"""
 
-    def acquire(self, target: WorkbookTarget) -> LockHandle:
+    def workbook_name(self, target: WorkbookTarget) -> str:
+        """ロック前に対象ブック名を解決して返す。"""
+        ...
+
+    def acquire(self, target: WorkbookTarget) -> object:
         """対象ブックをロックし、その操作に使うハンドルを返す。"""
         ...
 
-    def download_locked(self, lock: LockHandle, destination: Path) -> None:
+    def download_locked(self, lock: object, destination: Path) -> None:
         """ロック中のブックを指定先へコピーする。"""
         ...
 
-    def publish(self, lock: LockHandle, result: Path) -> None:
+    def publish(self, lock: object, result: Path) -> None:
         """処理結果を対象ブックとして公開する。"""
         ...
 
-    def release(self, lock: LockHandle, *, published: bool) -> None:
+    def release(self, lock: object, *, published: bool) -> None:
         """公開結果を確定するか、元のブックを復元してロックを解放する。"""
         ...
 
@@ -140,6 +201,14 @@ class FileSystemWorkbookStore:
     def __init__(self) -> None:
         """このストアのロックハンドルを識別するトークンを作成する。"""
         self._token = object()
+
+    def workbook_name(self, target: WorkbookTarget) -> str:
+        """ロック前に対象のファイル名を返す。"""
+        if not isinstance(target, FileSystemWorkbookTarget):
+            raise TypeError(
+                "FileSystemWorkbookStore requires a FileSystemWorkbookTarget"
+            )
+        return target.path.name
 
     def acquire(self, target: WorkbookTarget) -> LockHandle:
         """元ブックを既存ファイルを上書きせずロック名へ移動する。"""
@@ -250,3 +319,150 @@ class FileSystemWorkbookStore:
             raise TypeError("Lock handle was not acquired by this WorkbookStore")
         if lock._released:
             raise WorkbookStoreError("Lock handle has already been released")
+
+
+@dataclass(frozen=True)
+class _ResolvedSharePointWorkbook:
+    """共有リンクから解決したSharePointアイテムの情報を保持する。"""
+
+    original_url: str
+    original_name: str
+    parent_url: str
+
+
+class SharePointWorkbookStore:
+    """既存Helperを使ってSharePoint上のブックを簡易ロックする。"""
+
+    def __init__(self, operation: FileOperationSharePointLike) -> None:
+        """Graph操作を委譲するHelperとこのStoreの識別子を保持する。"""
+        self._operation = operation
+        self._token = object()
+        self._resolved: dict[str, _ResolvedSharePointWorkbook] = {}
+
+    def workbook_name(self, target: WorkbookTarget) -> str:
+        """共有リンクをロック前に解決し、元のファイル名を返す。"""
+        return self._resolve(target).original_name
+
+    def acquire(self, target: WorkbookTarget) -> _SharePointLockHandle:
+        """元アイテムを既存名を上書きせずロック名へ変更する。"""
+        resolved = self._resolve(target)
+        try:
+            locked_url = self._operation.rename_file(
+                resolved.original_url,
+                _LOCKED_WORKBOOK_NAME,
+            )
+        except Exception as error:
+            raise WorkbookStoreError(
+                "SharePoint rename outcome must be checked manually; "
+                f"link={target.sharing_link}, original={resolved.original_name}, "
+                f"original_url={resolved.original_url}, "
+                f"locked_name={_LOCKED_WORKBOOK_NAME}: {error}"
+            ) from error
+        return _SharePointLockHandle(
+            store_token=self._token,
+            sharing_link=target.sharing_link,
+            original_url=resolved.original_url,
+            original_name=resolved.original_name,
+            parent_url=resolved.parent_url,
+            locked_url=locked_url,
+        )
+
+    def download_locked(
+        self,
+        lock: object,
+        destination: Path,
+    ) -> None:
+        """ロック中のSharePointアイテムをローカルへ取得する。"""
+        handle = self._validate_lock(lock)
+        self._operation.download_file(handle.locked_url, destination)
+
+    def publish(self, lock: object, result: Path) -> None:
+        """反映結果を元名の新しいSharePointアイテムとして公開する。"""
+        handle = self._validate_lock(lock)
+        if handle.published_url is not None:
+            raise WorkbookStoreError("Workbook result has already been published")
+        result = Path(result)
+        if not result.is_file():
+            raise FileNotFoundError(f"Workbook result not found: {result}")
+        try:
+            handle.published_url = self._operation.upload_file(
+                result,
+                handle.parent_url,
+                handle.original_name,
+            )
+        except Exception as error:
+            if isinstance(error, FileExistsError) or getattr(
+                error, "status_code", None
+            ) == 409:
+                raise
+            handle.publication_unknown = True
+            raise PublicationOutcomeUnknown(
+                "SharePoint publication outcome is unknown. Do not retry "
+                f"automatically; inspect link={handle.sharing_link}, "
+                f"original={handle.original_name}, "
+                f"locked={handle.locked_url}. Cause: {error}"
+            ) from error
+
+    def release(self, lock: object, *, published: bool) -> None:
+        """公開済みの旧アイテムを削除するか、元名へ復元する。"""
+        handle = self._validate_lock(lock)
+        if handle.publication_unknown:
+            raise WorkbookStoreError(
+                "Cannot release while SharePoint publication outcome is unknown"
+            )
+        if published:
+            if handle.published_url is None:
+                raise WorkbookStoreError(
+                    "Cannot release as published before a successful publish"
+                )
+            self._operation.delete_file(handle.locked_url)
+        else:
+            if handle.published_url is not None:
+                raise WorkbookStoreError(
+                    "Cannot restore the original after publishing the result"
+                )
+            restored_url = self._operation.rename_file(
+                handle.locked_url,
+                handle.original_name,
+            )
+            if not restored_url:
+                raise WorkbookStoreError(
+                    "SharePoint did not return the restored workbook URL"
+                )
+        handle.released = True
+
+    def _resolve(self, target: WorkbookTarget) -> _ResolvedSharePointWorkbook:
+        """共有リンクの解決結果を同一Store内でキャッシュする。"""
+        if not isinstance(target, SharePointWorkbookTarget):
+            raise TypeError(
+                "SharePointWorkbookStore requires a SharePointWorkbookTarget"
+            )
+        resolved = self._resolved.get(target.sharing_link)
+        if resolved is not None:
+            return resolved
+
+        original_url = self._operation.get_file_url_from_sharing_link(
+            target.sharing_link
+        )
+        original_name = _validate_workbook_name(
+            self._operation.get_file_name(original_url)
+        )
+        parent_url = self._operation.get_parent_folder_path(original_url)
+        resolved = _ResolvedSharePointWorkbook(
+            original_url=original_url,
+            original_name=original_name,
+            parent_url=parent_url,
+        )
+        self._resolved[target.sharing_link] = resolved
+        return resolved
+
+    def _validate_lock(self, lock: object) -> _SharePointLockHandle:
+        """ハンドルがこのStoreで取得され、未解放であることを確認する。"""
+        if (
+            not isinstance(lock, _SharePointLockHandle)
+            or lock.store_token is not self._token
+        ):
+            raise TypeError("Lock handle was not acquired by this WorkbookStore")
+        if lock.released:
+            raise WorkbookStoreError("Lock handle has already been released")
+        return lock

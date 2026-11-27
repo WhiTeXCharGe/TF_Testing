@@ -110,7 +110,7 @@ A work name that no existing operation has means nobody can do it; this is only 
 
 ### 6.1 White row → new module
 
-Rows are checked first: seiban valid, template sheet found and valid, every process of the template has a start and an end date, end is not before start. An invalid row is skipped and listed in the report; it creates nothing (no master data, no workflow). A seiban that already is a workflow task in the Schedule is skipped with a report line.
+Rows are checked first: seiban valid, template sheet found and valid, every process of the template has a start and an end date, and each end is not before either its own start or the first process's start. An invalid row is skipped and listed in the report; it creates nothing (no master data, no workflow). A seiban that already is a workflow task in the Schedule is skipped with a report line.
 
 A valid row creates one workflow task:
 
@@ -119,11 +119,12 @@ A valid row creates one workflow task:
 | module id | next free `e<n>` |
 | `name` | the seiban |
 | `workflow`, `fab` | the ids of 5 and 4 |
-| phase task | id `<module><pP>` (for example `e57p1`), `phase` = the phase id, name = the phase name of the workflow (`p<P>` for a new workflow), start / end = process P start-available / end-deadline |
+| phase task | id `<module><pP>` (for example `e57p1`), `phase` = the phase id, name = the phase name of the workflow (`p<P>` for a new workflow), start = the first process's start-available date, end = process P's end-deadline |
 | operation task | id `<module><pP>o<K>`, `operation` = the operation id, `workload_hours` = man-hours of the template |
 | not written | `recommends_worker_min/max` (the solver treats an empty value as no recommendation) |
 
 The task ids deliberately stay in the short `e57p1o1` form: the solver splits operation task ids with the pattern `...p<number>o<number>`, which would cut a long id such as `e57wf1p1o1` at the wrong place when it has to read a task it does not know.
+The first process is the lowest-numbered process in the selected template (for example P2 if P1 is absent). This applies only to newly added modules; existing workflow tasks are unchanged.
 
 ### 6.2 Pink row → delete
 

@@ -29,7 +29,7 @@ class StartWindow:
         self.root.minsize(760, 520)
         self.su_var = tk.StringVar(value=su_others or "")
         self.sb_var = tk.StringVar(value=seiban_list or "")
-        self.submit_var = tk.BooleanVar(value=settings.flag("submit", True) if submit is None else submit)
+        self.submit = True if submit is None else submit
         self._build()
         self.root.after(100, self._poll)
 
@@ -58,9 +58,6 @@ class StartWindow:
             ttk.Entry(frame, textvariable=var).grid(row=row, column=1, sticky="ew", padx=6)
             ttk.Button(frame, text="参照...", command=lambda v=var, t=label: self._browse(v, t)).grid(row=row, column=2)
             row += 1
-        ttk.Checkbutton(frame, text="最後にソルバーへ送信する（2-6）", variable=self.submit_var).grid(
-            row=row, column=1, sticky="w", pady=4)
-        row += 1
         self.start_button = ttk.Button(frame, text="開始", command=self._start)
         self.start_button.grid(row=row, column=1, sticky="w", pady=8)
         self.status = ttk.Label(frame, text="")
@@ -106,11 +103,9 @@ class StartWindow:
         self.log.configure(state="disabled")
         self.start_button.state(["disabled"])
         self.status.configure(text="実行中 ...")
-        submit = self.submit_var.get()
-
         def work():
             result = run_start(self.settings, su, sb, self.day, log=lambda line: self.queue.put(("line", line)),
-                               submit=submit, overwrite=overwrite, sign_in=self._ask_sign_in)
+                               submit=self.submit, overwrite=overwrite, sign_in=self._ask_sign_in)
             self.queue.put(("done", result))
 
         self.worker = threading.Thread(target=work, daemon=True)

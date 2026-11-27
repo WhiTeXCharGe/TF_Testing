@@ -7,17 +7,17 @@ build_exe.py  --  builds 01_StartSchedule.exe and 02_UpdateSchedule.exe (PyInsta
 Needs PyInstaller (python -m pip install pyinstaller) and, because SharePoint links are used, msal and requests
 (python -m pip install msal requests). Result: <out>/plan_assist/ with
 
-    01_StartSchedule.exe + _internal_start/     part 1 (Python and the libraries are inside)
-    02_UpdateSchedule.exe + _internal_update/   part 2
+    01_StartSchedule.exe                        part 1
+    02_UpdateSchedule.exe                       part 2
     config/plan_assist.config.txt               the settings of both programs (sample; edit it)
-    common/, 2-2-3.../, 2-4.../, ..., update_schedule/   the scripts the programs run (without tests and without their config.txt)
+    weekly_planning/                            Python, libraries, and the scripts the programs run
     Master/                                     where the first-week files go
     Work/                                       one folder per week is made here
 
-The scripts are NOT inside the exes: the programs load them from the folders next to the exe at run time, so a script can be updated
+The scripts are NOT inside the exes: the programs load them from weekly_planning at run time, so a script can be updated
 by replacing its folder, without a new build. What is inside an exe: Python, tkinter and the libraries the scripts import (found by
 reading every script; a script that starts to import a new library needs a new build). `common` and `update_schedule` are left out
-of the exes on purpose: both programs and all tools must use the same code from the folders next to the exe.
+of the exes on purpose: both programs and all tools must use the same code from weekly_planning.
 
 --console builds versions with a console window (they show the log and errors), for finding problems.
 --only builds one of the two programs (the other one is left out of the result folder).
@@ -27,20 +27,23 @@ from __future__ import annotations
 
 import argparse
 import ast
+import filecmp
 import importlib.util
 import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent                    # weekly_planning/
 PROGRAMS = {
-    "01": {"name": "01_StartSchedule", "entry": HERE / "01_StartSchedule" / "start_schedule.py", "contents": "_internal_start",
+    "01": {"name": "01_StartSchedule", "entry": HERE / "01_StartSchedule" / "start_schedule.py",
            "paths": [HERE / "01_StartSchedule"]},
-    "02": {"name": "02_UpdateSchedule", "entry": HERE / "launchers" / "launch_update_schedule.py", "contents": "_internal_update",
+    "02": {"name": "02_UpdateSchedule", "entry": HERE / "launchers" / "launch_update_schedule.py",
            "paths": []},
 }
+CONTENTS = "weekly_planning"
 NOT_TOOLS = {"tests", "testing", "__pycache__", "dist", "build", "config", "doc", "launchers", "01_StartSchedule"}    # not copied, not scanned
 SKIP_FILES = {"config.txt"}                                          # the settings of a developer's PC: never shipped
 BIG_AND_UNUSED = ("matplotlib", "scipy", "IPython", "pytest", "numba", "PIL", "tornado", "jinja2", "sqlalchemy", "lxml")
@@ -94,17 +97,36 @@ def not_installed(libraries):
 
 
 def copy_tools(dest):
-    """The scripts, next to the exes."""
+    """The scripts in the shared runtime folder."""
     def ignore(folder, names):
         return [n for n in names if n in NOT_TOOLS or n in SKIP_FILES or n.endswith(".pyc")]
     for folder in tool_folders():
         shutil.copytree(folder, dest / folder.name, ignore=ignore)
 
 
+def merge_runtime(source, dest):
+    """Combine the two runtimes only when their shared files are compatible."""
+    for path in source.rglob("*"):
+        relative = path.relative_to(source)
+        target = dest / relative
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+        elif not filecmp.cmp(path, target, shallow=False):
+            if relative == Path("base_library.zip"):
+                with zipfile.ZipFile(path) as a, zipfile.ZipFile(target) as b:
+                    names = set(a.namelist())
+                    if names == set(b.namelist()) and all(a.read(name) == b.read(name) for name in names):
+                        continue
+            raise RuntimeError(f"Conflicting runtime files: {relative}. Cannot safely combine the executables.")
+
+
 def pyinstaller(program, libraries, work, console):
     """One PyInstaller run; returns the folder it made (<work>/dist/<name>)."""
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--name", program["name"], "--onedir",
-           "--console" if console else "--windowed", "--contents-directory", program["contents"],
+           "--console" if console else "--windowed", "--contents-directory", CONTENTS,
            "--distpath", str(work / "dist"), "--workpath", str(work / "work" / program["name"]), "--specpath", str(work)]
     for path in program["paths"]:
         cmd += ["--paths", str(path)]
@@ -147,9 +169,9 @@ def build(out, console, only, allow_missing):
     for program in selected:
         made = pyinstaller(program, libraries, work, console)
         shutil.copy2(made / f"{program['name']}.exe", target)
-        shutil.copytree(made / program["contents"], target / program["contents"])
+        merge_runtime(made / CONTENTS, target / CONTENTS)
 
-    copy_tools(target)
+    copy_tools(target / CONTENTS)
     config_text = (HERE / "config" / "plan_assist.config.txt").read_text(encoding="utf-8")
     config_text = config_text.replace("master_dir = ..\\..\\Master", "master_dir = ..\\Master").replace(
         "work_dir = ..\\..\\Work", "work_dir = ..\\Work")

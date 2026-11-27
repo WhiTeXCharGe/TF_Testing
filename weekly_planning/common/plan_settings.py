@@ -101,11 +101,13 @@ class Settings:
 
     @property
     def tools_dir(self):
-        """The folder of the weekly_planning scripts: tools_dir, else nearby Weekly_planning, else a repository parent."""
+        """The folder of the weekly_planning scripts: tools_dir, else a nearby folder or repository parent."""
         explicit = self.folder("tools_dir")
         if explicit:
             return explicit
         candidates = [
+            self.base_dir / "weekly_planning",
+            self.base_dir.parent / "weekly_planning",
             self.base_dir / "Weekly_planning",
             self.base_dir.parent / "Weekly_planning",
             self.base_dir,

@@ -2,8 +2,8 @@
 """
 launch_update_schedule.py  --  the entry point of 02_UpdateSchedule.exe (and a way to start the window from a console).
 
-The program itself is update_schedule/gui.py. This file only makes the folder of the exe (or weekly_planning/ in the repository)
-importable, so that `common` and `update_schedule` are found next to the exe, and shows a start-up error to a user who has no console.
+The program itself is update_schedule/gui.py. This file makes the scripts folder importable and shows a start-up error to a user
+who has no console.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def app_dir():
 
 
 APP = app_dir()
-sys.path.insert(0, str(APP))
+sys.path.insert(0, str(APP / "weekly_planning" if (APP / "weekly_planning" / "common").is_dir() else APP))
 
 
 def fail_visibly(text):
@@ -56,7 +56,7 @@ def main():
         run_window()
     except Exception:
         fail_visibly("予期しないエラーのため、プログラムが停止しました。\n"
-                     "exe と同じフォルダに common と update_schedule のフォルダがあるか確認してください。\n\n" + traceback.format_exc())
+                     "weekly_planning フォルダに common と update_schedule があるか確認してください。\n\n" + traceback.format_exc())
         return 1
     return 0
 

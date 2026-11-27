@@ -10,7 +10,7 @@ window:
 
 Settings (folders, solver address, sheet names) are in the shared config/plan_assist.config.txt
 (or in the config folder beside the exe in a packaged deployment).
-The program finds the tools of weekly_planning above this folder (the repository) or in a Weekly_planning folder next to it (the exe).
+The program finds the tools of weekly_planning above this folder (the repository) or in a weekly_planning folder next to it (the exe).
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def program_dir():
 
 
 HERE = program_dir()
-for _root in (HERE.parent, HERE, HERE / "Weekly_planning"):        # the repository layout, the layout of the exe (scripts next to it)
+for _root in (HERE.parent, HERE, HERE / "weekly_planning", HERE / "Weekly_planning"):
     if (_root / "common").is_dir():
         sys.path.insert(0, str(_root))
         break

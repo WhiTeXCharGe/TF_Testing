@@ -12,6 +12,10 @@
 # Python-generated files
 __pycache__/
 *.py[cod]
+/01_StartSchedule/dist/
+
+# Copilot instructions
+/.github/
 
 # Binary and compiled files
 *.xls
@@ -32,20 +36,3 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Output of build_exe.py (the exes and everything PyInstaller makes)
-dist/
-build/
-*.spec
-
-# Made while the programs run: week folders, first-week master files, status files, logs
-Work/
-Master/
-week_status.json
-update_status.json
-run_info.json
-plan_assist_error.txt
-*.log
-
-# Made by the solver stand-in (common/testing/stub_solver.py)
-stub_solver_data/
