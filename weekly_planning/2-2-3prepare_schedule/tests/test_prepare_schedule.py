@@ -209,6 +209,32 @@ class ContinuedBars(unittest.TestCase):
         self.assertFalse([line for line in quiet["report"] if "blank cells" in line])
 
 
+class PaintedCellsAfterFi(unittest.TestCase):
+    """FI followed by painted cells without text: the cells are a misc task, and the trip lasts as long as the bar."""
+
+    def setUp(self):
+        k1 = name_key("山田 太郎")
+        bar = {(k1, d): "FI（記載なし）" for d in days("2026/12/14", "2026/12/18")}
+        self.out = ps.prepare(prev_flexible(), prev_env(),
+                              sheet(date_map=bar, personal_map={}, fifo={k1: {"2026/12/13": "FI"}}, fi_bar_cells=5),
+                              SEIBAN, "2026/10/10", default_trip_region=ps.NEUTRAL_REGION_ID)
+        self.sch = self.out["schedule"]["schedule"]
+
+    def test_the_cells_are_a_misc_task_with_a_fixed_row(self):
+        task = next(t for t in self.sch["misc_task_list"] if t["name"] == "FI（記載なし）")
+        row_ = next(r for r in self.sch["assignment_list"] if r["operation_task"] == task["id"])
+        self.assertEqual(("w007", "2026/12/14", "2026/12/18", "Fixed"),
+                         (row_["worker"], row_["start_date"], row_["end_date"], row_["plan_flexibility"]))
+        self.assertEqual(days("2026/12/14", "2026/12/18"), [d["date"] for d in row_["work_date_list"]])
+
+    def test_the_trip_ends_with_the_bar_instead_of_on_its_first_day(self):
+        trips = next(t for t in self.sch["trip_list"] if t["worker"] == "w007")["trips"]
+        self.assertIn(("2026/12/13", "2026/12/18"), [(t["start_date"], t["end_date"]) for t in trips])
+
+    def test_it_is_reported(self):
+        self.assertTrue([line for line in self.out["report"] if "5 painted cells without any text after an FI" in line])
+
+
 def days(first, last):
     from datetime import date, timedelta
     a, b = date(*map(int, first.split("/"))), date(*map(int, last.split("/")))

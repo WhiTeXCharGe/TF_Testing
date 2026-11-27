@@ -16,6 +16,10 @@ from .text import clean_text, extract_tool_code, norm_name, normalize_tool_code_
 from .worker_skills import split_slash
 
 
+# The text given to painted cells that follow an FI mark without any text of their own (they are a bar all the same).
+FI_BAR_TEXT = "FI（記載なし）"
+
+
 def find_date_header_ws(ws, max_scan_rows=12):
     for r in range(1, max_scan_rows + 1):
         row_vals = [cell.value for cell in ws[r]]
@@ -184,6 +188,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
     worker_in_skill_sheet = {} # wid -> True if matched in the skill sheet
     worker_description = {}
     continued_cells = []       # (wid, dt) of blank cells read as part of the bar before them (see below)
+    fi_bar_cells = []          # (wid, dt) of painted blank cells after an FI that became a bar of their own
 
     plan_start = None
     plan_end = None
@@ -285,14 +290,16 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
 
             # A bar is often written in its first cell only: the next days are blank but have the same fill colour. Those blank
             # cells belong to the bar, so they get its text. `bar` = (text, colour, column) of the last cell with text.
-            bar = None
+            # Painted blank cells straight after an FI mark are a bar too, although it has no text at all: the worker is booked.
+            # `fi_col` = the column of that FI mark.
+            bar = fi_col = None
             for c in date_cols:
                 dt = dt_by_col[c]
                 cell = row_cells[c - 1]
 
                 if is_red_cell(cell):
                     worker_acc[key]["unavailable_set"].add(to_ymd(dt))
-                    bar = None
+                    bar = fi_col = None
                     continue
 
                 val = cell.value
@@ -300,6 +307,7 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
 
                 if text.upper() in IGNORE_WHITE_TEXT:
                     bar = None
+                    fi_col = c if "FI" in text.upper() else None
                     continue
 
                 color = cell_color_hex(cell, theme_palette)
@@ -308,9 +316,14 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
                 elif bar and color and color not in NO_BAR_COLORS and color == bar[1] and c == bar[2] + 1:
                     text = bar[0]
                     bar = (text, color, c)
-                    continued_cells.append((wid, dt))
+                    (fi_bar_cells if text == FI_BAR_TEXT else continued_cells).append((wid, dt))
+                elif fi_col == c - 1 and color and color not in NO_BAR_COLORS and not is_grey_cell(cell):
+                    text = FI_BAR_TEXT
+                    bar = (text, color, c)          # the next cells of this colour continue it like any bar
+                    fi_bar_cells.append((wid, dt))
                 else:
                     bar = None
+                fi_col = None
 
                 if is_grey_cell(cell):
                     if text and extract_tool_code(text):
@@ -352,5 +365,5 @@ def parse_su_others(path: str, sheet_names=("予定表_2026",), date_filter=None
         "worker_roles": worker_roles, "worker_skill_role": worker_skill_role,
         "worker_skill_raw": worker_skill_raw, "worker_status": worker_status,
         "worker_in_skill_sheet": worker_in_skill_sheet,
-        "worker_description": worker_description, "continued_cells": continued_cells,
+        "worker_description": worker_description, "continued_cells": continued_cells, "fi_bar_cells": fi_bar_cells,
     }

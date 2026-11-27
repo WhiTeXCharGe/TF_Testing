@@ -462,6 +462,9 @@ def prepare(prev_flex_doc, prev_env_doc, sheet, seiban_rows, today, default_trip
     if sheet.get("continued_cells"):
         report.append(f"INFO: {sheet['continued_cells']} blank cells with the same fill colour as the cell before them were read as "
                       f"part of that bar (a bar written in its first cell only)")
+    if sheet.get("fi_bar_cells"):
+        report.append(f"INFO: {sheet['fi_bar_cells']} painted cells without any text after an FI were read as a bar "
+                      f"(misc task {su_others.FI_BAR_TEXT!r}), so the worker is not free on those days")
     for raw, (mark, n) in sorted((sheet.get("fifo_variants") or {}).items()):
         report.append(f"INFO: {n} cells with the text {raw!r} were read as {mark}")
     activity = defaultdict(set)     # worker -> days with anything written in the sheet
@@ -654,7 +657,7 @@ def read_sheet(su_path, sheets, skill_sheet, skill_path=None):
     return {
         "workers": workers, "date_map": keyed(su["worker_date_map"]), "personal_map": keyed(su["worker_personal_map"]),
         "color_map": keyed(su["worker_color_map"]), "fifo": dict(fifo), "fifo_variants": variants,
-        "plan_range": su["plan_range"], "continued_cells": len(su["continued_cells"]),
+        "plan_range": su["plan_range"], "continued_cells": len(su["continued_cells"]), "fi_bar_cells": len(su["fi_bar_cells"]),
     }
 
 

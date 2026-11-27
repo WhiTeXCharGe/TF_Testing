@@ -9,6 +9,7 @@ Steps 2-2 and 2-3 in one tool: find what the planner changed in SU_Others, then 
 - A **module** stays flexible unless the planner moved its work (worker or date), only renamed its bar, or all its work is before today. Then it becomes Fixed and turns into misc tasks.
 - **FI/FO never decide a module.** A flexible trip whose FI or FO day moved becomes a Fixed trip; unchanged flexible trips stay flexible and are listed in `FlexibleWork`.
 - Flexible modules and trips are copied from last week; every other bar is a misc task, every other FI/FO a Fixed trip.
+- **Painted cells straight after an FI without any text are a bar.** Blank cells with a fill colour (not white) that start right after an `FI` become the misc task `FI（記載なし）` with Fixed rows, so the worker is not free on them, and a trip whose FO is missing then lasts to the end of that bar instead of one day. Painted cells after an FO, or after nothing, stay empty.
 - FI/FO is read tolerantly (typos, notes), marks without a partner are repaired from the worker's busy days, and one trip may end on the date the next starts. Trips without a known region get `r_other`.
 - Every flexible assignment row gets a `cell_name` (the text of its bar), also written to `description` when that is empty. 3-2 / 3-3 / the next run of this tool use it.
 - EnvConfig: last week's lists are kept (ids never change), new names are added, `worker_list` is rebuilt from the workbook.
